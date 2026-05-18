@@ -48,8 +48,17 @@ export default function FieldIframe() {
       src={src}
       // Allow same-origin so Field's existing IndexedDB / cookies
       // continue to work; allow scripts; allow forms (PIN gate
-      // submit in the no-shell-token fallback path).
-      sandbox="allow-same-origin allow-scripts allow-forms allow-downloads allow-popups"
+      // submit in the no-shell-token fallback path); allow downloads
+      // for CSV exports. allow-popups was previously here but no
+      // Field surface opens new windows in the iframe flow — removed
+      // to tighten the sandbox.
+      sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
+      // referrerPolicy="no-referrer" — don't leak the parent
+      // (<tenant>.eq.solutions) URL via Referer header when Field
+      // makes outbound requests. The iframe handoff token in the URL
+      // hash already isn't sent as Referer (hashes aren't sent), but
+      // this stops any path-based info from leaking to e.g. PostHog.
+      referrerPolicy="no-referrer"
       // Camera/mic/etc not needed in Phase 1.B — extend later.
       allow=""
     />

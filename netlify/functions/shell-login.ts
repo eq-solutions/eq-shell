@@ -18,6 +18,11 @@
 // inherits the same rate-limit gap EQ Field's verify-pin had before
 // SEC2 (PR #99) — to be fixed by extending the same
 // rate_limit_buckets pattern to this surface in a follow-up.
+//
+// Login attempts are logged to stdout (Netlify Function logs) for now.
+// A proper `audit_log` table on eq-shell-control is a separate
+// follow-up — same shape as eq-field-app's existing audit_log so we
+// can eventually unify the two streams.
 
 import bcrypt from 'bcryptjs';
 import type { Context } from '@netlify/functions';
@@ -38,6 +43,21 @@ function jsonResponse(status: number, body: unknown, extraHeaders: Record<string
   });
 }
 
+// Best-effort structured log of every login attempt. Visible in the
+// Netlify Functions dashboard logs; grepable. A real audit_log table
+// is a follow-up — see header comment.
+function logShellLogin(req: Request, email: string, outcome: 'success' | 'failed' | 'malformed', detail?: string): void {
+  const ip = req.headers.get('x-forwarded-for') ?? req.headers.get('client-ip') ?? 'unknown';
+  // eslint-disable-next-line no-console
+  console.info('[shell-login]', JSON.stringify({
+    at: new Date().toISOString(),
+    email,
+    outcome,
+    ip,
+    ...(detail ? { detail } : {}),
+  }));
+}
+
 export default async (req: Request, _context: Context): Promise<Response> => {
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
@@ -51,12 +71,14 @@ export default async (req: Request, _context: Context): Promise<Response> => {
   try {
     body = (await req.json()) as { email?: string; pin?: string };
   } catch {
+    logShellLogin(req, '<unparseable-body>', 'malformed');
     return jsonResponse(400, { valid: false });
   }
 
   const email = (body.email ?? '').trim().toLowerCase();
   const pin = (body.pin ?? '').trim();
   if (!email || !pin) {
+    logShellLogin(req, email || '<empty>', 'malformed', 'missing email or pin');
     return jsonResponse(400, { valid: false });
   }
 
@@ -78,14 +100,22 @@ export default async (req: Request, _context: Context): Promise<Response> => {
     .maybeSingle<CanonicalUser>();
 
   if (userErr) {
-    return jsonResponse(500, { error: 'Database error', detail: userErr.message });
+    // Log the DB error server-side but don't leak the message to the client.
+    // Postgres error strings can include column names, query fragments, and
+    // schema details that help an attacker shape follow-up probes.
+    // eslint-disable-next-line no-console
+    console.error('[shell-login] supabase users lookup error:', userErr.message);
+    logShellLogin(req, email, 'failed', 'db-error');
+    return jsonResponse(500, { error: 'Database error' });
   }
   if (!user || !user.pin_hash) {
+    logShellLogin(req, email, 'failed', 'no-user-or-no-pin');
     return jsonResponse(200, { valid: false });
   }
 
   const pinOk = await bcrypt.compare(pin, user.pin_hash);
   if (!pinOk) {
+    logShellLogin(req, email, 'failed', 'bad-pin');
     return jsonResponse(200, { valid: false });
   }
 
@@ -97,6 +127,7 @@ export default async (req: Request, _context: Context): Promise<Response> => {
     .maybeSingle<CanonicalTenant>();
 
   if (tenantErr || !tenant || !tenant.active) {
+    logShellLogin(req, email, 'failed', tenantErr ? 'tenant-err' : 'tenant-missing-or-inactive');
     return jsonResponse(200, { valid: false });
   }
 
@@ -106,11 +137,19 @@ export default async (req: Request, _context: Context): Promise<Response> => {
     .eq('tenant_id', tenant.id)
     .returns<CanonicalEntitlement[]>();
 
-  // Best-effort last_login_at bump (non-blocking on failure).
-  await sb
+  // Best-effort last_login_at bump. Non-blocking: if the update fails
+  // (Supabase blip, RLS regression, etc.) the user still gets their
+  // session — we just log the issue and move on.
+  const { error: lastLoginErr } = await sb
     .from('users')
     .update({ last_login_at: new Date().toISOString() })
     .eq('id', user.id);
+  if (lastLoginErr) {
+    // eslint-disable-next-line no-console
+    console.warn('[shell-login] last_login_at update failed:', lastLoginErr.message);
+  }
+
+  logShellLogin(req, email, 'success');
 
   // Sign the session cookie.
   const exp = Date.now() + SESSION_TTL_MS;

@@ -16,9 +16,23 @@
 // HMAC key is EQ_SECRET_SALT — MUST be the SAME value as eq-solves-field
 // uses, or the iframe handshake won't validate.
 
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const SECRET_SALT = process.env.EQ_SECRET_SALT ?? '';
+
+// Constant-time HMAC sig comparison. Plain === is vulnerable to
+// timing-based byte-by-byte sig recovery; timingSafeEqual short-
+// circuits on length mismatch but otherwise runs in constant time
+// regardless of where the first byte diverges. EQ Field's verify-pin.js
+// has the same `!==` pattern — fix that in parallel.
+function sigsEqual(expected: string, provided: string): boolean {
+  if (expected.length !== provided.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(provided, 'hex'));
+  } catch {
+    return false;
+  }
+}
 
 export interface SessionPayload {
   user_id: string;
@@ -50,7 +64,7 @@ export function verifySessionToken(token: string | null | undefined): SessionPay
     if (!b64 || !sig) return null;
     const json = Buffer.from(b64, 'base64').toString();
     const expected = sign(json);
-    if (expected !== sig) return null;
+    if (!sigsEqual(expected, sig)) return null;
     const data = JSON.parse(json) as SessionPayload;
     if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
     if (!data.user_id || !data.tenant_id) return null;
