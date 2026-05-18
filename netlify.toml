@@ -1,0 +1,16 @@
+# EQ Shell — Netlify config
+# Phase 1.B wire-up
+
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# SPA history fallback so React Router owns all non-function routes.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

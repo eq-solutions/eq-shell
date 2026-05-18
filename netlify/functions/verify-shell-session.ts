@@ -1,0 +1,89 @@
+// GET /.netlify/functions/verify-shell-session
+//
+// Reads the eq_shell_session cookie, verifies the HMAC, hydrates
+// canonical user + tenant + entitlements, returns them. Used by
+// the React shell on every route mount to confirm session validity
+// and refresh tenant config (entitlements may have changed since
+// login — cheap to re-read).
+//
+// 401 if no cookie / bad sig / expired / user inactive / tenant
+// inactive. Cache-Control: no-store so a stale CDN cache never
+// returns yes-then-401 thrash.
+
+import type { Context } from '@netlify/functions';
+import { getServiceClient } from './_shared/supabase.js';
+import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
+import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+export default async (req: Request, _context: Context): Promise<Response> => {
+  if (req.method !== 'GET') {
+    return jsonResponse(405, { error: 'Method not allowed' });
+  }
+
+  if (!hasSecretSalt()) {
+    return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });
+  }
+
+  const token = readSessionCookie(req);
+  const session = verifySessionToken(token);
+  if (!session) {
+    return jsonResponse(401, { valid: false });
+  }
+
+  let sb;
+  try {
+    sb = getServiceClient();
+  } catch (e) {
+    return jsonResponse(500, { error: (e as Error).message });
+  }
+
+  const { data: user, error: userErr } = await sb
+    .from('users')
+    .select('id, email, tenant_id, role, active, last_login_at')
+    .eq('id', session.user_id)
+    .eq('active', true)
+    .maybeSingle<Omit<CanonicalUser, 'pin_hash'>>();
+
+  if (userErr || !user) {
+    return jsonResponse(401, { valid: false });
+  }
+  // Defensive: cookie claims a tenant_id but the canonical user
+  // row now points somewhere else (admin moved them between tenants).
+  // Treat as invalid — force re-login so the new tenant context loads.
+  if (user.tenant_id !== session.tenant_id) {
+    return jsonResponse(401, { valid: false });
+  }
+
+  const { data: tenant, error: tenantErr } = await sb
+    .from('tenants')
+    .select('id, slug, name, brand_color, brand_logo_url, active')
+    .eq('id', user.tenant_id)
+    .maybeSingle<CanonicalTenant>();
+
+  if (tenantErr || !tenant || !tenant.active) {
+    return jsonResponse(401, { valid: false });
+  }
+
+  const { data: entitlements } = await sb
+    .from('module_entitlements')
+    .select('module, enabled')
+    .eq('tenant_id', tenant.id)
+    .returns<CanonicalEntitlement[]>();
+
+  return jsonResponse(200, {
+    valid: true,
+    user,
+    tenant,
+    entitlements: entitlements ?? [],
+  });
+};
