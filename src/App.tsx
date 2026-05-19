@@ -9,6 +9,7 @@ import {
 } from 'react-router-dom';
 import { SessionContext, useSession, type ShellSession, moduleEnabled } from './session';
 import { BrandProvider } from './brand';
+import { identifyUser, resetUser } from './observability';
 import LoginPage from './pages/LoginPage';
 import TenantHome from './pages/TenantHome';
 import FieldIframe from './pages/FieldIframe';
@@ -38,11 +39,18 @@ function SessionProvider({ children }: { children: ReactNode }) {
         const body = (await res.json()) as ShellSession & { valid: true };
         const { user, tenant, entitlements, supabase_jwt } = body;
         setSession({ user, tenant, entitlements, supabase_jwt });
+        identifyUser(user.id, {
+          tenant: tenant.slug,
+          role: user.role,
+          email: user.email,
+        });
       } else {
         setSession(null);
+        resetUser();
       }
     } catch {
       setSession(null);
+      resetUser();
     } finally {
       setLoading(false);
     }
@@ -55,6 +63,7 @@ function SessionProvider({ children }: { children: ReactNode }) {
     // Follow-up: add /.netlify/functions/shell-logout that clears
     // the cookie server-side.
     setSession(null);
+    resetUser();
     window.location.assign('/');
   }, []);
 

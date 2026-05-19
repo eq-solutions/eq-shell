@@ -30,6 +30,7 @@ import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import { signSessionToken, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
+import { withSentry } from './_shared/sentry.js';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -59,7 +60,7 @@ function logShellLogin(req: Request, email: string, outcome: 'success' | 'failed
   }));
 }
 
-export default async (req: Request, _context: Context): Promise<Response> => {
+export default withSentry(async (req: Request, _context: Context): Promise<Response> => {
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }
@@ -188,4 +189,4 @@ export default async (req: Request, _context: Context): Promise<Response> => {
     },
     { 'Set-Cookie': cookie }
   );
-};
+});

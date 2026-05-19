@@ -23,5 +23,16 @@ dist-ssr
 *.sln
 *.sw?
 
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# Netlify CLI scratch
+.netlify/
+
+# Deno runtime lockfile (netlify-cli edge-functions bootstrap)
+deno.lock
+
 # Dev preview artifacts
 .claude/
