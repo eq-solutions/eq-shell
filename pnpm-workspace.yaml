@@ -1,0 +1,12 @@
+# EQ Shell pnpm workspace
+#
+# Includes eq-intake's @eq/* packages as workspace members via a relative path.
+# This assumes eq-shell and eq-intake are sibling checkouts (e.g. both under
+# C:\Projects\). The packages are consumed at source — Vite resolves them
+# during dev and bundles them at build time. No pre-build step required.
+#
+# Deploy note: Netlify will not have eq-intake checked out. Before the first
+# production deploy that consumes these packages, set up a publishing flow
+# (npm registry, private package access, or git-submodule alternative).
+packages:
+  - "../eq-intake/eq-platform/packages/*"
