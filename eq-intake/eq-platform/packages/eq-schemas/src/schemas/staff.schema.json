@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/staff/v1.json",
+  "title": "Staff",
+  "description": "A staff member who can be scheduled to sites. Includes employees, subcontractors, and labour-hire workers.",
+  "type": "object",
+  "x-eq-entity": "staff",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "staff",
+  "required": ["staff_id", "tenant_id", "first_name", "last_name", "employment_type", "active"],
+  "properties": {
+    "staff_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Internal canonical ID. Generated on import if not provided.",
+      "x-eq-source-aliases": ["id", "staff_id", "employee_id", "emp_id", "worker_id", "person_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning tenant. Set automatically by import context.",
+      "x-eq-system-managed": true
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Customer's own ID for this staff member (payroll number, HR system ID, etc). Preserved for round-trip exports.",
+      "x-eq-source-aliases": ["payroll_no", "payroll_number", "hr_id", "employee_number", "staff_no", "ref", "code"],
+      "maxLength": 64
+    },
+    "first_name": {
+      "type": "string",
+      "description": "Given name. Required.",
+      "x-eq-source-aliases": ["first", "given_name", "fname", "firstname", "forename"],
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "last_name": {
+      "type": "string",
+      "description": "Family name. Required.",
+      "x-eq-source-aliases": ["last", "surname", "lname", "lastname", "family_name"],
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "preferred_name": {
+      "type": ["string", "null"],
+      "description": "What the person actually goes by on site. Often a nickname.",
+      "x-eq-source-aliases": ["nickname", "called", "goes_by", "display_name"],
+      "maxLength": 80
+    },
+    "email": {
+      "type": ["string", "null"],
+      "format": "email",
+      "description": "Primary email. Used for invitations and notifications.",
+      "x-eq-source-aliases": ["email_address", "e_mail", "mail", "work_email"]
+    },
+    "phone": {
+      "type": ["string", "null"],
+      "description": "Primary mobile. Stored as E.164 where possible (e.g. +61412345678).",
+      "x-eq-source-aliases": ["mobile", "phone_number", "cell", "contact_number", "ph"],
+      "x-eq-coerce": "phone-au"
+    },
+    "employment_type": {
+      "type": "string",
+      "enum": ["employee", "subcontractor", "labour_hire", "casual", "apprentice"],
+      "description": "Engagement type. Drives leave entitlements, charge-out treatment, compliance requirements.",
+      "x-eq-source-aliases": ["type", "engagement", "employment", "employee_type", "category"],
+      "x-eq-enum-aliases": {
+        "employee": ["full-time", "ft", "permanent", "perm", "fulltime", "salaried"],
+        "subcontractor": ["sub", "subbie", "contractor", "subcontract", "sub-contractor"],
+        "labour_hire": ["labour-hire", "agency", "labourer", "labour hire", "hired"],
+        "casual": ["pt", "part-time", "parttime", "casual_emp"],
+        "apprentice": ["apprentice", "appy", "trainee"]
+      }
+    },
+    "trade": {
+      "type": ["string", "null"],
+      "description": "Primary trade discipline. Free text but suggested values controlled.",
+      "x-eq-source-aliases": ["discipline", "skill", "role", "trade_type", "specialty"],
+      "x-eq-suggested-values": ["electrical", "mechanical", "fire", "hydraulic", "civil", "data", "carpentry", "plumbing", "communications"]
+    },
+    "level": {
+      "type": ["string", "null"],
+      "description": "Trade level / classification.",
+      "x-eq-source-aliases": ["grade", "classification", "rank", "tier"],
+      "x-eq-suggested-values": ["1st year apprentice", "2nd year apprentice", "3rd year apprentice", "4th year apprentice", "tradesperson", "leading hand", "supervisor", "foreman", "project manager"]
+    },
+    "start_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the person started with the business. ISO 8601 (YYYY-MM-DD).",
+      "x-eq-source-aliases": ["hire_date", "commenced", "date_hired", "join_date", "started"],
+      "x-eq-coerce": "date"
+    },
+    "end_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the person finished (if applicable). Null = currently active.",
+      "x-eq-source-aliases": ["finish_date", "termination_date", "end", "left", "departure"],
+      "x-eq-coerce": "date"
+    },
+    "hourly_rate_cost": {
+      "type": ["number", "null"],
+      "description": "Cost rate per hour (what the business pays). AUD. Sensitive — hidden from non-admin roles.",
+      "x-eq-source-aliases": ["cost_rate", "pay_rate", "internal_rate", "wage", "rate_cost"],
+      "x-eq-sensitive": true,
+      "minimum": 0
+    },
+    "hourly_rate_charge": {
+      "type": ["number", "null"],
+      "description": "Charge-out rate per hour (what clients are billed). AUD.",
+      "x-eq-source-aliases": ["charge_rate", "billing_rate", "sell_rate", "client_rate", "rate_charge"],
+      "minimum": 0
+    },
+    "home_base": {
+      "type": ["string", "null"],
+      "description": "Where the person typically starts the day. City, suburb, or depot.",
+      "x-eq-source-aliases": ["base", "depot", "location", "home_location", "based_in"]
+    },
+    "default_site_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Site this person is usually at. Resolved by FK match on import.",
+      "x-eq-source-aliases": ["primary_site", "usual_site", "default_location", "regular_site"],
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"]
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Whether this person is currently active. Defaults true on import.",
+      "x-eq-source-aliases": ["is_active", "current", "status", "enabled"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Free-form notes. Not used in scheduling logic.",
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 2000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When this record was last imported. System-managed.",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "description": "Source of the import (filename, system name). System-managed.",
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "end_after_start",
+      "rule": "end_date == null OR end_date >= start_date",
+      "message": "End date must be on or after start date."
+    },
+    {
+      "id": "rate_charge_gte_cost",
+      "rule": "hourly_rate_charge == null OR hourly_rate_cost == null OR hourly_rate_charge >= hourly_rate_cost",
+      "message": "Charge rate is below cost rate. Confirm or correct.",
+      "severity": "warning"
+    },
+    {
+      "id": "inactive_has_end_date",
+      "rule": "active == true OR end_date != null",
+      "message": "Inactive staff should have an end date.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Common patterns for importing staff lists from various sources.",
+    "common_sources": [
+      {
+        "name": "Generic HR/payroll export",
+        "typical_columns": ["Employee #", "First Name", "Surname", "Email", "Mobile", "Type", "Start Date", "Hourly Rate"],
+        "watchouts": ["Hourly Rate may be cost or charge — ask user", "Type may use codes like FT/PT/SUB"]
+      },
+      {
+        "name": "MYOB / Xero employee export",
+        "typical_columns": ["Card ID", "First Name", "Last Name", "Email", "Phone", "Employment Status", "Pay Basis"],
+        "watchouts": ["Card ID maps to external_id, not staff_id", "Pay Basis maps to employment_type via alias"]
+      },
+      {
+        "name": "Hand-built spreadsheet",
+        "typical_columns": ["Name", "Mob", "Trade", "Level"],
+        "watchouts": ["Single 'Name' column needs splitting", "Often missing required fields — flag for user"]
+      }
+    ]
+  }
+}

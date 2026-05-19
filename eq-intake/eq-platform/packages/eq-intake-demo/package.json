@@ -1,0 +1,46 @@
+{
+  "name": "@eq/intake-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EQ Intake module + standalone Vite demo. Exports IntakeModule for mounting inside the EQ Shell. Run `pnpm --filter @eq/intake-demo dev` from the workspace root for the standalone playground at localhost:5174.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./styles.css": "./src/styles.css"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@eq/ai": "workspace:*",
+    "@eq/confirm-ui": "workspace:*",
+    "@eq/intake": "workspace:*",
+    "@eq/schemas": "workspace:*",
+    "@eq/validation": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "4.3.3",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "typescript": "5.6.3",
+    "vite": "5.4.10",
+    "vitest": "2.1.5"
+  }
+}

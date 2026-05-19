@@ -1,0 +1,154 @@
+{
+  "rules": [
+    "end_date == null OR end_date >= start_date",
+    "hourly_rate_charge == null OR hourly_rate_cost == null OR hourly_rate_charge >= hourly_rate_cost",
+    "active == true OR end_date != null",
+    "status != 'active' OR signatures.length > 0",
+    "hazards.every(h => h.controls.length > 0)",
+    "(latitude == null AND longitude == null) OR (latitude != null AND longitude != null)",
+    "induction_required == false OR induction_url != null",
+    "next_service_due == null OR last_service_date == null OR next_service_due > last_service_date"
+  ],
+  "test_cases": [
+    {
+      "rule_index": 0,
+      "data": { "start_date": "2022-03-01", "end_date": null },
+      "expected": true,
+      "note": "null end_date is fine"
+    },
+    {
+      "rule_index": 0,
+      "data": { "start_date": "2022-03-01", "end_date": "2024-06-30" },
+      "expected": true,
+      "note": "end after start"
+    },
+    {
+      "rule_index": 0,
+      "data": { "start_date": "2024-06-30", "end_date": "2022-03-01" },
+      "expected": false,
+      "note": "end before start - violation"
+    },
+    {
+      "rule_index": 1,
+      "data": { "hourly_rate_cost": 45, "hourly_rate_charge": 95 },
+      "expected": true,
+      "note": "charge > cost"
+    },
+    {
+      "rule_index": 1,
+      "data": { "hourly_rate_cost": 95, "hourly_rate_charge": 45 },
+      "expected": false,
+      "note": "cost > charge - warning"
+    },
+    {
+      "rule_index": 2,
+      "data": { "active": true, "end_date": null },
+      "expected": true,
+      "note": "active staff, no end date"
+    },
+    {
+      "rule_index": 2,
+      "data": { "active": false, "end_date": null },
+      "expected": false,
+      "note": "inactive staff missing end date"
+    },
+    {
+      "rule_index": 3,
+      "data": { "status": "draft", "signatures": [] },
+      "expected": true,
+      "note": "draft can have no signatures"
+    },
+    {
+      "rule_index": 3,
+      "data": { "status": "active", "signatures": [{ "name": "J. Smith" }] },
+      "expected": true,
+      "note": "active with signature"
+    },
+    {
+      "rule_index": 3,
+      "data": { "status": "active", "signatures": [] },
+      "expected": false,
+      "note": "active with no signatures - violation"
+    },
+    {
+      "rule_index": 4,
+      "data": {
+        "hazards": [
+          { "controls": ["isolation"] },
+          { "controls": ["EWP", "harness"] }
+        ]
+      },
+      "expected": true,
+      "note": "all hazards have controls"
+    },
+    {
+      "rule_index": 4,
+      "data": {
+        "hazards": [
+          { "controls": ["isolation"] },
+          { "controls": [] }
+        ]
+      },
+      "expected": false,
+      "note": "one hazard missing controls"
+    },
+    {
+      "rule_index": 4,
+      "data": { "hazards": [] },
+      "expected": true,
+      "note": "empty hazards array vacuously passes"
+    },
+    {
+      "rule_index": 5,
+      "data": { "latitude": null, "longitude": null },
+      "expected": true,
+      "note": "both null is fine"
+    },
+    {
+      "rule_index": 5,
+      "data": { "latitude": -33.86, "longitude": 151.21 },
+      "expected": true,
+      "note": "both populated is fine"
+    },
+    {
+      "rule_index": 5,
+      "data": { "latitude": -33.86, "longitude": null },
+      "expected": false,
+      "note": "only one populated - violation"
+    },
+    {
+      "rule_index": 7,
+      "data": { "last_service_date": "2025-12-01", "next_service_due": "2026-06-01" },
+      "expected": true,
+      "note": "next is after last"
+    },
+    {
+      "rule_index": 7,
+      "data": { "last_service_date": "2025-12-01", "next_service_due": "2025-06-01" },
+      "expected": false,
+      "note": "next is before last - violation"
+    }
+  ],
+  "injection_attempts": [
+    {
+      "rule": "1; DROP TABLE staff; --",
+      "expected": "parse_error",
+      "note": "SQL-style injection should fail to parse"
+    },
+    {
+      "rule": "constructor.constructor('return process')()",
+      "expected": "parse_error",
+      "note": "JS prototype access not in grammar"
+    },
+    {
+      "rule": "eval('alert(1)')",
+      "expected": "parse_error",
+      "note": "eval is not a recognised identifier in grammar (would need () with non-method)"
+    },
+    {
+      "rule": "global.process",
+      "expected": "ok_evaluates_null",
+      "note": "field access to global.process safely returns null (no such field in data)"
+    }
+  ]
+}

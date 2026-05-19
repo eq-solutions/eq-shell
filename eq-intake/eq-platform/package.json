@@ -1,0 +1,27 @@
+{
+  "name": "eq-platform",
+  "version": "0.0.1",
+  "private": true,
+  "description": "EQ \u2014 canonical spine for trade-subbie data. Phase 1 monorepo root.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "schemas:lint": "pnpm --filter @eq/schemas schemas:lint",
+    "generate": "pnpm --filter @eq/schemas generate",
+    "generate:sql": "pnpm --filter @eq/schemas generate:sql",
+    "db:apply": "pnpm generate:sql && tsx scripts/db-apply.ts",
+    "ci:drift": "pnpm --filter @eq/schemas generate && git diff --exit-code",
+    "test:integration": "pnpm --filter @eq/ai test:integration"
+  },
+  "devDependencies": {
+    "tsx": "4.19.2",
+    "typescript": "5.6.3",
+    "vitest": "2.1.5"
+  }
+}

@@ -1,0 +1,24 @@
+input,expected,note
+0412 345 678,+61412345678,AU mobile with spaces
+0412345678,+61412345678,AU mobile no spaces
+04 1234 5678,+61412345678,AU mobile space pattern
++61412345678,+61412345678,already E.164
++61 412 345 678,+61412345678,E.164 with spaces
+614 1234 5678,+61412345678,no plus prefix
+(04)1234 5678,+61412345678,brackets
+0412-345-678,+61412345678,hyphens
+0412.345.678,+61412345678,dots
+ph: 0412 345 678,+61412345678,prefix label
+mob: +61412345678,+61412345678,mobile prefix label
+02 9876 5432,+61298765432,Sydney landline
+07 3456 7890,+61734567890,Brisbane landline
++1 555 123 4567,+15551234567,US international
++44 20 7946 0958,+442079460958,UK international
+1300 123 456,1300123456,AU service number kept as-is
+1800 555 555,1800555555,AU toll-free kept as-is
+13 22 11,132211,AU 13-prefix kept as-is
+no mobile,ERROR:phone_unrecognised,unparseable rejected (strict default since 2026-05-19)
+unknown,ERROR:phone_unrecognised,unparseable rejected (strict default)
+,,empty cell
++1234,ERROR:phone_unrecognised,short E.164 rejected (was kept raw pre-2026-05-19)
+abc,ERROR:phone_unrecognised,nonsense rejected

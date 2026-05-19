@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/cards/toolbox-talk/v1.json",
+  "title": "Toolbox Talk",
+  "description": "A toolbox talk: a short safety/operational briefing delivered to a crew, with attendance recorded. Captured by EQ Cards or imported from registers.",
+  "type": "object",
+  "x-eq-entity": "toolbox_talk",
+  "x-eq-module": "cards",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "toolbox_talks",
+  "x-eq-primary-key": "talk_id",
+  "required": ["talk_id", "tenant_id", "site_id", "topic", "delivered_by", "delivered_at", "attendees"],
+  "properties": {
+    "talk_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "external_id": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["talk_no", "tbt_no", "ref"]
+    },
+    "site_id": {
+      "type": "string", "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "location", "project"]
+    },
+    "topic": {
+      "type": "string",
+      "description": "Short title of the toolbox talk.",
+      "x-eq-source-aliases": ["title", "subject", "topic_name"],
+      "maxLength": 200
+    },
+    "category": {
+      "type": ["string", "null"],
+      "enum": [null, "safety", "quality", "environment", "operations", "induction", "emergency_procedure", "incident_review", "tool_specific", "other"],
+      "x-eq-source-aliases": ["type", "kind"]
+    },
+    "content": {
+      "type": ["string", "null"],
+      "description": "Body of the toolbox talk — the actual content delivered.",
+      "x-eq-source-aliases": ["notes", "body", "description", "text"],
+      "maxLength": 8000
+    },
+    "key_messages": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Bullet-point key messages for attendee summary.",
+      "x-eq-source-aliases": ["messages", "key_points", "bullets"]
+    },
+    "delivered_by": {
+      "type": "string",
+      "x-eq-source-aliases": ["presenter", "leader", "by", "delivered", "speaker"]
+    },
+    "delivered_by_user_id": {
+      "type": ["string", "null"], "format": "uuid",
+      "x-eq-foreign-key": "user.user_id"
+    },
+    "delivered_at": {
+      "type": "string", "format": "date-time",
+      "x-eq-source-aliases": ["date", "datetime", "when", "delivered_date"],
+      "x-eq-coerce": "datetime"
+    },
+    "duration_minutes": {
+      "type": ["integer", "null"],
+      "minimum": 1, "maximum": 240,
+      "x-eq-source-aliases": ["duration", "length"]
+    },
+    "attendees": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+          "company": { "type": ["string", "null"], "description": "For subbies/visitors not in our staff register." },
+          "signed_at": { "type": ["string", "null"], "format": "date-time" },
+          "signature_image_url": { "type": ["string", "null"], "format": "uri" }
+        }
+      }
+    },
+    "discussion_points": {
+      "type": "array",
+      "description": "Notes on questions/issues raised during the talk.",
+      "items": { "type": "string" }
+    },
+    "actions": {
+      "type": "array",
+      "description": "Follow-up actions assigned during the talk.",
+      "items": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": { "type": "string" },
+          "owner": { "type": ["string", "null"] },
+          "due_date": { "type": ["string", "null"], "format": "date" },
+          "status": { "type": "string", "enum": ["open", "in_progress", "completed", "cancelled"], "default": "open" }
+        }
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "filename": { "type": "string" },
+          "kind": { "type": "string", "enum": ["photo", "document", "video", "other"] }
+        }
+      }
+    },
+    "gps": {
+      "type": ["object", "null"],
+      "properties": { "lat": { "type": "number" }, "lng": { "type": "number" } }
+    },
+    "device_id": { "type": ["string", "null"] },
+    "source": {
+      "type": "string",
+      "enum": ["cards_mobile", "import_spreadsheet", "capture_pdf", "capture_photo", "manual_entry"],
+      "x-eq-system-managed": true
+    },
+    "raw_extract": { "type": ["string", "null"], "x-eq-system-managed": true },
+    "imported_at":   { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "min_attendees",
+      "rule": "attendees.length >= 1",
+      "message": "Toolbox talk must have at least one attendee."
+    }
+  ]
+}

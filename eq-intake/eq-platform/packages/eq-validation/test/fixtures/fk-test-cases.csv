@@ -1,0 +1,16 @@
+input,expected_kind,expected_match_or_id,note
+11111111-1111-1111-1111-111111111111,exact_id,11111111-1111-1111-1111-111111111111,UUID lookup
+Data Centre Client A - Site 1,exact_match,11111111-1111-1111-1111-111111111111,name exact match
+data centre client a - site 1,exact_match,11111111-1111-1111-1111-111111111111,case insensitive
+DCA-S1,exact_match,11111111-1111-1111-1111-111111111111,code exact match
+DCAS1,exact_match,11111111-1111-1111-1111-111111111111,external_id match
+Data Centre Client A,fuzzy_matches,2,partial name (matches both DCA sites)
+Data Center Client A - Site 1,fuzzy_matches,1,US spelling typo
+Data Centre Client A Site 1,fuzzy_matches,1,missing dash
+DCAA-Site-1,fuzzy_matches,1,heavy variation
+Royal Hospital,fuzzy_matches,1,partial name
+Office HQ,fuzzy_matches,1,partial
+Sydney HQ,fuzzy_matches,1,reordered words
+Data Centre Z,no_match,,no similar entry
+ACME Corporation,no_match,,unrelated
+,no_match,,empty input

@@ -29,6 +29,7 @@ import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import { signSessionToken, hasSecretSalt } from './_shared/token.js';
+import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -65,6 +66,9 @@ export default async (req: Request, _context: Context): Promise<Response> => {
 
   if (!hasSecretSalt()) {
     return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });
+  }
+  if (!hasSupabaseJwtSecret()) {
+    return jsonResponse(500, { error: 'Server misconfigured — missing SUPABASE_JWT_SECRET' });
   }
 
   let body: { email?: string; pin?: string };
@@ -168,6 +172,11 @@ export default async (req: Request, _context: Context): Promise<Response> => {
   const { pin_hash, ...userSafe } = user;
   void pin_hash;
 
+  // Supabase JWT lets the browser talk to Supabase directly with tenant
+  // scope enforced by RLS. Returned in the response body (not a cookie)
+  // so the React shell can attach it as Authorization to Supabase calls.
+  const supabaseJwt = signSupabaseJwt(user.id, tenant.id);
+
   return jsonResponse(
     200,
     {
@@ -175,6 +184,7 @@ export default async (req: Request, _context: Context): Promise<Response> => {
       user: userSafe,
       tenant,
       entitlements: entitlements ?? [],
+      supabase_jwt: supabaseJwt,
     },
     { 'Set-Cookie': cookie }
   );

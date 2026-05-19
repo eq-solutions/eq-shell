@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/cards/incident/v1.json",
+  "title": "Incident Report",
+  "description": "Site incidents: injuries, near-misses, hazards observed, environmental events, property damage. Aligned with WHS notifiable incident requirements.",
+  "type": "object",
+  "x-eq-entity": "incident",
+  "x-eq-module": "cards",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "incidents",
+  "required": ["incident_id", "tenant_id", "site_id", "incident_type", "occurred_at", "reported_by", "description"],
+  "properties": {
+    "incident_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "external_id": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["incident_no", "ref", "report_no"]
+    },
+    "site_id": {
+      "type": "string", "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "location", "project"]
+    },
+    "incident_type": {
+      "type": "string",
+      "enum": ["injury", "near_miss", "hazard_observed", "property_damage", "environmental", "security", "first_aid", "medical_treatment", "lost_time_injury", "notifiable", "other"],
+      "x-eq-source-aliases": ["type", "category", "kind", "classification"],
+      "x-eq-enum-aliases": {
+        "injury":             ["i", "injury_event"],
+        "near_miss":          ["nm", "near miss"],
+        "hazard_observed":    ["ho", "hazard"],
+        "first_aid":          ["fa", "fai", "first_aid_injury"],
+        "medical_treatment":  ["mti", "medical_treatment_injury"],
+        "lost_time_injury":   ["lti"],
+        "notifiable":         ["notif", "notifiable_incident"]
+      }
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["minor", "moderate", "serious", "critical"],
+      "x-eq-source-aliases": ["impact", "rating", "level"],
+      "x-eq-enum-aliases": {
+        "minor":    ["1", "low", "l"],
+        "moderate": ["2", "med", "m"],
+        "serious":  ["3", "high", "h"],
+        "critical": ["4", "extreme", "e"]
+      },
+      "default": "minor"
+    },
+    "occurred_at": {
+      "type": "string", "format": "date-time",
+      "x-eq-source-aliases": ["incident_date", "date", "when", "datetime"],
+      "x-eq-coerce": "datetime"
+    },
+    "reported_at": {
+      "type": ["string", "null"], "format": "date-time",
+      "x-eq-source-aliases": ["report_date", "submitted_at"],
+      "x-eq-coerce": "datetime"
+    },
+    "reported_by": {
+      "type": "string",
+      "x-eq-source-aliases": ["reporter", "reported", "by", "name", "submitted_by"]
+    },
+    "reported_by_user_id": {
+      "type": ["string", "null"], "format": "uuid",
+      "x-eq-foreign-key": "user.user_id"
+    },
+    "involved_persons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "role"],
+        "properties": {
+          "name": { "type": "string" },
+          "staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+          "company": { "type": ["string", "null"] },
+          "role": { "type": "string", "enum": ["injured_person", "witness", "first_aider", "supervisor", "other"] },
+          "injury_description": { "type": ["string", "null"] },
+          "body_part": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "description": {
+      "type": "string",
+      "description": "What happened, in plain language. Required.",
+      "x-eq-source-aliases": ["what_happened", "summary", "details", "narrative"],
+      "minLength": 10, "maxLength": 8000
+    },
+    "immediate_actions": {
+      "type": ["string", "null"],
+      "description": "What was done immediately after the incident.",
+      "x-eq-source-aliases": ["actions_taken", "response", "immediate_response"]
+    },
+    "root_cause": {
+      "type": ["string", "null"],
+      "description": "Identified root cause (after investigation).",
+      "x-eq-source-aliases": ["cause", "underlying_cause"]
+    },
+    "contributing_factors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "x-eq-source-aliases": ["factors", "contributors"]
+    },
+    "corrective_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": { "type": "string" },
+          "owner": { "type": ["string", "null"] },
+          "due_date": { "type": ["string", "null"], "format": "date" },
+          "completed_at": { "type": ["string", "null"], "format": "date-time" },
+          "status": { "type": "string", "enum": ["open", "in_progress", "completed", "verified", "cancelled"], "default": "open" }
+        }
+      }
+    },
+    "notifiable_to_regulator": {
+      "type": "boolean",
+      "description": "Whether this incident is notifiable under WHS Act (death, serious injury/illness, dangerous incident).",
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "regulator_notification_ref": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["safework_ref", "regulator_ref"]
+    },
+    "regulator_notified_at": {
+      "type": ["string", "null"], "format": "date-time"
+    },
+    "photo_urls": {
+      "type": "array",
+      "items": { "type": "string", "format": "uri" }
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "filename": { "type": "string" },
+          "kind": { "type": "string", "enum": ["photo", "video", "document", "medical", "witness_statement", "other"] }
+        }
+      }
+    },
+    "gps": {
+      "type": ["object", "null"],
+      "properties": { "lat": { "type": "number" }, "lng": { "type": "number" } }
+    },
+    "weather_conditions": { "type": ["string", "null"] },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "submitted", "under_investigation", "actions_pending", "closed", "reopened"],
+      "x-eq-source-aliases": ["state", "report_status"],
+      "default": "submitted"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["cards_mobile", "import_spreadsheet", "capture_pdf", "capture_photo", "manual_entry"],
+      "x-eq-system-managed": true
+    },
+    "raw_extract": { "type": ["string", "null"], "x-eq-system-managed": true },
+    "imported_at":   { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "notifiable_must_be_serious",
+      "rule": "notifiable_to_regulator == false OR severity == 'serious' OR severity == 'critical'",
+      "message": "Notifiable incidents are typically serious or critical severity. Confirm severity rating.",
+      "severity": "warning"
+    },
+    {
+      "id": "injury_needs_involved_person",
+      "rule": "incident_type != 'injury' OR involved_persons.some(p => p.role == 'injured_person')",
+      "message": "Injury incident must record at least one injured person."
+    },
+    {
+      "id": "lti_severity",
+      "rule": "incident_type != 'lost_time_injury' OR severity == 'serious' OR severity == 'critical'",
+      "message": "Lost-time injury should be rated serious or critical.",
+      "severity": "warning"
+    },
+    {
+      "id": "reported_after_occurred",
+      "rule": "reported_at == null OR reported_at >= occurred_at",
+      "message": "Report time cannot be before incident time."
+    }
+  ]
+}

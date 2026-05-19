@@ -1,0 +1,40 @@
+{
+  "name": "@eq/intake",
+  "version": "0.0.1",
+  "private": true,
+  "description": "EQ Intake — the standalone parser that turns CSV / XLSX / PDF / photos into canonical EQ rows. Drop into any EQ app.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@eq/ai": "workspace:*",
+    "@eq/schemas": "workspace:*",
+    "@eq/validation": "workspace:*",
+    "papaparse": "5.4.1",
+    "unpdf": "0.12.1",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.0",
+    "@types/papaparse": "5.3.14",
+    "tsup": "8.3.5",
+    "typescript": "5.6.3",
+    "vitest": "2.1.5"
+  }
+}

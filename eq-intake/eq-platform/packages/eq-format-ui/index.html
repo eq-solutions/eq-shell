@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EQ Format - drop a sheet, see the canonical version</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>EQ Format</h1>
+      <p class="tagline">Drop a messy CSV. EQ figures out what it is, validates it, and shows you what would commit.</p>
+    </header>
+
+    <main>
+      <section id="stage-input" class="stage active">
+        <div id="drop-zone" class="drop-zone">
+          <p>Drag a CSV here, or <label class="link">click to choose<input id="file-input" type="file" accept=".csv,text/csv" hidden /></label></p>
+          <p class="muted">or paste CSV content into the box below</p>
+          <textarea id="paste-input" placeholder="Paste CSV here&#10;first_name,last_name,employment_type&#10;James,Patel,employee"></textarea>
+          <div class="actions">
+            <button id="btn-load-paste" type="button">Use pasted content</button>
+            <button id="btn-load-sample" type="button" class="secondary">Try the SimPRO sample</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="stage-mapping" class="stage">
+        <h2>Suggested column mapping</h2>
+        <p class="muted" id="mapping-summary"></p>
+        <div id="mapping-table-wrap"></div>
+        <div class="actions">
+          <button id="btn-validate" type="button">Validate</button>
+          <button id="btn-refine-ai" type="button" class="secondary">Refine with AI (~10s)</button>
+          <button id="btn-save-template" type="button" class="secondary" title="Save this mapping so the next import of the same shape skips AI">Save as template</button>
+          <button id="btn-back-to-input" type="button" class="secondary">Start over</button>
+        </div>
+      </section>
+
+      <section id="stage-result" class="stage">
+        <h2>Result</h2>
+        <div class="summary-tiles" id="summary-tiles"></div>
+        <div class="tabs">
+          <button class="tab active" data-bucket="valid">Valid</button>
+          <button class="tab" data-bucket="flagged">Flagged</button>
+          <button class="tab" data-bucket="rejected">Rejected</button>
+        </div>
+        <div id="result-table-wrap"></div>
+        <div id="derived-exports" class="derived-exports"></div>
+        <div class="actions">
+          <button id="btn-download-valid" type="button">Download valid as CSV</button>
+          <button id="btn-back-to-input-2" type="button" class="secondary">Start over</button>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p class="muted">Sprint 6 demo - localhost only - reads ANTHROPIC_API_KEY from eq-platform/.env</p>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

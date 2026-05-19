@@ -1,0 +1,11 @@
+first_name,last_name,email,phone,employment_type,trade,start_date,active
+James,Patel,james.patel@example.com.au,+61412345678,employee,electrical,2022-03-01,true
+Sarah,O'Brien,sarah.obrien@example.com.au,+61413555111,subcontractor,electrical,2023-06-15,true
+Michael,Henderson,m.henderson@example.com.au,+61414222333,employee,mechanical,2021-09-12,true
+Lien,Tran,lien.tran@example.com.au,+61415444222,apprentice,electrical,2024-01-22,true
+Kofi,Asante,k.asante@example.com.au,+61416777888,employee,fire,2020-11-05,true
+Zara,Williams,zara.w@example.com.au,+61417999000,labour_hire,electrical,2025-02-10,true
+Daniel,Quinn,dquinn@example.com.au,+61418123456,subcontractor,hydraulic,2022-08-30,true
+Aria,Singh,aria.singh@example.com.au,+61419234567,casual,data,2024-09-01,false
+Lucas,Murphy,lmurphy@example.com.au,+61420345678,employee,civil,2019-04-17,true
+Maya,Eriksen,maya.e@example.com.au,+61421456789,apprentice,electrical,2024-07-08,true

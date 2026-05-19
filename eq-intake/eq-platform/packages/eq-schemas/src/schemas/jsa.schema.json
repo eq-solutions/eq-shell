@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/cards/jsa/v1.json",
+  "title": "Job Safety Analysis",
+  "description": "A Job Safety Analysis (also called Job Hazard Analysis) — a lighter-weight task-level risk assessment than SWMS. Used for non-high-risk work or as a step within an active SWMS.",
+  "type": "object",
+  "x-eq-entity": "jsa",
+  "x-eq-module": "cards",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "jsa_records",
+  "required": ["jsa_id", "tenant_id", "site_id", "task_description", "prepared_by", "prepared_at", "steps"],
+  "properties": {
+    "jsa_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "external_id": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["jsa_no", "jsa_number", "ref"]
+    },
+    "site_id": {
+      "type": "string", "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "location", "project"]
+    },
+    "swms_id": {
+      "type": ["string", "null"], "format": "uuid",
+      "description": "If this JSA is part of work covered by an active SWMS, the parent SWMS reference.",
+      "x-eq-foreign-key": "swms.swms_id"
+    },
+    "task_description": {
+      "type": "string",
+      "x-eq-source-aliases": ["task", "activity", "work_description", "scope"],
+      "minLength": 3, "maxLength": 500
+    },
+    "prepared_by": {
+      "type": "string",
+      "x-eq-source-aliases": ["author", "by", "name", "prepared"]
+    },
+    "prepared_by_user_id": {
+      "type": ["string", "null"], "format": "uuid",
+      "x-eq-foreign-key": "user.user_id"
+    },
+    "prepared_at": {
+      "type": "string", "format": "date-time",
+      "x-eq-source-aliases": ["date", "created_at"],
+      "x-eq-coerce": "datetime"
+    },
+    "crew": {
+      "type": "array",
+      "description": "Crew members involved in the task.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "staff_id": { "type": ["string", "null"], "format": "uuid" },
+          "role_on_task": { "type": ["string", "null"] }
+        },
+        "required": ["name"]
+      }
+    },
+    "steps": {
+      "type": "array",
+      "description": "Each work step with its hazards and controls.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["step_no", "step_description", "hazards"],
+        "properties": {
+          "step_no": { "type": "integer", "minimum": 1 },
+          "step_description": { "type": "string" },
+          "hazards": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["hazard", "controls"],
+              "properties": {
+                "hazard": { "type": "string" },
+                "risk_initial": { "type": "string", "enum": ["low", "medium", "high", "extreme"] },
+                "controls": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+                "control_hierarchy": { "type": "string", "enum": ["elimination", "substitution", "isolation", "engineering", "administrative", "ppe"] },
+                "risk_residual": { "type": "string", "enum": ["low", "medium", "high", "extreme"] }
+              }
+            }
+          },
+          "ppe": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "signatures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "signed_at"],
+        "properties": {
+          "name": { "type": "string" },
+          "staff_id": { "type": ["string", "null"], "format": "uuid" },
+          "signed_at": { "type": "string", "format": "date-time" },
+          "signature_image_url": { "type": ["string", "null"], "format": "uri" }
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "completed", "archived"],
+      "default": "draft"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["cards_mobile", "import_spreadsheet", "capture_pdf", "capture_photo", "manual_entry"],
+      "x-eq-system-managed": true
+    },
+    "raw_extract": { "type": ["string", "null"], "x-eq-system-managed": true },
+    "imported_at":   { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "active_needs_signatures",
+      "rule": "status != 'active' OR signatures.length > 0",
+      "message": "Active JSA requires at least one signature."
+    },
+    {
+      "id": "high_risk_residual_warn",
+      "rule": "steps.every(s => s.hazards.every(h => h.risk_residual != 'extreme'))",
+      "message": "Any step with extreme residual risk should likely escalate to a full SWMS.",
+      "severity": "warning"
+    }
+  ]
+}

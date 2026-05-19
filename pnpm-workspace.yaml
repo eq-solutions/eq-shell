@@ -1,0 +1,13 @@
+# EQ Shell pnpm workspace
+#
+# Includes eq-intake's @eq/* packages as workspace members via a relative path
+# into the eq-intake git submodule (mounted at ./eq-intake). Packages with
+# `main: ./dist/...` are pre-built via the `build:packages` script (see
+# package.json) before `tsc -b && vite build` runs. Packages with
+# `main: ./src/...` are consumed at source by Vite directly.
+#
+# Netlify clones submodules by default when .gitmodules is present. Run
+# `git submodule update --init --recursive` after a fresh clone locally —
+# see README.md "Cloning" section.
+packages:
+  - "./eq-intake/eq-platform/packages/*"

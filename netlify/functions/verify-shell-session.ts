@@ -14,6 +14,7 @@ import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
+import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -32,6 +33,9 @@ export default async (req: Request, _context: Context): Promise<Response> => {
 
   if (!hasSecretSalt()) {
     return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });
+  }
+  if (!hasSupabaseJwtSecret()) {
+    return jsonResponse(500, { error: 'Server misconfigured — missing SUPABASE_JWT_SECRET' });
   }
 
   const token = readSessionCookie(req);
@@ -80,10 +84,17 @@ export default async (req: Request, _context: Context): Promise<Response> => {
     .eq('tenant_id', tenant.id)
     .returns<CanonicalEntitlement[]>();
 
+  // Mint a fresh Supabase JWT on every session-verify. JWT TTL is short
+  // (1h) so periodic refresh on route mounts keeps the browser usable
+  // for the full session-cookie lifetime (7d) without long-lived
+  // bearer tokens sitting in memory.
+  const supabaseJwt = signSupabaseJwt(user.id, tenant.id);
+
   return jsonResponse(200, {
     valid: true,
     user,
     tenant,
     entitlements: entitlements ?? [],
+    supabase_jwt: supabaseJwt,
   });
 };

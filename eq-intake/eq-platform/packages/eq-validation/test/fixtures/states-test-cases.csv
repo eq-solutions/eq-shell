@@ -1,0 +1,29 @@
+input,expected,note
+NSW,NSW,canonical
+nsw,NSW,lowercase
+N.S.W.,NSW,with dots
+New South Wales,NSW,full name
+new south wales,NSW,full name lower
+NewSouthWales,NSW,no spaces
+VIC,VIC,canonical
+victoria,VIC,full name
+Vic.,VIC,abbreviation with dot
+QLD,QLD,canonical
+Queensland,QLD,full name
+qld,QLD,lowercase
+SA,SA,canonical
+South Australia,SA,full name
+WA,WA,canonical
+Western Australia,WA,full name
+TAS,TAS,canonical
+Tasmania,TAS,full name
+Tassie,TAS,colloquial
+NT,NT,canonical
+Northern Territory,NT,full name
+ACT,ACT,canonical
+Australian Capital Territory,ACT,full name
+A.C.T.,ACT,with dots
+Vict,ERROR:state_unrecognised,partial typo (no fuzzy)
+Victorian,ERROR:state_unrecognised,demonym
+California,ERROR:state_unrecognised,foreign state
+,null,empty cell

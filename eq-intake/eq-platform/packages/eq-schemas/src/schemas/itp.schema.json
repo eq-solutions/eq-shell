@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/cards/itp/v1.json",
+  "title": "Inspection and Test Plan Record",
+  "description": "An ITP record: results of an inspection or test against a specified plan. Common in commissioning, fit-off, and quality assurance.",
+  "type": "object",
+  "x-eq-entity": "itp",
+  "x-eq-module": "cards",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "itp_records",
+  "required": ["itp_id", "tenant_id", "site_id", "itp_reference", "checkpoints", "performed_by", "performed_at"],
+  "properties": {
+    "itp_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "external_id": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["itp_no", "ref", "doc_no"]
+    },
+    "site_id": {
+      "type": "string", "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "location", "project"]
+    },
+    "asset_id": {
+      "type": ["string", "null"], "format": "uuid",
+      "description": "Specific asset being inspected/tested, if applicable.",
+      "x-eq-foreign-key": "asset.asset_id"
+    },
+    "itp_reference": {
+      "type": "string",
+      "description": "Reference to the ITP document/standard being followed (e.g. 'AS/NZS 3000-2018 Part 8 Verification', 'Project ITP-EL-001 Rev B').",
+      "x-eq-source-aliases": ["standard", "spec", "reference", "itp_doc"],
+      "minLength": 2, "maxLength": 200
+    },
+    "discipline": {
+      "type": ["string", "null"],
+      "enum": [null, "electrical", "mechanical", "fire", "hydraulic", "civil", "data", "communications", "controls", "other"],
+      "x-eq-source-aliases": ["trade", "discipline_type"]
+    },
+    "scope": {
+      "type": ["string", "null"],
+      "description": "What's covered by this ITP record.",
+      "x-eq-source-aliases": ["work_scope", "description"]
+    },
+    "checkpoints": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Each test/inspection point and its result.",
+      "items": {
+        "type": "object",
+        "required": ["checkpoint_no", "description", "result"],
+        "properties": {
+          "checkpoint_no": { "type": "string" },
+          "description": { "type": "string" },
+          "acceptance_criteria": { "type": ["string", "null"] },
+          "test_method": { "type": ["string", "null"] },
+          "instrument": { "type": ["string", "null"], "description": "Test instrument used (e.g. 'Fluke 1664 FC', 'Megger MIT430')." },
+          "instrument_serial": { "type": ["string", "null"] },
+          "instrument_calibration_date": { "type": ["string", "null"], "format": "date" },
+          "expected_value": { "type": ["string", "null"] },
+          "measured_value": { "type": ["string", "null"] },
+          "units": { "type": ["string", "null"] },
+          "result": { "type": "string", "enum": ["pass", "fail", "n/a", "hold", "witness_required"] },
+          "witnessed_by": { "type": ["string", "null"] },
+          "comments": { "type": ["string", "null"] },
+          "photo_urls": { "type": "array", "items": { "type": "string", "format": "uri" } }
+        }
+      }
+    },
+    "overall_result": {
+      "type": "string",
+      "enum": ["pass", "fail", "partial_pass", "in_progress"],
+      "description": "Overall ITP outcome. Computed from checkpoints but stored for reporting.",
+      "x-eq-source-aliases": ["status", "outcome"]
+    },
+    "performed_by": {
+      "type": "string",
+      "x-eq-source-aliases": ["tester", "inspector", "by", "name"]
+    },
+    "performed_by_user_id": {
+      "type": ["string", "null"], "format": "uuid",
+      "x-eq-foreign-key": "user.user_id"
+    },
+    "performed_at": {
+      "type": "string", "format": "date-time",
+      "x-eq-source-aliases": ["test_date", "date", "datetime"],
+      "x-eq-coerce": "datetime"
+    },
+    "witnessed_by": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["witness", "witnessed", "verified_by"]
+    },
+    "client_signature": {
+      "type": ["object", "null"],
+      "properties": {
+        "name": { "type": "string" },
+        "signed_at": { "type": "string", "format": "date-time" },
+        "signature_image_url": { "type": ["string", "null"], "format": "uri" }
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "filename": { "type": "string" },
+          "kind": { "type": "string", "enum": ["test_certificate", "calibration_cert", "photo", "drawing", "other"] }
+        }
+      }
+    },
+    "non_conformances": {
+      "type": "array",
+      "description": "If any checkpoint failed, NCR records.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ncr_no": { "type": ["string", "null"] },
+          "checkpoint_no": { "type": "string" },
+          "description": { "type": "string" },
+          "corrective_action": { "type": ["string", "null"] },
+          "rectified_at": { "type": ["string", "null"], "format": "date-time" }
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "submitted", "client_review", "accepted", "rejected", "ncr_raised", "closed"],
+      "default": "draft"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["cards_mobile", "import_spreadsheet", "capture_pdf", "capture_photo", "manual_entry"],
+      "x-eq-system-managed": true
+    },
+    "raw_extract": { "type": ["string", "null"], "x-eq-system-managed": true },
+    "imported_at":   { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "fail_needs_ncr",
+      "rule": "checkpoints.every(c => c.result != 'fail') OR non_conformances.length > 0",
+      "message": "Failed checkpoint(s) but no non-conformance recorded.",
+      "severity": "warning"
+    },
+    {
+      "id": "overall_aligns_with_checkpoints",
+      "rule": "overall_result != 'pass' OR checkpoints.every(c => c.result == 'pass' OR c.result == 'n/a')",
+      "message": "Overall result is 'pass' but at least one checkpoint did not pass.",
+      "severity": "warning"
+    },
+    {
+      "id": "instrument_calibration_recent",
+      "rule": "checkpoints.every(c => c.instrument == null OR c.instrument_calibration_date == null OR c.instrument_calibration_date >= '2025-01-01')",
+      "message": "Test instrument calibration date may be expired. Confirm calibration is current.",
+      "severity": "warning"
+    }
+  ]
+}
