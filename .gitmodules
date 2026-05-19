@@ -1,0 +1,4 @@
+[submodule "eq-intake"]
+	path = eq-intake
+	url = https://github.com/eq-solutions/eq-solves-intake.git
+	branch = overnight-review-2026-05-19

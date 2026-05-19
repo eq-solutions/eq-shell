@@ -6,7 +6,8 @@
   "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build:packages": "pnpm -r --filter \"./eq-intake/eq-platform/packages/**\" run build",
+    "build": "pnpm run build:packages && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },

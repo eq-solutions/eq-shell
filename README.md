@@ -38,15 +38,51 @@ Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Qu
 
 ## Development
 
+This repo uses **pnpm** (9.15.9) and depends on six `@eq/*` workspace packages that live in the `eq-intake` repo, mounted here as a **git submodule** at `./eq-intake/`. After every fresh clone you must initialise the submodule before anything else works.
+
+### Cloning
+
 ```bash
-npm install
-npm run dev      # vite dev server (browser only — functions need netlify dev)
-npm run build    # production build
-npm run preview  # serve the built bundle
+# One-shot clone with submodules
+git clone --recurse-submodules https://github.com/eq-solutions/eq-shell.git
+cd eq-shell
+
+# Or, if you've already cloned without --recurse-submodules
+git submodule update --init --recursive
+```
+
+Netlify clones submodules automatically when `.gitmodules` is present, so no extra build-environment config is required there.
+
+### Day-to-day
+
+```bash
+pnpm install
+pnpm run dev          # vite dev server (browser only — functions need netlify dev)
+pnpm run build        # builds the @eq/* workspace packages, then tsc -b + vite build
+pnpm run build:packages  # just rebuild the @eq/* dists (rarely needed manually)
+pnpm run preview      # serve the built bundle
 
 # To run the full stack including Netlify Functions locally:
 npx netlify dev  # requires netlify-cli + linked project
 ```
+
+The `build` script first builds every workspace package in `eq-intake/eq-platform/packages/` (each emits a `dist/` via tsup or vite), then runs `tsc -b && vite build` for the shell. Skipping `build:packages` causes the shell's tsc step to error out with `Cannot find module '@eq/ai'` etc. because the packages' `package.json` entry points (`./dist/index.js`) are gitignored.
+
+### Updating the submodule pointer
+
+The submodule tracks branch `overnight-review-2026-05-19` of `eq-solutions/eq-solves-intake` (set via `.gitmodules`). To bump the shell to a newer eq-intake commit:
+
+```bash
+cd eq-intake
+git pull
+cd ..
+pnpm install     # if any package.json changed
+pnpm run build   # sanity check
+git add eq-intake
+git commit -m "Bump eq-intake submodule to <sha>"
+```
+
+To switch the tracked branch, edit `.gitmodules`, then `git submodule sync` and `git submodule update --remote`.
 
 ## Required environment variables (Netlify)
 
