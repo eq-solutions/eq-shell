@@ -63,7 +63,7 @@ export interface Site {
    */
   postcode?: string | null;
   /**
-   * ISO 3166-1 alpha-2 code. Defaults to AU on import if not specified.
+   * ISO 3166-1 alpha-2 code. Defaults to AU on import if not specified. Input is coerced via @eq/validation's coerceCountry so full names like 'Australia' or short forms like 'USA'/'UK' resolve to their alpha-2 codes before the length check runs.
    */
   country?: string | null;
   /**

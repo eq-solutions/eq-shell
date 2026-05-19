@@ -35,6 +35,7 @@ export type CoerceErrorCode =
   | 'phone_unrecognised'
   | 'number_unparseable'
   | 'state_unrecognised'
+  | 'country_unrecognised'
   | 'enum_unrecognised'
   | 'string_too_long';
 

@@ -14,6 +14,7 @@ import { coerceNumber } from './coerce-number';
 import { coerceDate } from './coerce-date';
 import { coercePhoneAU } from './coerce-phone-au';
 import { coerceAuState } from './coerce-au-state';
+import { coerceCountry } from './coerce-country';
 import { coerceEnumAlias } from './coerce-enum-alias';
 import { resolveFk, FkLookup, FkResolution } from './fk-resolver';
 import { compileRule } from './cross-field-eval';
@@ -400,6 +401,9 @@ function coerceField(value: unknown, fieldSchema: any, locale: Locale): CoerceRe
   }
   if (coerceHint === 'au-state') {
     return coerceAuState(value);
+  }
+  if (coerceHint === 'country' || coerceHint === 'country-iso-alpha2') {
+    return coerceCountry(value);
   }
   if (coerceHint === 'number') {
     return coerceNumber(value);

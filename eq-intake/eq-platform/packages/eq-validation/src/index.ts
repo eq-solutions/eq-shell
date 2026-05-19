@@ -24,6 +24,7 @@ export { coerceNumber } from './coerce-number';
 export { coerceDate } from './coerce-date';
 export { coercePhoneAU } from './coerce-phone-au';
 export { coerceAuState } from './coerce-au-state';
+export { coerceCountry } from './coerce-country';
 export { coerceEnumAlias } from './coerce-enum-alias';
 
 export { resolveFk, jaroWinkler } from './fk-resolver';

@@ -1,0 +1,48 @@
+input,expected,note
+AU,AU,canonical
+au,AU,lowercase
+Australia,AU,full name
+australia,AU,full name lower
+AUSTRALIA,AU,full name upper
+Aus,AU,short
+Aust,AU,abbreviation
+Commonwealth of Australia,AU,formal long-form
+NZ,NZ,canonical
+nz,NZ,lowercase
+New Zealand,NZ,full name
+NewZealand,NZ,no space
+Aotearoa,NZ,maori name
+NZL,NZ,three-letter code
+US,US,canonical
+USA,US,three-letter
+usa,US,lowercase three-letter
+U.S.A.,US,with dots
+United States,US,full
+United States of America,US,formal
+America,US,colloquial
+GB,GB,canonical
+UK,GB,common short form
+uk,GB,lowercase short form
+U.K.,GB,with dots
+United Kingdom,GB,full
+Great Britain,GB,alt name
+Britain,GB,colloquial
+England,GB,country within
+Scotland,GB,country within
+Wales,GB,country within
+CA,CA,canonical
+Canada,CA,full
+canada,CA,lowercase
+IE,IE,canonical
+Ireland,IE,full
+SG,SG,canonical
+Singapore,SG,full
+PG,PG,canonical
+PNG,PG,three-letter
+Papua New Guinea,PG,full
+FJ,FJ,canonical
+Fiji,FJ,full
+Atlantis,ERROR:country_unrecognised,fictional
+France,ERROR:country_unrecognised,unlisted real country
+XX,ERROR:country_unrecognised,unknown code
+,null,empty cell
