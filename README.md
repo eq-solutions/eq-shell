@@ -58,12 +58,30 @@ pnpm run dev          # vite dev server (browser only — functions need netlify
 pnpm run build        # builds the @eq/* workspace packages, then tsc -b + vite build
 pnpm run build:packages  # just rebuild the @eq/* dists (rarely needed manually)
 pnpm run preview      # serve the built bundle
-
-# To run the full stack including Netlify Functions locally:
-npx netlify dev  # requires netlify-cli + linked project
 ```
 
 The `build` script first builds every workspace package in `eq-intake/eq-platform/packages/` (each emits a `dist/` via tsup or vite), then runs `tsc -b && vite build` for the shell. Skipping `build:packages` causes the shell's tsc step to error out with `Cannot find module '@eq/ai'` etc. because the packages' `package.json` entry points (`./dist/index.js`) are gitignored.
+
+### Full local auth flow (Vite + Netlify Functions on one origin)
+
+`pnpm dev` is fine for UI work, but the login / iframe-handshake path goes through Netlify Functions and won't run without them. `netlify dev` boots Vite *and* the Functions emulator on the same origin (port 8888) so the cookie + redirect flow behaves like production.
+
+**netlify-cli is not a project devDep** — install it however you prefer:
+
+```bash
+npm install -g netlify-cli       # once, globally (recommended)
+pnpx netlify-cli@^26 dev          # or one-off, no install
+```
+
+The `[dev]` block in `netlify.toml` pins the wiring (Vite on `targetPort=5173`, proxied on `port=8888`).
+
+**Workflow:**
+
+1. Copy `.env.example` to `.env` and fill in real values (Supabase, `EQ_SECRET_SALT`, `SUPABASE_JWT_SECRET`, plus optional Sentry/PostHog/Clarity DSNs). `.env` is gitignored.
+2. Run `netlify dev` and open <http://localhost:8888>.
+3. Log in as `dev@eq.solutions` / PIN `1234`.
+
+Quick liveness check: `curl -i http://localhost:8888/.netlify/functions/verify-shell-session` should return `401 {"valid":false}`.
 
 ### Updating the vendored packages
 

@@ -9,6 +9,18 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+# Local dev: `netlify dev` boots Vite as the target server and reverse-proxies
+# it on port 8888 alongside the Netlify Functions emulator. Explicit framework
+# + ports beats auto-detection — pins behaviour across Vite/netlify-cli
+# upgrades. netlify-cli is not a project devDep; install globally
+# (`npm install -g netlify-cli`) or invoke via `pnpx netlify-cli@^26 dev`
+# / `npx netlify dev`.
+[dev]
+  command = "pnpm dev"
+  framework = "#custom"
+  targetPort = 5173
+  port = 8888
+
 # SPA history fallback so React Router owns all non-function routes.
 [[redirects]]
   from = "/*"

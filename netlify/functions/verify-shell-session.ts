@@ -15,6 +15,7 @@ import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
+import { withSentry } from './_shared/sentry.js';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -26,7 +27,7 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-export default async (req: Request, _context: Context): Promise<Response> => {
+export default withSentry(async (req: Request, _context: Context): Promise<Response> => {
   if (req.method !== 'GET') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }
@@ -97,4 +98,4 @@ export default async (req: Request, _context: Context): Promise<Response> => {
     entitlements: entitlements ?? [],
     supabase_jwt: supabaseJwt,
   });
-};
+});

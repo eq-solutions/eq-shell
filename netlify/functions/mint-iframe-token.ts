@@ -30,6 +30,7 @@ import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, signShellToken, hasSecretSalt } from './_shared/token.js';
+import { withSentry } from './_shared/sentry.js';
 
 const IFRAME_TOKEN_TTL_MS = 60 * 1000;
 
@@ -43,7 +44,7 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-export default async (req: Request, _context: Context): Promise<Response> => {
+export default withSentry(async (req: Request, _context: Context): Promise<Response> => {
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }
@@ -94,4 +95,4 @@ export default async (req: Request, _context: Context): Promise<Response> => {
   });
 
   return jsonResponse(200, { token: shellToken });
-};
+});
