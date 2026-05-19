@@ -1,5 +1,14 @@
 # Handoff — Phase 1.A + 1.B manual setup
 
+> ⚠️ **Historical, partially superseded by Phase 1.E (2026-05-19).**
+> The original Phase 1.A/B setup ran against `eq-shell-control` (`hxwitoveffxhcgjvubbd`) and assumed a `*.eq.solutions` wildcard custom domain would work in Netlify. Both turned out wrong.
+>
+> - The shell now reads from `eq-canonical` (`jvknxcmbtrfnxfrwfimn`) — `eq-shell-control` was decommissioned.
+> - Netlify rejects asterisks in `custom_domain`/`domain_aliases` regardless of plan tier on external DNS, so each tenant gets a **specific** subdomain alias registered (e.g. `core.eq.solutions`, future `sks.eq.solutions`).
+> - The Phase 1.D smoke test was run against the `core` tenant (EQ Solutions itself dog-fooding), not `sks-test`.
+>
+> Keep this doc for the dashboard URLs and the conceptual setup flow; treat the specific values (Supabase project URL, test tenant slug) as outdated. For the current state of the shell see [README.md](README.md).
+
 Three steps you need to do by hand before the EQ Shell deploys + Phase 1.D smoke test becomes runnable end-to-end. ~15-20 minutes total. Each step has a dashboard URL, exactly what to copy from where, and a verification check so you know it landed.
 
 | Step | What | Time | Blocks |
