@@ -16,12 +16,15 @@
 // /.netlify/functions/verify-pin with action="verify-shell-token",
 // gets back a 7d Field session, skips the PIN gate.
 //
-// Role mapping from canonical:
-//   canonical role 'admin'      → Field role 'supervisor'
-//   anything else (staff/user)  → Field role 'staff'
-// This collapses the canonical role taxonomy down to Field's
-// two-tier gate. As Field's role system grows (Phase D work,
-// see eq-field-app SPRINT-PLAN.md), the mapping expands here.
+// Role mapping from canonical → Field's two-tier gate:
+//   'admin'  → 'supervisor'
+//   anything else ('member', 'eq_internal', future roles)  → 'staff'
+//
+// The canonical taxonomy is intentionally richer than Field's binary
+// gate; the collapse is lossy. As Field's role system grows (Phase D
+// in SPRINT-PLAN.md), the mapping expands here. For now any non-admin
+// canonical role lands as a Field 'staff' user — view-only until they
+// unlock supervision via the existing in-Field MANAGER_CODE flow.
 
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
@@ -75,9 +78,17 @@ export default async (req: Request, _context: Context): Promise<Response> => {
 
   const fieldRole: 'staff' | 'supervisor' = user.role === 'admin' ? 'supervisor' : 'staff';
 
+  // Display name for Field's sidebar / audit_log / form prefills.
+  // Stopgap: derive from email local-part since canonical `users` has
+  // no `name` column yet. Replace with `user.name` once that column
+  // lands (separate migration follow-up).
+  const displayName = user.email.includes('@')
+    ? user.email.split('@')[0]
+    : user.email;
+
   const shellToken = signShellToken({
     kind: 'shell-token',
-    name: user.email,
+    name: displayName,
     role: fieldRole,
     exp: Date.now() + IFRAME_TOKEN_TTL_MS,
   });
