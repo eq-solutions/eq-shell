@@ -2,7 +2,7 @@
 
 Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Quotes / Service / Field as lazy-loaded modules under one authenticated shell.
 
-**Status:** Phase 1.B wire-up (2026-05-18). React Router + auth contract + iframe handoff to EQ Field live behind PR review.
+**Status:** Phase 1.E shipped (2026-05-19). End-to-end smoke test green: `core.eq.solutions` → login → tenant home → EQ Field iframe loads without PIN gate. Shell auth runs against `eq-canonical` (single canonical EQ Solutions DB). Phase 2 (Tender Pipeline import screen, built directly against `eq-canonical`'s intake/registry tables) is the active milestone.
 
 **Design:** see `EQ-SHELL-DESIGN.md` in [Milmlow/eq-field-app](https://github.com/Milmlow/eq-field-app/blob/demo/EQ-SHELL-DESIGN.md). All Q1-Q10 locked.
 
@@ -18,22 +18,23 @@ Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Qu
 
 | Resource | Identifier | Purpose |
 |---|---|---|
-| Supabase project | `eq-shell-control` (id: `hxwitoveffxhcgjvubbd`, region `ap-southeast-2`) | Canonical EQ-corporate tables: `tenants`, `users`, `module_entitlements`. |
+| Supabase project | `eq-canonical` (id: `jvknxcmbtrfnxfrwfimn`, region `ap-southeast-2`) | Single canonical EQ Solutions DB — holds shell control tables (`tenants`, `users`, `module_entitlements`) **and** EQ tenant application data (customers, sites, schema registry, intake events, etc.). The earlier separate `eq-shell-control` was decommissioned 2026-05-19. |
 | GitHub repo | `eq-solutions/eq-shell` (this) | Shell source. |
-| Netlify project | `eq-shell` (id: `a3473f83-7c82-4f1e-872d-aa96eaa55172`) | Builds + hosts the shell at `*.eq.solutions`. |
-| Custom domain | `*.eq.solutions` (pending DNS) | Wildcard subdomain for tenants (`sks.eq.solutions`, `melbourne.eq.solutions`, etc.). |
+| Netlify project | `eq-shell` (id: `a3473f83-7c82-4f1e-872d-aa96eaa55172`) | Builds + hosts the shell. |
+| Custom domains | `core.eq.solutions` (primary) | Each tenant gets a specific domain alias registered on the Netlify project. `*.eq.solutions` wildcard isn't accepted by Netlify on external DNS — Cloudflare wildcard CNAME resolves, but Netlify only serves explicitly-registered subdomains. See `HANDOFF-PHASE-1-A-B.md` for the rationale and per-tenant onboarding pattern. |
 
 ## Phase plan
 
 | Phase | Goal | Status |
 |---|---|---|
 | 1.A | Scaffolding — repo, Supabase, Netlify | Shipped |
-| 1.B | Wire-up — shell-login, verify-shell-session, mint-iframe-token functions; React shell with login + tenant-home + iframe-Field route | This PR |
+| 1.B | Wire-up — shell-login, verify-shell-session, mint-iframe-token functions; React shell with login + tenant-home + iframe-Field route | Shipped |
 | 1.C | Field-side — `?sh=` URL hash handler on `eq-field-app/demo` | Shipped (PR #106 on eq-field-app) |
-| 1.D | End-to-end smoke | Next |
-| 2 | Tender Pipeline migration to React (the adoption wedge) | After Phase 1 |
-| 3+ | Surface-by-surface EQ Field migration | Long-term |
-| 4 | EQ Field deploy decommissioned | Long-term |
+| 1.D | End-to-end smoke (browser flow verified against `core.eq.solutions`) | Shipped 2026-05-19 |
+| 1.E | Consolidation — drop `eq-shell-control`, single `eq-canonical` Supabase for the EQ tenant; iframe headers loosened on EQ Field | Shipped 2026-05-19 |
+| 2 | Build new shell modules (Tender Pipeline import first) directly against `eq-canonical`'s structure — `customers`, `sites`, `staff`, `eq_intake_events`, `eq_schema_registry`, `eq_export_*`. Not extending or migrating EQ Field's legacy data model. | Active |
+| 3+ | Replace each EQ Field surface (roster, schedule, leave, tenders, audits, prestarts, toolbox talks) with a shell module backed by `eq-canonical`. Each surface goes live in the shell, then its EQ Field equivalent gets retired. | Long-term |
+| 4 | EQ Field demo deploy + its `ktmjmdzqrogauaevbktn` Supabase decommissioned, once every surface has a shell replacement | Long-term |
 
 ## Development
 
@@ -54,8 +55,8 @@ These must be set on the `eq-shell` Netlify project before functions run success
 | Variable | Source | Notes |
 |---|---|---|
 | `EQ_SECRET_SALT` | **Same value as eq-solves-field** | HMAC key for session cookies AND the iframe-handoff token. The iframe handshake breaks if this drifts from EQ Field's. |
-| `SUPABASE_URL` | eq-shell-control project URL | `https://hxwitoveffxhcgjvubbd.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → Project settings → API keys | Service-role key; bypasses RLS. Never expose client-side. |
+| `SUPABASE_URL` | eq-canonical project URL | `https://jvknxcmbtrfnxfrwfimn.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → eq-canonical → Project settings → API keys | Service-role key; bypasses RLS. Never expose client-side. |
 
 ## Auth contract
 
@@ -95,7 +96,7 @@ EQ Field validates the minted token via its existing `/.netlify/functions/verify
 - **TypeScript strict mode** — no `any` without justification.
 - **Functional components + hooks** — no class components.
 - **Lazy-load every module** (`React.lazy()`) — disabled tenants never pay the bandwidth cost. Q5 lock from the design doc.
-- **No client-side Supabase reads in Phase 1.B** — everything goes through Netlify functions with the service-role key. Direct client reads land in Phase 2+ once per-user JWT-based RLS is wired (see migration `2026_05_18_phase_1b_pin_hash_and_service_role_policies`).
+- **No client-side Supabase reads in Phase 1** — everything goes through Netlify functions with the service-role key. Direct client reads land in Phase 2+ once per-user JWT-based RLS is wired (see migration `2026_05_19_shell_control_plane` on `eq-canonical`).
 - **Vendor branding lives in code, not assets** — brand objects (color, logo URL, name) come from the canonical Supabase per-tenant; the codebase has no `sks/` or `eq/` asset folders.
 
 ## Related repos
