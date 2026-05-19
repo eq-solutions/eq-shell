@@ -1,0 +1,32 @@
+input,expected,note
+true,true,literal true
+false,false,literal false
+True,true,capitalised
+FALSE,false,uppercase
+1,true,numeric true
+0,false,numeric false
+yes,true,word
+no,false,word
+y,true,initial
+n,false,initial
+Yes,true,capitalised yes
+No,false,capitalised no
+YES,true,uppercase yes
+NO,false,uppercase no
+t,true,t shorthand
+f,false,f shorthand
+on,true,toggle
+off,false,toggle
+active,true,status word
+inactive,false,status word
+current,true,status word
+expired,false,status word
+enabled,true,status word
+disabled,false,status word
+x,true,checkbox X
+✓,true,unicode check
+✗,false,unicode cross
+,false,empty (lenient)
+maybe,ERROR:boolean_unrecognised,nonsense
+2,ERROR:boolean_unrecognised,non-binary numeric
+yes please,ERROR:boolean_unrecognised,extended phrase

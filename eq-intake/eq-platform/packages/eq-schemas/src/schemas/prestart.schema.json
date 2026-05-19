@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/cards/prestart/v1.json",
+  "title": "Prestart Check",
+  "description": "A daily prestart safety check completed before work commences on a site. Captured by EQ Cards (mobile) or imported from existing registers.",
+  "type": "object",
+  "x-eq-entity": "prestart",
+  "x-eq-module": "cards",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "prestart_checks",
+  "required": ["prestart_id", "tenant_id", "site_id", "date", "completed_by", "responses"],
+  "properties": {
+    "prestart_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id":   { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "site_id": {
+      "type": "string", "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code"],
+      "x-eq-source-aliases": ["site", "location", "project"]
+    },
+    "date": {
+      "type": "string", "format": "date",
+      "x-eq-source-aliases": ["check_date", "day", "prestart_date"],
+      "x-eq-coerce": "date"
+    },
+    "shift_start": {
+      "type": ["string", "null"], "format": "time",
+      "x-eq-source-aliases": ["start_time", "commence_time"]
+    },
+    "weather": {
+      "type": ["string", "null"],
+      "description": "Free text weather conditions (relevant for outdoor work).",
+      "x-eq-source-aliases": ["conditions", "weather_conditions"]
+    },
+    "completed_by": {
+      "type": "string",
+      "description": "Name of the person completing the prestart.",
+      "x-eq-source-aliases": ["author", "supervisor", "leader", "name"]
+    },
+    "completed_by_user_id": {
+      "type": ["string", "null"], "format": "uuid",
+      "x-eq-foreign-key": "user.user_id"
+    },
+    "completed_at": {
+      "type": ["string", "null"], "format": "date-time",
+      "x-eq-source-aliases": ["timestamp", "submitted_at"],
+      "x-eq-coerce": "datetime"
+    },
+    "crew_present": {
+      "type": "array",
+      "description": "Names of crew members on site for this prestart.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+          "fit_for_work": { "type": "boolean", "default": true },
+          "fatigue_concerns": { "type": ["string", "null"] }
+        },
+        "required": ["name"]
+      }
+    },
+    "responses": {
+      "type": "array",
+      "description": "Checklist of prestart questions and answers.",
+      "items": {
+        "type": "object",
+        "required": ["question", "answer"],
+        "properties": {
+          "question": { "type": "string" },
+          "category": { "type": ["string", "null"], "enum": [null, "ppe", "site_conditions", "tools_plant", "isolation", "permits", "emergency", "environment", "other"] },
+          "answer": { "type": "string", "enum": ["yes", "no", "n/a"] },
+          "comment": { "type": ["string", "null"] },
+          "photo_urls": { "type": "array", "items": { "type": "string", "format": "uri" } }
+        }
+      }
+    },
+    "hazards_identified": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "control": { "type": "string" },
+          "responsible_person": { "type": ["string", "null"] }
+        },
+        "required": ["description", "control"]
+      }
+    },
+    "swms_referenced": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" },
+      "description": "SWMS IDs referenced by this prestart.",
+      "x-eq-foreign-key": "swms.swms_id"
+    },
+    "signature_image_url": {
+      "type": ["string", "null"], "format": "uri"
+    },
+    "gps": {
+      "type": ["object", "null"],
+      "properties": { "lat": { "type": "number" }, "lng": { "type": "number" } }
+    },
+    "device_id": { "type": ["string", "null"] },
+    "source": {
+      "type": "string",
+      "enum": ["cards_mobile", "import_spreadsheet", "capture_pdf", "capture_photo", "manual_entry"],
+      "x-eq-system-managed": true
+    },
+    "raw_extract": { "type": ["string", "null"], "x-eq-system-managed": true },
+    "imported_at":   { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "no_answers_means_hazards",
+      "rule": "responses.every(r => r.answer != 'no') OR hazards_identified.length > 0",
+      "message": "If any prestart question is answered 'no', at least one hazard must be identified.",
+      "severity": "warning"
+    }
+  ]
+}

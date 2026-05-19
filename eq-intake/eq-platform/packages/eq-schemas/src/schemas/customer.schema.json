@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/core/customer/v1.json",
+  "title": "Customer",
+  "description": "A business or individual the tenant transacts with. Source for who gets quoted, invoiced, and serviced. Either company_name or first_name/last_name must be set (cross-field rule customer_has_a_name).",
+  "type": "object",
+  "x-eq-entity": "customer",
+  "x-eq-module": "core",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "customers",
+  "required": ["customer_id", "tenant_id"],
+  "x-eq-cross-field-rules": [
+    {
+      "id": "customer_has_a_name",
+      "rule": "(company_name != null AND company_name != '') OR (first_name != null AND first_name != '') OR (last_name != null AND last_name != '')",
+      "message": "Customer must have either a company name or a person name."
+    }
+  ],
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Internal canonical ID. Generated on import if not provided.",
+      "x-eq-source-aliases": ["id", "customer_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning tenant. Set automatically by import context.",
+      "x-eq-system-managed": true
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Source-system ID (SimPRO Customer ID, MYOB CardID, etc.). Preserved for round-trip exports.",
+      "x-eq-source-aliases": ["simpro_customer_id", "customer_id", "id", "code", "card_id"],
+      "maxLength": 64
+    },
+    "type": {
+      "type": ["string", "null"],
+      "description": "Lifecycle classification: customer / prospect / lead.",
+      "x-eq-source-aliases": ["type", "customer_type", "category", "kind"],
+      "x-eq-enum-aliases": {
+        "customer": ["Customer", "active"],
+        "prospect": ["Prospect", "warm_lead", "warm lead"],
+        "lead": ["Lead", "cold_lead", "cold lead", "inquiry"]
+      }
+    },
+    "company_name": {
+      "type": ["string", "null"],
+      "description": "Trading name. Set for business customers; null for individual customers.",
+      "x-eq-source-aliases": ["company_name", "company", "name", "business_name", "trading_name"],
+      "maxLength": 200
+    },
+    "first_name": {
+      "type": ["string", "null"],
+      "description": "Given name (for individual customers / sole traders).",
+      "x-eq-source-aliases": ["first_name", "first", "given_name", "fname"],
+      "maxLength": 80
+    },
+    "last_name": {
+      "type": ["string", "null"],
+      "description": "Family name (for individual customers / sole traders).",
+      "x-eq-source-aliases": ["last_name", "last", "surname", "lname", "family_name"],
+      "maxLength": 80
+    },
+    "salutation": {
+      "type": ["string", "null"],
+      "description": "Honorific (Mr / Mrs / Dr / etc.).",
+      "x-eq-source-aliases": ["title", "salutation"],
+      "maxLength": 20
+    },
+    "abn": {
+      "type": ["string", "null"],
+      "description": "Australian Business Number — 11 digits, formatted with spaces on output.",
+      "x-eq-source-aliases": ["abn", "business_number"],
+      "maxLength": 20
+    },
+    "acn": {
+      "type": ["string", "null"],
+      "description": "Australian Company Number — 9 digits.",
+      "x-eq-source-aliases": ["acn", "company_number"],
+      "maxLength": 20
+    },
+    "street_address": {
+      "type": ["string", "null"],
+      "description": "Physical street address line 1.",
+      "x-eq-source-aliases": ["street_address", "address", "street", "address_line_1"],
+      "maxLength": 200
+    },
+    "suburb": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["suburb", "city", "town", "address_suburb"],
+      "maxLength": 100
+    },
+    "state": {
+      "type": ["string", "null"],
+      "description": "Australian state code (NSW, VIC, QLD, etc.).",
+      "x-eq-coerce": "au-state",
+      "x-eq-source-aliases": ["state", "state_code", "address_state"]
+    },
+    "postcode": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["postcode", "zip", "postal_code", "address_postcode"],
+      "maxLength": 10
+    },
+    "country": {
+      "type": ["string", "null"],
+      "default": "Australia",
+      "x-eq-source-aliases": ["country", "address_country"]
+    },
+    "postal_address": {
+      "type": ["string", "null"],
+      "description": "Mailing address (when different from physical).",
+      "x-eq-source-aliases": ["postal_address", "billing_address", "mailing_address"],
+      "maxLength": 200
+    },
+    "postal_suburb": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["postal_suburb", "billing_suburb"],
+      "maxLength": 100
+    },
+    "postal_state": {
+      "type": ["string", "null"],
+      "x-eq-coerce": "au-state",
+      "x-eq-source-aliases": ["postal_state", "billing_state"]
+    },
+    "postal_postcode": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["postal_postcode", "billing_postcode"],
+      "maxLength": 10
+    },
+    "postal_country": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["postal_country"]
+    },
+    "primary_phone": {
+      "type": ["string", "null"],
+      "description": "Primary phone. Normalised to E.164 where possible.",
+      "x-eq-coerce": "phone-au",
+      "x-eq-source-aliases": ["primary_phone", "phone", "company_phone", "main_phone", "telephone"]
+    },
+    "mobile_phone": {
+      "type": ["string", "null"],
+      "x-eq-coerce": "phone-au",
+      "x-eq-source-aliases": ["mobile_phone", "mobile", "cell"]
+    },
+    "alt_phone": {
+      "type": ["string", "null"],
+      "x-eq-coerce": "phone-au",
+      "x-eq-source-aliases": ["alt_phone", "alternative_phone", "secondary_phone"]
+    },
+    "fax": {
+      "type": ["string", "null"],
+      "description": "Fax. Kept for completeness; rarely used now.",
+      "x-eq-source-aliases": ["company_fax", "fax"]
+    },
+    "email": {
+      "type": ["string", "null"],
+      "format": "email",
+      "description": "Primary email. Used for quote / invoice delivery when no contact-specific email is set.",
+      "x-eq-source-aliases": ["email", "company_email", "primary_email"]
+    },
+    "website": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["website", "url", "homepage", "site"],
+      "maxLength": 200
+    },
+    "customer_group": {
+      "type": ["string", "null"],
+      "description": "Segmentation (Commercial / Residential / etc.).",
+      "x-eq-source-aliases": ["customer_group", "group", "segment"],
+      "maxLength": 100
+    },
+    "customer_profile": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["customer_profile", "profile"],
+      "maxLength": 100
+    },
+    "account_manager": {
+      "type": ["string", "null"],
+      "description": "Internal owner / sales rep name.",
+      "x-eq-source-aliases": ["account_manager", "owner", "rep", "salesperson"],
+      "maxLength": 100
+    },
+    "currency": {
+      "type": ["string", "null"],
+      "default": "AUD",
+      "description": "ISO 4217 currency code.",
+      "x-eq-source-aliases": ["currency"],
+      "maxLength": 3
+    },
+    "default_quote_method": {
+      "type": ["string", "null"],
+      "description": "How quotes are typically delivered: Email / Print / etc.",
+      "x-eq-source-aliases": ["default_quote_method", "quote_method"]
+    },
+    "default_invoice_method": {
+      "type": ["string", "null"],
+      "description": "How invoices are typically delivered.",
+      "x-eq-source-aliases": ["default_invoice_method", "invoice_method"]
+    },
+    "default_job_method": {
+      "type": ["string", "null"],
+      "description": "How job paperwork is typically delivered.",
+      "x-eq-source-aliases": ["default_job_method", "job_method"]
+    },
+    "referred_by": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["referred_by", "referral", "source"]
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Free-text context (e.g. \"always wants 30-day terms\").",
+      "x-eq-source-aliases": ["notes", "comments", "remarks"],
+      "maxLength": 2000
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this customer is currently active.",
+      "x-eq-coerce": "boolean",
+      "x-eq-source-aliases": ["active", "is_active", "current"]
+    },
+    "created_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the customer was first created in the source system.",
+      "x-eq-coerce": "date",
+      "x-eq-source-aliases": ["create_date", "created", "created_at", "date_created"]
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When this record was last touched by an intake. System-managed.",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "description": "Source of the import (filename, system name). System-managed.",
+      "x-eq-system-managed": true
+    }
+  }
+}

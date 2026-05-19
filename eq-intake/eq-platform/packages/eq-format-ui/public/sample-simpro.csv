@@ -1,0 +1,17 @@
+﻿Section Name,Cost Centre Name,Item Type,Part Number,Part Description,Unit Of Measurement,Quantity,Time (hrs),Labour Unit Cost Price,Material Unit Cost Price,Labour Unit Sell Price,Material Unit Sell Price,Item Sell Price,Item Sell Price inc. Adjustments,Cost Centre Subtotal
+Option 1 Stair Light,LIght fitting(3668),One off Item,,Foro 11,,19,0,0,108.41,0,124.67,124.67,124.67,"2,368.73"
+Option 1 Stair Light,LIght fitting(3668),Labour,,Labour,Hrs,0,0,75,0,100,0,100,100,"2,368.73"
+Option 1 Stair Light,Install Costs(3669),Prebuild,C-CLI413-15-2.5,10A SURFACE SOCKET C/W 15M 2.5MM SQ TPS CABLE,,19,0.82,0,30.24,0,42.34,42.34,42.34,"9,164.46"
+Option 1 Stair Light,Install Costs(3669),One off Item,,Cutting lights in,,19,1,0,100,0,140,140,140,"9,164.46"
+Option 1 Stair Light,Install Costs(3669),Labour,,Labour,Hrs,57,57,75,0,100,0,100,100,"9,164.46"
+Option 2 Stair light,Light Fitting(3670),One off Item,,Gala,,19,0,0,55,0,63.25,63.25,63.25,"1,201.75"
+Option 2 Stair light,Light Fitting(3670),Labour,,Labour,Hrs,0,0,75,0,100,0,100,100,"1,201.75"
+Option 2 Stair light,Install Costs(3671),Prebuild,C-CLI413-15-2.5,10A SURFACE SOCKET C/W 15M 2.5MM SQ TPS CABLE,,19,0.82,0,30.24,0,42.34,42.34,42.34,"9,164.46"
+Option 2 Stair light,Install Costs(3671),One off Item,,Cutting lights in,,19,1,0,100,0,140,140,140,"9,164.46"
+Option 2 Stair light,Install Costs(3671),Labour,,Labour,Hrs,57,57,75,0,100,0,100,100,"9,164.46"
+Option 2 Stair light,KNX Programming and Equipment(3672),One off Item,,in wall actuator,,19,0.5,0,195.88,0,205.67,205.67,205.67,"5,427.73"
+Option 2 Stair light,KNX Programming and Equipment(3672),Labour,,Labour,Hrs,9.5,9.5,75,0,160,0,160,160,"5,427.73"
+Travel,Sealink(3673),One off Item,,Ferry,,1,0,0,622,0,684.2,684.2,684.2,684.2
+Travel,Sealink(3673),Labour,,Labour,Hrs,0,0,75,0,100,0,100,100,684.2
+Travel,Travel(3674),Labour,,Labour,Hrs,20,20,75,0,80,0,80,80,"2,800.00"
+Travel,Travel(3674),Labour,,Apprentice Rate - Second Year,Hrs,20,20,28.33,0,60,0,60,60,"2,800.00"

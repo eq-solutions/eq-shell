@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/core/contact/v1.json",
+  "title": "Contact",
+  "description": "A person at a customer organisation. One customer can have many contacts (procurement, accounts, project manager, etc.). FK to customer via customer_id.",
+  "type": "object",
+  "x-eq-entity": "contact",
+  "x-eq-module": "core",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "contacts",
+  "required": ["contact_id", "tenant_id", "customer_id", "first_name", "last_name"],
+  "properties": {
+    "contact_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Internal canonical ID. Generated on import if not provided.",
+      "x-eq-source-aliases": ["id", "contact_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning tenant. Set automatically by import context.",
+      "x-eq-system-managed": true
+    },
+    "customer_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Customer this contact belongs to. Resolved by FK match on import.",
+      "x-eq-source-aliases": ["customer_id", "account_id", "company_id"],
+      "x-eq-foreign-key": "customer.customer_id",
+      "x-eq-fk-fuzzy-match-on": ["customers.company_name", "customers.external_id"]
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Source-system contact ID.",
+      "x-eq-source-aliases": ["simpro_contact_id", "contact_id", "id"],
+      "maxLength": 64
+    },
+    "external_customer_id": {
+      "type": ["string", "null"],
+      "description": "Source-system Customer ID this contact belongs to. Used at intake to resolve customer_id FK before commit.",
+      "x-eq-source-aliases": ["simpro_customer_id", "customer_id", "account_id", "company_id"],
+      "maxLength": 64
+    },
+    "company_name": {
+      "type": ["string", "null"],
+      "description": "Denormalised company name from the source. Useful when contact rows arrive without a customer lookup table.",
+      "x-eq-source-aliases": ["company_name", "company", "business_name"],
+      "maxLength": 200
+    },
+    "salutation": {
+      "type": ["string", "null"],
+      "description": "Honorific (Mr / Mrs / Dr / etc.).",
+      "x-eq-source-aliases": ["contact_title", "title", "salutation"],
+      "maxLength": 20
+    },
+    "first_name": {
+      "type": "string",
+      "description": "Given name. Required.",
+      "x-eq-source-aliases": ["contact_first_name", "first_name", "first", "given_name", "fname", "firstname"],
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "last_name": {
+      "type": "string",
+      "description": "Family name. Required.",
+      "x-eq-source-aliases": ["contact_last_name", "last_name", "last", "surname", "lname", "lastname", "family_name"],
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "email": {
+      "type": ["string", "null"],
+      "format": "email",
+      "x-eq-source-aliases": ["contact_email", "email", "e_mail"]
+    },
+    "work_phone": {
+      "type": ["string", "null"],
+      "description": "Work / office phone. Normalised to E.164.",
+      "x-eq-coerce": "phone-au",
+      "x-eq-source-aliases": ["contact_work_phone", "work_phone", "office_phone", "phone"]
+    },
+    "mobile_phone": {
+      "type": ["string", "null"],
+      "x-eq-coerce": "phone-au",
+      "x-eq-source-aliases": ["contact_mobile_phone", "mobile_phone", "mobile", "cell", "cell_phone"]
+    },
+    "fax": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["contact_fax", "fax"]
+    },
+    "position": {
+      "type": ["string", "null"],
+      "description": "Job title or role.",
+      "x-eq-source-aliases": ["contact_position", "position", "job_title", "role"],
+      "maxLength": 100
+    },
+    "department": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["contact_department", "department", "team"],
+      "maxLength": 100
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["contact_notes", "notes", "comments"],
+      "maxLength": 1000
+    },
+    "is_default_quote_contact": {
+      "type": ["boolean", "null"],
+      "description": "True if this is the customer's preferred contact for quotes.",
+      "x-eq-coerce": "boolean",
+      "x-eq-source-aliases": ["is_default_quote_contact", "default_quote_contact", "default_quote"]
+    },
+    "is_default_job_contact": {
+      "type": ["boolean", "null"],
+      "description": "True if this is the customer's preferred contact for job paperwork.",
+      "x-eq-coerce": "boolean",
+      "x-eq-source-aliases": ["is_default_job_contact", "default_job_contact", "default_job"]
+    },
+    "is_default_invoice_contact": {
+      "type": ["boolean", "null"],
+      "description": "True if this is the customer's preferred contact for invoices.",
+      "x-eq-coerce": "boolean",
+      "x-eq-source-aliases": ["is_default_invoice_contact", "default_invoice_contact", "default_invoice"]
+    },
+    "is_default_statement_contact": {
+      "type": ["boolean", "null"],
+      "description": "True if this is the customer's preferred contact for statements.",
+      "x-eq-coerce": "boolean",
+      "x-eq-source-aliases": ["is_default_statement_contact", "default_statement_contact", "default_statement"]
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this contact is currently active.",
+      "x-eq-coerce": "boolean",
+      "x-eq-source-aliases": ["active", "is_active", "current"]
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When this record was last touched by an intake. System-managed.",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "description": "Source of the import. System-managed.",
+      "x-eq-system-managed": true
+    }
+  }
+}

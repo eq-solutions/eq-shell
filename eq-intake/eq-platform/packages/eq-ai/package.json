@@ -1,0 +1,33 @@
+{
+  "name": "@eq/ai",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Vendor-agnostic AI provider for EQ. Currently ships AnthropicProvider; designed for swap-out to Gemini/local models. Fetch-based, no Anthropic SDK.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "20.14.0",
+    "tsup": "8.3.5",
+    "typescript": "5.6.3",
+    "vitest": "2.1.5"
+  }
+}

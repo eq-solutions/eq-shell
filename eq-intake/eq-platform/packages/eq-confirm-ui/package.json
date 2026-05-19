@@ -1,0 +1,44 @@
+{
+  "name": "@eq/confirm-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Confirm-flow UI for EQ Intake. Headless Zustand state machine + plain React components for the mapping-review and flag-resolution screens. Drops into any React app.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@eq/ai": "workspace:*",
+    "@eq/intake": "workspace:*",
+    "@eq/validation": "workspace:*",
+    "zustand": "5.0.2"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "tsup": "8.3.5",
+    "typescript": "5.6.3",
+    "vitest": "2.1.5",
+    "xlsx": "0.18.5"
+  }
+}

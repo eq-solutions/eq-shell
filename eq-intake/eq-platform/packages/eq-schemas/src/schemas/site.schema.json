@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/core/site/v1.json",
+  "title": "Site",
+  "description": "A physical location where work is performed. May be a customer site, a depot, or a project location.",
+  "type": "object",
+  "x-eq-entity": "site",
+  "x-eq-module": "core",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "sites",
+  "required": ["site_id", "tenant_id", "name", "active"],
+  "properties": {
+    "site_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Internal canonical ID. Generated on import if not provided.",
+      "x-eq-source-aliases": ["id", "site_id", "location_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning tenant. Set automatically by import context.",
+      "x-eq-system-managed": true
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Customer's own ID for this site. Preserved for round-trip exports.",
+      "x-eq-source-aliases": ["site_no", "site_number", "site_code", "ref", "code", "project_no", "simpro_site_id"],
+      "maxLength": 64
+    },
+    "customer_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Customer that owns this site. Resolved by FK match on import.",
+      "x-eq-source-aliases": ["customer_id"],
+      "x-eq-foreign-key": "customer.customer_id",
+      "x-eq-fk-fuzzy-match-on": ["customers.company_name", "customers.external_id"]
+    },
+    "external_customer_id": {
+      "type": ["string", "null"],
+      "description": "Source-system Customer ID that owns this site. Used at intake to resolve customer_id FK before commit.",
+      "x-eq-source-aliases": ["simpro_customer_id", "external_customer_id", "account_id"],
+      "maxLength": 64
+    },
+    "name": {
+      "type": "string",
+      "description": "Display name. Required.",
+      "x-eq-source-aliases": ["site_name", "location", "location_name", "project_name", "site"],
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "code": {
+      "type": ["string", "null"],
+      "description": "Short identifier used in schedules and reports.",
+      "x-eq-source-aliases": ["short_name", "abbr", "abbreviation", "tag"],
+      "maxLength": 20
+    },
+    "client_name": {
+      "type": ["string", "null"],
+      "description": "Name of the client this site belongs to.",
+      "x-eq-source-aliases": ["client", "customer", "customer_name", "company"]
+    },
+    "site_type": {
+      "type": "string",
+      "enum": ["customer", "project", "depot", "office", "other"],
+      "description": "Site classification. Drives scheduling and reporting behaviour.",
+      "x-eq-source-aliases": ["type", "category", "kind"],
+      "x-eq-enum-aliases": {
+        "customer": ["client_site", "client", "customer_site"],
+        "project": ["job", "project_site", "construction"],
+        "depot": ["yard", "warehouse", "store"],
+        "office": ["hq", "head_office", "admin"],
+        "other": ["misc", "unknown"]
+      },
+      "default": "customer"
+    },
+    "address_line_1": {
+      "type": ["string", "null"],
+      "description": "Street address line 1.",
+      "x-eq-source-aliases": ["address", "street", "street_address", "addr1", "address1"]
+    },
+    "address_line_2": {
+      "type": ["string", "null"],
+      "description": "Street address line 2.",
+      "x-eq-source-aliases": ["addr2", "address2", "unit", "suite"]
+    },
+    "suburb": {
+      "type": ["string", "null"],
+      "description": "Suburb / locality.",
+      "x-eq-source-aliases": ["city", "town", "locality"]
+    },
+    "state": {
+      "type": ["string", "null"],
+      "description": "AU state. Coerced to standard abbreviation (NSW, VIC, QLD, SA, WA, TAS, NT, ACT).",
+      "x-eq-source-aliases": ["state_territory", "region"],
+      "x-eq-coerce": "au-state",
+      "x-eq-enum-aliases": {
+        "NSW": ["new south wales", "n.s.w.", "n.s.w"],
+        "VIC": ["victoria", "vic.", "v.i.c."],
+        "QLD": ["queensland", "qld.", "q.l.d."],
+        "SA":  ["south australia", "s.a."],
+        "WA":  ["western australia", "w.a."],
+        "TAS": ["tasmania", "tas."],
+        "NT":  ["northern territory", "n.t."],
+        "ACT": ["australian capital territory", "a.c.t."]
+      }
+    },
+    "postcode": {
+      "type": ["string", "null"],
+      "description": "AU postcode (4 digits). Stored as string to preserve leading zeros (NT/ACT).",
+      "x-eq-source-aliases": ["zip", "post_code", "zip_code"],
+      "pattern": "^[0-9]{4}$"
+    },
+    "country": {
+      "type": ["string", "null"],
+      "description": "ISO 3166-1 alpha-2 code. Defaults to AU on import if not specified.",
+      "x-eq-source-aliases": ["nation", "country_code"],
+      "default": "AU",
+      "maxLength": 2
+    },
+    "latitude": {
+      "type": ["number", "null"],
+      "description": "Decimal degrees, -90 to 90.",
+      "x-eq-source-aliases": ["lat", "y_coord"],
+      "minimum": -90,
+      "maximum": 90
+    },
+    "longitude": {
+      "type": ["number", "null"],
+      "description": "Decimal degrees, -180 to 180.",
+      "x-eq-source-aliases": ["lng", "long", "lon", "x_coord"],
+      "minimum": -180,
+      "maximum": 180
+    },
+    "site_contact_name": {
+      "type": ["string", "null"],
+      "description": "Primary on-site contact.",
+      "x-eq-source-aliases": ["contact", "contact_person", "site_contact"]
+    },
+    "site_contact_phone": {
+      "type": ["string", "null"],
+      "description": "Primary on-site contact phone.",
+      "x-eq-source-aliases": ["contact_phone", "site_phone", "contact_mobile"],
+      "x-eq-coerce": "phone-au"
+    },
+    "site_contact_email": {
+      "type": ["string", "null"],
+      "format": "email",
+      "x-eq-source-aliases": ["contact_email", "site_email"]
+    },
+    "induction_required": {
+      "type": "boolean",
+      "description": "Whether site induction is required before staff can attend.",
+      "x-eq-source-aliases": ["induction", "needs_induction", "induction_req"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "induction_url": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "description": "Link to induction documentation.",
+      "x-eq-source-aliases": ["induction_link"]
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Whether this site is currently active.",
+      "x-eq-source-aliases": ["is_active", "current", "status", "enabled"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 2000
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "coords_paired",
+      "rule": "(latitude == null AND longitude == null) OR (latitude != null AND longitude != null)",
+      "message": "Latitude and longitude must both be provided or both omitted.",
+      "severity": "error"
+    },
+    {
+      "id": "induction_url_when_required",
+      "rule": "induction_required == false OR induction_url != null",
+      "message": "Induction is required but no induction URL provided.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Common site list patterns.",
+    "common_sources": [
+      {
+        "name": "Project register from PM",
+        "typical_columns": ["Project No", "Project Name", "Client", "Address", "Status"],
+        "watchouts": ["Project No is external_id, not site_id", "Status often free-text — coerce to active boolean"]
+      },
+      {
+        "name": "Customer master from accounting",
+        "typical_columns": ["Card ID", "Name", "Address Line 1", "Suburb", "State", "Postcode"],
+        "watchouts": ["May contain head offices that aren't actual work sites — flag for user"]
+      }
+    ]
+  }
+}

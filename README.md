@@ -38,20 +38,17 @@ Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Qu
 
 ## Development
 
-This repo uses **pnpm** (9.15.9) and depends on six `@eq/*` workspace packages that live in the `eq-intake` repo, mounted here as a **git submodule** at `./eq-intake/`. After every fresh clone you must initialise the submodule before anything else works.
+This repo uses **pnpm** (9.15.9) and depends on seven `@eq/*` workspace packages that originate in the `eq-solves-intake` repo. They are **vendored** in-tree at `./eq-intake/eq-platform/packages/` (not a git submodule). The vendored copy is the source of truth for what eq-shell consumes; updates happen by re-vendoring (see "Updating the vendored packages" below).
+
+> **Why vendored, not a submodule:** `eq-solves-intake` is a private repo and Netlify's build environment doesn't have credentials to clone private submodules. Vendoring removes the cross-repo coupling entirely — Netlify clones one repo and builds. The trade-off is that updates to eq-intake require a manual re-vendor step.
 
 ### Cloning
 
 ```bash
-# One-shot clone with submodules
-git clone --recurse-submodules https://github.com/eq-solutions/eq-shell.git
+git clone https://github.com/eq-solutions/eq-shell.git
 cd eq-shell
-
-# Or, if you've already cloned without --recurse-submodules
-git submodule update --init --recursive
+pnpm install
 ```
-
-Netlify clones submodules automatically when `.gitmodules` is present, so no extra build-environment config is required there.
 
 ### Day-to-day
 
@@ -68,21 +65,23 @@ npx netlify dev  # requires netlify-cli + linked project
 
 The `build` script first builds every workspace package in `eq-intake/eq-platform/packages/` (each emits a `dist/` via tsup or vite), then runs `tsc -b && vite build` for the shell. Skipping `build:packages` causes the shell's tsc step to error out with `Cannot find module '@eq/ai'` etc. because the packages' `package.json` entry points (`./dist/index.js`) are gitignored.
 
-### Updating the submodule pointer
+### Updating the vendored packages
 
-The submodule tracks branch `overnight-review-2026-05-19` of `eq-solutions/eq-solves-intake` (set via `.gitmodules`). To bump the shell to a newer eq-intake commit:
+When eq-intake's `overnight-review-2026-05-19` branch (or whichever branch we're tracking) advances:
 
 ```bash
-cd eq-intake
-git pull
-cd ..
-pnpm install     # if any package.json changed
+# Replace the vendored tree with the latest eq-intake/eq-platform/
+rm -rf eq-intake/eq-platform/packages
+cp -r ../eq-intake/eq-platform/packages eq-intake/eq-platform/
+# Strip any node_modules, dist, and src/generated that came along
+find eq-intake -type d \( -name node_modules -o -name dist -o -path '*/src/generated' \) -prune -exec rm -rf {} +
+pnpm install
 pnpm run build   # sanity check
 git add eq-intake
-git commit -m "Bump eq-intake submodule to <sha>"
+git commit -m "Re-vendor eq-intake/eq-platform to <date or sha>"
 ```
 
-To switch the tracked branch, edit `.gitmodules`, then `git submodule sync` and `git submodule update --remote`.
+This is a manual process today. If re-vendoring becomes frequent, the next step is either (a) flip eq-solves-intake to public so Netlify can clone it as a submodule, (b) configure a GitHub deploy key on the Netlify build for submodule access, or (c) publish the `@eq/*` packages to npm under a private scope.
 
 ## Required environment variables (Netlify)
 

@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/schedule/v1.json",
+  "title": "Schedule Entry",
+  "description": "A planned allocation of a staff member to a site for a given day. The atomic unit of EQ Field scheduling.",
+  "type": "object",
+  "x-eq-entity": "schedule",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "schedule_entries",
+  "x-eq-primary-key": "entry_id",
+  "required": ["entry_id", "tenant_id", "staff_id", "site_id", "date", "hours_planned"],
+  "properties": {
+    "entry_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "entry_id", "schedule_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "staff_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-foreign-key": "staff.staff_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.first_name+staff.last_name", "staff.preferred_name", "staff.external_id"],
+      "x-eq-source-aliases": ["staff", "person", "name", "employee", "worker", "assigned_to"]
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code", "site.external_id"],
+      "x-eq-source-aliases": ["site", "location", "project", "site_name"]
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "The day this allocation applies to. ISO 8601 (YYYY-MM-DD).",
+      "x-eq-source-aliases": ["day", "schedule_date", "work_date"],
+      "x-eq-coerce": "date"
+    },
+    "hours_planned": {
+      "type": "number",
+      "description": "Hours scheduled. Typically 8.0 for full day, but supports half days, double shifts, etc.",
+      "x-eq-source-aliases": ["hours", "planned_hours", "qty", "duration"],
+      "minimum": 0,
+      "maximum": 24
+    },
+    "hours_actual": {
+      "type": ["number", "null"],
+      "description": "Actual hours worked. Populated from timesheets after the day passes.",
+      "x-eq-source-aliases": ["actual_hours", "worked", "actual"],
+      "minimum": 0,
+      "maximum": 24
+    },
+    "shift": {
+      "type": "string",
+      "enum": ["day", "evening", "night", "weekend", "afterhours"],
+      "description": "Shift classification. Drives penalty rates.",
+      "x-eq-source-aliases": ["shift_type", "rate_type", "period"],
+      "x-eq-enum-aliases": {
+        "day":        ["d", "normal", "standard", "ord", "ordinary"],
+        "evening":    ["pm", "afternoon", "swing"],
+        "night":      ["overnight", "graveyard"],
+        "weekend":    ["sat", "sun", "saturday", "sunday"],
+        "afterhours": ["call_out", "callout", "ah"]
+      },
+      "default": "day"
+    },
+    "task": {
+      "type": ["string", "null"],
+      "description": "What the staff member is doing on this day.",
+      "x-eq-source-aliases": ["activity", "scope", "work", "description", "task_description"],
+      "maxLength": 500
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "confirmed", "in_progress", "completed", "cancelled", "no_show"],
+      "x-eq-enum-aliases": {
+        "planned":     ["draft", "tentative", "p"],
+        "confirmed":   ["c", "ok", "approved"],
+        "completed":   ["done", "finished", "complete"],
+        "cancelled":   ["cancel", "x", "scratched"],
+        "no_show":     ["nostow", "absent", "didnt_attend"]
+      },
+      "default": "planned"
+    },
+    "leave_type": {
+      "type": ["string", "null"],
+      "enum": [null, "annual", "sick", "personal", "rdo", "tafe", "unpaid", "public_holiday", "other"],
+      "description": "If this entry represents leave instead of work, the leave category.",
+      "x-eq-source-aliases": ["leave", "absence_type", "off_type"],
+      "x-eq-enum-aliases": {
+        "annual":         ["al", "annual_leave", "vacation", "holiday"],
+        "sick":           ["sl", "sick_leave", "ill"],
+        "personal":       ["pl", "personal_leave", "carer"],
+        "rdo":            ["rostered_day_off", "off"],
+        "tafe":           ["training", "school", "study"],
+        "public_holiday": ["ph", "stat", "stat_holiday"]
+      }
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 1000
+    },
+    "supervisor_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "staff.staff_id",
+      "x-eq-source-aliases": ["supervisor", "manager", "lead", "leading_hand"]
+    },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "leave_no_site_required",
+      "rule": "leave_type == null OR hours_planned > 0",
+      "message": "Leave entries must still have hours (typically 8) for accrual tracking."
+    },
+    {
+      "id": "actual_le_24",
+      "rule": "hours_actual == null OR hours_actual <= 24",
+      "message": "Actual hours cannot exceed 24."
+    },
+    {
+      "id": "completed_has_actual",
+      "rule": "status != 'completed' OR hours_actual != null",
+      "message": "Completed entries should have actual hours recorded.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "common_sources": [
+      {
+        "name": "Wide-format weekly grid (staff x days)",
+        "description": "Spreadsheet with staff names down rows, dates across columns, cell values are site codes or hours.",
+        "watchouts": [
+          "Requires UNPIVOT transformation before column mapping",
+          "Each filled cell becomes one schedule entry",
+          "Site code in cell may need lookup against site register"
+        ],
+        "transform": "unpivot-wide-grid"
+      },
+      {
+        "name": "Long format (one row per allocation)",
+        "typical_columns": ["Date", "Staff", "Site", "Hours", "Task"],
+        "watchouts": ["Direct row-to-entry mapping; standard column-mapping flow"]
+      },
+      {
+        "name": "Workbench / SimPRO export",
+        "typical_columns": ["Date", "Resource", "Job No", "Job Name", "Hours", "Cost Centre"],
+        "watchouts": ["Resource is staff name; Job No is site external_id"]
+      }
+    ]
+  }
+}

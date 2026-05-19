@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/cards/swms/v1.json",
+  "title": "Safe Work Method Statement",
+  "description": "An SWMS captured for a high-risk construction work activity, per WHS Regulation 2017 (NSW) and equivalents. Lands in this canonical form whether captured via EQ Cards (mobile), EQ Import (existing register), or EQ Capture (paper/PDF).",
+  "type": "object",
+  "x-eq-entity": "swms",
+  "x-eq-module": "cards",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "swms",
+  "required": ["swms_id", "tenant_id", "site_id", "activity", "prepared_by", "prepared_at", "status"],
+  "properties": {
+    "swms_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Customer's own SWMS number/reference.",
+      "x-eq-source-aliases": ["swms_no", "swms_number", "doc_no", "ref"]
+    },
+    "version": {
+      "type": ["string", "null"],
+      "description": "Version string e.g. 'v1.0', 'Rev B'.",
+      "x-eq-source-aliases": ["rev", "revision", "ver"]
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-source-aliases": ["site", "location", "project", "site_name"]
+    },
+    "activity": {
+      "type": "string",
+      "description": "Short description of the high-risk work activity.",
+      "x-eq-source-aliases": ["task", "work", "scope", "description", "job_description"],
+      "minLength": 3,
+      "maxLength": 200
+    },
+    "high_risk_categories": {
+      "type": "array",
+      "description": "WHS Reg cl.291 high-risk construction work categories that apply.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "fall_above_2m",
+          "telecommunication_tower",
+          "demolition_load_bearing",
+          "asbestos_disturbance",
+          "structural_alterations_temp_support",
+          "confined_space",
+          "trench_excavation_above_1.5m",
+          "tunnels",
+          "explosives",
+          "near_pressurised_gas",
+          "near_chemical_pipelines",
+          "near_energised_electrical",
+          "in_area_traffic_other_than_works",
+          "tilt_up_or_precast",
+          "diving",
+          "near_water_drowning_risk",
+          "movement_of_powered_mobile_plant",
+          "extreme_temperatures",
+          "artificial_extremes_temperature"
+        ]
+      },
+      "x-eq-source-aliases": ["high_risk", "hrcw", "risk_categories"]
+    },
+    "hazards": {
+      "type": "array",
+      "description": "Identified hazards and controls. Each row = one hazard line.",
+      "items": {
+        "type": "object",
+        "required": ["hazard", "risk_initial", "controls", "risk_residual"],
+        "properties": {
+          "hazard": { "type": "string", "description": "Hazard description." },
+          "risk_initial": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "extreme"],
+            "description": "Risk rating before controls."
+          },
+          "controls": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Hierarchy of controls applied (elimination → substitution → engineering → administrative → PPE)."
+          },
+          "control_hierarchy": {
+            "type": "string",
+            "enum": ["elimination", "substitution", "isolation", "engineering", "administrative", "ppe"]
+          },
+          "risk_residual": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "extreme"]
+          },
+          "responsible_person": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "ppe_required": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "PPE list e.g. hard hat, hi-vis, safety glasses, hearing protection, gloves, steel cap boots.",
+      "x-eq-source-aliases": ["ppe", "personal_protective_equipment"]
+    },
+    "permits_required": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["hot_work", "confined_space", "working_at_height", "electrical_isolation", "excavation", "live_electrical", "none"]
+      },
+      "x-eq-source-aliases": ["permits", "permit"]
+    },
+    "tools_plant": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Tools and plant required for the activity.",
+      "x-eq-source-aliases": ["tools", "plant", "equipment"]
+    },
+    "training_competency": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Training/competency required (e.g. EWP licence, confined space ticket, electrical licence).",
+      "x-eq-source-aliases": ["training", "competencies", "tickets"]
+    },
+    "emergency_procedures": {
+      "type": ["string", "null"],
+      "description": "Site-specific emergency response (assembly point, first aid, who to call).",
+      "x-eq-source-aliases": ["emergency", "emergency_response"]
+    },
+    "prepared_by_user_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "x-eq-foreign-key": "user.user_id"
+    },
+    "prepared_by": {
+      "type": "string",
+      "description": "Name of person who prepared the SWMS. Required.",
+      "x-eq-source-aliases": ["author", "created_by", "prepared", "prepared_name"]
+    },
+    "prepared_at": {
+      "type": "string",
+      "format": "date-time",
+      "x-eq-source-aliases": ["date", "date_prepared", "created_at", "prepared_date"],
+      "x-eq-coerce": "datetime"
+    },
+    "reviewed_by": {
+      "type": ["string", "null"],
+      "x-eq-source-aliases": ["reviewer", "approved_by"]
+    },
+    "reviewed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-eq-coerce": "datetime"
+    },
+    "valid_from": {
+      "type": ["string", "null"],
+      "format": "date",
+      "x-eq-coerce": "date"
+    },
+    "valid_until": {
+      "type": ["string", "null"],
+      "format": "date",
+      "x-eq-coerce": "date"
+    },
+    "signatures": {
+      "type": "array",
+      "description": "All workers who have signed on / read & understood.",
+      "items": {
+        "type": "object",
+        "required": ["name", "signed_at"],
+        "properties": {
+          "name": { "type": "string" },
+          "staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+          "trade": { "type": ["string", "null"] },
+          "signed_at": { "type": "string", "format": "date-time" },
+          "signature_image_url": { "type": ["string", "null"], "format": "uri" },
+          "device_id": { "type": ["string", "null"] },
+          "gps": {
+            "type": ["object", "null"],
+            "properties": {
+              "lat": { "type": "number" },
+              "lng": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "description": "References to supporting docs (drawings, MSDS, isolation procedure).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "filename": { "type": "string" },
+          "kind": { "type": "string", "enum": ["drawing", "msds_sds", "iso_procedure", "photo", "other"] }
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "expired", "superseded", "archived"],
+      "x-eq-source-aliases": ["state", "status_value"],
+      "default": "draft"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["cards_mobile", "import_spreadsheet", "capture_pdf", "capture_photo", "capture_email", "manual_entry"],
+      "description": "How the SWMS entered the system. Set automatically by the intake pipeline.",
+      "x-eq-system-managed": true
+    },
+    "raw_extract": {
+      "type": ["string", "null"],
+      "description": "If extracted via vision AI, the raw text recovered from the source document. Preserved for audit.",
+      "x-eq-system-managed": true
+    },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "valid_until_after_from",
+      "rule": "valid_until == null OR valid_from == null OR valid_until > valid_from",
+      "message": "Valid until must be after valid from."
+    },
+    {
+      "id": "active_needs_signatures",
+      "rule": "status != 'active' OR signatures.length > 0",
+      "message": "An active SWMS must have at least one signature."
+    },
+    {
+      "id": "high_risk_needs_categories",
+      "rule": "high_risk_categories.length > 0",
+      "message": "SWMS is required for high-risk construction work — at least one HRCW category must be selected.",
+      "severity": "warning"
+    },
+    {
+      "id": "hazards_have_controls",
+      "rule": "hazards.every(h => h.controls.length > 0)",
+      "message": "Every hazard must have at least one control."
+    }
+  ]
+}
