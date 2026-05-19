@@ -34,6 +34,13 @@ export interface ShellSession {
   user: User;
   tenant: Tenant;
   entitlements: Entitlement[];
+  /**
+   * Supabase-format JWT signed by the shell-login / verify-shell-session
+   * functions. Used to construct a browser Supabase client that talks
+   * directly to the eq-canonical project with tenant scope enforced by
+   * RLS. Re-issued (1h TTL) on every verify-shell-session call.
+   */
+  supabase_jwt: string;
 }
 
 export interface SessionContextValue {

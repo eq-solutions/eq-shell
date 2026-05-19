@@ -36,8 +36,8 @@ function SessionProvider({ children }: { children: ReactNode }) {
       });
       if (res.ok) {
         const body = (await res.json()) as ShellSession & { valid: true };
-        const { user, tenant, entitlements } = body;
-        setSession({ user, tenant, entitlements });
+        const { user, tenant, entitlements, supabase_jwt } = body;
+        setSession({ user, tenant, entitlements, supabase_jwt });
       } else {
         setSession(null);
       }
