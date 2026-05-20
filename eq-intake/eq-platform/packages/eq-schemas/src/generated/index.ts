@@ -14,6 +14,8 @@ export type * from "./itp.types.js";
 export { itpSchema } from "./itp.zod.js";
 export type * from "./jsa.types.js";
 export { jsaSchema } from "./jsa.zod.js";
+export type * from "./licence.types.js";
+export { licenceSchema } from "./licence.zod.js";
 export type * from "./prestart.types.js";
 export { prestartSchema } from "./prestart.zod.js";
 export type * from "./schedule.types.js";

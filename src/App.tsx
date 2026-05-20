@@ -13,6 +13,7 @@ import { identifyUser, resetUser } from './observability';
 import LoginPage from './pages/LoginPage';
 import TenantHome from './pages/TenantHome';
 import FieldIframe from './pages/FieldIframe';
+import CardsIframe from './pages/CardsIframe';
 import AcceptInvite from './pages/AcceptInvite';
 import AdminInviteUser from './pages/AdminInviteUser';
 import AdminUserList from './pages/AdminUserList';
@@ -20,11 +21,14 @@ import AdminEditUser from './pages/AdminEditUser';
 import './App.css';
 
 // Q5 lock: each module is its own lazy chunk so disabled tenants
-// never pay the bandwidth cost.
-const CardsModule = lazy(() => import('./modules/cards'));
+// never pay the bandwidth cost. Cards is the exception — it's an
+// iframe to the standalone Cards Flutter web app (not a lazy React
+// chunk), so CardsIframe is imported eagerly above with the other
+// page components. The lazy CardsModule is dropped.
+//
 // Phase 1.F restructured src/modules/intake.tsx → src/modules/intake/
-// (so the per-module permissions.ts can sit beside index.tsx, per
-// IDENTITY-MODEL.md §4.3). Explicit '/index' path avoids ambiguity
+// (per IDENTITY-MODEL.md §4.3, so the per-module permissions.ts can
+// sit beside index.tsx). Explicit '/index' path avoids ambiguity
 // with the old intake.tsx file, which is left orphaned for cleanup
 // in a follow-up PR (CLAUDE.md hard rule: no deletes without
 // explicit permission).
@@ -141,9 +145,7 @@ function TenantTree() {
           path="cards"
           element={
             <ModuleGate module="cards">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
-                <CardsModule />
-              </Suspense>
+              <CardsIframe />
             </ModuleGate>
           }
         />

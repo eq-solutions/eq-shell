@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/cards/licence/v1.json",
+  "title": "Licence",
+  "description": "A trade licence, ticket, or certification held by a staff member. White cards, driver licences, first aid certs, forklift HRWL, electrical licences, etc. Stored in canonical as the source of truth; surfaces in EQ Cards (mobile wallet) and any other module that needs to check what tickets a person holds (Field, Service, future Quotes).",
+  "type": "object",
+  "x-eq-entity": "licence",
+  "x-eq-module": "cards",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "licences",
+  "required": ["licence_id", "tenant_id", "staff_id", "licence_type", "licence_number", "active"],
+  "properties": {
+    "licence_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Internal canonical ID. Generated on import if not provided.",
+      "x-eq-source-aliases": ["id", "licence_id", "licence_uuid"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Owning tenant. Set automatically by import context.",
+      "x-eq-system-managed": true
+    },
+    "staff_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The licence holder. FK to staff.staff_id. Required — a licence belongs to exactly one person.",
+      "x-eq-source-aliases": ["holder", "person", "worker", "employee", "staff", "staff_member"],
+      "x-eq-foreign-key": "staff.staff_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.first_name", "staff.last_name", "staff.email", "staff.external_id"]
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Customer's own ID for this licence record (HR system, training register, etc.). Preserved for round-trip exports.",
+      "x-eq-source-aliases": ["ref", "code", "external_ref", "record_id"],
+      "maxLength": 64
+    },
+    "licence_type": {
+      "type": "string",
+      "description": "The kind of licence. Free text — common Australian tradie types listed as suggested values. Forklift_hrwl, driver_licence, and electrical_licence require state.",
+      "x-eq-source-aliases": ["type", "ticket", "cert", "certification", "licence", "license", "category", "qualification"],
+      "x-eq-suggested-values": [
+        "white_card",
+        "driver_licence",
+        "first_aid",
+        "cpr",
+        "working_at_heights",
+        "confined_space",
+        "ewp",
+        "forklift_hrwl",
+        "test_and_tag",
+        "electrical_licence",
+        "medicare",
+        "asbestos_awareness",
+        "traffic_control"
+      ],
+      "x-eq-enum-aliases": {
+        "white_card": ["white card", "construction induction", "ci", "wc"],
+        "driver_licence": ["driver license", "drivers licence", "dl", "licence", "license"],
+        "first_aid": ["hltaid011", "first-aid", "fa"],
+        "cpr": ["hltaid009", "cpr cert"],
+        "working_at_heights": ["heights", "wah", "working_heights"],
+        "confined_space": ["confined-space", "cs", "csa"],
+        "ewp": ["elevated work platform", "boom lift", "scissor lift"],
+        "forklift_hrwl": ["forklift", "hrwl", "high risk work licence", "lf", "lo", "lr"],
+        "test_and_tag": ["test and tag", "tnt", "electrical test"],
+        "electrical_licence": ["electrical license", "el", "sparky"],
+        "medicare": ["medicare card", "medi"],
+        "asbestos_awareness": ["asbestos", "aaa"],
+        "traffic_control": ["traffic", "tc"]
+      },
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "licence_number": {
+      "type": "string",
+      "description": "The number printed on the card. Required.",
+      "x-eq-source-aliases": ["number", "no", "card_number", "ticket_number", "cert_number", "ref"],
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "issuing_authority": {
+      "type": ["string", "null"],
+      "description": "Who issued the licence. e.g. 'Service NSW', 'RTO 12345', 'WorkCover NSW'. Often inferred from licence_type + state when missing.",
+      "x-eq-source-aliases": ["authority", "issuer", "issued_by", "rto", "issuing_body"],
+      "maxLength": 200
+    },
+    "state": {
+      "type": ["string", "null"],
+      "description": "Australian state/territory abbreviation. Required for state-licensed types (driver, forklift HRWL, electrical).",
+      "x-eq-source-aliases": ["jurisdiction", "issuing_state", "state_issued", "issuing_jurisdiction"],
+      "enum": ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT", null],
+      "x-eq-enum-aliases": {
+        "NSW": ["new south wales", "n.s.w."],
+        "VIC": ["victoria", "vic."],
+        "QLD": ["queensland", "qld."],
+        "WA": ["western australia", "w.a."],
+        "SA": ["south australia", "s.a."],
+        "TAS": ["tasmania", "tas."],
+        "ACT": ["australian capital territory", "a.c.t."],
+        "NT": ["northern territory", "n.t."]
+      }
+    },
+    "issue_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the licence was issued. ISO 8601 (YYYY-MM-DD). Optional — some licences (older White Cards) lack a printed issue date.",
+      "x-eq-source-aliases": ["issued", "date_issued", "from", "valid_from", "start_date"],
+      "x-eq-coerce": "date"
+    },
+    "expiry_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the licence expires. ISO 8601. Null = doesn't expire (White Cards). Drives expiry alerts in Cards (90/30/7-day reminders).",
+      "x-eq-source-aliases": ["expires", "expiry", "valid_until", "expires_on", "to", "valid_to", "end_date"],
+      "x-eq-coerce": "date"
+    },
+    "photo_front_path": {
+      "type": ["string", "null"],
+      "description": "Storage path in the canonical licence-photos bucket. Format: '{staff_id}/{licence_id}/front.jpg'. Never a public URL — repositories enrich with transient signed URLs (1h expiry) post-fetch.",
+      "x-eq-source-aliases": ["photo_front", "front_image", "front_url", "photo"],
+      "maxLength": 500
+    },
+    "photo_back_path": {
+      "type": ["string", "null"],
+      "description": "Storage path for the back of the card. Most licences only have a front; back is optional.",
+      "x-eq-source-aliases": ["photo_back", "back_image", "back_url"],
+      "maxLength": 500
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Free-form notes. Not used in scheduling or compliance logic.",
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 2000
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Type-specific extras as JSONB. Established conventions: Medicare {irn: '1'}; driver_licence {class: 'C'}; forklift_hrwl {class: 'LF'|'LO'|'LR', ticket_number: '...'}. Document new keys here before shipping a licence type that uses them.",
+      "default": {},
+      "additionalProperties": true
+    },
+    "active": {
+      "type": "boolean",
+      "description": "Whether this licence record is currently active. Defaults true on import. Aligns with staff.active rather than Cards's deleted_at pattern (per canonical convention).",
+      "x-eq-source-aliases": ["is_active", "current", "status", "enabled"],
+      "x-eq-coerce": "boolean",
+      "default": true
+    },
+    "imported_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When this record was last imported. System-managed.",
+      "x-eq-system-managed": true
+    },
+    "imported_from": {
+      "type": ["string", "null"],
+      "description": "Source of the import (filename, system name, 'eq_cards_supabase_2026_05_20' for the Cards migration). System-managed.",
+      "x-eq-system-managed": true
+    }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "expiry_after_issue",
+      "rule": "expiry_date == null OR issue_date == null OR expiry_date >= issue_date",
+      "message": "Expiry date must be on or after issue date.",
+      "severity": "warning"
+    },
+    {
+      "id": "state_required_for_state_licenced",
+      "rule": "state != null OR licence_type NOT IN ['driver_licence', 'forklift_hrwl', 'electrical_licence']",
+      "message": "State is required for driver licence, forklift HRWL, and electrical licence — these are state-issued.",
+      "severity": "warning"
+    },
+    {
+      "id": "active_inactive_no_expiry_implication",
+      "rule": "true",
+      "message": "Note: 'active' is a record-status flag, not derived from expiry_date. An active licence can be expired; the wallet UI shows it with an expired badge.",
+      "severity": "info"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Common patterns for importing licence/ticket data from various sources. Most commonly arrives as a per-staff-member export from an HR/training register or as a spreadsheet maintained by a safety officer.",
+    "common_sources": [
+      {
+        "name": "Generic training register spreadsheet",
+        "typical_columns": ["Name", "Licence Type", "Number", "Issue Date", "Expiry", "State"],
+        "watchouts": [
+          "Name column needs splitting into first/last and matching against staff.first_name + staff.last_name (fuzzy)",
+          "Single sheet often combines multiple staff — group by Name first",
+          "Expiry as 'no expiry' or blank for White Cards"
+        ]
+      },
+      {
+        "name": "EQ Cards export (Cards-side dump)",
+        "typical_columns": ["user_id", "licence_type", "licence_number", "issue_date", "expiry_date", "issuing_authority", "state", "photo_front_url", "metadata"],
+        "watchouts": [
+          "user_id on Cards side maps to a Cards profiles row, not directly to canonical staff_id — needs staff lookup by email first",
+          "photo_front_url on Cards side is a storage path on the Cards Supabase bucket — needs photo migration in lockstep",
+          "metadata uses Cards-side conventions (irn, class) which carry through as-is"
+        ]
+      },
+      {
+        "name": "RTO / Training provider export",
+        "typical_columns": ["Student", "Course", "Date Issued", "Certificate Number"],
+        "watchouts": [
+          "Course needs mapping to a licence_type (e.g. 'HLTAID011 Provide First Aid' -> 'first_aid')",
+          "No explicit expiry — derive from licence_type default_validity (first_aid = 36mo, cpr = 12mo, etc.) and warn user",
+          "Multiple courses per student = multiple rows"
+        ]
+      }
+    ]
+  }
+}
