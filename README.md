@@ -32,6 +32,7 @@ Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Qu
 | 1.C | Field-side — `?sh=` URL hash handler on `eq-field-app/demo` | Shipped (PR #106 on eq-field-app) |
 | 1.D | End-to-end smoke (browser flow verified against `core.eq.solutions`) | Shipped 2026-05-19 |
 | 1.E | Consolidation — drop `eq-shell-control`, single `eq-canonical` Supabase for the EQ tenant; iframe headers loosened on EQ Field | Shipped 2026-05-19 |
+| 1.F | Unified Identity — 5-tier `eq_role` enum + `is_platform_admin` flag, session cookie + Supabase JWT carry both (`app_metadata` claims), `useCan()` + `<Gate>` + closed-union `PermKey`, on-demand `/.netlify/functions/mint-supabase-jwt`, admin invite + edit flow, Field iframe bridge carries the new fields. RLS swept from `user_metadata` to `app_metadata` across 13 canonical entity tables + intake spine + 3 RPC functions. | 2026-05-20 |
 | 2 | Build new shell modules (Tender Pipeline import first) directly against `eq-canonical`'s structure — `customers`, `sites`, `staff`, `eq_intake_events`, `eq_schema_registry`, `eq_export_*`. Not extending or migrating EQ Field's legacy data model. | Active |
 | 3+ | Replace each EQ Field surface (roster, schedule, leave, tenders, audits, prestarts, toolbox talks) with a shell module backed by `eq-canonical`. Each surface goes live in the shell, then its EQ Field equivalent gets retired. | Long-term |
 | 4 | EQ Field demo deploy + its `ktmjmdzqrogauaevbktn` Supabase decommissioned, once every surface has a shell replacement | Long-term |
@@ -110,18 +111,46 @@ These must be set on the `eq-shell` Netlify project before functions run success
 | `EQ_SECRET_SALT` | **Same value as eq-solves-field** | HMAC key for session cookies AND the iframe-handoff token. The iframe handshake breaks if this drifts from EQ Field's. |
 | `SUPABASE_URL` | eq-canonical project URL | `https://jvknxcmbtrfnxfrwfimn.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → eq-canonical → Project settings → API keys | Service-role key; bypasses RLS. Never expose client-side. |
+| `SUPABASE_JWT_SECRET` | Supabase dashboard → eq-canonical → Project settings → API → JWT Settings → JWT Secret | Used by `_shared/supabase-jwt.ts` + `mint-supabase-jwt` to sign short-lived (15min) tokens the browser uses to talk to Supabase directly. DISTINCT from `SUPABASE_SERVICE_ROLE_KEY`. Phase 1.F. |
+| `VITE_SUPABASE_URL` | Same as `SUPABASE_URL` | Build-time exposed to the browser. Safe — public URL. |
+| `VITE_SUPABASE_ANON_KEY` | Supabase dashboard → eq-canonical → Project settings → API keys (anon, public) | Build-time exposed to the browser. RLS is the gate, not the key. |
+| `EQ_EMAIL_PROVIDER` *(optional)* | `resend` / `sendgrid` / etc. | Phase 1.F. Unset = log-only fallback (invite emails appear in Netlify Functions log only; admin pastes the URL manually). Set to a provider name + add its API key when real email delivery lands. |
 
 ## Auth contract
 
 Cookie name: `eq_shell_session`. Domain: `.eq.solutions`. HttpOnly, Secure, SameSite=Lax, 7 day Max-Age.
 
+**Session cookie payload (Phase 1.F):** `{ user_id, tenant_id, role: EqRole, is_platform_admin: boolean, exp }`. `role` is one of `manager | supervisor | employee | apprentice | labour_hire`. `is_platform_admin` is the EQ Solutions internal cross-tenant flag.
+
+**Supabase JWT shape (Phase 1.F):**
+
+```ts
+{
+  sub: user_id,
+  aud: 'authenticated',
+  role: 'authenticated',          // Postgres role slot, NOT the EQ tier
+  app_metadata: {
+    tenant_id: string,
+    eq_role: EqRole,
+    is_platform_admin: boolean
+  },
+  iat, exp                        // 15min TTL default
+}
+```
+
+RLS policies on `eq-canonical` read `auth.jwt() -> 'app_metadata' ->> 'tenant_id'` for tenant scope, swept from `user_metadata` to `app_metadata` in migration `2026_05_20_phase_1f_unified_identity`.
+
 | Endpoint | Method | Purpose | Body / response |
 |---|---|---|---|
-| `/.netlify/functions/shell-login` | POST | Email + PIN login | `{ email, pin } → 200 { valid: true, user, tenant, entitlements } + Set-Cookie` or `200 { valid: false }` |
-| `/.netlify/functions/verify-shell-session` | GET | Hydrate session from cookie | `200 { valid: true, user, tenant, entitlements }` or `401 { valid: false }` |
-| `/.netlify/functions/mint-iframe-token` | POST | Mint 60s HMAC for EQ Field iframe | `200 { token }` or `401 { valid: false }` |
+| `/.netlify/functions/shell-login` | POST | Email + PIN login | `{ email, pin } → 200 { valid: true, user, tenant, entitlements, supabase_jwt } + Set-Cookie` or `200 { valid: false }`. `user` carries `role` + `is_platform_admin` (Phase 1.F). |
+| `/.netlify/functions/verify-shell-session` | GET | Hydrate session from cookie | `200 { valid: true, user, tenant, entitlements, supabase_jwt }` or `401 { valid: false }`. Re-mints `supabase_jwt` on every call. |
+| `/.netlify/functions/mint-supabase-jwt` | POST | On-demand fresh Supabase JWT (for Cards Flutter, external modules) | `200 { token, exp }` or `401 { valid: false }`. Optional `?ttl=<seconds>` (clamped [60, 900]). |
+| `/.netlify/functions/mint-iframe-token` | POST | Mint 60s HMAC for EQ Field iframe | `200 { token }` or `401 { valid: false }`. Phase 1.F: token now carries `eq_role` + `is_platform_admin` alongside the legacy `staff\|supervisor` field. |
+| `/.netlify/functions/invite-user` | POST | Admin invites a user | `{ email, role, entitlements? } → 200 { ok: true, invite_id, invite_url, email_delivered }`. Requires manager OR platform_admin. |
+| `/.netlify/functions/accept-invite` | POST | Public — set PIN + sign in | `{ invite_token, pin } → 200 { valid: true, user, tenant, entitlements, supabase_jwt } + Set-Cookie`. Public endpoint; invite token IS the authentication. |
+| `/.netlify/functions/edit-user` | POST | Admin edits a user (role / active / entitlements) | `{ user_id, patch } → 200 { ok: true, user }`. Requires manager OR platform_admin. Self-edit forbidden. |
 
-EQ Field validates the minted token via its existing `/.netlify/functions/verify-pin` (action `verify-shell-token`), shipped in PR #106 on `eq-field-app/demo`.
+EQ Field validates the minted iframe token via its existing `/.netlify/functions/verify-pin` (action `verify-shell-token`), shipped in PR #106 on `eq-field-app/demo`. Field doesn't read the new `eq_role` / `is_platform_admin` fields yet — that's a separate follow-up PR on `Milmlow/eq-field-app`.
 
 ## Repository layout
 
@@ -129,16 +158,36 @@ EQ Field validates the minted token via its existing `/.netlify/functions/verify
 .
 ├── netlify/
 │   └── functions/
-│       ├── _shared/            # token + Supabase helpers (not deployed as functions)
+│       ├── _shared/
+│       │   ├── email.ts              # outbound email helper (log-only until EQ_EMAIL_PROVIDER set)
+│       │   ├── sentry.ts             # withSentry() wrapper
+│       │   ├── supabase.ts           # service-role client + CanonicalUser/Tenant types + EqRole
+│       │   ├── supabase-jwt.ts       # mints Supabase-format JWTs with app_metadata
+│       │   └── token.ts              # session cookie + iframe HMAC helpers
 │       ├── shell-login.ts
 │       ├── verify-shell-session.ts
-│       └── mint-iframe-token.ts
+│       ├── mint-iframe-token.ts
+│       ├── mint-supabase-jwt.ts      # Phase 1.F — on-demand JWT minter
+│       ├── invite-user.ts            # Phase 1.F — admin invite
+│       ├── accept-invite.ts          # Phase 1.F — public PIN-set + first login
+│       └── edit-user.ts              # Phase 1.F — admin edit/deactivate
 ├── src/
-│   ├── modules/                # lazy chunks for Cards / Intake / Quotes / Service / Tender Pipeline
-│   ├── pages/                  # LoginPage, TenantHome, FieldIframe, ComingSoon
-│   ├── App.tsx                 # router + RequireSession + ModuleGate
-│   ├── brand.tsx               # BrandProvider + useBrand
-│   ├── session.ts              # SessionContext + useSession + moduleEnabled
+│   ├── modules/                      # lazy chunks: cards, intake/, quotes, service, tender-pipeline
+│   │   └── intake/
+│   │       ├── index.tsx             # IntakeModule wrapper (Gate + createSupabaseClient)
+│   │       └── permissions.ts        # per-module perm keys (intake.view/.import/.commit)
+│   ├── pages/                        # LoginPage, TenantHome, FieldIframe, ComingSoon,
+│   │                                 # AcceptInvite, AdminInviteUser, AdminUserList, AdminEditUser
+│   ├── permissions.ts                # useCan() hook (Phase 1.F)
+│   ├── permissions/
+│   │   ├── Gate.tsx                  # <Gate perm="..."> component
+│   │   └── matrix.ts                 # closed-union PermKey + per-role MATRIX
+│   ├── lib/
+│   │   └── supabaseJwt.ts            # client cache + createSupabaseClient()
+│   ├── App.tsx                       # router + RequireSession + ModuleGate
+│   ├── brand.tsx                     # BrandProvider + useBrand
+│   ├── session.ts                    # SessionContext + EqRole + useSession + moduleEnabled
+│   ├── supabase.ts                   # legacy useSupabaseClient (kept for back-compat; new code uses lib/supabaseJwt.ts)
 │   └── main.tsx
 ├── netlify.toml
 └── README.md
@@ -149,7 +198,8 @@ EQ Field validates the minted token via its existing `/.netlify/functions/verify
 - **TypeScript strict mode** — no `any` without justification.
 - **Functional components + hooks** — no class components.
 - **Lazy-load every module** (`React.lazy()`) — disabled tenants never pay the bandwidth cost. Q5 lock from the design doc.
-- **No client-side Supabase reads in Phase 1** — everything goes through Netlify functions with the service-role key. Direct client reads land in Phase 2+ once per-user JWT-based RLS is wired (see migration `2026_05_19_shell_control_plane` on `eq-canonical`).
+- **Client-side Supabase reads via the minted JWT (Phase 1.F onward).** RLS on canonical reads from `app_metadata.tenant_id`; the browser uses `src/lib/supabaseJwt.ts` (`createSupabaseClient()` + `getSupabaseJwt()`) which auto-refreshes via `/.netlify/functions/mint-supabase-jwt`. Service-role client stays inside Netlify functions only.
+- **`useCan()` + `<Gate>` for every gated UI surface** — never read `session.user.role` directly to make a permission decision. Type-level invariant: `PermKey` is a closed union; typing `useCan('module.does_not_exist')` fails to compile.
 - **Vendor branding lives in code, not assets** — brand objects (color, logo URL, name) come from the canonical Supabase per-tenant; the codebase has no `sks/` or `eq/` asset folders.
 
 ## Related repos

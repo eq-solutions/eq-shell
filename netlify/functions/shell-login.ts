@@ -97,9 +97,11 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Look up user by email (canonical layer is global — email is unique
   // across tenants in Phase 1.B; multi-tenant email collision is a
   // Phase 2+ concern).
+  // Phase 1.F: select role + is_platform_admin too so the session +
+  // Supabase JWT both carry them.
   const { data: user, error: userErr } = await sb
     .from('users')
-    .select('id, email, tenant_id, role, active, pin_hash, last_login_at')
+    .select('id, email, tenant_id, role, is_platform_admin, active, pin_hash, last_login_at')
     .eq('email', email)
     .eq('active', true)
     .maybeSingle<CanonicalUser>();
@@ -157,8 +159,18 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   logShellLogin(req, email, 'success');
 
   // Sign the session cookie.
+  // Phase 1.F: payload carries the 5-tier role + is_platform_admin so
+  // useCan() on the React side reads them from SessionContext without
+  // a round-trip; mint-iframe-token (Field bridge) also reads them
+  // from the same cookie.
   const exp = Date.now() + SESSION_TTL_MS;
-  const cookieValue = signSessionToken({ user_id: user.id, tenant_id: tenant.id, exp });
+  const cookieValue = signSessionToken({
+    user_id: user.id,
+    tenant_id: tenant.id,
+    role: user.role,
+    is_platform_admin: user.is_platform_admin,
+    exp,
+  });
   const cookie = [
     `eq_shell_session=${cookieValue}`,
     `Domain=.eq.solutions`,
@@ -176,7 +188,13 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Supabase JWT lets the browser talk to Supabase directly with tenant
   // scope enforced by RLS. Returned in the response body (not a cookie)
   // so the React shell can attach it as Authorization to Supabase calls.
-  const supabaseJwt = signSupabaseJwt(user.id, tenant.id);
+  // Phase 1.F: now carries eq_role + is_platform_admin too via app_metadata.
+  const supabaseJwt = signSupabaseJwt(
+    user.id,
+    tenant.id,
+    user.role,
+    user.is_platform_admin,
+  );
 
   return jsonResponse(
     200,

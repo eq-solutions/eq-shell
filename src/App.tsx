@@ -14,13 +14,25 @@ import LoginPage from './pages/LoginPage';
 import TenantHome from './pages/TenantHome';
 import FieldIframe from './pages/FieldIframe';
 import CardsIframe from './pages/CardsIframe';
+import AcceptInvite from './pages/AcceptInvite';
+import AdminInviteUser from './pages/AdminInviteUser';
+import AdminUserList from './pages/AdminUserList';
+import AdminEditUser from './pages/AdminEditUser';
 import './App.css';
 
 // Q5 lock: each module is its own lazy chunk so disabled tenants
 // never pay the bandwidth cost. Cards is the exception — it's an
-// iframe to the standalone Cards Flutter web app, not a lazy React
-// chunk, so it imports eagerly like FieldIframe.
-const IntakeModule = lazy(() => import('./modules/intake'));
+// iframe to the standalone Cards Flutter web app (not a lazy React
+// chunk), so CardsIframe is imported eagerly above with the other
+// page components. The lazy CardsModule is dropped.
+//
+// Phase 1.F restructured src/modules/intake.tsx → src/modules/intake/
+// (per IDENTITY-MODEL.md §4.3, so the per-module permissions.ts can
+// sit beside index.tsx). Explicit '/index' path avoids ambiguity
+// with the old intake.tsx file, which is left orphaned for cleanup
+// in a follow-up PR (CLAUDE.md hard rule: no deletes without
+// explicit permission).
+const IntakeModule = lazy(() => import('./modules/intake/index'));
 const QuotesModule = lazy(() => import('./modules/quotes'));
 const ServiceModule = lazy(() => import('./modules/service'));
 const TenderPipelineModule = lazy(() => import('./modules/tender-pipeline'));
@@ -177,6 +189,14 @@ function TenantTree() {
             </ModuleGate>
           }
         />
+        {/* Phase 1.F: admin user-management routes. Permission checks
+            live in the page components via <Gate perm="..."> — the
+            route is reachable to any signed-in tenant user, but the
+            UI shows "Not allowed" when the role doesn't grant it.
+            Order matters: 'invite' (static) before ':userId' (param). */}
+        <Route path="admin/users" element={<AdminUserList />} />
+        <Route path="admin/users/invite" element={<AdminInviteUser />} />
+        <Route path="admin/users/:userId" element={<AdminEditUser />} />
         <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
     </BrandProvider>
@@ -189,6 +209,11 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<RootRoute />} />
+          {/* Phase 1.F: public invite-accept landing. Lives OUTSIDE
+              the RequireSession wrap — the user clicking the invite
+              link doesn't have a session yet; the function sets one
+              on success. */}
+          <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route
             path="/:tenantSlug/*"
             element={
