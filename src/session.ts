@@ -16,11 +16,32 @@ export interface Tenant {
   active: boolean;
 }
 
+/**
+ * Five-tier role enum (Phase 1.F unified identity).
+ *
+ * Source of truth: `eq-context/eq/identity/IDENTITY-MODEL.md §3`.
+ * Server-side mirror in `netlify/functions/_shared/supabase.ts`.
+ * Keep them in sync — adding a tier is a spec-level change.
+ */
+export type EqRole =
+  | 'manager'
+  | 'supervisor'
+  | 'employee'
+  | 'apprentice'
+  | 'labour_hire';
+
 export interface User {
   id: string;
   email: string;
   tenant_id: string;
-  role: string;
+  role: EqRole;
+  /**
+   * Phase 1.F: EQ Solutions internal cross-tenant flag. When true, the
+   * shell's useCan() helper short-circuits to true for any permission.
+   * Only set on EQ-internal users (Royce, support staff). Single audit
+   * point for "this user can do this across every tenant."
+   */
+  is_platform_admin: boolean;
   active: boolean;
   last_login_at: string | null;
 }

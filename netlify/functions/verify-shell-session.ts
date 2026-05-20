@@ -52,9 +52,11 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(500, { error: (e as Error).message });
   }
 
+  // Phase 1.F: re-read role + is_platform_admin so role changes (admin
+  // demoted a user) take effect on next verify, not just next login.
   const { data: user, error: userErr } = await sb
     .from('users')
-    .select('id, email, tenant_id, role, active, last_login_at')
+    .select('id, email, tenant_id, role, is_platform_admin, active, last_login_at')
     .eq('id', session.user_id)
     .eq('active', true)
     .maybeSingle<Omit<CanonicalUser, 'pin_hash'>>();
@@ -86,10 +88,16 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .returns<CanonicalEntitlement[]>();
 
   // Mint a fresh Supabase JWT on every session-verify. JWT TTL is short
-  // (1h) so periodic refresh on route mounts keeps the browser usable
-  // for the full session-cookie lifetime (7d) without long-lived
-  // bearer tokens sitting in memory.
-  const supabaseJwt = signSupabaseJwt(user.id, tenant.id);
+  // (15min post-1.F) so periodic refresh on route mounts keeps the
+  // browser usable for the full session-cookie lifetime (7d) without
+  // long-lived bearer tokens sitting in memory. JWT claims now use
+  // app_metadata + carry eq_role + is_platform_admin (Phase 1.F).
+  const supabaseJwt = signSupabaseJwt(
+    user.id,
+    tenant.id,
+    user.role,
+    user.is_platform_admin,
+  );
 
   return jsonResponse(200, {
     valid: true,

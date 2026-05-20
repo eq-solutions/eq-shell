@@ -34,16 +34,45 @@ function sigsEqual(expected: string, provided: string): boolean {
   }
 }
 
+import type { EqRole } from './supabase.js';
+
 export interface SessionPayload {
   user_id: string;
   tenant_id: string;
+  /** Phase 1.F: 5-tier role from the EQ unified identity model. */
+  role: EqRole;
+  /** Phase 1.F: EQ Solutions internal cross-tenant flag. */
+  is_platform_admin: boolean;
   exp: number;
 }
 
 export interface ShellTokenPayload {
   kind: 'shell-token';
   name: string;
+  /**
+   * Legacy 2-tier field. EQ Field's existing `verify-shell-token`
+   * handler (eq-field-app PR #106) reads this and only this from the
+   * payload today. Kept verbatim for backward compatibility.
+   *
+   * Mapping rule (Phase 1.F, per IDENTITY-MODEL.md §7.1):
+   *   manager / is_platform_admin = true  → 'supervisor'
+   *   supervisor                          → 'supervisor'
+   *   employee / apprentice / labour_hire → 'staff'
+   */
   role: 'staff' | 'supervisor';
+  /**
+   * Phase 1.F: the full 5-tier canonical role. Field doesn't consume
+   * this YET — the follow-up Milmlow/eq-field-app PR will add a
+   * verify-shell-token v2 path that honours it. Until then it travels
+   * the wire harmlessly (JSON.parse ignores unknown fields).
+   */
+  eq_role: EqRole;
+  /**
+   * Phase 1.F: platform-admin flag for cross-tenant access. Same
+   * caveat as eq_role above — Field doesn't read it yet, but it ships
+   * here so the same token shape works once Field catches up.
+   */
+  is_platform_admin: boolean;
   exp: number;
 }
 
@@ -68,6 +97,12 @@ export function verifySessionToken(token: string | null | undefined): SessionPay
     const data = JSON.parse(json) as SessionPayload;
     if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
     if (!data.user_id || !data.tenant_id) return null;
+    // Phase 1.F: role + is_platform_admin are required. Older cookies
+    // (pre-1.F) won't have them — those force a re-login. The shell
+    // already rolls cookies on every login, so this only impacts users
+    // mid-session at deploy time — they get a single re-auth and move on.
+    if (!data.role) return null;
+    if (typeof data.is_platform_admin !== 'boolean') return null;
     return data;
   } catch {
     return null;
