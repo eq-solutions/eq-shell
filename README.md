@@ -2,7 +2,7 @@
 
 Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Quotes / Service / Field as lazy-loaded modules under one authenticated shell.
 
-**Status:** Phase 1.E shipped (2026-05-19). End-to-end smoke test green: `core.eq.solutions` → login → tenant home → EQ Field iframe loads without PIN gate. Shell auth runs against `eq-canonical` (single canonical EQ Solutions DB). Phase 2 (Tender Pipeline import screen, built directly against `eq-canonical`'s intake/registry tables) is the active milestone.
+**Status:** Phase 1.F shipped (2026-05-20) — Unified Identity + `app_metadata` RLS sweep across 13 canonical tables, intake spine, and 3 RPCs. The **Intake module** (`/core/intake`) is live behind login, running the `@eq/*` engine end-to-end against `eq-canonical` (SimPRO fixtures validated through parser → mapping → validation legs). **Phase 2 is paused pending the GTM validation gate** — 5 outside-SKS trade subbies on EQ Field demo, per `eq/pending.md` "EQ GTM — PRIORITY". The next shell module is deferred until that gate clears or a paying customer asks for one. Earlier `src/modules/tender-pipeline/` scaffolding is stale exploration (~9KB of page stubs) and not on the roadmap.
 
 **Design:** see `EQ-SHELL-DESIGN.md` in [Milmlow/eq-field-app](https://github.com/Milmlow/eq-field-app/blob/demo/EQ-SHELL-DESIGN.md). All Q1-Q10 locked.
 
@@ -33,8 +33,8 @@ Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Qu
 | 1.D | End-to-end smoke (browser flow verified against `core.eq.solutions`) | Shipped 2026-05-19 |
 | 1.E | Consolidation — drop `eq-shell-control`, single `eq-canonical` Supabase for the EQ tenant; iframe headers loosened on EQ Field | Shipped 2026-05-19 |
 | 1.F | Unified Identity — 5-tier `eq_role` enum + `is_platform_admin` flag, session cookie + Supabase JWT carry both (`app_metadata` claims), `useCan()` + `<Gate>` + closed-union `PermKey`, on-demand `/.netlify/functions/mint-supabase-jwt`, admin invite + edit flow, Field iframe bridge carries the new fields. RLS swept from `user_metadata` to `app_metadata` across 13 canonical entity tables + intake spine + 3 RPC functions. | 2026-05-20 |
-| 2 | Build new shell modules (Tender Pipeline import first) directly against `eq-canonical`'s structure — `customers`, `sites`, `staff`, `eq_intake_events`, `eq_schema_registry`, `eq_export_*`. Not extending or migrating EQ Field's legacy data model. | Active |
-| 3+ | Replace each EQ Field surface (roster, schedule, leave, tenders, audits, prestarts, toolbox talks) with a shell module backed by `eq-canonical`. Each surface goes live in the shell, then its EQ Field equivalent gets retired. | Long-term |
+| 2 | **Intake module live** at `/core/intake` (drop CSV → map → validate → commit via the `@eq/*` engine; SimPRO fixtures validated end-to-end through parser + customer/contact/site mapping + validation). Writes route only through the `eq_intake_commit_batch` SECURITY DEFINER RPC; RLS predicates read `app_metadata.tenant_id`. **Further Phase 2 modules paused** — next module deferred pending GTM validation gate per `eq/pending.md`. | Intake shipped 2026-05-19; Phase 2 otherwise paused |
+| 3+ | Replace each EQ Field surface (roster, schedule, leave, tenders, audits, prestarts, toolbox talks) with a shell module backed by `eq-canonical`. Each surface goes live in the shell, then its EQ Field equivalent gets retired. Sequencing is undecided — re-pick after GTM gate clears, based on what early customers actually pay for. | Long-term |
 | 4 | EQ Field demo deploy + its `ktmjmdzqrogauaevbktn` Supabase decommissioned, once every surface has a shell replacement | Long-term |
 
 ## Development
