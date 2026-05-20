@@ -14,7 +14,7 @@ interface ModuleDef {
 // tenant. New modules appended here.
 const MODULES: ModuleDef[] = [
   { key: 'field', label: 'EQ Field', description: 'Roster, timesheets, sites.', to: 'field' },
-  { key: 'cards', label: 'Cards', description: 'Coming soon.', to: 'cards' },
+  { key: 'cards', label: 'Cards', description: 'Tradie wallet — licences + tap-to-copy.', to: 'cards' },
   { key: 'intake', label: 'Intake', description: 'Coming soon.', to: 'intake' },
   { key: 'quotes', label: 'Quotes', description: 'Coming soon.', to: 'quotes' },
   { key: 'service', label: 'Service', description: 'Coming soon.', to: 'service' },

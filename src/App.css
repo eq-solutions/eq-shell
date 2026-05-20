@@ -175,6 +175,14 @@
   color: var(--eq-mute);
 }
 
+.eq-cards-frame {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  width: 100vw;
+  height: 100svh;
+}
+
 .eq-coming-soon {
   padding: 64px 24px;
   text-align: center;

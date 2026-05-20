@@ -13,11 +13,13 @@ import { identifyUser, resetUser } from './observability';
 import LoginPage from './pages/LoginPage';
 import TenantHome from './pages/TenantHome';
 import FieldIframe from './pages/FieldIframe';
+import CardsIframe from './pages/CardsIframe';
 import './App.css';
 
 // Q5 lock: each module is its own lazy chunk so disabled tenants
-// never pay the bandwidth cost.
-const CardsModule = lazy(() => import('./modules/cards'));
+// never pay the bandwidth cost. Cards is the exception — it's an
+// iframe to the standalone Cards Flutter web app, not a lazy React
+// chunk, so it imports eagerly like FieldIframe.
 const IntakeModule = lazy(() => import('./modules/intake'));
 const QuotesModule = lazy(() => import('./modules/quotes'));
 const ServiceModule = lazy(() => import('./modules/service'));
@@ -131,9 +133,7 @@ function TenantTree() {
           path="cards"
           element={
             <ModuleGate module="cards">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
-                <CardsModule />
-              </Suspense>
+              <CardsIframe />
             </ModuleGate>
           }
         />
