@@ -175,6 +175,29 @@
   color: var(--eq-mute);
 }
 
+.eq-field-frame-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  z-index: 10;
+  padding: 24px;
+}
+
+.eq-field-frame-overlay-card {
+  max-width: 420px;
+  padding: 20px 24px;
+  border: 1px solid var(--eq-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--eq-ink);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .eq-coming-soon {
   padding: 64px 24px;
   text-align: center;
