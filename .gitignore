@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Netlify folder
+.netlify
+
+# Claude Code per-clone state — worktrees, lock files, session metadata
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+.claude/*.local.*

@@ -19,8 +19,11 @@
 // Phase 2 proper lands one sub-route per follow-up PR. This spike
 // scaffolds the routes + nav only; each page is a placeholder.
 
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { Routes, Route, NavLink, Outlet, Navigate } from 'react-router-dom';
+import { RepositoryProvider } from './lib/RepositoryContext';
+import { MockTenderRepository } from './lib/mockRepository';
+import './styles.css';
 
 const ImportPage = lazy(() => import('./pages/Import'));
 const KanbanPage = lazy(() => import('./pages/Kanban'));
@@ -52,17 +55,23 @@ function Layout() {
 }
 
 export default function TenderPipeline() {
+  // Mock repository for development — real implementation waits on
+  // the per-tenant data-plane design decision (see lib/repository.ts).
+  const repository = useMemo(() => new MockTenderRepository(), []);
+
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Navigate to="kanban" replace />} />
-        <Route path="import" element={<ImportPage />} />
-        <Route path="kanban" element={<KanbanPage />} />
-        <Route path="review" element={<ReviewPage />} />
-        <Route path="enrichment" element={<EnrichmentPage />} />
-        <Route path="curve" element={<CurvePage />} />
-        <Route path="*" element={<Navigate to="kanban" replace />} />
-      </Route>
-    </Routes>
+    <RepositoryProvider repository={repository}>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<Navigate to="kanban" replace />} />
+          <Route path="import" element={<ImportPage />} />
+          <Route path="kanban" element={<KanbanPage />} />
+          <Route path="review" element={<ReviewPage />} />
+          <Route path="enrichment" element={<EnrichmentPage />} />
+          <Route path="curve" element={<CurvePage />} />
+          <Route path="*" element={<Navigate to="kanban" replace />} />
+        </Route>
+      </Routes>
+    </RepositoryProvider>
   );
 }
