@@ -21,6 +21,7 @@ import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
 import EntityBrowserPage from './pages/EntityBrowserPage';
+import StorageBrowser from './pages/StorageBrowser';
 import NotFound from './pages/NotFound';
 import './App.css';
 
@@ -275,6 +276,7 @@ function TenantTree() {
         <Route path="admin/audit" element={<AdminAuditPage />} />
         {/* Polish 2026-05-21 — tenant settings */}
         <Route path="admin/settings" element={<AdminTenantSettings />} />
+        <Route path="storage" element={<StorageBrowser />} />
         <Route path="data/:entity" element={<EntityBrowserPage />} />
         {/* Real 404 instead of silent redirect to home (caught users in a
             loop where stale links just bounced them home with no signal). */}
