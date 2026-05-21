@@ -34,12 +34,24 @@ const HANDOFF_TIMEOUT_MS = 10_000;
 interface HandoffMessage {
   source: 'eq-field-shell-handoff';
   version: 1;
-  kind: 'boot' | 'no-sh-param' | 'accepted' | 'rejected' | 'http-error' | 'network-error';
+  // 2026-05-22 — Wave 4.5: 'tenant-mismatch' added when Field rejects
+  // a token because token.tenant_slug !== Field's TENANT.ORG_SLUG
+  // (set from the iframe URL's ?tenant= param).
+  kind:
+    | 'boot'
+    | 'no-sh-param'
+    | 'accepted'
+    | 'rejected'
+    | 'http-error'
+    | 'network-error'
+    | 'tenant-mismatch';
   hasHash?: boolean;
   status?: number;
   name?: string;
   role?: string;
   detail?: string;
+  expected?: string;
+  got?: string;
 }
 
 type HandoffState =
@@ -52,6 +64,7 @@ type HandoffState =
   | { phase: 'http-error'; status: number }
   | { phase: 'network-error'; detail: string }
   | { phase: 'no-sh-param' }
+  | { phase: 'tenant-mismatch'; expected: string; got: string }
   | { phase: 'timeout' };
 
 function isHandoffMessage(data: unknown): data is HandoffMessage {
@@ -77,9 +90,19 @@ export default function FieldIframe() {
           if (!cancelled) setState({ phase: 'mint-failed' });
           return;
         }
-        const body = (await res.json()) as { token: string };
+        const body = (await res.json()) as { token: string; tenant_slug?: string };
         if (!cancelled) {
-          setSrc(`${FIELD_URL}#sh=${encodeURIComponent(body.token)}`);
+          // 2026-05-22 — Wave 4.5: include ?tenant=<slug> so Field's
+          // _detectTenantSlug picks up the right tenant before
+          // _consumeShellToken validates the token (which cross-checks
+          // the slug against the token's tenant_slug claim). Legacy
+          // mint responses without tenant_slug still work: Field's
+          // hostname detection falls back to 'eq' and the token's
+          // missing tenant_slug means no cross-check fires.
+          const tenantQs = body.tenant_slug
+            ? `?tenant=${encodeURIComponent(body.tenant_slug)}`
+            : '';
+          setSrc(`${FIELD_URL}${tenantQs}#sh=${encodeURIComponent(body.token)}`);
           setState({ phase: 'waiting' });
         }
       } catch {
@@ -122,6 +145,17 @@ export default function FieldIframe() {
         case 'no-sh-param':
           setState({ phase: 'no-sh-param' });
           Sentry.captureMessage('EQ Field handoff: no sh= param in hash', { level: 'warning' });
+          break;
+        case 'tenant-mismatch':
+          setState({
+            phase: 'tenant-mismatch',
+            expected: msg.expected ?? 'unknown',
+            got: msg.got ?? 'unknown',
+          });
+          Sentry.captureMessage(
+            `EQ Field handoff tenant mismatch — expected "${msg.expected}", token claims "${msg.got}"`,
+            { level: 'error' }
+          );
           break;
       }
     }
@@ -221,6 +255,8 @@ function overlayMessage(state: HandoffState): string {
       return 'Network error reaching EQ Field. Check your connection and refresh.';
     case 'no-sh-param':
       return 'EQ Field handoff URL was malformed. Refresh to retry.';
+    case 'tenant-mismatch':
+      return `EQ Field expected tenant "${state.expected}" but the sign-in token was for "${state.got}". This is a configuration error — contact support.`;
     case 'timeout':
       return "EQ Field didn't respond within 10 seconds. Refresh to retry.";
     default:

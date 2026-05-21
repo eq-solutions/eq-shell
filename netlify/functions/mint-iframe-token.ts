@@ -82,6 +82,25 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(401, { valid: false });
   }
 
+  // 2026-05-22 — fetch tenant slug so we can include it in the iframe
+  // token (Field cross-checks against the ?tenant= URL param) and in
+  // the response body (FieldIframe builds the iframe URL).
+  //
+  // Assumption: shell tenants.slug aligns with the Field organisations.slug
+  // for the same business tenant (e.g. both 'melbourne'). If a mismatch
+  // ships into production, Field's v3.5.17 _consumeShellToken will reject
+  // the token with a 'tenant-mismatch' postMessage — visible end-to-end.
+  const { data: tenant, error: tenantError } = await sb
+    .from('tenants')
+    .select('slug')
+    .eq('id', user.tenant_id)
+    .eq('active', true)
+    .maybeSingle<{ slug: string }>();
+
+  if (tenantError || !tenant) {
+    return jsonResponse(401, { valid: false });
+  }
+
   // Phase 1.F: derive Field's two-tier role from the 5-tier canonical
   // role + platform_admin flag.
   const fieldRole: 'staff' | 'supervisor' =
@@ -110,8 +129,17 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     // the fields travel harmlessly.
     eq_role: user.role,
     is_platform_admin: user.is_platform_admin,
+    // 2026-05-22 — Wave 4.5 cross-check. Field's v3.5.17 _consumeShellToken
+    // compares this to TENANT.ORG_SLUG (which the iframe URL's ?tenant=
+    // param sets at boot) and rejects the token on mismatch. Prevents a
+    // confused-deputy where a token minted for tenant A is replayed
+    // against tenant B's iframe URL.
+    tenant_slug: tenant.slug,
     exp: Date.now() + IFRAME_TOKEN_TTL_MS,
   });
 
-  return jsonResponse(200, { token: shellToken });
+  // tenant_slug is returned alongside the token so FieldIframe can
+  // construct the iframe URL with ?tenant=<slug> without a second
+  // round trip to read the session.
+  return jsonResponse(200, { token: shellToken, tenant_slug: tenant.slug });
 });
