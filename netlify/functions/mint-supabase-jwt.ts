@@ -126,7 +126,11 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   try {
     const sourceIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? null;
     const userAgent = req.headers.get('user-agent') ?? null;
-    await sb.rpc('eq_record_mint', {
+    // .schema('public') is REQUIRED: the service client's default schema
+    // is 'shell_control' (set in _shared/supabase.ts), so a plain
+    // sb.rpc('eq_record_mint') looks for shell_control.eq_record_mint
+    // (which doesn't exist) and 404s silently into our try/catch.
+    await sb.schema('public').rpc('eq_record_mint', {
       p_tenant_id: user.tenant_id,
       p_user_id: user.id,
       p_token_type: 'supabase_jwt',

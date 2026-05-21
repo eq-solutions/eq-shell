@@ -83,7 +83,10 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   try {
     const sourceIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? null;
     const userAgent = req.headers.get('user-agent') ?? null;
-    await sb.rpc('eq_record_mint', {
+    // .schema('public') is REQUIRED — service client defaults to
+    // shell_control (see _shared/supabase.ts). Mirrors the fix in
+    // mint-supabase-jwt.ts.
+    await sb.schema('public').rpc('eq_record_mint', {
       p_tenant_id: user.tenant_id,
       p_user_id: user.id,
       p_token_type: 'iframe_cards',

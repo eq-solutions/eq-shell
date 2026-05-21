@@ -26,9 +26,13 @@ export function getServiceClient(): SupabaseClient<any, any, any> {
     auth: { persistSession: false, autoRefreshToken: false },
     // Default to shell_control schema where the auth tables live
     // (users, tenants, module_entitlements, user_invites, etc.) after
-    // the Unit 2 schema split. Functions that need app_data can still
-    // call .schema('app_data') explicitly. RPCs in public are reached
-    // via .rpc() regardless of this default.
+    // the Unit 2 schema split. Functions that need app_data still
+    // call .schema('app_data') explicitly.
+    //
+    // RPCs ALSO honour the default schema — `sb.rpc('foo')` resolves
+    // to `shell_control.foo`, not `public.foo`. If your RPC lives in
+    // public (as the audit/intake RPCs do), call it as
+    // `sb.schema('public').rpc('foo', ...)`.
     db: { schema: 'shell_control' },
   });
   return _client;
