@@ -149,7 +149,15 @@ export default function TenantHome() {
   // status. For leave-style entities the wording "added" is more honest
   // than "+N this week" which implied the counter and the delta were
   // filtered the same way (they're not).
-  function deltaLabel(entity: string, recent: number): string {
+  //
+  // Audit fix #2 (follow-up 2026-05-21): when delta == total, the
+  // entity was seeded this week — showing "+N this week" misleads
+  // execs into thinking the platform added that many records as
+  // organic activity. Return null so the caller skips the delta line
+  // for the all-seeded case.
+  function deltaLabel(entity: string, recent: number, total: number): string | null {
+    if (recent <= 0) return null;
+    if (recent >= total) return null; // all rows are "new this week" = seed data, don't mislead
     if (entity === 'leave_request') return `${recent} added this week`;
     return `+${recent} this week`;
   }
@@ -200,11 +208,12 @@ export default function TenantHome() {
                         {ENTITY_LABELS[c.entity] ?? c.entity}
                       </p>
                       <p className="eq-home-hero__tile-value">{c.count_total.toLocaleString()}</p>
-                      {c.count_recent > 0 && (
-                        <p className="eq-home-hero__tile-delta">
-                          {deltaLabel(c.entity, c.count_recent)}
-                        </p>
-                      )}
+                      {(() => {
+                        const label = deltaLabel(c.entity, c.count_recent, c.count_total);
+                        return label ? (
+                          <p className="eq-home-hero__tile-delta">{label}</p>
+                        ) : null;
+                      })()}
                     </Link>
                   ))}
             </div>
@@ -242,11 +251,12 @@ export default function TenantHome() {
                       {ENTITY_LABELS[c.entity] ?? c.entity}
                     </p>
                     <p className="eq-stat-card__value">{c.count_total.toLocaleString()}</p>
-                    {c.count_recent > 0 && (
-                      <p className="eq-stat-card__delta eq-stat-card__delta--up">
-                        {deltaLabel(c.entity, c.count_recent)}
-                      </p>
-                    )}
+                    {(() => {
+                      const label = deltaLabel(c.entity, c.count_recent, c.count_total);
+                      return label ? (
+                        <p className="eq-stat-card__delta eq-stat-card__delta--up">{label}</p>
+                      ) : null;
+                    })()}
                   </Link>
                 ))}
               </div>
