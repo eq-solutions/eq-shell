@@ -1,10 +1,10 @@
 // Admin list of users in the current tenant.
 //
 // Gated by useCan('admin.list_users') — manager + platform_admin only.
-// Reads users via the canonical Supabase JWT (createSupabaseClient
-// from src/lib/supabaseJwt.ts) so RLS does the tenant scoping
-// server-side. The manager can't see users from other tenants even
-// if they probe the API directly.
+// Calls the eq_list_tenant_users RPC (added 2026-05-21) because after
+// the Phase 1.F schema split, shell_control.users is not on the
+// PostgREST exposed-schemas list. The RPC lives in public, gates on
+// JWT app_metadata role + platform_admin, and tenant-scopes server-side.
 //
 // Each row links to /<tenant>/admin/users/<id> for edit. The list
 // page itself has an "Invite a user" button that routes to
@@ -14,6 +14,9 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSession } from '../session';
 import { Gate } from '../permissions/Gate';
+import { Topbar } from '../components/Topbar';
+import { Skeleton } from '../components/Skeleton';
+import { EqError } from '../components/EqError';
 import { createSupabaseClient } from '../lib/supabaseJwt';
 import type { EqRole } from '../session';
 
@@ -46,138 +49,116 @@ function AdminUserListInner() {
   const [users, setUsers] = useState<UserRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const sb = await createSupabaseClient();
-        const { data, error } = await sb
-          .from('users')
-          .select('id, email, role, is_platform_admin, active, last_login_at')
-          .order('email');
-        if (cancelled) return;
-        if (error) {
-          setErr(error.message);
-          return;
-        }
-        setUsers((data as UserRow[] | null) ?? []);
-      } catch (e) {
-        if (!cancelled) setErr((e as Error).message);
+  const load = async () => {
+    setErr(null);
+    try {
+      const sb = await createSupabaseClient();
+      const { data, error } = await sb.rpc('eq_list_tenant_users');
+      if (error) {
+        setErr(error.message);
+        return;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      setUsers((data as UserRow[] | null) ?? []);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+
+  useEffect(() => {
+    void load();
   }, []);
 
-  if (err) {
-    return (
-      <div className="eq-shell">
-        <div className="eq-login">
-          <h1>Could not load users</h1>
-          <p className="lede">{err}</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="eq-shell">
-      <div className="eq-topbar">
-        <div className="brand">
-          <span className="swatch" aria-hidden="true" />
-          Users
-        </div>
-        <Link
-          to={`/${tenantSlug}/admin/users/invite`}
-          style={{
-            background: 'var(--eq-brand)',
-            color: 'white',
-            padding: '8px 14px',
-            borderRadius: 6,
-            textDecoration: 'none',
-            fontWeight: 500,
-            fontSize: 14,
-          }}
-        >
-          + Invite user
-        </Link>
-      </div>
-      <div className="eq-tenant-home">
-        {users === null ? (
-          <p className="lede">Loading users…</p>
-        ) : users.length === 0 ? (
-          <p className="lede">No users yet. Invite the first one.</p>
-        ) : (
-          <table
-            style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              marginTop: 16,
-            }}
+    <>
+      <Topbar />
+      <main className="eq-page">
+        <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <div>
+            <h1 className="eq-page__title">Users</h1>
+            <p className="eq-page__lede">
+              Tenant members and their roles. Manager + platform admin only.
+            </p>
+          </div>
+          <Link
+            to={`/${tenantSlug}/admin/users/invite`}
+            className="eq-btn-primary"
+            style={{ width: 'auto', padding: '0 16px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
           >
+            + Invite user
+          </Link>
+        </div>
+
+        {err && <EqError title="Couldn't load users" message={err} onRetry={load} />}
+
+        <div className="eq-table-wrap">
+          <table className="eq-table">
             <thead>
-              <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--eq-border)' }}>
-                <th style={{ padding: '8px 0', fontSize: 13, color: 'var(--eq-mute)' }}>Email</th>
-                <th style={{ padding: '8px 0', fontSize: 13, color: 'var(--eq-mute)' }}>Role</th>
-                <th style={{ padding: '8px 0', fontSize: 13, color: 'var(--eq-mute)' }}>Status</th>
-                <th style={{ padding: '8px 0', fontSize: 13, color: 'var(--eq-mute)' }}>Last login</th>
-                <th />
+              <tr>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last login</th>
+                <th style={{ width: 80 }} />
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
-                <tr key={u.id} style={{ borderBottom: '1px solid var(--eq-border)' }}>
-                  <td style={{ padding: '10px 0' }}>
-                    {u.email}
-                    {u.is_platform_admin && (
-                      <span
-                        style={{
-                          marginLeft: 8,
-                          fontSize: 11,
-                          padding: '2px 6px',
-                          background: 'var(--eq-ice)',
-                          color: 'var(--eq-deep)',
-                          borderRadius: 4,
-                          fontWeight: 500,
-                        }}
-                        title="EQ Solutions internal cross-tenant access"
-                      >
-                        platform admin
-                      </span>
-                    )}
-                    {u.id === session?.user.id && (
-                      <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--eq-mute)' }}>(you)</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '10px 0' }}>{roleLabel(u.role)}</td>
-                  <td style={{ padding: '10px 0' }}>
-                    {u.active ? (
-                      <span style={{ color: 'var(--eq-ink)' }}>Active</span>
-                    ) : (
-                      <span style={{ color: 'var(--eq-mute)' }}>Deactivated</span>
-                    )}
-                  </td>
-                  <td style={{ padding: '10px 0', color: 'var(--eq-mute)', fontSize: 13 }}>
-                    {formatLastLogin(u.last_login_at)}
-                  </td>
-                  <td style={{ padding: '10px 0', textAlign: 'right' }}>
-                    {u.id !== session?.user.id && (
-                      <Link
-                        to={`/${tenantSlug}/admin/users/${u.id}`}
-                        style={{ color: 'var(--eq-brand)', textDecoration: 'none', fontSize: 13 }}
-                      >
-                        Edit
-                      </Link>
-                    )}
+              {users === null ? (
+                <tr>
+                  <td colSpan={5}>
+                    <Skeleton variant="row" count={4} />
                   </td>
                 </tr>
-              ))}
+              ) : users.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: 32, color: 'var(--eq-grey)' }}>
+                    No users yet. Invite the first one.
+                  </td>
+                </tr>
+              ) : (
+                users.map((u) => (
+                  <tr key={u.id}>
+                    <td>
+                      {u.email}
+                      {u.is_platform_admin && (
+                        <span
+                          className="eq-pill eq-pill--info"
+                          style={{ marginLeft: 8 }}
+                          title="EQ Solutions internal cross-tenant access"
+                        >
+                          Platform admin
+                        </span>
+                      )}
+                      {u.id === session?.user.id && (
+                        <span className="eq-table__mute" style={{ marginLeft: 8 }}>
+                          (you)
+                        </span>
+                      )}
+                    </td>
+                    <td>{roleLabel(u.role)}</td>
+                    <td>
+                      <span className={`eq-pill ${u.active ? 'eq-pill--ok' : 'eq-pill--mute'}`}>
+                        {u.active ? 'Active' : 'Deactivated'}
+                      </span>
+                    </td>
+                    <td className="eq-table__mute">{formatLastLogin(u.last_login_at)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      {u.id !== session?.user.id && (
+                        <Link
+                          to={`/${tenantSlug}/admin/users/${u.id}`}
+                          style={{ color: 'var(--eq-deep)', fontSize: 13 }}
+                        >
+                          Edit
+                        </Link>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
-        )}
-      </div>
-    </div>
+        </div>
+      </main>
+    </>
   );
 }
 
@@ -186,12 +167,15 @@ export default function AdminUserList() {
     <Gate
       perm="admin.list_users"
       fallback={
-        <div className="eq-shell">
-          <div className="eq-login">
-            <h1>Not allowed</h1>
-            <p className="lede">Only managers can manage users.</p>
-          </div>
-        </div>
+        <>
+          <Topbar />
+          <main className="eq-page">
+            <div className="eq-empty">
+              <p className="eq-empty__title">Not allowed</p>
+              <p>Only managers can manage users.</p>
+            </div>
+          </main>
+        </>
       }
     >
       <AdminUserListInner />

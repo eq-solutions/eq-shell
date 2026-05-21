@@ -10,7 +10,9 @@
 // the URL with a Copy button after a successful invite.
 
 import { useState, type FormEvent } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { Gate } from '../permissions/Gate';
+import { Topbar } from '../components/Topbar';
 import type { EqRole } from '../session';
 
 const ROLE_OPTIONS: { value: EqRole; label: string; helper: string }[] = [
@@ -113,13 +115,15 @@ function AdminInviteUserForm() {
   }
 
   return (
-    <div className="eq-shell">
-      <form className="eq-login" onSubmit={onSubmit}>
-        <h1>Invite a user</h1>
-        <p className="lede">
+    <InviteShell>
+      <div className="eq-page__header">
+        <h1 className="eq-page__title">Invite a user</h1>
+        <p className="eq-page__lede">
           The recipient gets a one-time link to set their PIN. They land
           on the tenant home as soon as they accept.
         </p>
+      </div>
+      <form onSubmit={onSubmit} style={{ maxWidth: 520 }}>
 
         <label htmlFor="invite-email">Email</label>
         <input
@@ -250,7 +254,24 @@ function AdminInviteUserForm() {
           </div>
         )}
       </form>
-    </div>
+    </InviteShell>
+  );
+}
+
+function InviteShell({ children }: { children: React.ReactNode }) {
+  const { tenantSlug } = useParams<{ tenantSlug: string }>();
+  return (
+    <>
+      <Topbar />
+      <main className="eq-page">
+        <p style={{ marginBottom: 16 }}>
+          <Link to={`/${tenantSlug}/admin/users`} style={{ fontSize: 13 }}>
+            ← Back to users
+          </Link>
+        </p>
+        {children}
+      </main>
+    </>
   );
 }
 
@@ -259,14 +280,14 @@ export default function AdminInviteUser() {
     <Gate
       perm="admin.invite_user"
       fallback={
-        <div className="eq-shell">
-          <div className="eq-login">
-            <h1>Not allowed</h1>
-            <p className="lede">
+        <InviteShell>
+          <div className="eq-empty">
+            <p className="eq-empty__title">Not allowed</p>
+            <p>
               Only managers can invite users. Ask your manager if you need access.
             </p>
           </div>
-        </div>
+        </InviteShell>
       }
     >
       <AdminInviteUserForm />
