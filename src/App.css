@@ -816,6 +816,171 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────
+ * Field tenant picker + tenant bar  (Wave 5, 2026-05-22)
+ *
+ * The picker fills the area under the Topbar when the user hasn't
+ * chosen a Field tenant yet. Once chosen, the picker is replaced by
+ * the iframe and a 36px strip ("tenant bar") sits between Topbar
+ * and iframe showing the active tenant + a "Switch tenant" button.
+ * The --with-tenantbar variants below adjust the iframe / overlay /
+ * loading layouts to make room for that strip.
+ * ────────────────────────────────────────────────────────────────── */
+
+.eq-field-picker {
+  position: fixed;
+  inset: 48px 0 0;
+  overflow-y: auto;
+  background: var(--eq-bg);
+  color: var(--eq-ink);
+  padding: 48px 24px;
+}
+
+.eq-field-picker__inner {
+  max-width: 880px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.eq-field-picker__eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--eq-sky);
+  margin-bottom: 8px;
+}
+
+.eq-field-picker__title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+  color: var(--eq-ink);
+}
+
+.eq-field-picker__lede {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--eq-grey);
+  margin: 0 auto 40px;
+  max-width: 560px;
+}
+
+.eq-field-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  text-align: left;
+}
+
+.eq-field-picker__card {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  background: var(--eq-bg);
+  border: 1px solid var(--eq-border);
+  border-radius: 12px;
+  padding: 20px 22px;
+  transition: border-color 0.15s, transform 0.15s, background 0.15s;
+}
+
+.eq-field-picker__card:hover,
+.eq-field-picker__card:focus-visible {
+  border-color: var(--eq-sky);
+  background: var(--eq-ice);
+  transform: translateY(-1px);
+}
+
+.eq-field-picker__tier {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--eq-grey);
+  margin-bottom: 6px;
+}
+
+.eq-field-picker__card--demo-trades .eq-field-picker__tier { color: var(--eq-sky); }
+.eq-field-picker__card--melbourne   .eq-field-picker__tier { color: var(--eq-deep); }
+
+.eq-field-picker__name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--eq-ink);
+  margin-bottom: 6px;
+}
+
+.eq-field-picker__tagline {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--eq-grey);
+}
+
+.eq-field-tenantbar {
+  position: fixed;
+  inset: 48px 0 auto;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: var(--eq-bg);
+  border-bottom: 1px solid var(--eq-border);
+  font-size: 12px;
+  z-index: 5;
+}
+
+.eq-field-tenantbar__label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--eq-ink);
+}
+
+.eq-field-tenantbar__tier {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--eq-sky);
+}
+
+.eq-field-tenantbar__name {
+  font-weight: 600;
+}
+
+.eq-field-tenantbar__switch {
+  all: unset;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--eq-sky);
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.eq-field-tenantbar__switch:hover,
+.eq-field-tenantbar__switch:focus-visible {
+  background: var(--eq-ice);
+}
+
+/* Variants that push the iframe / overlay / loading layouts down by
+ * the 36px tenant bar. Total offset = 48 (topbar) + 36 (tenantbar). */
+.eq-field-frame--with-tenantbar {
+  inset: 84px 0 0;
+  height: calc(100svh - 84px);
+}
+
+.eq-field-frame-loading--with-tenantbar {
+  height: calc(100svh - 84px);
+}
+
+.eq-field-frame-overlay--with-tenantbar {
+  inset: 84px 0 0;
+}
+
+/* ──────────────────────────────────────────────────────────────────
  * Placeholder / loading / error / empty
  * ────────────────────────────────────────────────────────────────── */
 
