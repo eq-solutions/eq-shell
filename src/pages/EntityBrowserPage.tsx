@@ -179,24 +179,27 @@ function EntityBrowserInner({ entity }: { entity: string }) {
       setErr(null);
       try {
         const sb = await createSupabaseClient();
-        const query = sb
-          .schema('app_data')
-          .from(view.table)
-          .select('*', { count: 'exact' })
-          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-          .order('created_at', { ascending: false });
-
-        const { data, error, count: c } = await query;
+        // Use RPC instead of schema('app_data').from() because Supabase
+        // PostgREST exposed-schemas is a dashboard toggle, not a SQL config.
+        // The RPC lives in public schema and returns jsonb rows + total count.
+        const { data, error } = await sb.rpc('eq_browse_entity', {
+          p_entity: entity,
+          p_limit: PAGE_SIZE,
+          p_offset: page * PAGE_SIZE,
+        });
         if (error) throw new Error(error.message);
-        setRows(data as Record<string, unknown>[]);
-        setCount(c ?? null);
+
+        type RpcRow = { row_json: Record<string, unknown>; total_count: number };
+        const result = (data as RpcRow[]) ?? [];
+        setRows(result.map((r) => r.row_json));
+        setCount(result.length > 0 ? Number(result[0].total_count) : 0);
       } catch (e) {
         setErr((e as Error).message);
       } finally {
         setLoading(false);
       }
     },
-    [view, page],
+    [view, page, entity],
   );
 
   useEffect(() => {
