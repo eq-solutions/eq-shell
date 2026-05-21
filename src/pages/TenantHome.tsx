@@ -1,6 +1,9 @@
-// TenantHome — the real dashboard. Counts + recent activity + module grid.
+// TenantHome — the dashboard.
+// Dark-navy hero strip mirrors the login aesthetic so signed-in feels
+// like the same platform, not a Stripe billing page. Below the hero:
+// snapshot stats, recent intake activity, module grid.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSession, moduleEnabled } from '../session';
 import { createSupabaseClient } from '../lib/supabaseJwt';
@@ -57,7 +60,10 @@ const ENTITY_LABELS: Record<string, string> = {
   licence: 'Licences',
 };
 
-const FEATURED_KEYS = ['customer', 'staff', 'schedule', 'tender', 'timesheet', 'leave_request'];
+// Hero number tiles get pulled from these entities in this order.
+const HERO_KEYS = ['customer', 'staff', 'tender'];
+// Secondary stats below the hero.
+const FEATURED_KEYS = ['site', 'schedule', 'timesheet', 'leave_request', 'prestart', 'toolbox_talk'];
 
 function relativeTime(iso: string): string {
   const d = new Date(iso).getTime();
@@ -73,8 +79,10 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
+// Audit fix #4: DB stores 'completed' (past tense); we also accept the
+// shorter 'complete' for older rows. Both render green.
 function statusDot(status: string): 'ok' | 'warn' | 'err' | undefined {
-  if (status === 'complete' || status === 'approved') return 'ok';
+  if (status === 'complete' || status === 'completed' || status === 'approved') return 'ok';
   if (status === 'committing' || status === 'pending' || status === 'submitted') return 'warn';
   if (status === 'failed' || status === 'rejected' || status === 'rolled_back') return 'err';
   return undefined;
@@ -113,126 +121,202 @@ export default function TenantHome() {
     void loadData();
   }, []);
 
+  const liveModuleCount = useMemo(
+    () => (session ? MODULES.filter((m) => m.live && moduleEnabled(session, m.key)).length : 0),
+    [session],
+  );
+
+  const totalRowsThisWeek = useMemo(() => {
+    if (!counts) return null;
+    return counts.reduce((acc, c) => acc + (c.count_recent ?? 0), 0);
+  }, [counts]);
+
   if (!session) return null;
 
   const enabledModules = MODULES.filter((m) => moduleEnabled(session, m.key));
+  const heroCounts = HERO_KEYS.map((k) => counts?.find((c) => c.entity === k)).filter(
+    (c): c is DashboardCount => c !== undefined,
+  );
   const featuredCounts = FEATURED_KEYS.map((k) => counts?.find((c) => c.entity === k)).filter(
     (c): c is DashboardCount => c !== undefined,
   );
 
   const greetName = session.user.email.split('@')[0].split('.')[0];
   const greetNameCapitalised = greetName.charAt(0).toUpperCase() + greetName.slice(1);
+  const roleLabel = session.user.role.replace('_', ' ');
+
+  // Audit fix #5: the delta is "additions this week" regardless of
+  // status. For leave-style entities the wording "added" is more honest
+  // than "+N this week" which implied the counter and the delta were
+  // filtered the same way (they're not).
+  function deltaLabel(entity: string, recent: number): string {
+    if (entity === 'leave_request') return `${recent} added this week`;
+    return `+${recent} this week`;
+  }
 
   return (
     <>
       <Topbar />
-      <main className="eq-page">
-        <div className="eq-page__header">
-          <h1 className="eq-page__title">Welcome back, {greetNameCapitalised}</h1>
-          <p className="eq-page__lede">
-            {session.tenant.name} · You're signed in as{' '}
-            <strong>{session.user.role.replace('_', ' ')}</strong>
-            {session.user.is_platform_admin ? ' with EQ platform admin access.' : '.'}
-          </p>
-        </div>
-
-        {err && <EqError title="Couldn't load dashboard" message={err} onRetry={loadData} />}
-
-        <section className="eq-section">
-          <h2 className="eq-section__heading">Snapshot</h2>
-          {loading && !counts ? (
-            <div className="eq-stat-grid">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} variant="card" />
-              ))}
+      <main className="eq-shell-page">
+        <section className="eq-home-hero">
+          <div className="eq-home-hero__inner">
+            <div className="eq-home-hero__chip-row">
+              <span className="eq-home-hero__chip">
+                <span className="eq-home-hero__chip-dot" />
+                {session.tenant.name.toUpperCase()} · {roleLabel.toUpperCase()}
+                {session.user.is_platform_admin ? ' · PLATFORM ADMIN' : ''}
+              </span>
             </div>
-          ) : (
-            <div className="eq-stat-grid">
-              {featuredCounts.map((c) => (
-                <Link
-                  key={c.entity}
-                  to={`/${tenantSlug}/data/${c.entity}`}
-                  className="eq-stat-card"
-                  style={{ textDecoration: 'none', color: 'inherit' }}
-                >
-                  <p className="eq-stat-card__label">
-                    {ENTITY_LABELS[c.entity] ?? c.entity}
-                  </p>
-                  <p className="eq-stat-card__value">{c.count_total.toLocaleString()}</p>
-                  {c.count_recent > 0 && (
-                    <p className="eq-stat-card__delta eq-stat-card__delta--up">
-                      +{c.count_recent} this week
+
+            <h1 className="eq-home-hero__headline">
+              Operating <span className="eq-home-hero__accent">EQ Solutions</span>
+              <span className="eq-home-hero__sub-name">
+                {' '}— {greetNameCapitalised}
+              </span>
+            </h1>
+            <p className="eq-home-hero__sub">
+              {liveModuleCount} module{liveModuleCount === 1 ? '' : 's'} live ·{' '}
+              {totalRowsThisWeek != null ? `${totalRowsThisWeek.toLocaleString()} rows added this week` : 'Loading…'}
+              {events && events.length > 0
+                ? ` · ${events.length} recent intake${events.length === 1 ? '' : 's'}`
+                : ''}
+            </p>
+
+            <div className="eq-home-hero__tiles">
+              {loading && !counts
+                ? Array.from({ length: 3 }).map((_, i) => (
+                    <div className="eq-home-hero__tile eq-home-hero__tile--skeleton" key={i}>
+                      <Skeleton variant="text" width={80} />
+                      <Skeleton variant="text" width={120} />
+                    </div>
+                  ))
+                : heroCounts.map((c) => (
+                    <Link
+                      key={c.entity}
+                      to={`/${tenantSlug}/data/${c.entity}`}
+                      className="eq-home-hero__tile"
+                    >
+                      <p className="eq-home-hero__tile-label">
+                        {ENTITY_LABELS[c.entity] ?? c.entity}
+                      </p>
+                      <p className="eq-home-hero__tile-value">{c.count_total.toLocaleString()}</p>
+                      {c.count_recent > 0 && (
+                        <p className="eq-home-hero__tile-delta">
+                          {deltaLabel(c.entity, c.count_recent)}
+                        </p>
+                      )}
+                    </Link>
+                  ))}
+            </div>
+          </div>
+        </section>
+
+        <main className="eq-page">
+          {err && <EqError title="Couldn't load dashboard" message={err} onRetry={loadData} />}
+
+          <section className="eq-section">
+            <div className="eq-section__head">
+              <h2 className="eq-section__heading">Snapshot</h2>
+              {counts && (
+                <span className="eq-section__hint">
+                  Tap a card to open the entity browser
+                </span>
+              )}
+            </div>
+            {loading && !counts ? (
+              <div className="eq-stat-grid">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} variant="card" />
+                ))}
+              </div>
+            ) : (
+              <div className="eq-stat-grid">
+                {featuredCounts.map((c) => (
+                  <Link
+                    key={c.entity}
+                    to={`/${tenantSlug}/data/${c.entity}`}
+                    className="eq-stat-card"
+                    style={{ textDecoration: 'none', color: 'inherit' }}
+                  >
+                    <p className="eq-stat-card__label">
+                      {ENTITY_LABELS[c.entity] ?? c.entity}
                     </p>
-                  )}
+                    <p className="eq-stat-card__value">{c.count_total.toLocaleString()}</p>
+                    {c.count_recent > 0 && (
+                      <p className="eq-stat-card__delta eq-stat-card__delta--up">
+                        {deltaLabel(c.entity, c.count_recent)}
+                      </p>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="eq-section">
+            <h2 className="eq-section__heading">Recent intake activity</h2>
+            {loading && !events ? (
+              <div className="eq-activity">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div className="eq-activity__row" key={i}>
+                    <Skeleton variant="text" width={300} />
+                  </div>
+                ))}
+              </div>
+            ) : !events || events.length === 0 ? (
+              <div className="eq-empty">
+                <p className="eq-empty__title">No intake events yet</p>
+                <p>
+                  Drop a CSV at <Link to={`/${tenantSlug}/intake`}>Intake</Link> to see activity here.
+                </p>
+              </div>
+            ) : (
+              <div className="eq-activity">
+                {events.map((e) => (
+                  <div key={e.intake_id} className="eq-activity__row">
+                    <span
+                      className={`eq-activity__dot ${
+                        statusDot(e.status) ? `eq-activity__dot--${statusDot(e.status)}` : ''
+                      }`}
+                    />
+                    <div className="eq-activity__main">
+                      <div className="eq-activity__title">
+                        {e.source_filename ?? `${e.entity} intake`} · {e.rows_committed.toLocaleString()} committed
+                        {e.rows_flagged > 0 && ` · ${e.rows_flagged} flagged`}
+                        {e.rows_rejected > 0 && ` · ${e.rows_rejected} rejected`}
+                      </div>
+                      <div className="eq-activity__meta">
+                        {e.entity} · via {e.source_app ?? 'unknown'} · {e.status}
+                      </div>
+                    </div>
+                    <span className="eq-activity__time">{relativeTime(e.started_at)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="eq-section">
+            <h2 className="eq-section__heading">Modules</h2>
+            <div className="eq-modules">
+              {enabledModules.map((m) => (
+                <Link
+                  key={m.key}
+                  to={`/${tenantSlug}/${m.to}`}
+                  className={`eq-module-card ${m.live ? '' : 'eq-module-card--soon'}`}
+                >
+                  <div className="eq-module-card__head">
+                    <h3>{m.label}</h3>
+                    <span className={`eq-module-card__chip ${m.live ? '' : 'eq-module-card__chip--soon'}`}>
+                      {m.live ? 'Live' : 'Soon'}
+                    </span>
+                  </div>
+                  <p>{m.description}</p>
                 </Link>
               ))}
             </div>
-          )}
-        </section>
-
-        <section className="eq-section">
-          <h2 className="eq-section__heading">Recent intake activity</h2>
-          {loading && !events ? (
-            <div className="eq-activity">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div className="eq-activity__row" key={i}>
-                  <Skeleton variant="text" width={300} />
-                </div>
-              ))}
-            </div>
-          ) : !events || events.length === 0 ? (
-            <div className="eq-empty">
-              <p className="eq-empty__title">No intake events yet</p>
-              <p>
-                Drop a CSV at <Link to={`/${tenantSlug}/intake`}>Intake</Link> to see activity here.
-              </p>
-            </div>
-          ) : (
-            <div className="eq-activity">
-              {events.map((e) => (
-                <div key={e.intake_id} className="eq-activity__row">
-                  <span
-                    className={`eq-activity__dot ${
-                      statusDot(e.status) ? `eq-activity__dot--${statusDot(e.status)}` : ''
-                    }`}
-                  />
-                  <div className="eq-activity__main">
-                    <div className="eq-activity__title">
-                      {e.source_filename ?? `${e.entity} intake`} · {e.rows_committed.toLocaleString()} committed
-                      {e.rows_flagged > 0 && ` · ${e.rows_flagged} flagged`}
-                      {e.rows_rejected > 0 && ` · ${e.rows_rejected} rejected`}
-                    </div>
-                    <div className="eq-activity__meta">
-                      {e.entity} · via {e.source_app ?? 'unknown'} · {e.status}
-                    </div>
-                  </div>
-                  <span className="eq-activity__time">{relativeTime(e.started_at)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="eq-section">
-          <h2 className="eq-section__heading">Modules</h2>
-          <div className="eq-modules">
-            {enabledModules.map((m) => (
-              <Link
-                key={m.key}
-                to={`/${tenantSlug}/${m.to}`}
-                className="eq-module-card"
-              >
-                <div className="eq-module-card__head">
-                  <h3>{m.label}</h3>
-                  <span className={`eq-module-card__chip ${m.live ? '' : 'eq-module-card__chip--soon'}`}>
-                    {m.live ? 'Live' : 'Soon'}
-                  </span>
-                </div>
-                <p>{m.description}</p>
-              </Link>
-            ))}
-          </div>
-        </section>
+          </section>
+        </main>
       </main>
     </>
   );

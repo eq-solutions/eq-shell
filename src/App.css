@@ -306,6 +306,11 @@
  * Page layout
  * ────────────────────────────────────────────────────────────────── */
 
+.eq-shell-page {
+  min-height: calc(100svh - 48px);
+  background: var(--eq-bg);
+}
+
 .eq-page {
   max-width: 1200px;
   margin: 0 auto;
@@ -329,6 +334,14 @@
 
 .eq-section { margin-top: 40px; }
 
+.eq-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 16px;
+  gap: 12px;
+}
+
 .eq-section__heading {
   font-size: 11px;
   font-weight: 600;
@@ -336,6 +349,154 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin: 0 0 16px;
+}
+
+.eq-section__head .eq-section__heading { margin: 0; }
+
+.eq-section__hint {
+  font-size: 12px;
+  color: var(--eq-grey);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * Home hero — dark navy strip that mirrors the login aesthetic so
+ * signed-in feels like the same platform, not a billing dashboard.
+ * ────────────────────────────────────────────────────────────────── */
+
+.eq-home-hero {
+  background: var(--eq-ink);
+  color: var(--eq-white);
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(61, 168, 216, 0.18);
+}
+
+.eq-home-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(61, 168, 216, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(61, 168, 216, 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+  pointer-events: none;
+}
+
+.eq-home-hero__inner {
+  position: relative;
+  z-index: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 48px 24px 56px;
+}
+
+.eq-home-hero__chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+
+.eq-home-hero__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid rgba(61, 168, 216, 0.4);
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--eq-sky);
+  background: rgba(61, 168, 216, 0.08);
+}
+
+.eq-home-hero__chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--eq-sky);
+}
+
+.eq-home-hero__headline {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  margin: 0 0 12px;
+  color: var(--eq-white);
+}
+
+.eq-home-hero__accent { color: var(--eq-sky); }
+
+.eq-home-hero__sub-name {
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 500;
+}
+
+.eq-home-hero__sub {
+  font-size: 15px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 28px;
+  max-width: 720px;
+}
+
+.eq-home-hero__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  max-width: 800px;
+}
+
+.eq-home-hero__tile {
+  display: block;
+  padding: 16px 20px;
+  border: 1px solid rgba(61, 168, 216, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--eq-white);
+  text-decoration: none !important;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.eq-home-hero__tile:hover {
+  border-color: var(--eq-sky);
+  background: rgba(61, 168, 216, 0.08);
+}
+
+.eq-home-hero__tile--skeleton {
+  display: grid;
+  gap: 10px;
+}
+
+.eq-home-hero__tile-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0 0 8px;
+}
+
+.eq-home-hero__tile-value {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--eq-white);
+  line-height: 1;
+  margin: 0;
+}
+
+.eq-home-hero__tile-delta {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--eq-sky);
+}
+
+@media (max-width: 720px) {
+  .eq-home-hero__headline { font-size: 30px; }
+  .eq-home-hero__inner { padding: 32px 20px 40px; }
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -411,6 +572,12 @@
 }
 
 .eq-module-card.disabled { opacity: 0.5; pointer-events: none; }
+
+.eq-module-card--soon {
+  background: var(--gray-50);
+}
+
+.eq-module-card--soon h3 { color: var(--eq-grey); }
 
 .eq-module-card__head {
   display: flex;
