@@ -19,6 +19,7 @@ export function Topbar() {
     { to: `/${tenantSlug}/field`, label: 'Field', module: 'field' },
     { to: `/${tenantSlug}/admin/audit`, label: 'Audit' },
     { to: `/${tenantSlug}/admin/users`, label: 'Users' },
+    { to: `/${tenantSlug}/admin/settings`, label: 'Settings' },
   ];
 
   const visible = navItems.filter((i) => !i.module || moduleEnabled(session, i.module));

@@ -19,6 +19,7 @@ import AdminInviteUser from './pages/AdminInviteUser';
 import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
+import AdminTenantSettings from './pages/AdminTenantSettings';
 import EntityBrowserPage from './pages/EntityBrowserPage';
 import NotFound from './pages/NotFound';
 import './App.css';
@@ -272,6 +273,8 @@ function TenantTree() {
         <Route path="admin/users/:userId" element={<AdminEditUser />} />
         {/* S3 — audit log viewer + entity browser */}
         <Route path="admin/audit" element={<AdminAuditPage />} />
+        {/* Polish 2026-05-21 — tenant settings */}
+        <Route path="admin/settings" element={<AdminTenantSettings />} />
         <Route path="data/:entity" element={<EntityBrowserPage />} />
         {/* Real 404 instead of silent redirect to home (caught users in a
             loop where stale links just bounced them home with no signal). */}
