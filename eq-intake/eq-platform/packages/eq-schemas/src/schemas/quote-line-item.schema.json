@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/quote-line-item/v1.json",
+  "title": "Quote Line Item",
+  "description": "A single line item on a quote. Money in cents, quantity in thousandths (qty_display = quantity_thousandths / 1000).",
+  "type": "object",
+  "x-eq-entity": "quote_line_item",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quote_line_item",
+  "required": ["line_item_id", "tenant_id", "quote_id", "line_number", "description"],
+  "properties": {
+    "line_item_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "quote_id": {
+      "type": "string", "format": "uuid",
+      "description": "FK to quote.quote_id. ON DELETE CASCADE.",
+      "x-eq-foreign-key": "quote.quote_id"
+    },
+    "line_number": { "type": "integer", "minimum": 1, "description": "1-based sequence within the quote." },
+    "description": { "type": "string", "minLength": 1, "description": "What this line is for." },
+    "quantity_thousandths": {
+      "type": "integer", "minimum": 0, "default": 1000,
+      "description": "Quantity * 1000 (integer to avoid float drift). 1 unit = 1000."
+    },
+    "unit": { "type": ["string", "null"], "description": "each | m | kg | hr | day | lot", "maxLength": 16 },
+    "unit_rate_cents": { "type": "integer", "minimum": 0, "default": 0 },
+    "line_total_cents": { "type": "integer", "minimum": 0, "default": 0, "description": "= round(quantity_thousandths * unit_rate_cents / 1000)" },
+    "category": { "type": ["string", "null"], "enum": ["labour", "material", "equipment", "subcontractor", "other", null] },
+    "notes": { "type": ["string", "null"] },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}

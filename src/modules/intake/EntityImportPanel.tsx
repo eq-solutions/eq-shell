@@ -1,31 +1,86 @@
-// EntityImportPanel — Sprint S1.6.
+// EntityImportPanel — extended in S2 prep to cover all entities with
+// authored JSON schemas in @eq/schemas (20 of 42 total).
 //
-// One ParserDropZone per canonical entity. Wires the commit function
-// through the per-domain RPC by:
+// Wires the commit function through the per-domain RPC by:
 //   1. INSERTing a shell_control.eq_intake_events row (the intake header)
 //   2. Calling eq_intake_commit_batch with the resulting intake_id
 //
-// Schemas are statically imported per entity for the Core domain (customer,
-// contact, site). Adding domains = add to the schemas + entities maps.
+// Entities missing from this map: 22 Field-domain entities whose JSON
+// schemas weren't authored during Unit 5 (registry-only placeholders).
+// Authoring those is a follow-up; entries here only require the JSON +
+// table name once the schemas exist.
 
 import { useMemo } from 'react';
 import { ParserDropZone, type CommitFn, type CommittableRow } from '@eq/confirm-ui';
 import { createSupabaseClient } from '../../lib/supabaseJwt';
 import { useSession } from '../../session';
 
-// Static schema imports — Core domain (3 entities, S1.6 scope).
-// Quotes + Field + Cards + Service domains: extend this map (S2 follow-up).
-// JSON imports need vite-json plugin (default in Vite).
+// --- Core domain (3) ---
 import customerSchema from '@eq/schemas/schemas/customer.schema.json';
 import contactSchema from '@eq/schemas/schemas/contact.schema.json';
 import siteSchema from '@eq/schemas/schemas/site.schema.json';
 
-// Map entity-singular (registry-canonical name) → JSON schema + plural table name
-const ENTITY_MAP: Record<string, { schema: Record<string, unknown>; table: string }> = {
+// --- Cards domain (1) ---
+import licenceSchema from '@eq/schemas/schemas/licence.schema.json';
+
+// --- Service domain (1) ---
+import assetSchema from '@eq/schemas/schemas/asset.schema.json';
+
+// --- Quotes domain (7) ---
+import quoteSchema from '@eq/schemas/schemas/quote.schema.json';
+import quoteLineItemSchema from '@eq/schemas/schemas/quote-line-item.schema.json';
+import quoteStatusHistorySchema from '@eq/schemas/schemas/quote-status-history.schema.json';
+import quoteAttachmentSchema from '@eq/schemas/schemas/quote-attachment.schema.json';
+import scopeTemplateSchema from '@eq/schemas/schemas/scope-template.schema.json';
+import rateLibrarySchema from '@eq/schemas/schemas/rate-library.schema.json';
+import quoteEmailOutboxSchema from '@eq/schemas/schemas/quote-email-outbox.schema.json';
+
+// --- Field domain (8 — registry-canonical entities with JSON files) ---
+import staffSchema from '@eq/schemas/schemas/staff.schema.json';
+import scheduleSchema from '@eq/schemas/schemas/schedule.schema.json';
+import prestartSchema from '@eq/schemas/schemas/prestart.schema.json';
+import toolboxTalkSchema from '@eq/schemas/schemas/toolbox-talk.schema.json';
+import swmsSchema from '@eq/schemas/schemas/swms.schema.json';
+import jsaSchema from '@eq/schemas/schemas/jsa.schema.json';
+import itpSchema from '@eq/schemas/schemas/itp.schema.json';
+import incidentSchema from '@eq/schemas/schemas/incident.schema.json';
+
+interface EntityMapEntry {
+  schema: Record<string, unknown>;
+  table: string;
+}
+
+// Singular registry entity name → JSON schema + plural app_data table name.
+// Order: Core → Cards → Service → Quotes → Field (matches landing-page sequence).
+const ENTITY_MAP: Record<string, EntityMapEntry> = {
+  // Core
   customer: { schema: customerSchema as Record<string, unknown>, table: 'customers' },
   contact: { schema: contactSchema as Record<string, unknown>, table: 'contacts' },
   site: { schema: siteSchema as Record<string, unknown>, table: 'sites' },
+  // Cards
+  licence: { schema: licenceSchema as Record<string, unknown>, table: 'licences' },
+  // Service
+  asset: { schema: assetSchema as Record<string, unknown>, table: 'assets' },
+  // Quotes
+  quote: { schema: quoteSchema as Record<string, unknown>, table: 'quote' },
+  quote_line_item: { schema: quoteLineItemSchema as Record<string, unknown>, table: 'quote_line_item' },
+  quote_status_history: { schema: quoteStatusHistorySchema as Record<string, unknown>, table: 'quote_status_history' },
+  quote_attachment: { schema: quoteAttachmentSchema as Record<string, unknown>, table: 'quote_attachment' },
+  scope_template: { schema: scopeTemplateSchema as Record<string, unknown>, table: 'scope_template' },
+  rate_library: { schema: rateLibrarySchema as Record<string, unknown>, table: 'rate_library' },
+  quote_email_outbox: { schema: quoteEmailOutboxSchema as Record<string, unknown>, table: 'quote_email_outbox' },
+  // Field (the 8 entities with authored JSON schemas)
+  staff: { schema: staffSchema as Record<string, unknown>, table: 'staff' },
+  schedule: { schema: scheduleSchema as Record<string, unknown>, table: 'schedule_entries' },
+  prestart: { schema: prestartSchema as Record<string, unknown>, table: 'prestart_checks' },
+  toolbox_talk: { schema: toolboxTalkSchema as Record<string, unknown>, table: 'toolbox_talks' },
+  swms: { schema: swmsSchema as Record<string, unknown>, table: 'swms' },
+  jsa: { schema: jsaSchema as Record<string, unknown>, table: 'jsa_records' },
+  itp: { schema: itpSchema as Record<string, unknown>, table: 'itp_records' },
+  incident: { schema: incidentSchema as Record<string, unknown>, table: 'incidents' },
 };
+
+export const WIRED_ENTITY_NAMES = Object.keys(ENTITY_MAP);
 
 interface EntityImportPanelProps {
   entity: string; // registry-canonical singular name
@@ -34,7 +89,6 @@ interface EntityImportPanelProps {
 
 export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
   const { session } = useSession();
-
   const mapEntry = ENTITY_MAP[entity];
 
   const config = useMemo(() => {
@@ -55,8 +109,8 @@ export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
       <div className="eq-coming-soon">
         <h3>Import for "{entity}"</h3>
         <p>
-          Schema not yet wired for this entity. Core domain entities (customer,
-          contact, site) are wired in Sprint S1.6; the rest land in S2.
+          JSON schema not yet authored in @eq/schemas. Registry-only
+          placeholder. Add a schema file + an entry in ENTITY_MAP to wire.
         </p>
         {onClose && (
           <button type="button" onClick={onClose}>
@@ -99,9 +153,6 @@ function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn
   return async (rows: CommittableRow[]) => {
     const sb = await createSupabaseClient();
 
-    // Step 1: create eq_intake_events row.
-    // We use the .schema('shell_control') accessor now that PostgREST exposes
-    // shell_control (S1.1 toggled this on).
     const intakePayload = {
       tenant_id: tenantId,
       entity,
@@ -113,7 +164,6 @@ function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn
       import_mode: 'insert',
       source_app: 'shell',
       intake_mode: 'strict',
-      created_by: undefined,
     };
 
     const { data: intakeRow, error: intakeErr } = await sb
@@ -130,8 +180,6 @@ function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn
     }
 
     const intakeId = (intakeRow as { intake_id: string }).intake_id;
-
-    // Step 2: commit the rows via the router RPC.
     const rowsJsonb = rows.map((r) => r.canonical);
 
     const { data: commitResult, error: commitErr } = await sb.rpc('eq_intake_commit_batch', {
@@ -144,7 +192,6 @@ function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn
     });
 
     if (commitErr) {
-      // Mark the intake event as errored so future runs show what happened
       await sb
         .schema('shell_control')
         .from('eq_intake_events')
@@ -157,7 +204,6 @@ function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn
     const committed = result?.committed_count ?? 0;
     const failed = rows.length - committed;
 
-    // Mark intake event complete
     await sb
       .schema('shell_control')
       .from('eq_intake_events')

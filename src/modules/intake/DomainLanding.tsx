@@ -11,13 +11,15 @@ import { useEffect, useState } from 'react';
 import { useSession } from '../../session';
 import { createSupabaseClient } from '../../lib/supabaseJwt';
 import { Gate } from '../../permissions/Gate';
-import { EntityImportPanel } from './EntityImportPanel';
+import { EntityImportPanel, WIRED_ENTITY_NAMES } from './EntityImportPanel';
 
 type ModuleSlug = 'core' | 'field' | 'cards' | 'quotes' | 'service';
 
-// Entities with wired ParserDropZone (Sprint S1.6 ships Core only).
-// Extend in S2 by importing schema + table name into EntityImportPanel.
-const WIRED_ENTITIES = new Set(['customer', 'contact', 'site']);
+// Entities with wired ParserDropZone — driven by EntityImportPanel's
+// ENTITY_MAP. 20 of 42 wired today (Core + Cards + Service + Quotes +
+// 8 Field entities). The remaining 22 Field entities are registry
+// placeholders — add JSON schemas + ENTITY_MAP entries to wire.
+const WIRED_ENTITIES = new Set(WIRED_ENTITY_NAMES);
 
 interface RegistryEntity {
   entity: string;

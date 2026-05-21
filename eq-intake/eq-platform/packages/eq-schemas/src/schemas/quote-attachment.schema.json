@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/quote-attachment/v1.json",
+  "title": "Quote Attachment",
+  "description": "A generated document (docx/pdf) or uploaded file attached to a quote. Storage path is within the per-tenant bucket tenant-{tenant_id}.",
+  "type": "object",
+  "x-eq-entity": "quote_attachment",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quote_attachment",
+  "required": ["attachment_id", "tenant_id", "quote_id", "file_name"],
+  "properties": {
+    "attachment_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "quote_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "quote.quote_id" },
+    "file_name": { "type": "string", "description": "Display name, e.g. 'QTE-1042 — Project Name.docx'." },
+    "file_size_bytes": { "type": ["integer", "null"], "minimum": 0 },
+    "mime_type": { "type": ["string", "null"] },
+    "storage_path": { "type": ["string", "null"], "description": "Path within tenant-{tenant_id} bucket, e.g. 'quotes/{quote_id}/{file_name}'." },
+    "sha256": { "type": ["string", "null"], "description": "Content hash for integrity." },
+    "doc_type": { "type": ["string", "null"], "enum": ["docx", "pdf", "image", "other", null] },
+    "quote_snapshot": { "type": ["object", "null"], "description": "Frozen quote state at generation time; reproduces historical docs exactly." },
+    "generated_by_initials": { "type": ["string", "null"], "maxLength": 8 },
+    "generated_at": { "type": ["string", "null"], "format": "date-time" },
+    "uploaded_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

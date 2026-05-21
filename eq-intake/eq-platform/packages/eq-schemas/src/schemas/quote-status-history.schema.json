@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/quote-status-history/v1.json",
+  "title": "Quote Status History",
+  "description": "Status transition log for a quote. One row per status change. Per-domain workflow audit per 2026-05-20 audit-log Q4 decision.",
+  "type": "object",
+  "x-eq-entity": "quote_status_history",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quote_status_history",
+  "required": ["history_id", "tenant_id", "quote_id", "to_status"],
+  "properties": {
+    "history_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "quote_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "quote.quote_id" },
+    "from_status": { "type": ["string", "null"], "enum": ["draft", "sent", "accepted", "rejected", "expired", "superseded", null] },
+    "to_status": { "type": "string", "enum": ["draft", "sent", "accepted", "rejected", "expired", "superseded"] },
+    "changed_by_initials": { "type": ["string", "null"], "maxLength": 8 },
+    "changed_by_user_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "shell_control.users.id" },
+    "reason": { "type": ["string", "null"] },
+    "changed_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

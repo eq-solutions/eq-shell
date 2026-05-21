@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/quotes/quote/v1.json",
+  "title": "Quote",
+  "description": "A customer quote (proposal). Header-level. Line items live in quote_line_item. Money in cents (bigint); quantities in thousandths.",
+  "type": "object",
+  "x-eq-entity": "quote",
+  "x-eq-module": "quotes",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quote",
+  "required": ["quote_id", "tenant_id", "customer_id", "status"],
+  "properties": {
+    "quote_id": { "type": "string", "format": "uuid", "description": "Internal canonical ID.", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "customer_id": {
+      "type": "string", "format": "uuid",
+      "description": "FK to app_data.customer. Required.",
+      "x-eq-foreign-key": "customer.customer_id",
+      "x-eq-fk-fuzzy-match-on": ["customer.company_name", "customer.external_id"]
+    },
+    "contact_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "contact.contact_id" },
+    "site_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "quote_number": { "type": ["string", "null"], "description": "External-facing number (e.g. QTE-1042 from Smartsheet).", "x-eq-source-aliases": ["number", "no", "ref", "quote_no"], "maxLength": 64 },
+    "external_id": { "type": ["string", "null"], "description": "External system ID (e.g. workbench_job_no).", "x-eq-source-aliases": ["job_no", "workbench_id", "ref"], "maxLength": 64 },
+    "project_name": { "type": ["string", "null"], "x-eq-source-aliases": ["project", "job_name", "title"], "maxLength": 200 },
+    "attn_name": { "type": ["string", "null"], "description": "ATTN person on the quote letterhead. Denormalised from contact for fast rendering.", "x-eq-source-aliases": ["attention", "addressed_to"], "maxLength": 100 },
+    "attn_first_name": { "type": ["string", "null"], "maxLength": 60 },
+    "attn_phone": { "type": ["string", "null"], "maxLength": 40 },
+    "address": { "type": ["string", "null"], "description": "Site address denormalised for letterhead." },
+    "scope_of_works": { "type": ["string", "null"], "description": "Free-text scope. Detailed line items go in quote_line_item." },
+    "estimator_name": { "type": ["string", "null"], "x-eq-source-aliases": ["estimator", "prepared_by"], "maxLength": 100 },
+    "estimator_initials": { "type": ["string", "null"], "maxLength": 8 },
+    "status": {
+      "type": "string", "default": "draft",
+      "enum": ["draft", "sent", "accepted", "rejected", "expired", "superseded"],
+      "x-eq-source-aliases": ["state", "stage"]
+    },
+    "subtotal_cents": { "type": "integer", "default": 0, "minimum": 0, "description": "Subtotal ex-GST in cents." },
+    "gst_cents": { "type": "integer", "default": 0, "minimum": 0 },
+    "total_cents": { "type": "integer", "default": 0, "minimum": 0, "description": "Total inc-GST in cents." },
+    "margin_pct": { "type": ["number", "null"], "description": "Target margin %; null = not tracked." },
+    "sent_at": { "type": ["string", "null"], "format": "date-time" },
+    "sent_by_initials": { "type": ["string", "null"], "maxLength": 8 },
+    "notes": { "type": ["string", "null"] },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}
