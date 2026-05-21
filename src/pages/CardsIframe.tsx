@@ -21,10 +21,10 @@ import { Topbar } from '../components/Topbar';
 
 const CARDS_URL = 'https://eq-cards.netlify.app/';
 
-// Set this to true when Cards Unit 4 ships (the Flutter flip + hash
-// handoff handler is live on the Cards side). Until then, the iframe
-// loads Cards without an SSO token and Cards uses its own email-OTP.
-const CARDS_USE_SHELL_SSO = false;
+// Cards Unit 4 shipped 2026-05-21: Cards Flutter app reads the
+// shell-minted JWT from the iframe URL hash and calls setSession.
+// Cards' own email-OTP path is gone.
+const CARDS_USE_SHELL_SSO = true;
 
 export default function CardsIframe() {
   const [iframeSrc, setIframeSrc] = useState<string | null>(CARDS_USE_SHELL_SSO ? null : CARDS_URL);
