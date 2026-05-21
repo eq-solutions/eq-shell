@@ -1,14 +1,20 @@
-/* EQ Shell — base styles.
- * Phase 1.B keeps it deliberately bare. Linear/Notion aesthetic
- * per EQ brand: no gradients, no shadows. Plus Jakarta Sans is
- * loaded from Google Fonts via @import — swap to self-hosted
- * in a later phase if procurement wants offline assets.
+/* EQ Shell — base styles + design system.
+ * Linear/Notion aesthetic per EQ brand: no gradients, no drop shadows.
+ * Subtle borders, generous whitespace, restrained colour.
  *
- * Brand tokens:
- *   --eq-brand        — per-tenant accent (set by BrandProvider on document root)
- *   --eq-brand-deep   — derived darker shade
- *   --eq-ice          — neutral subtle bg
+ * Brand tokens (CSS custom properties — also set per-tenant by BrandProvider):
+ *   --eq-brand        — tenant accent (defaults to EQ Sky)
+ *   --eq-brand-deep   — darker shade for hover/emphasis
+ *   --eq-ice          — brand-tinted subtle surface
  *   --eq-ink          — primary text
+ *   --eq-mute         — secondary text
+ *   --eq-border       — default divider
+ *   --eq-border-strong — emphasised divider
+ *   --eq-bg           — page background
+ *   --eq-bg-subtle    — offset surface (cards, table headers)
+ *   --eq-success      — approved / completed
+ *   --eq-warning      — pending / attention
+ *   --eq-danger       — failed / rejected
  */
 
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
@@ -20,39 +26,37 @@
   --eq-ink: #1A1A2E;
   --eq-mute: #6b6375;
   --eq-border: #e5e4e7;
+  --eq-border-strong: #d4d4d8;
   --eq-bg: #ffffff;
+  --eq-bg-subtle: #fafbfc;
+  --eq-success: #16a34a;
+  --eq-warning: #d97706;
+  --eq-danger: #dc2626;
   --eq-font: 'Plus Jakarta Sans', system-ui, 'Segoe UI', Roboto, sans-serif;
 
-  font: 16px/1.45 var(--eq-font);
+  font: 16px/1.5 var(--eq-font);
   color: var(--eq-ink);
   background: var(--eq-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body, #root {
   margin: 0;
   min-height: 100svh;
 }
 
-a {
-  color: var(--eq-brand);
-  text-decoration: none;
-}
-a:hover {
-  text-decoration: underline;
-}
+a { color: var(--eq-brand); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-button {
-  font-family: inherit;
-  cursor: pointer;
-}
+button { font-family: inherit; cursor: pointer; }
+input, button, select, textarea { font-family: inherit; font-size: inherit; }
 
-input, button {
-  font-family: inherit;
-  font-size: inherit;
+::selection { background: var(--eq-ice); }
+
+@keyframes eq-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }

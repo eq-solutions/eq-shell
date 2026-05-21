@@ -18,6 +18,8 @@ import AcceptInvite from './pages/AcceptInvite';
 import AdminInviteUser from './pages/AdminInviteUser';
 import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
+import AdminAuditPage from './pages/AdminAuditPage';
+import EntityBrowserPage from './pages/EntityBrowserPage';
 import './App.css';
 
 // Q5 lock: each module is its own lazy chunk so disabled tenants
@@ -267,6 +269,9 @@ function TenantTree() {
         <Route path="admin/users" element={<AdminUserList />} />
         <Route path="admin/users/invite" element={<AdminInviteUser />} />
         <Route path="admin/users/:userId" element={<AdminEditUser />} />
+        {/* S3 — audit log viewer + entity browser */}
+        <Route path="admin/audit" element={<AdminAuditPage />} />
+        <Route path="data/:entity" element={<EntityBrowserPage />} />
         <Route path="*" element={<Navigate to="." replace />} />
       </Routes>
     </BrandProvider>

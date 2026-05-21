@@ -63,6 +63,22 @@ const ADMIN_MATRIX: Record<EqRole, AdminPermKey[]> = {
 };
 
 // ============================================================================
+// AUDIT permission keys (S2.D + S3 — audit log viewer + rollback)
+// ============================================================================
+
+const AUDIT_PERMS = ['audit.view', 'audit.rollback'] as const;
+
+type AuditPermKey = (typeof AUDIT_PERMS)[number];
+
+const AUDIT_MATRIX: Record<EqRole, AuditPermKey[]> = {
+  manager:     ['audit.view', 'audit.rollback'],
+  supervisor:  ['audit.view'],
+  employee:    [],
+  apprentice:  [],
+  labour_hire: [],
+};
+
+// ============================================================================
 // MASTER LIST + TYPE
 // ============================================================================
 //
@@ -71,9 +87,9 @@ const ADMIN_MATRIX: Record<EqRole, AdminPermKey[]> = {
 // per-role Set lookup (MATRIX). Adding a module is one import + one
 // concat per role.
 
-export const ALL_PERMS = [...ADMIN_PERMS, ...INTAKE_PERMS] as const;
+export const ALL_PERMS = [...ADMIN_PERMS, ...AUDIT_PERMS, ...INTAKE_PERMS] as const;
 
-export type PermKey = AdminPermKey | IntakePermKey;
+export type PermKey = AdminPermKey | AuditPermKey | IntakePermKey;
 
 // ============================================================================
 // PER-ROLE GRANTS — composed from module-local matrices
@@ -87,6 +103,7 @@ export type PermKey = AdminPermKey | IntakePermKey;
 function compose(role: EqRole): Set<PermKey> {
   return new Set<PermKey>([
     ...ADMIN_MATRIX[role],
+    ...AUDIT_MATRIX[role],
     ...INTAKE_MATRIX[role],
   ]);
 }
