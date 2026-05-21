@@ -50,7 +50,7 @@
 // runtime dep just to format the same primitive differently isn't
 // worth it.
 
-import { createHmac } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import type { EqRole } from './supabase.js';
 
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET ?? '';
@@ -66,12 +66,20 @@ export interface SupabaseJwtClaims {
   sub: string;
   role: 'authenticated';
   aud: 'authenticated';
+  jti: string;
   app_metadata: {
     tenant_id: string;
     eq_role: EqRole;
     is_platform_admin: boolean;
+    source_app?: string;
   };
   iat: number;
+  exp: number;
+}
+
+export interface MintedJwt {
+  token: string;
+  jti: string;
   exp: number;
 }
 
@@ -79,8 +87,15 @@ export interface SupabaseJwtClaims {
  * Mint a fresh Supabase JWT for a given user. The JWT is short-lived
  * (15min default) and signed with the canonical project's JWT secret.
  *
+ * S2.D — JWT now includes a jti (token-unique id) so the token can be
+ * revoked before its TTL via shell_control.revoked_sessions +
+ * eq_is_session_revoked() check in verify-shell-session.
+ *
  * Optional ttlSeconds override — caps at 900 (15min) by default;
  * /.netlify/functions/mint-supabase-jwt enforces an explicit ceiling.
+ *
+ * Optional sourceApp — recorded in app_metadata.source_app + the
+ * mint_audit_log row so we know which app initiated the mint.
  */
 export function signSupabaseJwt(
   userId: string,
@@ -88,7 +103,8 @@ export function signSupabaseJwt(
   eqRole: EqRole,
   isPlatformAdmin: boolean,
   ttlSeconds: number = SUPABASE_JWT_TTL_SECONDS,
-): string {
+  sourceApp: string = 'shell',
+): MintedJwt {
   if (!JWT_SECRET) {
     throw new Error(
       'Server misconfigured — SUPABASE_JWT_SECRET must be set on the eq-shell Netlify deploy. ' +
@@ -97,14 +113,17 @@ export function signSupabaseJwt(
   }
 
   const now = Math.floor(Date.now() / 1000);
+  const jti = randomUUID();
   const claims: SupabaseJwtClaims = {
     sub: userId,
     role: 'authenticated',
     aud: 'authenticated',
+    jti,
     app_metadata: {
       tenant_id: tenantId,
       eq_role: eqRole,
       is_platform_admin: isPlatformAdmin,
+      source_app: sourceApp,
     },
     iat: now,
     exp: now + ttlSeconds,
@@ -117,7 +136,7 @@ export function signSupabaseJwt(
     createHmac('sha256', JWT_SECRET).update(signingInput).digest(),
   );
 
-  return `${signingInput}.${signature}`;
+  return { token: `${signingInput}.${signature}`, jti, exp: claims.exp };
 }
 
 export function hasSupabaseJwtSecret(): boolean {

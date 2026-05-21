@@ -111,14 +111,35 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   }
 
   const ttlSeconds = parseTtl(req);
-  const token = signSupabaseJwt(
+  const sourceApp = new URL(req.url).searchParams.get('source_app') ?? 'shell';
+  const { token, jti, exp } = signSupabaseJwt(
     user.id,
     user.tenant_id,
     user.role,
     user.is_platform_admin,
     ttlSeconds,
+    sourceApp,
   );
 
-  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  // S2.D — record the mint event in shell_control.mint_audit_log.
+  // Best-effort: failure here doesn't block the response.
+  try {
+    const sourceIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? null;
+    const userAgent = req.headers.get('user-agent') ?? null;
+    await sb.rpc('eq_record_mint', {
+      p_tenant_id: user.tenant_id,
+      p_user_id: user.id,
+      p_token_type: 'supabase_jwt',
+      p_jti: jti,
+      p_source_app: sourceApp,
+      p_source_ip: sourceIp,
+      p_user_agent: userAgent,
+      p_exp_at: new Date(exp * 1000).toISOString(),
+    });
+  } catch (e) {
+    // Audit failure shouldn't block the user. Log + continue.
+    console.warn('[mint-supabase-jwt] mint audit failed:', (e as Error).message);
+  }
+
   return jsonResponse(200, { token, exp });
 });
