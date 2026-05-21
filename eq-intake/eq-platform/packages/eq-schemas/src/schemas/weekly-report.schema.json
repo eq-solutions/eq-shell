@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/weekly-report/v1.json",
+  "title": "Weekly Report",
+  "description": "Weekly site report — HSEQ metrics, ITP summary, hold points, RFIs. Placeholder schema; v1 ahead of UI per 2026-05-20 plan-review.",
+  "type": "object",
+  "x-eq-entity": "weekly_report",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "weekly_reports",
+  "required": ["weekly_report_id", "tenant_id", "site_id", "week_ending_date", "status"],
+  "properties": {
+    "weekly_report_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "site_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "week_ending_date": { "type": "string", "format": "date" },
+    "hseq_metrics": { "type": "object", "default": {} },
+    "itp_summary": { "type": "array", "default": [], "items": { "type": "object" } },
+    "hold_points": { "type": "array", "default": [], "items": { "type": "object" } },
+    "rfis": { "type": "array", "default": [], "items": { "type": "object" } },
+    "progress_summary": { "type": ["string", "null"] },
+    "next_week_focus": { "type": ["string", "null"] },
+    "notes": { "type": ["string", "null"] },
+    "attendance_summary": { "type": "object", "default": {} },
+    "status": { "type": "string", "default": "draft", "enum": ["draft", "submitted"] },
+    "submitted_at": { "type": ["string", "null"], "format": "date-time" },
+    "submitted_by_user_id": { "type": ["string", "null"], "format": "uuid" }
+  }
+}

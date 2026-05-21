@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/apprentice-profile/v1.json",
+  "title": "Apprentice Profile",
+  "description": "Apprentice extension of a staff record — trade, year_level, mentor, buddy, TAFE provider. One row per staff member who is also an apprentice.",
+  "type": "object",
+  "x-eq-entity": "apprentice_profile",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "apprentice_profiles",
+  "required": ["apprentice_profile_id", "tenant_id", "staff_id"],
+  "properties": {
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "staff_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "trade": { "type": ["string", "null"], "x-eq-source-aliases": ["discipline", "trade_code"] },
+    "year_level": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
+    "tafe_provider": { "type": ["string", "null"], "x-eq-source-aliases": ["rto", "provider"] },
+    "rto_code": { "type": ["string", "null"] },
+    "mentor_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "buddy_staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "start_date": { "type": ["string", "null"], "format": "date" },
+    "expected_completion": { "type": ["string", "null"], "format": "date" },
+    "notes": { "type": ["string", "null"] },
+    "active": { "type": "boolean", "default": true }
+  }
+}

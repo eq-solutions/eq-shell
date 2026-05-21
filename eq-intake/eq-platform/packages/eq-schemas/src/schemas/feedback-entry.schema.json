@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/feedback-entry/v1.json",
+  "title": "Feedback Entry",
+  "description": "Feedback for an apprentice. Type: positive | constructive | incident | observation.",
+  "type": "object",
+  "x-eq-entity": "feedback_entry",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "feedback_entries",
+  "required": ["feedback_entry_id", "tenant_id", "apprentice_profile_id", "feedback_text"],
+  "properties": {
+    "feedback_entry_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "apprentice_profile.apprentice_profile_id" },
+    "feedback_text": { "type": "string", "minLength": 1 },
+    "feedback_type": { "type": ["string", "null"], "enum": ["positive", "constructive", "incident", "observation", null] },
+    "from_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "occurred_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

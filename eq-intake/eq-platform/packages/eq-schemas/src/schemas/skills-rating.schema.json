@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/skills-rating/v1.json",
+  "title": "Skills Rating",
+  "description": "Skills rating for an apprentice (1-5 scale). Many per apprentice over time.",
+  "type": "object",
+  "x-eq-entity": "skills_rating",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "skills_ratings",
+  "required": ["skills_rating_id", "tenant_id", "apprentice_profile_id", "skill_name", "rating"],
+  "properties": {
+    "skills_rating_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "apprentice_profile.apprentice_profile_id" },
+    "skill_name": { "type": "string", "minLength": 1 },
+    "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "rated_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "rated_at": { "type": ["string", "null"], "format": "date-time" },
+    "notes": { "type": ["string", "null"] }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/quarterly-review/v1.json",
+  "title": "Quarterly Review",
+  "description": "Apprentice quarterly review. Outcome: on_track | at_risk | needs_intervention | complete. One per (apprentice, year, quarter).",
+  "type": "object",
+  "x-eq-entity": "quarterly_review",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "quarterly_reviews",
+  "required": ["quarterly_review_id", "tenant_id", "apprentice_profile_id", "quarter", "year"],
+  "properties": {
+    "quarterly_review_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "apprentice_profile_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "apprentice_profile.apprentice_profile_id" },
+    "quarter": { "type": "integer", "minimum": 1, "maximum": 4 },
+    "year": { "type": "integer", "minimum": 2020, "maximum": 2099 },
+    "reviewer_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "content": { "type": "object", "default": {} },
+    "outcome": { "type": ["string", "null"], "enum": ["on_track", "at_risk", "needs_intervention", "complete", null] },
+    "decided_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

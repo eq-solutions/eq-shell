@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tender-enrichment/v1.json",
+  "title": "Tender Enrichment",
+  "description": "Supplementary tender data — URLs, attachments, free-form context. Many per tender.",
+  "type": "object",
+  "x-eq-entity": "tender_enrichment",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tender_enrichments",
+  "required": ["enrichment_id", "tenant_id", "tender_id"],
+  "properties": {
+    "enrichment_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "tender_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "tender.tender_id" },
+    "source": { "type": ["string", "null"] },
+    "source_url": { "type": ["string", "null"], "format": "uri" },
+    "content": { "type": ["object", "null"] },
+    "attachments": { "type": ["array", "null"], "items": { "type": "object" } },
+    "notes": { "type": ["string", "null"] }
+  }
+}

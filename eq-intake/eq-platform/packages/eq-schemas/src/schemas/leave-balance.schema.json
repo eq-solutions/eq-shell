@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/leave-balance/v1.json",
+  "title": "Leave Balance",
+  "description": "Per-staff balances for AL / sick / long-service / personal leave. One row per (tenant_id, staff_id).",
+  "type": "object",
+  "x-eq-entity": "leave_balance",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "leave_balances",
+  "required": ["leave_balance_id", "tenant_id", "staff_id"],
+  "properties": {
+    "leave_balance_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "staff_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "al_balance_hours": { "type": "number", "minimum": 0, "default": 0, "x-eq-source-aliases": ["annual_leave", "al"] },
+    "sick_balance_hours": { "type": "number", "minimum": 0, "default": 0, "x-eq-source-aliases": ["sick", "personal_sick"] },
+    "long_service_balance_hours": { "type": "number", "minimum": 0, "default": 0, "x-eq-source-aliases": ["lsl", "long_service"] },
+    "personal_balance_hours": { "type": "number", "minimum": 0, "default": 0 },
+    "notes": { "type": ["string", "null"] },
+    "updated_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}

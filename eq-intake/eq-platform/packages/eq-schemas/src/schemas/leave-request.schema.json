@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/leave-request/v1.json",
+  "title": "Leave Request",
+  "description": "Staff leave request. Status flow: pending → approved | rejected | cancelled. Archived when superseded.",
+  "type": "object",
+  "x-eq-entity": "leave_request",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "leave_requests",
+  "required": ["leave_request_id", "tenant_id", "staff_id", "leave_type", "from_date", "to_date", "status"],
+  "properties": {
+    "leave_request_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "staff_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "leave_type": {
+      "type": "string",
+      "enum": ["annual", "sick", "personal", "long_service", "unpaid", "tafe", "other"],
+      "x-eq-source-aliases": ["type", "kind", "category"]
+    },
+    "from_date": { "type": "string", "format": "date", "x-eq-source-aliases": ["start", "start_date", "from"] },
+    "to_date": { "type": "string", "format": "date", "x-eq-source-aliases": ["end", "end_date", "to", "until"] },
+    "hours_requested": { "type": "number", "minimum": 0, "default": 0 },
+    "status": { "type": "string", "default": "pending", "enum": ["pending", "approved", "rejected", "cancelled"] },
+    "reason": { "type": ["string", "null"] },
+    "approver_required": { "type": "boolean", "default": true },
+    "approver_id": { "type": ["string", "null"], "format": "uuid" },
+    "decided_at": { "type": ["string", "null"], "format": "date-time" },
+    "decision_notes": { "type": ["string", "null"] },
+    "archived": { "type": "boolean", "default": false },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}

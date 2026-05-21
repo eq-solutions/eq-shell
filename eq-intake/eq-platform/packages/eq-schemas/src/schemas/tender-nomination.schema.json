@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tender-nomination/v1.json",
+  "title": "Tender Nomination",
+  "description": "Staff member nominated to a tender — supervisor, estimator, project lead. Status flow: proposed → confirmed | withdrawn | clashed.",
+  "type": "object",
+  "x-eq-entity": "tender_nomination",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tender_nominations",
+  "required": ["nomination_id", "tenant_id", "tender_id", "status"],
+  "properties": {
+    "nomination_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "tender_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "tender.tender_id" },
+    "staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "role": { "type": ["string", "null"], "description": "Role on the tender (e.g. estimator, project lead, supervisor)." },
+    "nominated_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "start_date": { "type": ["string", "null"], "format": "date" },
+    "end_date": { "type": ["string", "null"], "format": "date" },
+    "notes": { "type": ["string", "null"] },
+    "status": { "type": "string", "default": "proposed", "enum": ["proposed", "confirmed", "withdrawn", "clashed"] }
+  }
+}

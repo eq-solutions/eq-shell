@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tenant-app-config/v1.json",
+  "title": "Tenant App Config",
+  "description": "Field-specific tenant feature flags + UI settings. One row per tenant.",
+  "type": "object",
+  "x-eq-entity": "tenant_app_config",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tenant_app_configs",
+  "required": ["config_id", "tenant_id"],
+  "properties": {
+    "config_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "feature_flags": { "type": "object", "default": {}, "additionalProperties": true },
+    "field_settings": { "type": "object", "default": {}, "additionalProperties": true },
+    "notes": { "type": ["string", "null"] }
+  }
+}

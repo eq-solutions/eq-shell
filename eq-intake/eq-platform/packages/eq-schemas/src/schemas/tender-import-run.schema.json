@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tender-import-run/v1.json",
+  "title": "Tender Import Run",
+  "description": "Audit row per CSV/XLSX tender import. Counts rows processed/created/updated/skipped + completion status.",
+  "type": "object",
+  "x-eq-entity": "tender_import_run",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tender_import_runs",
+  "required": ["import_run_id", "tenant_id", "source_filename", "status"],
+  "properties": {
+    "import_run_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "source_filename": { "type": "string" },
+    "rows_processed": { "type": "integer", "minimum": 0, "default": 0 },
+    "rows_created": { "type": "integer", "minimum": 0, "default": 0 },
+    "rows_updated": { "type": "integer", "minimum": 0, "default": 0 },
+    "rows_skipped": { "type": "integer", "minimum": 0, "default": 0 },
+    "status": { "type": "string", "default": "completed", "enum": ["running", "completed", "failed"] },
+    "error_message": { "type": ["string", "null"] },
+    "started_at": { "type": ["string", "null"], "format": "date-time" },
+    "completed_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/leave-approval-log/v1.json",
+  "title": "Leave Approval Log",
+  "description": "Workflow audit log for leave_request status transitions. Hybrid audit model per 2026-05-20 Q4.",
+  "type": "object",
+  "x-eq-entity": "leave_approval_log",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "leave_approval_logs",
+  "required": ["log_id", "tenant_id", "leave_request_id", "to_status"],
+  "properties": {
+    "log_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "leave_request_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "leave_request.leave_request_id" },
+    "from_status": { "type": ["string", "null"] },
+    "to_status": { "type": "string", "enum": ["pending", "approved", "rejected", "cancelled"] },
+    "decided_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "decision_notes": { "type": ["string", "null"] },
+    "decided_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/checkin/v1.json",
+  "title": "Checkin",
+  "description": "Site check-in (timestamp + optional GPS). Mobile staff confirm presence on a site.",
+  "type": "object",
+  "x-eq-entity": "checkin",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "checkins",
+  "required": ["checkin_id", "tenant_id", "staff_id"],
+  "properties": {
+    "checkin_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "staff_id": { "type": "string", "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "site_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "week": { "type": ["string", "null"], "description": "ISO week label, e.g. 2026-W21" },
+    "checked_in_at": { "type": "string", "format": "date-time" },
+    "latitude": { "type": ["number", "null"] },
+    "longitude": { "type": ["number", "null"] },
+    "device_id": { "type": ["string", "null"] },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}

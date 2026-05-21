@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/tender/v1.json",
+  "title": "Tender",
+  "description": "Tender pipeline opportunity. Stage flow: watch → confirmed → likely → won | lost | withdrawn. Money in cents.",
+  "type": "object",
+  "x-eq-entity": "tender",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "tenders",
+  "required": ["tender_id", "tenant_id", "title", "stage"],
+  "properties": {
+    "tender_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "tender_number": { "type": ["string", "null"], "x-eq-source-aliases": ["number", "ref"] },
+    "external_id": { "type": ["string", "null"] },
+    "title": { "type": "string", "minLength": 1, "x-eq-source-aliases": ["name", "project"] },
+    "client_name": { "type": ["string", "null"], "x-eq-source-aliases": ["client", "customer"] },
+    "customer_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "customer.customer_id" },
+    "stage": {
+      "type": "string", "default": "watch",
+      "enum": ["watch", "confirmed", "likely", "won", "lost", "withdrawn"],
+      "x-eq-source-aliases": ["status", "state"]
+    },
+    "estimated_value_cents": { "type": ["integer", "null"], "minimum": 0 },
+    "close_date": { "type": ["string", "null"], "format": "date", "x-eq-source-aliases": ["due", "due_date"] },
+    "department": { "type": ["string", "null"] },
+    "estimator_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "scope_summary": { "type": ["string", "null"] },
+    "notes": { "type": ["string", "null"] },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  }
+}

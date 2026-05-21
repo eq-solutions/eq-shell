@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/field/schedule-change-log/v1.json",
+  "title": "Schedule Change Log",
+  "description": "Workflow audit log for schedule changes. Hybrid audit model per 2026-05-20 Q4: app-specific events live in per-domain tables; the universal eq_intake_row_audit captures intake commits.",
+  "type": "object",
+  "x-eq-entity": "schedule_change_log",
+  "x-eq-module": "field",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "schedule_change_logs",
+  "required": ["log_id", "tenant_id", "change_type"],
+  "properties": {
+    "log_id": { "type": "string", "format": "uuid", "x-eq-required-on-import": false },
+    "tenant_id": { "type": "string", "format": "uuid", "x-eq-system-managed": true },
+    "schedule_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "schedule.schedule_id" },
+    "staff_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "staff.staff_id" },
+    "site_id": { "type": ["string", "null"], "format": "uuid", "x-eq-foreign-key": "site.site_id" },
+    "change_type": {
+      "type": "string",
+      "enum": ["created", "staff_changed", "site_changed", "date_changed", "hours_changed", "status_changed", "deleted", "reassigned"]
+    },
+    "old_value": { "type": ["object", "null"] },
+    "new_value": { "type": ["object", "null"] },
+    "changed_by_user_id": { "type": ["string", "null"], "format": "uuid" },
+    "changed_at": { "type": ["string", "null"], "format": "date-time" },
+    "reason": { "type": ["string", "null"] }
+  }
+}
