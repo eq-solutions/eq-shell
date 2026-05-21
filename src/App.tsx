@@ -33,6 +33,22 @@ import './App.css';
 // in a follow-up PR (CLAUDE.md hard rule: no deletes without
 // explicit permission).
 const IntakeModule = lazy(() => import('./modules/intake/index'));
+// Unit 7 — per-domain landing pages.
+const IntakeCoreLanding = lazy(() =>
+  import('./modules/intake/DomainLanding').then((m) => ({ default: m.CoreIntakeLanding })),
+);
+const IntakeFieldLanding = lazy(() =>
+  import('./modules/intake/DomainLanding').then((m) => ({ default: m.FieldIntakeLanding })),
+);
+const IntakeQuotesLanding = lazy(() =>
+  import('./modules/intake/DomainLanding').then((m) => ({ default: m.QuotesIntakeLanding })),
+);
+const IntakeCardsLanding = lazy(() =>
+  import('./modules/intake/DomainLanding').then((m) => ({ default: m.CardsIntakeLanding })),
+);
+const IntakeServiceLanding = lazy(() =>
+  import('./modules/intake/DomainLanding').then((m) => ({ default: m.ServiceIntakeLanding })),
+);
 const QuotesModule = lazy(() => import('./modules/quotes'));
 const ServiceModule = lazy(() => import('./modules/service'));
 const TenderPipelineModule = lazy(() => import('./modules/tender-pipeline'));
@@ -155,6 +171,60 @@ function TenantTree() {
             <ModuleGate module="intake">
               <Suspense fallback={<div className="eq-loading">Loading…</div>}>
                 <IntakeModule />
+              </Suspense>
+            </ModuleGate>
+          }
+        />
+        {/* Unit 7: per-domain intake landing pages, driven by
+            eq_list_module_entities. Each lists every canonical entity
+            registered for that module; the generic ParserDropZone
+            wiring per entity is the next step. */}
+        <Route
+          path="intake/core"
+          element={
+            <ModuleGate module="intake">
+              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+                <IntakeCoreLanding />
+              </Suspense>
+            </ModuleGate>
+          }
+        />
+        <Route
+          path="intake/field"
+          element={
+            <ModuleGate module="intake">
+              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+                <IntakeFieldLanding />
+              </Suspense>
+            </ModuleGate>
+          }
+        />
+        <Route
+          path="intake/quotes"
+          element={
+            <ModuleGate module="intake">
+              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+                <IntakeQuotesLanding />
+              </Suspense>
+            </ModuleGate>
+          }
+        />
+        <Route
+          path="intake/cards"
+          element={
+            <ModuleGate module="intake">
+              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+                <IntakeCardsLanding />
+              </Suspense>
+            </ModuleGate>
+          }
+        />
+        <Route
+          path="intake/service"
+          element={
+            <ModuleGate module="intake">
+              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+                <IntakeServiceLanding />
               </Suspense>
             </ModuleGate>
           }

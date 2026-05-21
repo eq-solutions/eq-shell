@@ -1,3 +1,11 @@
+// ORPHAN 2026-05-20 — superseded by src/modules/intake/index.tsx (created
+// by the Phase 1.F directory restructure to colocate per-module
+// permissions.ts beside index.tsx). The current App.tsx route for
+// /:tenant/intake imports from './modules/intake/index' (the new
+// location). This file is unreferenced but not deleted per CLAUDE.md
+// hard rule "Never delete files without explicit permission." Decision
+// pending Royce. See eq/sprints/2026-05-20-S1-canonical-lockin.md §S1.9.
+//
 // EQ Intake — mounts @eq/intake-demo's IntakeModule (the user-facing
 // surface of EQ Format) inside the shell.
 //

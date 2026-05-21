@@ -1,3 +1,11 @@
+// STALE 2026-05-20 — Tender Pipeline scaffolding kept as future-exploration
+// reference but NOT on the Phase 2 roadmap. Per eq/products.md + 2026-05-20
+// part-d: Tender Pipeline is a Field sub-module, not a flagship shell
+// module. Mount is still wired in App.tsx because the route table needs
+// it to stay valid; the screens themselves are placeholders. Delete-or-
+// keep decision remains pending Royce confirmation (CLAUDE.md no-delete
+// rule blocks unilateral removal).
+//
 // Phase 2 spike v2 — Tender Pipeline module root.
 //
 // Phase 2 of EQ-SHELL-DESIGN.md is the adoption-wedge migration: the
