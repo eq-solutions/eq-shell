@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Topbar } from '../components/Topbar';
 
 // Embeds the existing EQ Field deploy as an iframe. The shell mints
 // a 60s HMAC handoff token, passes it via URL hash (NOT query —
@@ -36,12 +37,24 @@ export default function FieldIframe() {
   }, []);
 
   if (err) {
-    return <div className="eq-field-frame-loading" role="alert">{err}</div>;
+    return (
+      <>
+        <Topbar />
+        <div className="eq-field-frame-loading" role="alert">{err}</div>
+      </>
+    );
   }
   if (!src) {
-    return <div className="eq-field-frame-loading">Loading EQ Field…</div>;
+    return (
+      <>
+        <Topbar />
+        <div className="eq-field-frame-loading">Loading EQ Field…</div>
+      </>
+    );
   }
   return (
+    <>
+    <Topbar />
     <iframe
       className="eq-field-frame"
       title="EQ Field"
@@ -62,5 +75,6 @@ export default function FieldIframe() {
       // Camera/mic/etc not needed in Phase 1.B — extend later.
       allow=""
     />
+    </>
   );
 }

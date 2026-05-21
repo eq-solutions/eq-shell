@@ -17,6 +17,7 @@
 // Spec: eq/cards/canonical-migration/plan.md §Unit 4 + §Unit 5.
 
 import { useEffect, useState } from 'react';
+import { Topbar } from '../components/Topbar';
 
 const CARDS_URL = 'https://eq-cards.netlify.app/';
 
@@ -58,23 +59,34 @@ export default function CardsIframe() {
 
   if (err) {
     return (
-      <div className="eq-error" role="alert">
-        Could not initialise Cards: {err}
-      </div>
+      <>
+        <Topbar />
+        <div className="eq-error" role="alert" style={{ margin: 28 }}>
+          Could not initialise Cards: {err}
+        </div>
+      </>
     );
   }
   if (!iframeSrc) {
-    return <div className="eq-loading">Minting Cards token…</div>;
+    return (
+      <>
+        <Topbar />
+        <div className="eq-loading">Minting Cards token…</div>
+      </>
+    );
   }
 
   return (
-    <iframe
-      className="eq-cards-frame"
-      title="EQ Cards"
-      src={iframeSrc}
-      sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
-      referrerPolicy="no-referrer"
-      allow=""
-    />
+    <>
+      <Topbar />
+      <iframe
+        className="eq-cards-frame"
+        title="EQ Cards"
+        src={iframeSrc}
+        sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
+        referrerPolicy="no-referrer"
+        allow=""
+      />
+    </>
   );
 }
