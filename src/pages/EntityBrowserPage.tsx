@@ -233,7 +233,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
         <div className="eq-page__header">
           <h1 className="eq-page__title">{view.label}</h1>
           <p className="eq-page__lede">
-            Browse canonical rows. {count != null && `${count.toLocaleString()} total`}
+            {count != null ? `${count.toLocaleString()} total` : 'Loading…'}
           </p>
         </div>
 

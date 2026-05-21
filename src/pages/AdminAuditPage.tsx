@@ -141,7 +141,7 @@ function AdminAuditInner() {
         <div className="eq-page__header">
           <h1 className="eq-page__title">Audit log</h1>
           <p className="eq-page__lede">
-            Every write to canonical + every JWT mint, tenant-scoped via RLS.
+            Every data write and every sign-in token, scoped to your tenant.
           </p>
         </div>
 

@@ -1,4 +1,5 @@
-// LoginPage — split-screen brand panel + form. First impression.
+// LoginPage — echoes eq.solutions marketing aesthetic.
+// Dark navy left, white sign-in card right. Sky used as accent only.
 
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -42,38 +43,38 @@ export default function LoginPage() {
 
   return (
     <div className="eq-login-page">
-      <aside className="eq-login-brand">
-        <div className="eq-login-brand__mark">
-          <EqLogo size={44} className="eq-login-brand__mark-svg" />
-          <span className="eq-login-brand__wordmark">EQ Solutions</span>
-        </div>
-        <div className="eq-login-brand__pitch">
-          <div className="eq-login-brand__pitch-inner">
-            <h2>The platform behind your work.</h2>
-            <p>
-              Canonical data, modular surfaces, identity that follows you across every tool. One sign-in.
-            </p>
-            <div className="eq-login-brand__capabilities">
-              <div className="eq-login-brand__capability">
-                <span>42 canonical entities, one tenant-scoped data layer</span>
-              </div>
-              <div className="eq-login-brand__capability">
-                <span>Drag-drop CSV intake with AI column mapping</span>
-              </div>
-              <div className="eq-login-brand__capability">
-                <span>5-tier role model with platform-admin oversight</span>
-              </div>
-              <div className="eq-login-brand__capability">
-                <span>Modules: Intake, Cards, Field, Quotes, Service</span>
-              </div>
-            </div>
+      <aside className="eq-login-hero">
+        <header className="eq-login-hero__top">
+          <EqLogo size={32} onDark variant="wordmark" />
+        </header>
+        <div className="eq-login-hero__main">
+          <span className="eq-login-hero__eyebrow">
+            <span className="eq-login-hero__eyebrow-dot" />
+            BUILT IN SYDNEY · FOR AUSTRALIAN BUSINESSES
+          </span>
+          <h1 className="eq-login-hero__headline">
+            The operating system for businesses that <span className="eq-login-hero__accent">actually do the work.</span>
+          </h1>
+          <p className="eq-login-hero__sub">
+            EQ is a modular suite. Start with rostering. Add quoting. Add service. Add assets.
+            One login, one set of data, one bill. Pay for what you use — nothing you don't.
+          </p>
+          <div className="eq-login-hero__trust">
+            <span>Pick a module. Trial it free. Keep what works.</span>
+            <span className="eq-login-hero__trust-sep">·</span>
+            <span>Data stays in Australia</span>
+            <span className="eq-login-hero__trust-sep">·</span>
+            <span>Built for operators, by operators</span>
           </div>
         </div>
-        <div className="eq-login-brand__foot">© EQ Solutions · {new Date().getFullYear()}</div>
+        <footer className="eq-login-hero__foot">
+          © EQ Solutions · {new Date().getFullYear()} · core.eq.solutions
+        </footer>
       </aside>
+
       <div className="eq-login-form-wrap">
         <form className="eq-login-form" onSubmit={onSubmit}>
-          <h1>Sign in</h1>
+          <h2>Sign in</h2>
           <p className="lede">Use your work email and PIN.</p>
           <label htmlFor="email">Email</label>
           <input
@@ -95,13 +96,16 @@ export default function LoginPage() {
             onChange={(e) => setPin(e.target.value)}
           />
           <button type="submit" className="eq-btn-primary" disabled={busy || !email || !pin}>
-            {busy ? 'Signing in…' : 'Sign in'}
+            {busy ? 'Signing in…' : 'Sign in →'}
           </button>
           {err && (
             <div className="eq-err" role="alert">
               {err}
             </div>
           )}
+          <p className="eq-login-form__foot">
+            Don't have access? Talk to your EQ admin.
+          </p>
         </form>
       </div>
     </div>

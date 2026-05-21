@@ -5,9 +5,12 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-let _client: SupabaseClient | null = null;
+// We type the cache as `any`-schema because we pin db.schema='shell_control'
+// at construction; supabase-js infers a different generic when that's set
+// and the strict typing fights cross-schema usage like .schema('app_data').
+let _client: SupabaseClient<any, any, any> | null = null;
 
-export function getServiceClient(): SupabaseClient {
+export function getServiceClient(): SupabaseClient<any, any, any> {
   if (_client) return _client;
 
   const url = process.env.SUPABASE_URL;
@@ -21,6 +24,12 @@ export function getServiceClient(): SupabaseClient {
 
   _client = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    // Default to shell_control schema where the auth tables live
+    // (users, tenants, module_entitlements, user_invites, etc.) after
+    // the Unit 2 schema split. Functions that need app_data can still
+    // call .schema('app_data') explicitly. RPCs in public are reached
+    // via .rpc() regardless of this default.
+    db: { schema: 'shell_control' },
   });
   return _client;
 }

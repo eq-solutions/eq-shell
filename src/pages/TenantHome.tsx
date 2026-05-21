@@ -35,7 +35,7 @@ interface ModuleDef {
 }
 
 const MODULES: ModuleDef[] = [
-  { key: 'intake', label: 'Intake', description: 'Drag-drop CSVs into canonical with AI mapping.', to: 'intake', live: true },
+  { key: 'intake', label: 'Intake', description: 'Drag-drop CSVs into your data with AI column mapping.', to: 'intake', live: true },
   { key: 'cards', label: 'Cards', description: 'Tradie wallet — licences + tap-to-copy.', to: 'cards', live: true },
   { key: 'field', label: 'Field', description: 'Roster, timesheets, sites.', to: 'field', live: true },
   { key: 'quotes', label: 'Quotes', description: 'React rewrite of the Flask v1 pilot.', to: 'quotes', live: false },

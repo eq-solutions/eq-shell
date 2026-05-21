@@ -15,88 +15,107 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────
- * Login — split-screen brand + form
+ * Login — dark hero left, white form-card right.
+ * Echoes eq.solutions marketing aesthetic.
  * ────────────────────────────────────────────────────────────────── */
 
 .eq-login-page {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.2fr 1fr;
   min-height: 100svh;
 }
 
-@media (max-width: 880px) {
+@media (max-width: 960px) {
   .eq-login-page { grid-template-columns: 1fr; }
-  .eq-login-brand { display: none; }
+  .eq-login-hero { display: none; }
 }
 
-.eq-login-brand {
-  background: var(--eq-ice);
-  padding: 64px;
+.eq-login-hero {
+  background: var(--eq-ink);
+  color: var(--eq-white);
+  padding: 48px 64px;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  gap: 32px;
-  border-right: 1px solid var(--gray-200);
+  gap: 48px;
+  position: relative;
+  overflow: hidden;
 }
 
-.eq-login-brand__mark {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.eq-login-brand__wordmark {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--eq-ink);
-}
-
-.eq-login-brand__pitch { align-self: center; }
-
-.eq-login-brand__pitch-inner { max-width: 420px; }
-
-.eq-login-brand__pitch h2 {
-  font-size: 36px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin: 0 0 16px;
-  color: var(--eq-ink);
-  line-height: 1.15;
-}
-
-.eq-login-brand__pitch p {
-  font-size: 15px;
-  line-height: 1.55;
-  color: var(--eq-grey);
-  margin: 0;
-}
-
-.eq-login-brand__capabilities {
-  margin-top: 32px;
-  display: grid;
-  gap: 12px;
-}
-
-.eq-login-brand__capability {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  font-size: 14px;
-  color: var(--eq-ink);
-}
-
-.eq-login-brand__capability::before {
+/* Subtle grid backdrop — never gradient, just a faint Sky tracing */
+.eq-login-hero::before {
   content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(61, 168, 216, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(61, 168, 216, 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+  pointer-events: none;
+}
+
+.eq-login-hero > * { position: relative; z-index: 1; }
+
+.eq-login-hero__top { display: flex; align-items: center; }
+
+.eq-login-hero__main {
+  align-self: center;
+  max-width: 560px;
+}
+
+.eq-login-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid rgba(61, 168, 216, 0.4);
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--eq-sky);
+  background: rgba(61, 168, 216, 0.08);
+}
+
+.eq-login-hero__eyebrow-dot {
   width: 6px;
   height: 6px;
   border-radius: 9999px;
   background: var(--eq-sky);
-  margin-top: 8px;
-  flex-shrink: 0;
+  display: inline-block;
 }
 
-.eq-login-brand__foot {
-  color: var(--eq-grey);
+.eq-login-hero__headline {
+  font-size: 48px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin: 24px 0 24px;
+  color: var(--eq-white);
+}
+
+.eq-login-hero__accent { color: var(--eq-sky); }
+
+.eq-login-hero__sub {
+  font-size: 16px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 32px;
+  max-width: 480px;
+}
+
+.eq-login-hero__trust {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.eq-login-hero__trust-sep { color: rgba(255, 255, 255, 0.3); }
+
+.eq-login-hero__foot {
+  color: rgba(255, 255, 255, 0.45);
   font-size: 12px;
 }
 
@@ -104,16 +123,25 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 64px 32px;
+  padding: 48px 32px;
+  background: var(--eq-bg);
+}
+
+.eq-login-form__foot {
+  margin-top: 24px;
+  font-size: 12px;
+  color: var(--eq-grey);
+  text-align: center;
 }
 
 .eq-login-form { width: 100%; max-width: 360px; }
 
-.eq-login-form h1 {
+.eq-login-form h2 {
   font-size: 22px;
   font-weight: 600;
   margin: 0 0 8px;
   letter-spacing: -0.01em;
+  color: var(--eq-ink);
 }
 
 .eq-login-form .lede {
