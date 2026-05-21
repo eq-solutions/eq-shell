@@ -73,6 +73,17 @@ export interface ShellTokenPayload {
    * here so the same token shape works once Field catches up.
    */
   is_platform_admin: boolean;
+  /**
+   * 2026-05-22 — Wave 4.5: target tenant slug for the Field iframe.
+   * Field's v3.5.17 _consumeShellToken cross-checks this against
+   * TENANT.ORG_SLUG (set from the iframe URL's ?tenant= param) and
+   * rejects the token on mismatch — prevents a confused-deputy where
+   * a token minted for tenant A is replayed against tenant B's URL.
+   *
+   * Assumes shell tenants.slug aligns with Field organisations.slug
+   * for the same business tenant (both 'melbourne', etc.).
+   */
+  tenant_slug: string;
   exp: number;
 }
 
