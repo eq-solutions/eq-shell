@@ -20,6 +20,7 @@ import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
 import EntityBrowserPage from './pages/EntityBrowserPage';
+import NotFound from './pages/NotFound';
 import './App.css';
 
 // Q5 lock: each module is its own lazy chunk so disabled tenants
@@ -272,7 +273,9 @@ function TenantTree() {
         {/* S3 — audit log viewer + entity browser */}
         <Route path="admin/audit" element={<AdminAuditPage />} />
         <Route path="data/:entity" element={<EntityBrowserPage />} />
-        <Route path="*" element={<Navigate to="." replace />} />
+        {/* Real 404 instead of silent redirect to home (caught users in a
+            loop where stale links just bounced them home with no signal). */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrandProvider>
   );

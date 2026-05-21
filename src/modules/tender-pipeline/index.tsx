@@ -29,6 +29,7 @@
 
 import { lazy, Suspense } from 'react';
 import { Routes, Route, NavLink, Outlet, Navigate } from 'react-router-dom';
+import { Topbar } from '../../components/Topbar';
 
 const ImportPage = lazy(() => import('./pages/Import'));
 const KanbanPage = lazy(() => import('./pages/Kanban'));
@@ -38,24 +39,69 @@ const CurvePage = lazy(() => import('./pages/Curve'));
 
 function Layout() {
   return (
-    <div className="tp-shell">
-      <header className="tp-header">
-        <h1>Tender Pipeline</h1>
-        <p className="tp-lede">Phase 2 spike — placeholder routes for the 5 vanilla screens.</p>
-        <nav className="tp-nav">
-          <NavLink to="kanban">Pipeline</NavLink>
-          <NavLink to="review">Fortnightly Review</NavLink>
-          <NavLink to="enrichment">Enrichment</NavLink>
-          <NavLink to="import">Tender Sync</NavLink>
-          <NavLink to="curve">Labour Curve</NavLink>
+    <>
+      <Topbar />
+      <main className="eq-page">
+        <div className="eq-page__header">
+          <span
+            className="eq-pill eq-pill--info"
+            style={{ display: 'inline-block', marginBottom: 12 }}
+          >
+            Phase 2 spike
+          </span>
+          <h1 className="eq-page__title">Tender Pipeline</h1>
+          <p className="eq-page__lede">
+            Placeholder routes for the 5 vanilla screens from EQ Field
+            v3.4.79-83. Each one ports as its own follow-up PR.
+          </p>
+        </div>
+        <nav className="eq-tabs">
+          <NavLink
+            to="kanban"
+            className={({ isActive }) =>
+              `eq-tab ${isActive ? 'eq-tab--active' : ''}`
+            }
+          >
+            Pipeline
+          </NavLink>
+          <NavLink
+            to="review"
+            className={({ isActive }) =>
+              `eq-tab ${isActive ? 'eq-tab--active' : ''}`
+            }
+          >
+            Fortnightly Review
+          </NavLink>
+          <NavLink
+            to="enrichment"
+            className={({ isActive }) =>
+              `eq-tab ${isActive ? 'eq-tab--active' : ''}`
+            }
+          >
+            Enrichment
+          </NavLink>
+          <NavLink
+            to="import"
+            className={({ isActive }) =>
+              `eq-tab ${isActive ? 'eq-tab--active' : ''}`
+            }
+          >
+            Tender Sync
+          </NavLink>
+          <NavLink
+            to="curve"
+            className={({ isActive }) =>
+              `eq-tab ${isActive ? 'eq-tab--active' : ''}`
+            }
+          >
+            Labour Curve
+          </NavLink>
         </nav>
-      </header>
-      <main className="tp-main">
-        <Suspense fallback={<div className="tp-loading">Loading…</div>}>
+        <Suspense fallback={<div className="eq-loading">Loading…</div>}>
           <Outlet />
         </Suspense>
       </main>
-    </div>
+    </>
   );
 }
 

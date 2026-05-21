@@ -1,0 +1,22 @@
+/* @eq/tokens — self-hosted Plus Jakarta Sans @font-face declarations.
+ *
+ * The design prompt mandates self-hosted, NOT Google Fonts @import.
+ * Place the .woff2 file at packages/eq-tokens/src/fonts/PlusJakartaSans-Variable.woff2
+ * before publishing — see README.md "Font file" section.
+ *
+ * If the font file is missing, browsers will fall back to the stack
+ * defined in --eq-font (Aptos Display → Aptos → Arial → sans-serif).
+ *
+ * Consumer pattern:
+ *   import "@eq/tokens/fonts.css";   // ships @font-face
+ *   import "@eq/tokens/tokens.css";  // ships the tokens that reference it
+ */
+
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  src: url('./PlusJakartaSans-Variable.woff2') format('woff2-variations'),
+       url('./PlusJakartaSans-Variable.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
