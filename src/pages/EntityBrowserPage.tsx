@@ -171,6 +171,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [detailRow, setDetailRow] = useState<Record<string, unknown> | null>(null);
 
   const load = useMemo(
     () => async () => {
@@ -292,7 +293,11 @@ function EntityBrowserInner({ entity }: { entity: string }) {
                 </tr>
               ) : (
                 filtered.map((r, i) => (
-                  <tr key={(r[`${entity}_id`] as string) ?? i}>
+                  <tr
+                    key={(r[`${entity}_id`] as string) ?? i}
+                    onClick={() => setDetailRow(r)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     {view.columns.map((col) => (
                       <td key={col.key}>{formatCell(r[col.key], col.key)}</td>
                     ))}
@@ -322,6 +327,173 @@ function EntityBrowserInner({ entity }: { entity: string }) {
           </div>
         )}
       </main>
+
+      {detailRow && (
+        <EntityDetailDrawer
+          entity={entity}
+          row={detailRow}
+          onClose={() => setDetailRow(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// Slide-out drawer showing the full row. Floating UI (not static),
+// so per the design spec it CAN have a drop-shadow.
+function EntityDetailDrawer({
+  entity,
+  row,
+  onClose,
+}: {
+  entity: string;
+  row: Record<string, unknown>;
+  onClose: () => void;
+}) {
+  // ESC closes the drawer — keyboard-first.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Sort keys so identifiers come first, audit fields last.
+  const sortedEntries = Object.entries(row).sort(([a], [b]) => {
+    const order = (k: string) => {
+      if (k === `${entity}_id`) return 0;
+      if (k === 'tenant_id') return 1;
+      if (k.endsWith('_id')) return 2;
+      if (k === 'created_at') return 99;
+      if (k === 'updated_at') return 100;
+      if (k.startsWith('imported_')) return 90;
+      return 50;
+    };
+    return order(a) - order(b);
+  });
+
+  const title =
+    (row.company_name as string | null) ??
+    (row.full_name as string | null) ??
+    [row.first_name, row.last_name].filter(Boolean).join(' ') ??
+    (row.name as string | null) ??
+    (row[`${entity}_id`] as string | null)?.slice(0, 8) ??
+    `${entity} detail`;
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(26, 26, 46, 0.4)',
+          zIndex: 50,
+        }}
+      />
+      <aside
+        role="dialog"
+        aria-label={`${entity} detail`}
+        style={{
+          position: 'fixed',
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 'min(520px, 100vw)',
+          background: 'var(--eq-bg)',
+          boxShadow: 'var(--shadow-lg)',
+          zIndex: 51,
+          overflowY: 'auto',
+          padding: '24px 28px',
+        }}
+      >
+        <header
+          style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+          }}
+        >
+          <span
+            className="eq-pill eq-pill--info"
+            style={{ textTransform: 'uppercase' }}
+          >
+            {entity}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="eq-btn-ghost"
+            aria-label="Close detail"
+            style={{ padding: '4px 12px' }}
+          >
+            Close ✕
+          </button>
+        </header>
+        <h2
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+            letterSpacing: '-0.01em',
+            margin: '8px 0 24px',
+            color: 'var(--eq-ink)',
+          }}
+        >
+          {title}
+        </h2>
+
+        <dl style={{ margin: 0 }}>
+          {sortedEntries.map(([key, value]) => (
+            <div
+              key={key}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '170px 1fr',
+                gap: 12,
+                padding: '10px 0',
+                borderBottom: '1px solid var(--gray-200)',
+                alignItems: 'baseline',
+              }}
+            >
+              <dt
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--eq-grey)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                {key.replace(/_/g, ' ')}
+              </dt>
+              <dd
+                style={{
+                  margin: 0,
+                  fontSize: 14,
+                  color: 'var(--eq-ink)',
+                  wordBreak: 'break-word',
+                  fontFamily:
+                    value === null || typeof value === 'object'
+                      ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+                      : 'inherit',
+                }}
+              >
+                {value === null || value === undefined ? (
+                  <span style={{ color: 'var(--eq-grey)' }}>—</span>
+                ) : typeof value === 'boolean' ? (
+                  value ? 'Yes' : 'No'
+                ) : typeof value === 'object' ? (
+                  JSON.stringify(value, null, 2)
+                ) : (
+                  String(value)
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </aside>
     </>
   );
 }
