@@ -7,10 +7,14 @@
 //
 // No login required to reach this page — the invite token IS the
 // authentication. Linked to from the invite email.
+//
+// 2026-05-21 — rewrote on the canonical LoginPage aesthetic so the
+// new user's first impression matches the marketing site.
 
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSession } from '../session';
+import { EqLogo } from '../components/EqLogo';
 
 export default function AcceptInvite() {
   const navigate = useNavigate();
@@ -25,15 +29,13 @@ export default function AcceptInvite() {
 
   if (!token) {
     return (
-      <div className="eq-shell">
-        <div className="eq-login">
-          <h1>Invite link broken</h1>
-          <p className="lede">
-            This page needs an invite token in the URL. Open the link from
-            your invite email exactly as it appeared.
-          </p>
-        </div>
-      </div>
+      <AcceptInviteShell>
+        <h2>Invite link broken</h2>
+        <p className="lede">
+          This page needs an invite token in the URL. Open the link from
+          your invite email exactly as it appeared.
+        </p>
+      </AcceptInviteShell>
     );
   }
 
@@ -83,12 +85,12 @@ export default function AcceptInvite() {
   }
 
   return (
-    <div className="eq-shell">
-      <form className="eq-login" onSubmit={onSubmit}>
-        <h1>Set your PIN</h1>
+    <AcceptInviteShell>
+      <form className="eq-login-form" onSubmit={onSubmit}>
+        <h2>Welcome aboard</h2>
         <p className="lede">
-          Pick a PIN you'll use to sign in. 4–12 letters or digits. Don't
-          share it.
+          Pick a PIN you'll use to sign in. 4–12 letters or digits. Don't share
+          it.
         </p>
         <label htmlFor="pin">PIN</label>
         <input
@@ -114,15 +116,61 @@ export default function AcceptInvite() {
           value={pinConfirm}
           onChange={(e) => setPinConfirm(e.target.value)}
         />
-        <button type="submit" disabled={busy || !pin || !pinConfirm}>
-          {busy ? 'Setting up…' : 'Set PIN and continue'}
+        <button
+          type="submit"
+          className="eq-btn-primary"
+          disabled={busy || !pin || !pinConfirm}
+        >
+          {busy ? 'Setting up…' : 'Set PIN and continue →'}
         </button>
         {err && (
-          <div className="err" role="alert">
+          <div className="eq-err" role="alert">
             {err}
           </div>
         )}
+        <p className="eq-login-form__foot">
+          Got the wrong link?{' '}
+          <a href="mailto:support@eq.solutions">support@eq.solutions</a>
+        </p>
       </form>
+    </AcceptInviteShell>
+  );
+}
+
+function AcceptInviteShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="eq-login-page">
+      <aside className="eq-login-hero">
+        <header className="eq-login-hero__top">
+          <EqLogo size={32} onDark variant="wordmark" />
+        </header>
+        <div className="eq-login-hero__main">
+          <span className="eq-login-hero__eyebrow">
+            <span className="eq-login-hero__eyebrow-dot" />
+            WELCOME · YOU'VE BEEN INVITED TO EQ
+          </span>
+          <h1 className="eq-login-hero__headline">
+            One PIN, every <span className="eq-login-hero__accent">EQ tool</span>.
+          </h1>
+          <p className="eq-login-hero__sub">
+            Set your PIN once. Use it to sign in across Field, Cards, Intake,
+            and everything else your team has access to. Your manager picks the
+            modules; you just bring your trade and your tickets.
+          </p>
+          <div className="eq-login-hero__trust">
+            <span>One sign-in, every module</span>
+            <span className="eq-login-hero__trust-sep">·</span>
+            <span>Data stays in Australia</span>
+            <span className="eq-login-hero__trust-sep">·</span>
+            <span>Built for operators, by operators</span>
+          </div>
+        </div>
+        <footer className="eq-login-hero__foot">
+          © EQ Solutions · {new Date().getFullYear()} · accept-invite
+        </footer>
+      </aside>
+
+      <div className="eq-login-form-wrap">{children}</div>
     </div>
   );
 }
