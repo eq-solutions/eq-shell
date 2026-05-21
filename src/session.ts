@@ -68,14 +68,14 @@ export interface SessionContextValue {
   session: ShellSession | null;
   loading: boolean;
   refresh: () => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const SessionContext = createContext<SessionContextValue>({
   session: null,
   loading: true,
   refresh: async () => {},
-  logout: () => {},
+  logout: async () => {},
 });
 
 export function useSession(): SessionContextValue {

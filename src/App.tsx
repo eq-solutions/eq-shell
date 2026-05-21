@@ -91,12 +91,22 @@ function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const logout = useCallback(() => {
-    // Cookie is HttpOnly so the browser can't clear it via JS — the
-    // server would need to send Set-Cookie: ...; Max-Age=0. Phase
-    // 1.B compromise: drop local session state + navigate to root.
-    // Follow-up: add /.netlify/functions/shell-logout that clears
-    // the cookie server-side.
+  const logout = useCallback(async () => {
+    // The eq_shell_session cookie is HttpOnly so JS can't drop it
+    // directly. We POST /shell-logout which sends back a Set-Cookie
+    // with Max-Age=0 + Expires in the past. Mirrored cookie attrs so
+    // the browser actually accepts the clear directive. Without this,
+    // verify-shell-session re-hydrates on the next request and the
+    // user is silently signed back in.
+    try {
+      await fetch('/.netlify/functions/shell-logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // Logout is best-effort — even if the network drops, we still
+      // clear local state below so the UI reflects signed-out.
+    }
     setSession(null);
     resetUser();
     window.location.assign('/');
