@@ -48,22 +48,24 @@ export default function LoginPage() {
           <span className="eq-login-brand__wordmark">EQ Solutions</span>
         </div>
         <div className="eq-login-brand__pitch">
-          <h2>The platform behind your work.</h2>
-          <p>
-            Canonical data, modular surfaces, identity that follows you across every tool. One sign-in.
-          </p>
-          <div className="eq-login-brand__capabilities">
-            <div className="eq-login-brand__capability">
-              <span>42 canonical entities, one tenant-scoped data layer</span>
-            </div>
-            <div className="eq-login-brand__capability">
-              <span>Drag-drop CSV intake with AI column mapping</span>
-            </div>
-            <div className="eq-login-brand__capability">
-              <span>5-tier role model with platform-admin oversight</span>
-            </div>
-            <div className="eq-login-brand__capability">
-              <span>Modules: Intake, Cards, Field, Quotes, Service</span>
+          <div className="eq-login-brand__pitch-inner">
+            <h2>The platform behind your work.</h2>
+            <p>
+              Canonical data, modular surfaces, identity that follows you across every tool. One sign-in.
+            </p>
+            <div className="eq-login-brand__capabilities">
+              <div className="eq-login-brand__capability">
+                <span>42 canonical entities, one tenant-scoped data layer</span>
+              </div>
+              <div className="eq-login-brand__capability">
+                <span>Drag-drop CSV intake with AI column mapping</span>
+              </div>
+              <div className="eq-login-brand__capability">
+                <span>5-tier role model with platform-admin oversight</span>
+              </div>
+              <div className="eq-login-brand__capability">
+                <span>Modules: Intake, Cards, Field, Quotes, Service</span>
+              </div>
             </div>
           </div>
         </div>
