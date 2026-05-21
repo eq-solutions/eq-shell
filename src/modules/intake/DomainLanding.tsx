@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from '../../session';
 import { createSupabaseClient } from '../../lib/supabaseJwt';
 import { Gate } from '../../permissions/Gate';
+import { Topbar } from '../../components/Topbar';
 import { EntityImportPanel, WIRED_ENTITY_NAMES } from './EntityImportPanel';
 
 type ModuleSlug = 'core' | 'field' | 'cards' | 'quotes' | 'service';
@@ -66,11 +67,13 @@ function DomainLanding({ module, title, description }: DomainLandingProps) {
   if (!session) return null;
 
   return (
-    <div className="domain-landing">
-      <header className="domain-landing__header">
-        <h1>{title}</h1>
-        <p>{description}</p>
-      </header>
+    <>
+      <Topbar />
+      <div className="domain-landing">
+        <header className="domain-landing__header">
+          <h1>{title}</h1>
+          <p>{description}</p>
+        </header>
 
       {loading && <div className="eq-loading">Loading entities…</div>}
       {err && (
@@ -127,7 +130,8 @@ function DomainLanding({ module, title, description }: DomainLandingProps) {
           })}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

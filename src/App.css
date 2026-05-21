@@ -865,6 +865,83 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────
+ * Intake pivots — banner on /intake pointing users to per-domain pages.
+ * ────────────────────────────────────────────────────────────────── */
+
+.eq-intake-pivots {
+  border: 1px solid var(--eq-border);
+  border-radius: 8px;
+  background: var(--eq-bg);
+  padding: 24px;
+  margin-bottom: 32px;
+}
+
+.eq-intake-pivots__eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--eq-sky);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 6px;
+}
+
+.eq-intake-pivots__title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: var(--eq-ink);
+  letter-spacing: -0.01em;
+}
+
+.eq-intake-pivots__sub {
+  font-size: 13px;
+  color: var(--eq-grey);
+  margin: 0 0 20px;
+  max-width: 640px;
+}
+
+.eq-intake-pivots__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.eq-intake-pivot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--eq-border);
+  border-radius: 6px;
+  background: var(--eq-bg);
+  color: var(--eq-ink);
+  text-decoration: none !important;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.eq-intake-pivot:hover {
+  border-color: var(--eq-sky);
+  background: var(--eq-ice);
+}
+
+.eq-intake-pivot__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--eq-ink);
+}
+
+.eq-intake-pivot__blurb {
+  font-size: 12px;
+  color: var(--eq-grey);
+  flex: 1;
+}
+
+.eq-intake-pivot__arrow {
+  color: var(--eq-sky);
+  font-weight: 600;
+}
+
+/* ──────────────────────────────────────────────────────────────────
  * Domain landing (Intake per-domain pages)
  * ────────────────────────────────────────────────────────────────── */
 
