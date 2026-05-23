@@ -18,6 +18,8 @@
 
 import type { Context } from '@netlify/functions';
 import { buildSessionCookie } from './_shared/cookie.js';
+import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { getServiceClient } from './_shared/supabase.js';
 import { withSentry } from './_shared/sentry.js';
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
@@ -34,6 +36,20 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
 export default withSentry(async (req: Request, _context: Context): Promise<Response> => {
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
+  }
+
+  // Best-effort audit write — read session before clearing cookie.
+  const session = verifySessionToken(readSessionCookie(req));
+  if (session) {
+    try {
+      const sb = getServiceClient();
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+               ?? req.headers.get('client-ip')
+               ?? 'unknown';
+      void sb.rpc('eq_write_audit_log', { p_event: 'logout', p_actor_id: session.user_id, p_tenant_id: session.tenant_id, p_ip: ip, p_detail: {} });
+    } catch {
+      // Non-fatal — proceed with cookie clear regardless.
+    }
   }
 
   // Mirror the cookie attributes set in shell-login so the browser

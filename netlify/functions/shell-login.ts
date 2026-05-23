@@ -141,12 +141,14 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   }
   if (!user || !user.pin_hash) {
     logShellLogin(req, email, 'failed', 'no-user-or-no-pin');
+    void sb.rpc('eq_write_audit_log', { p_event: 'login.failed', p_ip: ip, p_detail: { reason: 'no-user-or-no-pin' } });
     return jsonResponse(200, { valid: false });
   }
 
   const pinOk = await bcrypt.compare(pin, user.pin_hash);
   if (!pinOk) {
     logShellLogin(req, email, 'failed', 'bad-pin');
+    void sb.rpc('eq_write_audit_log', { p_event: 'login.failed', p_ip: ip, p_detail: { reason: 'bad-pin' } });
     return jsonResponse(200, { valid: false });
   }
 
@@ -185,6 +187,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   void sb.rpc('clear_rate_limit', { p_key: rlKey });
 
   logShellLogin(req, email, 'success');
+  void sb.rpc('eq_write_audit_log', { p_event: 'login.success', p_actor_id: user.id, p_tenant_id: tenant.id, p_ip: ip, p_detail: { role: user.role } });
 
   // Sign the session cookie.
   // Phase 1.F: payload carries the 5-tier role + is_platform_admin so
