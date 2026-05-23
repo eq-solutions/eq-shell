@@ -124,7 +124,13 @@ function RequireSession({ children }: { children: ReactNode }) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const location = useLocation();
 
-  if (loading) return <div className="eq-loading">Loading…</div>;
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
+        <span className="eq-skeleton eq-skeleton--text" style={{ width: 120 }} aria-label="Loading…" />
+      </div>
+    );
+  }
   if (!session) {
     return <Navigate to="/" replace state={{ from: location.pathname }} />;
   }
@@ -146,7 +152,13 @@ function ModuleGate({ module, children }: { module: string; children: ReactNode 
 
 function RootRoute() {
   const { session, loading } = useSession();
-  if (loading) return <div className="eq-loading">Loading…</div>;
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
+        <span className="eq-skeleton eq-skeleton--text" style={{ width: 120 }} aria-label="Loading…" />
+      </div>
+    );
+  }
   if (session) return <Navigate to={`/${session.tenant.slug}`} replace />;
   return <LoginPage />;
 }
@@ -177,7 +189,7 @@ function TenantTree() {
           path="intake"
           element={
             <ModuleGate module="intake">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+              <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
                 <IntakeModule />
               </Suspense>
             </ModuleGate>
@@ -191,7 +203,7 @@ function TenantTree() {
           path="intake/core"
           element={
             <ModuleGate module="intake">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+              <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
                 <IntakeCoreLanding />
               </Suspense>
             </ModuleGate>
@@ -201,7 +213,7 @@ function TenantTree() {
           path="intake/field"
           element={
             <ModuleGate module="intake">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+              <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
                 <IntakeFieldLanding />
               </Suspense>
             </ModuleGate>
@@ -211,7 +223,7 @@ function TenantTree() {
           path="intake/quotes"
           element={
             <ModuleGate module="intake">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+              <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
                 <IntakeQuotesLanding />
               </Suspense>
             </ModuleGate>
@@ -221,7 +233,7 @@ function TenantTree() {
           path="intake/cards"
           element={
             <ModuleGate module="intake">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+              <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
                 <IntakeCardsLanding />
               </Suspense>
             </ModuleGate>
@@ -231,7 +243,7 @@ function TenantTree() {
           path="intake/service"
           element={
             <ModuleGate module="intake">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+              <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
                 <IntakeServiceLanding />
               </Suspense>
             </ModuleGate>
@@ -249,7 +261,7 @@ function TenantTree() {
           path="quotes"
           element={
             <ModuleGate module="quotes">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
+              <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
                 <QuotesModule />
               </Suspense>
             </ModuleGate>

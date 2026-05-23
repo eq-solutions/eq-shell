@@ -116,21 +116,33 @@ function AdminAuditInner() {
     }
   };
 
-  const rollback = async (intakeId: string) => {
-    const reason = prompt('Reason for rollback?');
-    if (!reason) return;
+  const [rollbackState, setRollbackState] = useState<{
+    intakeId: string;
+    reason: string;
+    busy: boolean;
+    result: string | null;
+    err: string | null;
+  } | null>(null);
+
+  const openRollback = (intakeId: string) => {
+    setRollbackState({ intakeId, reason: '', busy: false, result: null, err: null });
+  };
+
+  const submitRollback = async () => {
+    if (!rollbackState || !rollbackState.reason.trim()) return;
+    setRollbackState((s) => s ? { ...s, busy: true, err: null } : s);
     try {
       const sb = await createSupabaseClient();
       const { data, error } = await sb.rpc('eq_intake_rollback', {
-        p_intake_id: intakeId,
-        p_reason: reason,
+        p_intake_id: rollbackState.intakeId,
+        p_reason: rollbackState.reason.trim(),
       });
       if (error) throw new Error(error.message);
-      alert(`Rolled back ${data ?? 0} rows.`);
+      setRollbackState((s) => s ? { ...s, busy: false, result: `Rolled back ${data ?? 0} rows.` } : s);
       setDrilldown(null);
       await load();
     } catch (e) {
-      alert(`Rollback failed: ${(e as Error).message}`);
+      setRollbackState((s) => s ? { ...s, busy: false, err: (e as Error).message } : s);
     }
   };
 
@@ -308,8 +320,8 @@ function AdminAuditInner() {
                 {drilldown.intake.status !== 'rolled_back' && (
                   <button
                     className="eq-btn-ghost"
-                    style={{ borderColor: 'var(--eq-danger)', color: 'var(--eq-danger)' }}
-                    onClick={() => rollback(drilldown.intake.intake_id)}
+                    style={{ borderColor: 'var(--status-error-fg)', color: 'var(--status-error-fg)' }}
+                    onClick={() => openRollback(drilldown.intake.intake_id)}
                   >
                     Roll back this intake
                   </button>
@@ -348,6 +360,87 @@ function AdminAuditInner() {
                   </table>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {rollbackState && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(26, 26, 46, 0.45)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 200,
+            }}
+            onClick={() => !rollbackState.busy && setRollbackState(null)}
+          >
+            <div
+              style={{
+                background: 'var(--eq-bg)',
+                border: '1px solid var(--eq-border)',
+                borderRadius: 8,
+                padding: '24px 28px',
+                width: 'min(480px, 92vw)',
+                boxShadow: 'var(--shadow-lg)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>Roll back intake</h2>
+              <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--eq-grey)' }}>
+                This deletes every row committed in this intake event. It cannot be undone. Describe why.
+              </p>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--eq-grey)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                Reason
+              </label>
+              <textarea
+                rows={3}
+                value={rollbackState.reason}
+                onChange={(e) => setRollbackState((s) => s ? { ...s, reason: e.target.value } : s)}
+                disabled={rollbackState.busy}
+                placeholder="e.g. Wrong file uploaded — replacing with corrected version"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid var(--gray-300)',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  background: 'var(--eq-bg)',
+                  color: 'var(--eq-ink)',
+                  marginBottom: 16,
+                }}
+              />
+              {rollbackState.err && (
+                <div className="eq-err" style={{ marginBottom: 12 }}>{rollbackState.err}</div>
+              )}
+              {rollbackState.result && (
+                <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--status-success-bg)', color: 'var(--status-success-fg)', borderRadius: 6, fontSize: 13 }}>
+                  {rollbackState.result}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="eq-btn-ghost"
+                  onClick={() => setRollbackState(null)}
+                  disabled={rollbackState.busy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="eq-btn-ghost"
+                  style={{ borderColor: 'var(--status-error-fg)', color: 'var(--status-error-fg)' }}
+                  onClick={submitRollback}
+                  disabled={rollbackState.busy || !rollbackState.reason.trim()}
+                >
+                  {rollbackState.busy ? 'Rolling back…' : 'Confirm rollback'}
+                </button>
+              </div>
             </div>
           </div>
         )}

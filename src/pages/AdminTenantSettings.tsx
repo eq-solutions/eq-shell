@@ -37,7 +37,6 @@ const MODULE_LABELS: Record<string, string> = {
   field: 'Field',
   quotes: 'Quotes',
   service: 'Service',
-  tender_pipeline: 'Tender Pipeline',
 };
 
 function ShellWrap({ children }: { children: React.ReactNode }) {
@@ -177,9 +176,9 @@ function AdminTenantSettingsInner() {
   return (
     <ShellWrap>
       <div className="eq-page__header">
-        <h1 className="eq-page__title">Tenant settings</h1>
+        <h1 className="eq-page__title">Settings</h1>
         <p className="eq-page__lede">
-          {settings.slug} · {settings.modules.filter((m) => m.enabled).length} module
+          {settings.slug} · {settings.modules.filter((m) => m.enabled).length} app
           {settings.modules.filter((m) => m.enabled).length === 1 ? '' : 's'} enabled
         </p>
       </div>
@@ -188,7 +187,7 @@ function AdminTenantSettingsInner() {
         <section className="eq-section">
           <h2 className="eq-section__heading">Branding</h2>
 
-          <FieldRow label="Tenant name">
+          <FieldRow label="Business name">
             <input
               type="text"
               value={name}
@@ -246,7 +245,7 @@ function AdminTenantSettingsInner() {
             <h2 className="eq-section__heading">Modules</h2>
             {!isPlatformAdmin && (
               <span className="eq-section__hint">
-                Read-only · platform admin required to change
+                Read-only · contact EQ to change what's enabled
               </span>
             )}
           </div>

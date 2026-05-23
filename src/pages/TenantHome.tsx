@@ -41,9 +41,8 @@ const MODULES: ModuleDef[] = [
   { key: 'intake', label: 'Intake', description: 'Drag-drop CSVs into your data with AI column mapping.', to: 'intake', live: true },
   { key: 'cards', label: 'Cards', description: 'Tradie wallet — licences + tap-to-copy.', to: 'cards', live: true },
   { key: 'field', label: 'Field', description: 'Roster, timesheets, sites.', to: 'field', live: true },
-  { key: 'quotes', label: 'Quotes', description: 'React rewrite of the Flask v1 pilot.', to: 'quotes', live: false },
+  { key: 'quotes', label: 'Quotes', description: 'Job quoting from the EQ platform.', to: 'quotes', live: false },
   { key: 'service', label: 'Service', description: 'PPM, work orders, assets.', to: 'service', live: false },
-  { key: 'tender_pipeline', label: 'Tender Pipeline', description: 'Kanban + fortnightly review.', to: 'tender-pipeline', live: false },
 ];
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -165,7 +164,7 @@ export default function TenantHome() {
   return (
     <>
       <Topbar />
-      <main className="eq-shell-page">
+      <div className="eq-shell-page">
         <section className="eq-home-hero">
           <div className="eq-home-hero__inner">
             <div className="eq-home-hero__chip-row">
@@ -326,8 +325,44 @@ export default function TenantHome() {
               ))}
             </div>
           </section>
+
+          <section className="eq-section">
+            <h2 className="eq-section__heading">Quick actions</h2>
+            <div className="eq-quick-actions">
+              <Link to={`/${tenantSlug}/intake`} className="eq-quick-action">
+                <span className="eq-quick-action__icon" aria-hidden="true">↑</span>
+                <span className="eq-quick-action__label">Import data</span>
+                <span className="eq-quick-action__hint">Drop a CSV</span>
+              </Link>
+              <Link to={`/${tenantSlug}/admin/users/invite`} className="eq-quick-action">
+                <span className="eq-quick-action__icon" aria-hidden="true">＋</span>
+                <span className="eq-quick-action__label">Invite user</span>
+                <span className="eq-quick-action__hint">Add a team member</span>
+              </Link>
+              <Link to={`/${tenantSlug}/data/customer`} className="eq-quick-action">
+                <span className="eq-quick-action__icon" aria-hidden="true">◈</span>
+                <span className="eq-quick-action__label">View customers</span>
+                <span className="eq-quick-action__hint">Browse your data</span>
+              </Link>
+              <Link to={`/${tenantSlug}/admin/audit`} className="eq-quick-action">
+                <span className="eq-quick-action__icon" aria-hidden="true">◷</span>
+                <span className="eq-quick-action__label">Audit log</span>
+                <span className="eq-quick-action__hint">Every write, every mint</span>
+              </Link>
+              <Link to={`/${tenantSlug}/storage`} className="eq-quick-action">
+                <span className="eq-quick-action__icon" aria-hidden="true">⊞</span>
+                <span className="eq-quick-action__label">Storage</span>
+                <span className="eq-quick-action__hint">Files in your bucket</span>
+              </Link>
+              <Link to={`/${tenantSlug}/admin/settings`} className="eq-quick-action">
+                <span className="eq-quick-action__icon" aria-hidden="true">✎</span>
+                <span className="eq-quick-action__label">Settings</span>
+                <span className="eq-quick-action__hint">Modules, branding</span>
+              </Link>
+            </div>
+          </section>
         </main>
-      </main>
+      </div>
     </>
   );
 }

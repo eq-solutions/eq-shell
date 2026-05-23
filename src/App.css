@@ -1061,6 +1061,52 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────
+ * Quick actions grid (tenant home)
+ * ────────────────────────────────────────────────────────────────── */
+
+.eq-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.eq-quick-action {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  background: var(--eq-bg);
+  color: var(--eq-ink);
+  text-decoration: none !important;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.eq-quick-action:hover {
+  border-color: var(--eq-sky);
+  background: var(--eq-ice);
+}
+
+.eq-quick-action__icon {
+  font-size: 18px;
+  color: var(--eq-sky);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.eq-quick-action__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--eq-ink);
+}
+
+.eq-quick-action__hint {
+  font-size: 12px;
+  color: var(--eq-grey);
+}
+
+/* ──────────────────────────────────────────────────────────────────
  * Intake pivots — banner on /intake pointing users to per-domain pages.
  * ────────────────────────────────────────────────────────────────── */
 
