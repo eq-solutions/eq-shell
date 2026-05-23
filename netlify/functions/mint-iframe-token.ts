@@ -37,6 +37,26 @@ import { withSentry } from './_shared/sentry.js';
 
 const IFRAME_TOKEN_TTL_MS = 60 * 1000;
 
+// 2026-05-22 — Wave 5: tenant picker on shell's /core/field surface.
+// The picker hands the chosen Field organisation slug to the mint
+// endpoint via POST body. This list is the authority for what counts
+// as a valid choice; if a new Field tenant lands, update both this
+// list and the picker cards in FieldIframe.tsx in the same PR.
+//
+// Why a hardcoded allow-list and not a DB lookup: shell_control.tenants
+// is the shell's own tenant model (currently just 'core'), not Field's
+// organisations table. The reverted PR #10/#12 sourced tenant_slug
+// from shell_control.tenants of the caller's user → broke because
+// every shell user is on 'core', which isn't a Field tenant. The
+// picker decouples the two: shell tenant remains the auth identity,
+// Field tenant is chosen per session.
+const ALLOWED_FIELD_TENANT_SLUGS = ['eq', 'demo-trades', 'melbourne'] as const;
+type AllowedFieldTenantSlug = (typeof ALLOWED_FIELD_TENANT_SLUGS)[number];
+
+function isAllowedFieldTenantSlug(value: unknown): value is AllowedFieldTenantSlug {
+  return typeof value === 'string' && (ALLOWED_FIELD_TENANT_SLUGS as readonly string[]).includes(value);
+}
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -56,10 +76,33 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });
   }
 
+  // Auth check FIRST — unauthenticated callers get a flat 401 and
+  // never learn anything about the request shape (including the
+  // tenant allow-list returned in the 400 body below).
   const token = readSessionCookie(req);
   const session = verifySessionToken(token);
   if (!session) {
     return jsonResponse(401, { valid: false });
+  }
+
+  // 2026-05-22 — Wave 5: chosen Field tenant slug arrives in the
+  // request body from the shell-side picker. Validated against the
+  // hardcoded allow-list above; anything else is rejected. The
+  // `allowed` array is fine to return here because the caller is
+  // authenticated and already knows which tenants the picker UI
+  // shows them.
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonResponse(400, { error: 'Invalid JSON body' });
+  }
+  const tenantSlug = (body as { tenant_slug?: unknown } | null)?.tenant_slug;
+  if (!isAllowedFieldTenantSlug(tenantSlug)) {
+    return jsonResponse(400, {
+      error: 'Invalid or missing tenant_slug',
+      allowed: ALLOWED_FIELD_TENANT_SLUGS,
+    });
   }
 
   let sb;
@@ -110,8 +153,19 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     // the fields travel harmlessly.
     eq_role: user.role,
     is_platform_admin: user.is_platform_admin,
+    // 2026-05-22 — Wave 5: chosen Field tenant. Field's v3.5.17
+    // _consumeShellToken cross-checks this against TENANT.ORG_SLUG
+    // (set from the iframe URL's ?tenant= param the caller builds
+    // from the response below) and rejects on mismatch. Prevents a
+    // confused-deputy where a token minted for tenant A is replayed
+    // against tenant B's URL.
+    tenant_slug: tenantSlug,
     exp: Date.now() + IFRAME_TOKEN_TTL_MS,
   });
 
-  return jsonResponse(200, { token: shellToken });
+  // tenant_slug is echoed in the response so FieldIframe can build
+  // the iframe URL (`?tenant=<slug>#sh=<token>`) without re-reading
+  // its own picker state — single source of truth is what the server
+  // actually signed.
+  return jsonResponse(200, { token: shellToken, tenant_slug: tenantSlug });
 });

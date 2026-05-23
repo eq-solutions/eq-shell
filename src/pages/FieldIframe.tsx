@@ -18,6 +18,15 @@ import { Topbar } from '../components/Topbar';
 //
 // 2026-05-21 — wrapped in <Topbar /> so users aren't trapped on the
 // iframe surface; matches the audit fix that landed earlier today.
+//
+// 2026-05-22 — Wave 5: tenant picker on this surface. The shell user
+// (always on shell tenant 'core' today) picks which Field organisation
+// to load. The mint endpoint accepts the chosen slug in its body and
+// stamps it into the signed token; Field's v3.5.17 _consumeShellToken
+// cross-checks the slug against the iframe URL's `?tenant=` param and
+// rejects mismatches with a 'tenant-mismatch' postMessage. Auto-routing
+// from the user's shell tenant_id was tried twice (PR #10, #12) and
+// reverted both times — see SHELL-TENANT-PICKER-PROMPT.md §2 for why.
 
 const FIELD_URL = 'https://eq-solves-field.netlify.app/';
 
@@ -28,18 +37,57 @@ const FIELD_URL = 'https://eq-solves-field.netlify.app/';
 // would be the most annoying possible UX.
 const HANDOFF_TIMEOUT_MS = 10_000;
 
+// 2026-05-22 — Wave 5: the picker cards. Must stay in lock-step with
+// mint-iframe-token.ts ALLOWED_FIELD_TENANT_SLUGS — if you add a card
+// here without updating the allow-list, the mint endpoint will 400.
+// Card copy and PINs mirror EQ Field's in-app v3.5.18 picker so the
+// two entry surfaces feel like one product.
+const TENANT_OPTIONS = [
+  {
+    slug: 'eq',
+    tier: 'Standard',
+    name: 'EQ Demo',
+    tagline: 'SEED data, unchanged UI. The "before" baseline.',
+  },
+  {
+    slug: 'demo-trades',
+    tier: 'Advanced',
+    name: 'Demo Trades',
+    tagline: 'Adds Projects, Employment filter, People-form fields.',
+  },
+  {
+    slug: 'melbourne',
+    tier: 'Enterprise',
+    name: 'Melbourne',
+    tagline: 'Full surface: Forecast, Apprentice ratio, Region picker.',
+  },
+] as const;
+
+type TenantOption = (typeof TENANT_OPTIONS)[number];
+type TenantSlug = TenantOption['slug'];
+
 // Message shape contracted with eq-field-app `scripts/auth.js`
-// `_postHandoffStatus()` (added in v3.5.12). The shape is versioned;
-// bump `version` on both sides when the shape changes.
+// `_postHandoffStatus()` (added in v3.5.12, extended in v3.5.17 with
+// 'tenant-mismatch'). The shape is versioned; bump `version` on both
+// sides when the shape changes.
 interface HandoffMessage {
   source: 'eq-field-shell-handoff';
   version: 1;
-  kind: 'boot' | 'no-sh-param' | 'accepted' | 'rejected' | 'http-error' | 'network-error';
+  kind:
+    | 'boot'
+    | 'no-sh-param'
+    | 'accepted'
+    | 'rejected'
+    | 'http-error'
+    | 'network-error'
+    | 'tenant-mismatch';
   hasHash?: boolean;
   status?: number;
   name?: string;
   role?: string;
   detail?: string;
+  expected?: string;
+  got?: string;
 }
 
 type HandoffState =
@@ -52,6 +100,7 @@ type HandoffState =
   | { phase: 'http-error'; status: number }
   | { phase: 'network-error'; detail: string }
   | { phase: 'no-sh-param' }
+  | { phase: 'tenant-mismatch'; expected: string; got: string }
   | { phase: 'timeout' };
 
 function isHandoffMessage(data: unknown): data is HandoffMessage {
@@ -61,25 +110,55 @@ function isHandoffMessage(data: unknown): data is HandoffMessage {
 }
 
 export default function FieldIframe() {
+  // null = picker shown; once set, mint+embed runs.
+  const [selectedTenant, setSelectedTenant] = useState<TenantSlug | null>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [state, setState] = useState<HandoffState>({ phase: 'minting' });
 
-  // Mint token + set iframe src.
+  // Resetting src + state happens in the pick/switch event handlers
+  // below (not in the mint effect) — keeps the effect a pure
+  // "synchronise external system" call, no cascading renders.
+  const pickTenant = (slug: TenantSlug) => {
+    setSrc(null);
+    setState({ phase: 'minting' });
+    setSelectedTenant(slug);
+  };
+
+  const onSwitch = () => {
+    setSrc(null);
+    setState({ phase: 'minting' });
+    setSelectedTenant(null);
+  };
+
+  // Mint token + set iframe src once a tenant is chosen. Re-runs if
+  // the user hits "Switch tenant" — selectedTenant returns to null,
+  // then they pick again and this fires fresh.
   useEffect(() => {
+    if (!selectedTenant) return;
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch('/.netlify/functions/mint-iframe-token', {
           method: 'POST',
           credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_slug: selectedTenant }),
         });
         if (!res.ok) {
           if (!cancelled) setState({ phase: 'mint-failed' });
           return;
         }
-        const body = (await res.json()) as { token: string };
+        const body = (await res.json()) as { token: string; tenant_slug: string };
         if (!cancelled) {
-          setSrc(`${FIELD_URL}#sh=${encodeURIComponent(body.token)}`);
+          // ?tenant=<slug> sets Field's TENANT.ORG_SLUG before the
+          // token is verified; the token's tenant_slug claim is then
+          // cross-checked against it. Both must agree or Field
+          // rejects with 'tenant-mismatch'. We use body.tenant_slug
+          // (what the server actually signed) rather than the local
+          // selectedTenant so the URL never disagrees with the token.
+          setSrc(
+            `${FIELD_URL}?tenant=${encodeURIComponent(body.tenant_slug)}#sh=${encodeURIComponent(body.token)}`,
+          );
           setState({ phase: 'waiting' });
         }
       } catch {
@@ -89,7 +168,7 @@ export default function FieldIframe() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedTenant]);
 
   // Listen for handoff status from the iframe. We deliberately don't
   // pin the event.source to a specific window: capturing the iframe
@@ -123,6 +202,22 @@ export default function FieldIframe() {
           setState({ phase: 'no-sh-param' });
           Sentry.captureMessage('EQ Field handoff: no sh= param in hash', { level: 'warning' });
           break;
+        case 'tenant-mismatch':
+          // Field booted under a tenant slug that doesn't match the
+          // one stamped on the token. With Wave 5 the URL is derived
+          // from the same server response that signed the token, so
+          // this should be near-impossible — if it fires, suspect a
+          // stale Field SW cache or a URL the user edited by hand.
+          setState({
+            phase: 'tenant-mismatch',
+            expected: msg.expected ?? 'unknown',
+            got: msg.got ?? 'unknown',
+          });
+          Sentry.captureMessage(
+            `EQ Field handoff tenant mismatch — Field expected "${msg.expected}", token claims "${msg.got}"`,
+            { level: 'error' },
+          );
+          break;
       }
     }
     window.addEventListener('message', onMessage);
@@ -140,12 +235,29 @@ export default function FieldIframe() {
     return () => clearTimeout(timer);
   }, [state.phase]);
 
-  // No iframe yet — show a pre-mount status (still under the shell topbar).
+  // Picker — no tenant chosen yet.
+  if (!selectedTenant) {
+    return (
+      <>
+        <Topbar />
+        <TenantPicker onPick={pickTenant} />
+      </>
+    );
+  }
+
+  const tenantMeta = TENANT_OPTIONS.find((t) => t.slug === selectedTenant);
+
+  // No iframe yet — show a pre-mount status (still under the shell topbar
+  // + tenant bar so the user can bail out to the picker).
   if (state.phase === 'minting' || state.phase === 'mint-failed') {
     return (
       <>
         <Topbar />
-        <div className="eq-field-frame-loading" role={state.phase === 'mint-failed' ? 'alert' : undefined}>
+        {tenantMeta && <FieldTenantBar tenant={tenantMeta} onSwitch={onSwitch} />}
+        <div
+          className="eq-field-frame-loading eq-field-frame-loading--with-tenantbar"
+          role={state.phase === 'mint-failed' ? 'alert' : undefined}
+        >
           {state.phase === 'minting'
             ? 'Authorising EQ Field handoff…'
             : 'Could not authorise EQ Field. Sign out and back in, then retry.'}
@@ -160,9 +272,10 @@ export default function FieldIframe() {
   return (
     <>
       <Topbar />
+      {tenantMeta && <FieldTenantBar tenant={tenantMeta} onSwitch={onSwitch} />}
       {src && (
         <iframe
-          className="eq-field-frame"
+          className="eq-field-frame eq-field-frame--with-tenantbar"
           title="EQ Field"
           src={src}
           // Allow same-origin so Field's existing IndexedDB / cookies
@@ -184,6 +297,48 @@ export default function FieldIframe() {
   );
 }
 
+function TenantPicker({ onPick }: { onPick: (slug: TenantSlug) => void }) {
+  return (
+    <div className="eq-field-picker">
+      <div className="eq-field-picker__inner">
+        <div className="eq-field-picker__eyebrow">EQ Solves · Field</div>
+        <h1 className="eq-field-picker__title">Pick a Field tenant</h1>
+        <p className="eq-field-picker__lede">
+          Each tenant exercises a different tier of the product. The shell signs you in — no PIN needed.
+        </p>
+        <div className="eq-field-picker__grid">
+          {TENANT_OPTIONS.map((t) => (
+            <button
+              key={t.slug}
+              type="button"
+              className={`eq-field-picker__card eq-field-picker__card--${t.slug}`}
+              onClick={() => onPick(t.slug)}
+            >
+              <div className="eq-field-picker__tier">{t.tier}</div>
+              <div className="eq-field-picker__name">{t.name}</div>
+              <div className="eq-field-picker__tagline">{t.tagline}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FieldTenantBar({ tenant, onSwitch }: { tenant: TenantOption; onSwitch: () => void }) {
+  return (
+    <div className="eq-field-tenantbar" role="status">
+      <div className="eq-field-tenantbar__label">
+        <span className="eq-field-tenantbar__tier">{tenant.tier}</span>
+        <span className="eq-field-tenantbar__name">{tenant.name}</span>
+      </div>
+      <button type="button" className="eq-field-tenantbar__switch" onClick={onSwitch}>
+        Switch tenant
+      </button>
+    </div>
+  );
+}
+
 function HandoffOverlay({ state }: { state: HandoffState }) {
   // Accepted is the happy path — no overlay.
   if (state.phase === 'accepted') return null;
@@ -194,7 +349,7 @@ function HandoffOverlay({ state }: { state: HandoffState }) {
   // which shouldn't happen on this route; surface it as a warning.)
   if (state.phase === 'waiting' || (state.phase === 'booted' && state.hasHash)) {
     return (
-      <div className="eq-field-frame-overlay" aria-busy="true">
+      <div className="eq-field-frame-overlay eq-field-frame-overlay--with-tenantbar" aria-busy="true">
         <div className="eq-field-frame-overlay-card">Loading EQ Field…</div>
       </div>
     );
@@ -202,7 +357,7 @@ function HandoffOverlay({ state }: { state: HandoffState }) {
 
   const msg = overlayMessage(state);
   return (
-    <div className="eq-field-frame-overlay" role="alert">
+    <div className="eq-field-frame-overlay eq-field-frame-overlay--with-tenantbar" role="alert">
       <div className="eq-field-frame-overlay-card">{msg}</div>
     </div>
   );
@@ -221,6 +376,8 @@ function overlayMessage(state: HandoffState): string {
       return 'Network error reaching EQ Field. Check your connection and refresh.';
     case 'no-sh-param':
       return 'EQ Field handoff URL was malformed. Refresh to retry.';
+    case 'tenant-mismatch':
+      return `EQ Field expected tenant "${state.expected}" but the sign-in token was for "${state.got}". Switch tenant and try again.`;
     case 'timeout':
       return "EQ Field didn't respond within 10 seconds. Refresh to retry.";
     default:

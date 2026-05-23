@@ -73,6 +73,20 @@ export interface ShellTokenPayload {
    * here so the same token shape works once Field catches up.
    */
   is_platform_admin: boolean;
+  /**
+   * 2026-05-22 — Wave 5: target Field tenant slug, chosen by the user
+   * via the shell-side picker on /core/field. NOT derived from the
+   * caller's shell tenant_id (that auto-routing model was rejected —
+   * see PR #11 / #13 revert chain). Field's v3.5.17 _consumeShellToken
+   * cross-checks this against TENANT.ORG_SLUG (set from the iframe
+   * URL's ?tenant= param) and rejects on mismatch.
+   *
+   * The mint endpoint validates against a hardcoded allow-list of
+   * Field organisation slugs ('eq', 'demo-trades', 'melbourne'); the
+   * value here is therefore trusted by Field. If a new Field tenant
+   * is added, update both the allow-list and the picker cards.
+   */
+  tenant_slug: string;
   exp: number;
 }
 
