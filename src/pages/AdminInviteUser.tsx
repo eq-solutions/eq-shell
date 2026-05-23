@@ -31,7 +31,6 @@ const MODULE_OPTIONS = [
   { key: 'intake',          label: 'Intake' },
   { key: 'quotes',          label: 'Quotes' },
   { key: 'service',         label: 'Service' },
-  { key: 'tender_pipeline', label: 'Tender Pipeline' },
 ];
 
 interface InviteSuccess {

@@ -55,7 +55,6 @@ const IntakeServiceLanding = lazy(() =>
   import('./modules/intake/DomainLanding').then((m) => ({ default: m.ServiceIntakeLanding })),
 );
 const QuotesModule = lazy(() => import('./modules/quotes'));
-const ServiceModule = lazy(() => import('./modules/service'));
 const TenderPipelineModule = lazy(() => import('./modules/tender-pipeline'));
 
 // SessionProvider — hydrates session via verify-shell-session on mount,
