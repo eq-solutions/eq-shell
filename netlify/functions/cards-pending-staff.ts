@@ -65,10 +65,15 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (revErr) return json(500, { error: revErr.message });
 
-  const reviewedIds = (reviewed ?? []).map((r: { staff_id: string }) => r.staff_id);
+  const reviewedIds = new Set<string>(
+    ((reviewed ?? []) as Array<{ staff_id: string }>).map((r) => r.staff_id),
+  );
 
-  // Fetch pending staff from eq-canonical app_data schema.
-  const staffQuery = sb
+  // Fetch all active staff for this tenant from eq-canonical app_data schema.
+  // Schema is untyped (any) so we cast via unknown after the call.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sbAny = sb as any;
+  const { data: allStaff, error: staffErr } = (await sbAny
     .schema('app_data')
     .from('staff')
     .select(
@@ -77,22 +82,23 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     )
     .eq('tenant_id', tenantId)
     .eq('active', true)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })) as {
+    data: StaffRow[] | null;
+    error: { message: string } | null;
+  };
 
-  if (reviewedIds.length > 0) {
-    staffQuery.not('staff_id', 'in', `(${reviewedIds.join(',')})`);
-  }
-
-  const { data: staff, error: staffErr } = await staffQuery;
   if (staffErr) return json(500, { error: staffErr.message });
 
-  if (!staff || staff.length === 0) {
+  // Filter out already-reviewed staff in JS — avoids complex Supabase NOT IN syntax.
+  const staff = (allStaff ?? []).filter((s) => !reviewedIds.has(s.staff_id));
+
+  if (staff.length === 0) {
     return json(200, { pending: [] });
   }
 
   // Fetch licences for all pending staff in one query.
-  const staffIds = (staff as StaffRow[]).map((s) => s.staff_id);
-  const { data: licences, error: licErr } = await sb
+  const staffIds = staff.map((s) => s.staff_id);
+  const { data: allLicences, error: licErr } = (await sbAny
     .schema('app_data')
     .from('licences')
     .select(
@@ -101,19 +107,22 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     )
     .eq('tenant_id', tenantId)
     .eq('active', true)
-    .in('staff_id', staffIds);
+    .in('staff_id', staffIds)) as {
+    data: LicenceRow[] | null;
+    error: { message: string } | null;
+  };
 
   if (licErr) return json(500, { error: licErr.message });
 
   // Group licences by staff_id.
   const licencesByStaff = new Map<string, LicenceRow[]>();
-  for (const lic of (licences ?? []) as LicenceRow[]) {
+  for (const lic of allLicences ?? []) {
     const existing = licencesByStaff.get(lic.staff_id) ?? [];
     existing.push(lic);
     licencesByStaff.set(lic.staff_id, existing);
   }
 
-  const pending = (staff as StaffRow[]).map((s) => ({
+  const pending = staff.map((s) => ({
     ...s,
     licences: licencesByStaff.get(s.staff_id) ?? [],
   }));

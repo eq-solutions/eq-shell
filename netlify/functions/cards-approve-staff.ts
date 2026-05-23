@@ -51,6 +51,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 
   const sb = getServiceClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sbAny = sb as any;
   const tenantId = session.tenant_id;
 
   // Guard: can't review the same person twice.
@@ -78,31 +80,32 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 
   // Approve — read full profile + licences from eq-canonical.
-  const { data: staffRow, error: staffErr } = await sb
+  const { data: staffRow, error: staffErr } = (await sbAny
     .schema('app_data')
     .from('staff')
-    .select(
-      'staff_id, first_name, last_name, email, phone, date_of_birth, tenant_id',
-    )
+    .select('staff_id, first_name, last_name, email, phone, date_of_birth, tenant_id')
     .eq('staff_id', staff_id)
     .eq('tenant_id', tenantId)
     .eq('active', true)
-    .maybeSingle();
+    .maybeSingle()) as {
+    data: { staff_id: string; first_name: string | null; last_name: string | null; email: string | null; phone: string | null; date_of_birth: string | null; tenant_id: string } | null;
+    error: { message: string } | null;
+  };
 
   if (staffErr || !staffRow) {
     return json(404, { error: 'Staff record not found or not in your tenant' });
   }
 
-  const { data: licences, error: licErr } = await sb
+  const { data: licences, error: licErr } = (await sbAny
     .schema('app_data')
     .from('licences')
-    .select(
-      'licence_id, licence_type, licence_number, issuing_authority, ' +
-      'state, issue_date, expiry_date, notes',
-    )
+    .select('licence_id, licence_type, licence_number, issuing_authority, state, issue_date, expiry_date, notes')
     .eq('staff_id', staff_id)
     .eq('tenant_id', tenantId)
-    .eq('active', true);
+    .eq('active', true)) as {
+    data: Array<{ licence_id: string; licence_type: string; licence_number: string | null; issuing_authority: string | null; state: string | null; issue_date: string | null; expiry_date: string | null; notes: string | null }> | null;
+    error: { message: string } | null;
+  };
 
   if (licErr) return json(500, { error: licErr.message });
 
@@ -122,10 +125,10 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const fieldOrgId = tenant.field_org_id as string;
 
   // Build the name.
-  const fullName = [staffRow.first_name, staffRow.last_name]
-    .filter(Boolean)
-    .join(' ')
-    .trim() || staffRow.email ?? 'Unknown';
+  const fullName = (
+    [staffRow.first_name, staffRow.last_name].filter(Boolean).join(' ').trim() ||
+    staffRow.email
+  ) ?? 'Unknown';
 
   // Parse dob into day/month if present.
   let dobDay: number | null = null;
@@ -164,7 +167,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   // Write qualifications (one per Cards licence).
   if (licences && licences.length > 0) {
-    const qualRows = licences.map((l: any) => ({
+    const qualRows = licences.map((l) => ({
       person_id: fieldPeopleId,
       licence_type: l.licence_type,
       licence_number: l.licence_number ?? null,

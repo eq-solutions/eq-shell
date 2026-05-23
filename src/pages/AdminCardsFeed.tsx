@@ -42,7 +42,7 @@ function formatDate(iso: string | null): string {
 }
 
 function fullName(s: PendingStaff): string {
-  return [s.first_name, s.last_name].filter(Boolean).join(' ') || s.email ?? 'Unknown';
+  return ([s.first_name, s.last_name].filter(Boolean).join(' ') || s.email) ?? 'Unknown';
 }
 
 function StaffCard({
