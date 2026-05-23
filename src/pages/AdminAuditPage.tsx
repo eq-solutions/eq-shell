@@ -33,6 +33,15 @@ interface MintAudit {
   minted_at: string;
 }
 
+interface AuthEvent {
+  id: number;
+  at: string;
+  event: string;
+  actor_id: string | null;
+  ip: string | null;
+  detail: Record<string, unknown> | null;
+}
+
 interface IntakeRow {
   audit_id: string;
   source_row_index: number;
@@ -64,8 +73,16 @@ function pillFor(status: string): string {
   return 'eq-pill eq-pill--info';
 }
 
+function eventPill(event: string): string {
+  if (event.startsWith('login.success') || event === 'invite.accepted' || event === 'pin.reset.accepted') return 'eq-pill eq-pill--ok';
+  if (event.startsWith('login.failed')) return 'eq-pill eq-pill--err';
+  if (event === 'logout') return 'eq-pill eq-pill--info';
+  return 'eq-pill';
+}
+
 function AdminAuditInner() {
-  const [tab, setTab] = useState<'intakes' | 'mints'>('intakes');
+  const [tab, setTab] = useState<'auth' | 'intakes' | 'mints'>('auth');
+  const [authEvents, setAuthEvents] = useState<AuthEvent[] | null>(null);
   const [intakes, setIntakes] = useState<IntakeEvent[] | null>(null);
   const [mints, setMints] = useState<MintAudit[] | null>(null);
   const [drilldown, setDrilldown] = useState<{
@@ -81,12 +98,15 @@ function AdminAuditInner() {
     setErr(null);
     try {
       const sb = await createSupabaseClient();
-      const [iRes, mRes] = await Promise.all([
+      const [aRes, iRes, mRes] = await Promise.all([
+        sb.rpc('eq_recent_auth_events', { p_limit: 100 }),
         sb.rpc('eq_recent_intake_events', { p_limit: 50 }),
         sb.rpc('eq_recent_mint_audit', { p_limit: 50 }),
       ]);
+      if (aRes.error) throw new Error(aRes.error.message);
       if (iRes.error) throw new Error(iRes.error.message);
       if (mRes.error) throw new Error(mRes.error.message);
+      setAuthEvents(aRes.data as AuthEvent[]);
       setIntakes(iRes.data as IntakeEvent[]);
       setMints(mRes.data as MintAudit[]);
     } catch (e) {
@@ -162,10 +182,17 @@ function AdminAuditInner() {
         <div className="eq-tabs">
           <button
             type="button"
+            className={`eq-tab ${tab === 'auth' ? 'eq-tab--active' : ''}`}
+            onClick={() => setTab('auth')}
+          >
+            Login activity {authEvents && `(${authEvents.length})`}
+          </button>
+          <button
+            type="button"
             className={`eq-tab ${tab === 'intakes' ? 'eq-tab--active' : ''}`}
             onClick={() => setTab('intakes')}
           >
-            Intake events {intakes && `(${intakes.length})`}
+            Imports {intakes && `(${intakes.length})`}
           </button>
           <button
             type="button"
@@ -175,6 +202,49 @@ function AdminAuditInner() {
             Token mints {mints && `(${mints.length})`}
           </button>
         </div>
+
+        {tab === 'auth' && (
+          <div className="eq-table-wrap">
+            <table className="eq-table">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>User</th>
+                  <th>IP</th>
+                  <th>Detail</th>
+                  <th>When</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && !authEvents ? (
+                  <tr>
+                    <td colSpan={5}>
+                      <Skeleton variant="row" count={5} />
+                    </td>
+                  </tr>
+                ) : !authEvents || authEvents.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: 28 }}>
+                      No login activity yet.
+                    </td>
+                  </tr>
+                ) : (
+                  authEvents.map((e) => (
+                    <tr key={e.id}>
+                      <td><span className={eventPill(e.event)}>{e.event.replace('.', ' ')}</span></td>
+                      <td className="eq-table__mono">{e.actor_id ? e.actor_id.slice(0, 8) + '…' : <span className="eq-table__mute">—</span>}</td>
+                      <td className="eq-table__mono">{e.ip ?? <span className="eq-table__mute">—</span>}</td>
+                      <td className="eq-table__mute" style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {e.detail && Object.keys(e.detail).length > 0 ? JSON.stringify(e.detail) : '—'}
+                      </td>
+                      <td className="eq-table__mute">{relTime(e.at)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {tab === 'intakes' && (
           <div className="eq-table-wrap">
