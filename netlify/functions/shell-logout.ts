@@ -17,6 +17,7 @@
 // load-bearing change.
 
 import type { Context } from '@netlify/functions';
+import { buildSessionCookie } from './_shared/cookie.js';
 import { withSentry } from './_shared/sentry.js';
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
@@ -39,17 +40,9 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // accepts the clear directive. Setting Max-Age=0 + Expires in the
   // past asks the browser to drop the cookie immediately. Domain +
   // Path must match the original Set-Cookie or the browser keeps a
-  // separately-scoped copy alive.
-  const clearCookie = [
-    'eq_shell_session=',
-    'Domain=.eq.solutions',
-    'Path=/',
-    'Max-Age=0',
-    'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
-    'HttpOnly',
-    'Secure',
-    'SameSite=Lax',
-  ].join('; ');
+  // separately-scoped copy alive — buildSessionCookie derives Domain
+  // from the request host, same logic as shell-login.
+  const clearCookie = buildSessionCookie(req, '', { clear: true });
 
   return jsonResponse(200, { ok: true }, { 'Set-Cookie': clearCookie });
 });

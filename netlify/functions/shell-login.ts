@@ -30,6 +30,7 @@ import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import { signSessionToken, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
+import { buildSessionCookie } from './_shared/cookie.js';
 import { withSentry } from './_shared/sentry.js';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -171,15 +172,12 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     is_platform_admin: user.is_platform_admin,
     exp,
   });
-  const cookie = [
-    `eq_shell_session=${cookieValue}`,
-    `Domain=.eq.solutions`,
-    `Path=/`,
-    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
-    `HttpOnly`,
-    `Secure`,
-    `SameSite=Lax`,
-  ].join('; ');
+  // Domain scoping handled by buildSessionCookie — set to .eq.solutions
+  // on prod hosts, omitted on previews / localhost so the cookie scopes
+  // to the current host instead of being dropped by the browser.
+  const cookie = buildSessionCookie(req, cookieValue, {
+    maxAgeSeconds: SESSION_TTL_MS / 1000,
+  });
 
   // Strip pin_hash from the returned user payload — clients never see it.
   const { pin_hash, ...userSafe } = user;
