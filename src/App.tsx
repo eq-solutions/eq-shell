@@ -31,13 +31,6 @@ import './App.css';
 // iframe to the standalone Cards Flutter web app (not a lazy React
 // chunk), so CardsIframe is imported eagerly above with the other
 // page components. The lazy CardsModule is dropped.
-//
-// Phase 1.F restructured src/modules/intake.tsx → src/modules/intake/
-// (per IDENTITY-MODEL.md §4.3, so the per-module permissions.ts can
-// sit beside index.tsx). Explicit '/index' path avoids ambiguity
-// with the old intake.tsx file, which is left orphaned for cleanup
-// in a follow-up PR (CLAUDE.md hard rule: no deletes without
-// explicit permission).
 const IntakeModule = lazy(() => import('./modules/intake/index'));
 // Unit 7 — per-domain landing pages.
 const IntakeCoreLanding = lazy(() =>
