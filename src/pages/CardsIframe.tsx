@@ -44,10 +44,13 @@ export default function CardsIframe() {
         }
         const { token } = (await res.json()) as { token: string; exp: number };
         if (cancelled) return;
-        // Pass via URL hash — hash never hits the server, so the JWT
-        // doesn't appear in any access log. Cards reads window.location.hash
-        // on first paint and clears it after setSession.
-        setIframeSrc(`${CARDS_URL}#sh=${encodeURIComponent(token)}`);
+        // Pass via URL hash on the /auth/handoff path. Targeting the
+        // handoff route directly means GoRouter doesn't need to redirect from
+        // "/" and accidentally strip the fragment before IframeHandoffScreen
+        // can read it. Hash never hits the server so the JWT stays out of
+        // access logs. Cards reads window.location.hash and clears it after
+        // setSession.
+        setIframeSrc(`${CARDS_URL}auth/handoff#sh=${encodeURIComponent(token)}`);
       } catch (e) {
         if (!cancelled) setErr((e as Error).message);
       }
