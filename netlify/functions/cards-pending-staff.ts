@@ -22,6 +22,7 @@ interface StaffRow {
   address_suburb: string | null;
   address_state: string | null;
   address_postcode: string | null;
+  imported_from: string | null;
   created_at: string;
 }
 
@@ -78,7 +79,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     .from('staff')
     .select(
       'staff_id, first_name, last_name, email, phone, date_of_birth, ' +
-      'address_street, address_suburb, address_state, address_postcode, created_at',
+      'address_street, address_suburb, address_state, address_postcode, imported_from, created_at',
     )
     .eq('tenant_id', tenantId)
     .eq('active', true)
@@ -89,8 +90,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (staffErr) return json(500, { error: staffErr.message });
 
-  // Filter out already-reviewed staff in JS — avoids complex Supabase NOT IN syntax.
-  const staff = (allStaff ?? []).filter((s) => !reviewedIds.has(s.staff_id));
+  // Filter out already-reviewed staff and Field-imported staff (they're already in Field
+  // and don't need the Cards → Field approval flow — approving them would create duplicates).
+  const staff = (allStaff ?? []).filter(
+    (s) => !reviewedIds.has(s.staff_id) && s.imported_from !== 'eq-solves-field',
+  );
 
   if (staff.length === 0) {
     return json(200, { pending: [] });
