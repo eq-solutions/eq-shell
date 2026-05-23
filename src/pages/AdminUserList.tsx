@@ -77,7 +77,7 @@ function AdminUserListInner() {
           <div>
             <h1 className="eq-page__title">Users</h1>
             <p className="eq-page__lede">
-              Tenant members and their roles. Manager + platform admin only.
+              Your team members and their roles.
             </p>
           </div>
           <Link

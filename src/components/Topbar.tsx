@@ -12,10 +12,11 @@ export function Topbar() {
   const brand = useBrand();
   const canAdmin = useCan('admin.list_users');
   const canAudit = useCan('audit.view');
+  const canReviewCards = useCan('admin.review_cards');
 
   if (!session) return null;
 
-  const navItems: { to: string; label: string; module?: string; admin?: boolean; audit?: boolean }[] = [
+  const navItems: { to: string; label: string; module?: string; admin?: boolean; audit?: boolean; cards?: boolean }[] = [
     { to: `/${tenantSlug}`, label: 'Home' },
     { to: `/${tenantSlug}/intake`, label: 'Intake', module: 'intake' },
     { to: `/${tenantSlug}/cards`, label: 'Cards', module: 'cards' },
@@ -23,6 +24,7 @@ export function Topbar() {
     { to: `/${tenantSlug}/service`, label: 'Service', module: 'service' },
     { to: `/${tenantSlug}/admin/audit`, label: 'Audit', audit: true },
     { to: `/${tenantSlug}/admin/users`, label: 'Users', admin: true },
+    { to: `/${tenantSlug}/admin/cards-feed`, label: 'New staff', cards: true },
     { to: `/${tenantSlug}/admin/settings`, label: 'Settings', admin: true },
   ];
 
@@ -30,6 +32,7 @@ export function Topbar() {
     if (i.module && !moduleEnabled(session, i.module)) return false;
     if (i.admin && !canAdmin) return false;
     if (i.audit && !canAudit) return false;
+    if (i.cards && !canReviewCards) return false;
     return true;
   });
 

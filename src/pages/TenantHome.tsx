@@ -183,7 +183,7 @@ export default function TenantHome() {
             </h1>
             <p className="eq-home-hero__sub">
               {liveModuleCount} module{liveModuleCount === 1 ? '' : 's'} live ·{' '}
-              {totalRowsThisWeek != null ? `${totalRowsThisWeek.toLocaleString()} rows added this week` : 'Loading…'}
+              {totalRowsThisWeek != null ? `${totalRowsThisWeek.toLocaleString()} rows added this week` : ''}
               {events && events.length > 0
                 ? ` · ${events.length} recent intake${events.length === 1 ? '' : 's'}`
                 : ''}

@@ -16,7 +16,7 @@ import { Topbar } from '../components/Topbar';
 import type { EqRole } from '../session';
 
 const ROLE_OPTIONS: { value: EqRole; label: string; helper: string }[] = [
-  { value: 'manager',     label: 'Manager',     helper: 'Tenant owner. Full control.' },
+  { value: 'manager',     label: 'Manager',     helper: 'Business owner. Full control.' },
   { value: 'supervisor',  label: 'Supervisor',  helper: 'Approves work, manages a team.' },
   { value: 'employee',    label: 'Employee',    helper: 'Default working role.' },
   { value: 'apprentice',  label: 'Apprentice',  helper: 'Trainee with mentor visibility.' },

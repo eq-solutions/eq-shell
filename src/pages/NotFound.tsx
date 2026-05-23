@@ -43,7 +43,7 @@ export default function NotFound() {
               <div className="eq-module-card__head">
                 <h3>Home</h3>
               </div>
-              <p>Your tenant dashboard with the snapshot grid and modules.</p>
+              <p>Your dashboard with the snapshot grid and modules.</p>
             </Link>
             <Link to={`/${tenantSlug}/intake`} className="eq-module-card">
               <div className="eq-module-card__head">
