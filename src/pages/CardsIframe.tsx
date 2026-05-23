@@ -19,7 +19,7 @@
 import { useEffect, useState } from 'react';
 import { Topbar } from '../components/Topbar';
 
-const CARDS_URL = 'https://eq-cards.netlify.app/';
+const CARDS_URL = 'https://cards.eq.solutions/';
 
 // Cards Unit 4 shipped 2026-05-21: Cards Flutter app reads the
 // shell-minted JWT from the iframe URL hash and calls setSession.
