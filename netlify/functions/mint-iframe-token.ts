@@ -50,7 +50,7 @@ const IFRAME_TOKEN_TTL_MS = 60 * 1000;
 // every shell user is on 'core', which isn't a Field tenant. The
 // picker decouples the two: shell tenant remains the auth identity,
 // Field tenant is chosen per session.
-const ALLOWED_FIELD_TENANT_SLUGS = ['eq', 'demo-trades', 'melbourne'] as const;
+const ALLOWED_FIELD_TENANT_SLUGS = ['eq', 'demo-trades', 'melbourne', 'sks'] as const;
 type AllowedFieldTenantSlug = (typeof ALLOWED_FIELD_TENANT_SLUGS)[number];
 
 function isAllowedFieldTenantSlug(value: unknown): value is AllowedFieldTenantSlug {

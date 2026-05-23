@@ -28,7 +28,19 @@ import { Topbar } from '../components/Topbar';
 // from the user's shell tenant_id was tried twice (PR #10, #12) and
 // reverted both times — see SHELL-TENANT-PICKER-PROMPT.md §2 for why.
 
-const FIELD_URL = 'https://eq-solves-field.netlify.app/';
+// Per-tenant Field deploy URLs. sks-nsw-labour is a single-tenant deploy; the
+// others share eq-solves-field and need ?tenant= to set the org context.
+const FIELD_TENANT_URLS: Record<string, string> = {
+  eq: 'https://eq-solves-field.netlify.app/',
+  'demo-trades': 'https://eq-solves-field.netlify.app/',
+  melbourne: 'https://eq-solves-field.netlify.app/',
+  sks: 'https://sks-nsw-labour.netlify.app/',
+};
+
+function buildFieldSrc(tenantSlug: string, token: string): string {
+  const base = FIELD_TENANT_URLS[tenantSlug] ?? 'https://eq-solves-field.netlify.app/';
+  return `${base}?tenant=${encodeURIComponent(tenantSlug)}#sh=${encodeURIComponent(token)}`;
+}
 
 // Field has up to ~10s of cold-start latency in iframe context
 // (SW install + tenant config + Supabase round-trip). If no message
@@ -43,6 +55,12 @@ const HANDOFF_TIMEOUT_MS = 10_000;
 // Card copy and PINs mirror EQ Field's in-app v3.5.18 picker so the
 // two entry surfaces feel like one product.
 const TENANT_OPTIONS = [
+  {
+    slug: 'sks',
+    tier: 'Live',
+    name: 'SKS Technologies',
+    tagline: 'Production workforce — SKS NSW.',
+  },
   {
     slug: 'eq',
     tier: 'Standard',
@@ -156,9 +174,7 @@ export default function FieldIframe() {
           // rejects with 'tenant-mismatch'. We use body.tenant_slug
           // (what the server actually signed) rather than the local
           // selectedTenant so the URL never disagrees with the token.
-          setSrc(
-            `${FIELD_URL}?tenant=${encodeURIComponent(body.tenant_slug)}#sh=${encodeURIComponent(body.token)}`,
-          );
+          setSrc(buildFieldSrc(body.tenant_slug, body.token));
           setState({ phase: 'waiting' });
         }
       } catch {
