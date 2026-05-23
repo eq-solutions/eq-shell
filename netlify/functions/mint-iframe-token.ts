@@ -76,10 +76,21 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });
   }
 
+  // Auth check FIRST — unauthenticated callers get a flat 401 and
+  // never learn anything about the request shape (including the
+  // tenant allow-list returned in the 400 body below).
+  const token = readSessionCookie(req);
+  const session = verifySessionToken(token);
+  if (!session) {
+    return jsonResponse(401, { valid: false });
+  }
+
   // 2026-05-22 — Wave 5: chosen Field tenant slug arrives in the
   // request body from the shell-side picker. Validated against the
-  // hardcoded allow-list above; anything else is rejected before we
-  // touch the session cookie or DB.
+  // hardcoded allow-list above; anything else is rejected. The
+  // `allowed` array is fine to return here because the caller is
+  // authenticated and already knows which tenants the picker UI
+  // shows them.
   let body: unknown;
   try {
     body = await req.json();
@@ -92,12 +103,6 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       error: 'Invalid or missing tenant_slug',
       allowed: ALLOWED_FIELD_TENANT_SLUGS,
     });
-  }
-
-  const token = readSessionCookie(req);
-  const session = verifySessionToken(token);
-  if (!session) {
-    return jsonResponse(401, { valid: false });
   }
 
   let sb;
