@@ -129,6 +129,30 @@ export function signShellToken(payload: ShellTokenPayload): string {
   return Buffer.from(json).toString('base64') + '.' + sig;
 }
 
+/**
+ * Service iframe handshake token — minted by mint-service-iframe-token,
+ * validated by eq-solves-service's /.netlify/functions/shell-auth.
+ *
+ * Contains enough identity for Service to look up the user by email and
+ * create a Supabase session on their behalf. TTL is intentionally short
+ * (60s) — it's a one-shot exchange token, not a session credential.
+ */
+export interface ServiceTokenPayload {
+  kind: 'service-token';
+  email: string;
+  name: string | null;
+  eq_role: EqRole;
+  is_platform_admin: boolean;
+  shell_tenant_id: string;
+  exp: number;
+}
+
+export function signServiceToken(payload: ServiceTokenPayload): string {
+  const json = JSON.stringify(payload);
+  const sig = sign(json);
+  return Buffer.from(json).toString('base64') + '.' + sig;
+}
+
 // Parses the eq_shell_session cookie value out of a Cookie header.
 // Cookie header looks like: "foo=bar; eq_shell_session=<token>; baz=qux".
 export function readSessionCookie(req: Request): string | null {

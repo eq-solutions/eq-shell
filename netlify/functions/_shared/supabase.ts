@@ -59,6 +59,7 @@ export type EqRole =
 export interface CanonicalUser {
   id: string;
   email: string;
+  name: string | null;
   tenant_id: string;
   role: EqRole;
   is_platform_admin: boolean;
@@ -73,6 +74,7 @@ export interface CanonicalTenant {
   name: string;
   brand_color: string | null;
   brand_logo_url: string | null;
+  tier: 'standard' | 'advanced' | 'enterprise';
   active: boolean;
 }
 

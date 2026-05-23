@@ -114,11 +114,11 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const { data: user, error } = await sb
     .from('users')
-    .select('id, email, tenant_id, role, is_platform_admin, active')
+    .select('id, email, name, tenant_id, role, is_platform_admin, active')
     .eq('id', session.user_id)
     .eq('active', true)
     .maybeSingle<
-      Pick<CanonicalUser, 'id' | 'email' | 'tenant_id' | 'role' | 'is_platform_admin' | 'active'>
+      Pick<CanonicalUser, 'id' | 'email' | 'name' | 'tenant_id' | 'role' | 'is_platform_admin' | 'active'>
     >();
 
   if (error || !user) {
@@ -133,12 +133,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       : 'staff';
 
   // Display name for Field's sidebar / audit_log / form prefills.
-  // Stopgap: derive from email local-part since canonical `users` has
-  // no `name` column yet. Replace with `user.name` once that column
-  // lands (separate migration follow-up).
-  const displayName = user.email.includes('@')
-    ? user.email.split('@')[0]
-    : user.email;
+  const displayName = user.name ?? (user.email.includes('@') ? user.email.split('@')[0] : user.email);
 
   const shellToken = signShellToken({
     kind: 'shell-token',

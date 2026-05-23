@@ -21,6 +21,7 @@ import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
 import EntityBrowserPage from './pages/EntityBrowserPage';
+import ServiceIframe from './pages/ServiceIframe';
 import StorageBrowser from './pages/StorageBrowser';
 import NotFound from './pages/NotFound';
 import './App.css';
@@ -55,7 +56,6 @@ const IntakeServiceLanding = lazy(() =>
   import('./modules/intake/DomainLanding').then((m) => ({ default: m.ServiceIntakeLanding })),
 );
 const QuotesModule = lazy(() => import('./modules/quotes'));
-const TenderPipelineModule = lazy(() => import('./modules/tender-pipeline'));
 
 // SessionProvider — hydrates session via verify-shell-session on mount,
 // re-exposes the result to the rest of the tree.
@@ -244,31 +244,19 @@ function TenantTree() {
           }
         />
         <Route
+          path="service"
+          element={
+            <ModuleGate module="service">
+              <ServiceIframe />
+            </ModuleGate>
+          }
+        />
+        <Route
           path="quotes"
           element={
             <ModuleGate module="quotes">
               <Suspense fallback={<div className="eq-loading">Loading…</div>}>
                 <QuotesModule />
-              </Suspense>
-            </ModuleGate>
-          }
-        />
-        <Route
-          path="service"
-          element={
-            <ModuleGate module="service">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
-                <ServiceModule />
-              </Suspense>
-            </ModuleGate>
-          }
-        />
-        <Route
-          path="tender-pipeline/*"
-          element={
-            <ModuleGate module="tender_pipeline">
-              <Suspense fallback={<div className="eq-loading">Loading…</div>}>
-                <TenderPipelineModule />
               </Suspense>
             </ModuleGate>
           }

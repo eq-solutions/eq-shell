@@ -24,6 +24,7 @@ import type { EqRole } from '../session';
 interface UserRow {
   id: string;
   email: string;
+  name: string | null;
   role: EqRole;
   is_platform_admin: boolean;
   active: boolean;
@@ -169,7 +170,9 @@ function AdminEditUserInner() {
   return (
     <ShellWrap>
       <div className="eq-page__header">
-        <h1 className="eq-page__title">Edit user</h1>
+        <h1 className="eq-page__title">
+          {target.name ?? target.email.split('@')[0]}
+        </h1>
         <p className="eq-page__lede">
           {target.email}
           {target.is_platform_admin && (

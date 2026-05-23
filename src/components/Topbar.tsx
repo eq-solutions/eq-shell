@@ -17,6 +17,7 @@ export function Topbar() {
     { to: `/${tenantSlug}/intake`, label: 'Intake', module: 'intake' },
     { to: `/${tenantSlug}/cards`, label: 'Cards', module: 'cards' },
     { to: `/${tenantSlug}/field`, label: 'Field', module: 'field' },
+    { to: `/${tenantSlug}/service`, label: 'Service', module: 'service' },
     { to: `/${tenantSlug}/admin/audit`, label: 'Audit' },
     { to: `/${tenantSlug}/admin/users`, label: 'Users' },
     { to: `/${tenantSlug}/admin/settings`, label: 'Settings' },
@@ -46,7 +47,7 @@ export function Topbar() {
       </div>
       <div className="eq-topbar__right">
         <div className="eq-topbar__user">
-          <span>{session.user.email}</span>
+          <span>{session.user.name ?? session.user.email.split('@')[0]}</span>
           <span className="eq-topbar__role">{session.user.role.replace('_', ' ')}</span>
           {session.user.is_platform_admin && (
             <span className="eq-topbar__admin-chip" title="Platform admin (EQ Solutions)">

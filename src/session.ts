@@ -7,12 +7,15 @@
 
 import { createContext, useContext } from 'react';
 
+export type EqTier = 'standard' | 'advanced' | 'enterprise';
+
 export interface Tenant {
   id: string;
   slug: string;
   name: string;
   brand_color: string | null;
   brand_logo_url: string | null;
+  tier: EqTier;
   active: boolean;
 }
 
@@ -33,6 +36,7 @@ export type EqRole =
 export interface User {
   id: string;
   email: string;
+  name: string | null;
   tenant_id: string;
   role: EqRole;
   /**

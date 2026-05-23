@@ -776,12 +776,20 @@
  * Iframes
  * ────────────────────────────────────────────────────────────────── */
 
-.eq-field-frame, .eq-cards-frame {
+.eq-field-frame, .eq-cards-frame, .eq-service-frame {
   position: fixed;
   inset: 48px 0 0;
   border: 0;
   width: 100vw;
   height: calc(100svh - 48px);
+}
+
+.eq-service-frame-wrap {
+  position: fixed;
+  inset: 48px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .eq-field-frame-loading {

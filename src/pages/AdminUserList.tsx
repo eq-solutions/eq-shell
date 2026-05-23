@@ -23,6 +23,7 @@ import type { EqRole } from '../session';
 interface UserRow {
   id: string;
   email: string;
+  name: string | null;
   role: EqRole;
   is_platform_admin: boolean;
   active: boolean;
@@ -94,7 +95,7 @@ function AdminUserListInner() {
           <table className="eq-table">
             <thead>
               <tr>
-                <th>Email</th>
+                <th>Name</th>
                 <th>Role</th>
                 <th>Status</th>
                 <th>Last login</th>
@@ -118,18 +119,23 @@ function AdminUserListInner() {
                 users.map((u) => (
                   <tr key={u.id}>
                     <td>
-                      {u.email}
+                      <span style={{ fontWeight: 500 }}>
+                        {u.name ?? u.email.split('@')[0]}
+                      </span>
+                      <span className="eq-table__mute" style={{ display: 'block', fontSize: 12 }}>
+                        {u.email}
+                      </span>
                       {u.is_platform_admin && (
                         <span
                           className="eq-pill eq-pill--info"
-                          style={{ marginLeft: 8 }}
+                          style={{ marginLeft: 0, marginTop: 4, display: 'inline-block' }}
                           title="EQ Solutions internal cross-tenant access"
                         >
                           Platform admin
                         </span>
                       )}
                       {u.id === session?.user.id && (
-                        <span className="eq-table__mute" style={{ marginLeft: 8 }}>
+                        <span className="eq-table__mute" style={{ marginLeft: 4 }}>
                           (you)
                         </span>
                       )}

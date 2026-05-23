@@ -56,7 +56,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // demoted a user) take effect on next verify, not just next login.
   const { data: user, error: userErr } = await sb
     .from('users')
-    .select('id, email, tenant_id, role, is_platform_admin, active, last_login_at')
+    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at')
     .eq('id', session.user_id)
     .eq('active', true)
     .maybeSingle<Omit<CanonicalUser, 'pin_hash'>>();
@@ -73,7 +73,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const { data: tenant, error: tenantErr } = await sb
     .from('tenants')
-    .select('id, slug, name, brand_color, brand_logo_url, active')
+    .select('id, slug, name, brand_color, brand_logo_url, tier, active')
     .eq('id', user.tenant_id)
     .maybeSingle<CanonicalTenant>();
 
