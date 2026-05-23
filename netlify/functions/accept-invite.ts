@@ -40,6 +40,7 @@ import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement, EqRole } from './_shared/supabase.js';
 import { signSessionToken, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
+import { buildSessionCookie } from './_shared/cookie.js';
 import { withSentry } from './_shared/sentry.js';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — matches shell-login
@@ -213,15 +214,11 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     is_platform_admin: created.is_platform_admin,
     exp,
   });
-  const cookie = [
-    `eq_shell_session=${cookieValue}`,
-    `Domain=.eq.solutions`,
-    `Path=/`,
-    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
-    `HttpOnly`,
-    `Secure`,
-    `SameSite=Lax`,
-  ].join('; ');
+  // Domain scoping handled by buildSessionCookie — same rule as
+  // shell-login: .eq.solutions on prod hosts, host-only off-domain.
+  const cookie = buildSessionCookie(req, cookieValue, {
+    maxAgeSeconds: SESSION_TTL_MS / 1000,
+  });
 
   const supabaseJwt = signSupabaseJwt(
     created.id,
