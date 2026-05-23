@@ -50,12 +50,13 @@ const ADMIN_PERMS = [
   'admin.invite_user',
   'admin.edit_user',
   'admin.deactivate_user',
+  'admin.review_cards',
 ] as const;
 
 type AdminPermKey = (typeof ADMIN_PERMS)[number];
 
 const ADMIN_MATRIX: Record<EqRole, AdminPermKey[]> = {
-  manager:     ['admin.list_users', 'admin.invite_user', 'admin.edit_user', 'admin.deactivate_user'],
+  manager:     ['admin.list_users', 'admin.invite_user', 'admin.edit_user', 'admin.deactivate_user', 'admin.review_cards'],
   supervisor:  [],
   employee:    [],
   apprentice:  [],

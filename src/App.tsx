@@ -20,6 +20,7 @@ import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
+import AdminCardsFeed from './pages/AdminCardsFeed';
 import EntityBrowserPage from './pages/EntityBrowserPage';
 import ServiceIframe from './pages/ServiceIframe';
 import StorageBrowser from './pages/StorageBrowser';
@@ -264,6 +265,8 @@ function TenantTree() {
         <Route path="admin/users/:userId" element={<AdminEditUser />} />
         {/* S3 — audit log viewer + entity browser */}
         <Route path="admin/audit" element={<AdminAuditPage />} />
+        {/* Cards → Field review queue */}
+        <Route path="admin/cards-feed" element={<AdminCardsFeed />} />
         {/* Polish 2026-05-21 — tenant settings */}
         <Route path="admin/settings" element={<AdminTenantSettings />} />
         <Route path="storage" element={<StorageBrowser />} />
