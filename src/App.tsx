@@ -51,6 +51,7 @@ const IntakeServiceLanding = lazy(() =>
   import('./modules/intake/DomainLanding').then((m) => ({ default: m.ServiceIntakeLanding })),
 );
 const QuotesModule = lazy(() => import('./modules/quotes'));
+const JobsModule = lazy(() => import('./modules/jobs'));
 
 // SessionProvider — hydrates session via verify-shell-session on mount,
 // re-exposes the result to the rest of the tree.
@@ -256,6 +257,14 @@ function TenantTree() {
             <ModuleGate module="service">
               <ServiceIframe />
             </ModuleGate>
+          }
+        />
+        <Route
+          path="jobs"
+          element={
+            <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
+              <JobsModule />
+            </Suspense>
           }
         />
         <Route

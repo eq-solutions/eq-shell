@@ -23,6 +23,7 @@ export function Topbar() {
     { to: `/${tenantSlug}/field`, label: 'Field', module: 'field' },
     { to: `/${tenantSlug}/quotes`, label: 'Quotes', module: 'quotes' },
     { to: `/${tenantSlug}/service`, label: 'Service', module: 'service' },
+    { to: `/${tenantSlug}/jobs`, label: 'Jobs', admin: true },
     { to: `/${tenantSlug}/admin/audit`, label: 'Audit', audit: true },
     { to: `/${tenantSlug}/admin/users`, label: 'Users', admin: true },
     { to: `/${tenantSlug}/admin/cards-feed`, label: 'New staff', cards: true },
