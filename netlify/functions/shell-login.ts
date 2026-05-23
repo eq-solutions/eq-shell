@@ -95,6 +95,29 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(500, { error: (e as Error).message });
   }
 
+  // Rate limiting: 5 attempts per IP per 15-minute window.
+  // Keyed by IP so a single attacker can't enumerate all emails.
+  // On success, the key is cleared so legitimate users start fresh.
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+           ?? req.headers.get('client-ip')
+           ?? 'unknown';
+  const rlKey = `login::${ip}`;
+
+  const { data: rlResult, error: rlErr } = await sb.rpc('check_and_increment_rate_limit', {
+    p_key: rlKey,
+  });
+  if (rlErr) {
+    // Non-fatal: if rate limit check fails, log and allow the attempt.
+    // eslint-disable-next-line no-console
+    console.warn('[shell-login] rate-limit check failed (allowing):', rlErr.message);
+  } else {
+    const rl = rlResult as { blocked: boolean; retry_after_seconds: number } | null;
+    if (rl?.blocked) {
+      logShellLogin(req, email, 'failed', `rate-limited (retry in ${rl.retry_after_seconds}s)`);
+      return jsonResponse(429, { valid: false, error: 'too-many-attempts', retry_after: rl.retry_after_seconds });
+    }
+  }
+
   // Look up user by email (canonical layer is global — email is unique
   // across tenants in Phase 1.B; multi-tenant email collision is a
   // Phase 2+ concern).
@@ -156,6 +179,10 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     // eslint-disable-next-line no-console
     console.warn('[shell-login] last_login_at update failed:', lastLoginErr.message);
   }
+
+  // Clear the rate-limit bucket on successful login so the user's
+  // next session starts with a clean slate. Best-effort — non-fatal.
+  void sb.rpc('clear_rate_limit', { p_key: rlKey });
 
   logShellLogin(req, email, 'success');
 
