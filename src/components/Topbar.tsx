@@ -21,6 +21,7 @@ export function Topbar() {
     { to: `/${tenantSlug}/intake`, label: 'Intake', module: 'intake' },
     { to: `/${tenantSlug}/cards`, label: 'Cards', module: 'cards' },
     { to: `/${tenantSlug}/field`, label: 'Field', module: 'field' },
+    { to: `/${tenantSlug}/quotes`, label: 'Quotes', module: 'quotes' },
     { to: `/${tenantSlug}/service`, label: 'Service', module: 'service' },
     { to: `/${tenantSlug}/admin/audit`, label: 'Audit', audit: true },
     { to: `/${tenantSlug}/admin/users`, label: 'Users', admin: true },

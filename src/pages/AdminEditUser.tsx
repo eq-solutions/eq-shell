@@ -59,6 +59,9 @@ function AdminEditUserInner() {
   const [active, setActive] = useState(true);
   const [busy, setBusy] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [resetUrl, setResetUrl] = useState<string | null>(null);
+  const [resetErr, setResetErr] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
 
   const load = async () => {
     if (!userId) return;
@@ -251,6 +254,81 @@ function AdminEditUserInner() {
           a user logs them out on their next request.
         </p>
       </form>
+
+      <section className="eq-section" style={{ marginTop: 40, maxWidth: 480 }}>
+        <h2 className="eq-section__heading">PIN reset</h2>
+        <p style={{ fontSize: 14, color: 'var(--eq-grey)', marginBottom: 16 }}>
+          Generates a one-time reset link valid for 24 hours. Share it with
+          the user — they'll set a new PIN and be signed straight in.
+        </p>
+        <button
+          type="button"
+          className="eq-btn-ghost"
+          disabled={resetBusy}
+          style={{ width: 'auto', padding: '0 20px' }}
+          onClick={async () => {
+            if (!target) return;
+            setResetErr(null);
+            setResetUrl(null);
+            setResetBusy(true);
+            try {
+              const res = await fetch('/.netlify/functions/reset-user-pin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ user_id: target.id }),
+              });
+              const body = (await res.json()) as
+                | { ok: true; reset_url: string; email_delivered: boolean }
+                | { ok: false; error?: string };
+              if (!body.ok) {
+                setResetErr('Could not generate reset link. Try again.');
+              } else {
+                setResetUrl(body.reset_url);
+              }
+            } catch {
+              setResetErr('Network error — please try again.');
+            } finally {
+              setResetBusy(false);
+            }
+          }}
+        >
+          {resetBusy ? 'Generating…' : 'Generate reset link'}
+        </button>
+
+        {resetErr && (
+          <div className="eq-err" role="alert" style={{ marginTop: 12 }}>
+            {resetErr}
+          </div>
+        )}
+
+        {resetUrl && (
+          <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--eq-ice)', borderRadius: 6, border: '1px solid var(--eq-border)' }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--eq-grey)', marginBottom: 8 }}>
+              RESET LINK — share with {target?.email}
+            </p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                readOnly
+                value={resetUrl}
+                style={{ flex: 1, fontSize: 12, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', padding: '6px 10px', border: '1px solid var(--eq-border)', borderRadius: 4, background: 'var(--eq-bg)' }}
+                onFocus={(e) => e.target.select()}
+              />
+              <button
+                type="button"
+                className="eq-btn-ghost"
+                style={{ padding: '0 12px', height: 32, fontSize: 12, whiteSpace: 'nowrap' }}
+                onClick={() => void navigator.clipboard.writeText(resetUrl)}
+              >
+                Copy
+              </button>
+            </div>
+            <p style={{ fontSize: 11, color: 'var(--eq-grey)', marginTop: 8 }}>
+              Expires in 24 hours. One use only.
+            </p>
+          </div>
+        )}
+      </section>
     </ShellWrap>
   );
 }

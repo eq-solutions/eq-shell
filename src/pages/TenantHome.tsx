@@ -41,7 +41,7 @@ const MODULES: ModuleDef[] = [
   { key: 'intake', label: 'Intake', description: 'Drag-drop CSVs into your data with AI column mapping.', to: 'intake', live: true },
   { key: 'cards', label: 'Cards', description: 'Tradie wallet — licences + tap-to-copy.', to: 'cards', live: true },
   { key: 'field', label: 'Field', description: 'Roster, timesheets, sites.', to: 'field', live: true },
-  { key: 'quotes', label: 'Quotes', description: 'Job quoting from the EQ platform.', to: 'quotes', live: false },
+  { key: 'quotes', label: 'Quotes', description: 'Job quoting from the EQ platform.', to: 'quotes', live: true },
   { key: 'service', label: 'Service', description: 'PPM, work orders, assets.', to: 'service', live: false },
 ];
 

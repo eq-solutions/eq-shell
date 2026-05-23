@@ -15,6 +15,7 @@ import TenantHome from './pages/TenantHome';
 import FieldIframe from './pages/FieldIframe';
 import CardsIframe from './pages/CardsIframe';
 import AcceptInvite from './pages/AcceptInvite';
+import ResetPin from './pages/ResetPin';
 import AdminInviteUser from './pages/AdminInviteUser';
 import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
@@ -302,6 +303,7 @@ function App() {
               link doesn't have a session yet; the function sets one
               on success. */}
           <Route path="/accept-invite" element={<AcceptInvite />} />
+          <Route path="/reset-pin" element={<ResetPin />} />
           <Route
             path="/:tenantSlug/*"
             element={
