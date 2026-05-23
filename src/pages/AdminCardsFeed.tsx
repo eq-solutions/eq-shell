@@ -1,13 +1,9 @@
 // Admin review queue for Cards profiles not yet in Field.
 //
 // Gated by admin.review_cards — manager + platform_admin only.
-// Calls cards-pending-staff (GET) to list profiles awaiting review,
-// then cards-approve-staff (POST) to approve or reject each one.
-//
-// On approve: a people row + qualifications rows are written to Field.
-// On reject:  the person is marked rejected and removed from the queue.
+// Table layout + name/email search matches the AdminUserList pattern.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Gate } from '../permissions/Gate';
 import { Topbar } from '../components/Topbar';
 import { Skeleton } from '../components/Skeleton';
@@ -17,9 +13,6 @@ interface Licence {
   licence_id: string;
   licence_type: string;
   licence_number: string | null;
-  issuing_authority: string | null;
-  state: string | null;
-  issue_date: string | null;
   expiry_date: string | null;
 }
 
@@ -37,97 +30,19 @@ interface PendingStaff {
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-AU');
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-AU');
 }
 
 function fullName(s: PendingStaff): string {
   return ([s.first_name, s.last_name].filter(Boolean).join(' ') || s.email) ?? 'Unknown';
 }
 
-function StaffCard({
-  person,
-  onDecision,
-}: {
-  person: PendingStaff;
-  onDecision: (id: string, action: 'approve' | 'reject') => Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  const decide = async (action: 'approve' | 'reject') => {
-    setBusy(true);
-    await onDecision(person.staff_id, action);
-    setBusy(false);
-  };
-
-  return (
-    <div
-      style={{
-        border: '1px solid var(--eq-border)',
-        borderRadius: 8,
-        padding: 20,
-        marginBottom: 12,
-        background: 'var(--eq-white)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontWeight: 600, fontSize: 15, margin: '0 0 2px' }}>{fullName(person)}</p>
-          <p style={{ color: 'var(--eq-grey)', fontSize: 13, margin: '0 0 8px' }}>
-            {person.email ?? '—'} · {person.phone ?? '—'} · DOB {formatDate(person.date_of_birth)}
-          </p>
-
-          {person.licences.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {person.licences.map((l) => (
-                <span
-                  key={l.licence_id}
-                  style={{
-                    background: 'var(--eq-ice)',
-                    borderRadius: 4,
-                    padding: '3px 8px',
-                    fontSize: 12,
-                    color: 'var(--eq-ink)',
-                  }}
-                >
-                  <strong>{l.licence_type}</strong>
-                  {l.licence_number ? ` · ${l.licence_number}` : ''}
-                  {l.expiry_date ? ` · exp ${formatDate(l.expiry_date)}` : ''}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p style={{ fontSize: 12, color: 'var(--eq-grey)', margin: 0 }}>No licences recorded</p>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button
-            className="eq-btn-primary"
-            style={{ padding: '6px 14px', fontSize: 13 }}
-            disabled={busy}
-            onClick={() => void decide('approve')}
-          >
-            {busy ? '…' : 'Add to Field'}
-          </button>
-          <button
-            className="eq-btn-ghost"
-            style={{ padding: '6px 14px', fontSize: 13 }}
-            disabled={busy}
-            onClick={() => void decide('reject')}
-          >
-            Dismiss
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AdminCardsFeedInner() {
   const [pending, setPending] = useState<PendingStaff[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState<string | null>(null); // staff_id of in-flight action
 
   const load = async () => {
     setErr(null);
@@ -145,6 +60,7 @@ function AdminCardsFeedInner() {
 
   const decide = async (staffId: string, action: 'approve' | 'reject') => {
     setActionErr(null);
+    setBusy(staffId);
     try {
       const res = await fetch('/.netlify/functions/cards-approve-staff', {
         method: 'POST',
@@ -153,46 +69,149 @@ function AdminCardsFeedInner() {
         body: JSON.stringify({ staff_id: staffId, action }),
       });
       const body = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok) { setActionErr(body.error ?? 'Something went wrong'); return; }
-      // Remove from local list immediately.
-      setPending((prev) => (prev ?? []).filter((p) => p.staff_id !== staffId));
+      if (!res.ok) { setActionErr(body.error ?? 'Something went wrong'); }
+      else { setPending((prev) => (prev ?? []).filter((p) => p.staff_id !== staffId)); }
     } catch (e) {
       setActionErr((e as Error).message);
+    } finally {
+      setBusy(null);
     }
   };
 
   useEffect(() => { void load(); }, []);
 
+  const filtered = useMemo(() => {
+    if (!pending) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return pending;
+    return pending.filter(
+      (p) =>
+        fullName(p).toLowerCase().includes(q) ||
+        (p.email ?? '').toLowerCase().includes(q),
+    );
+  }, [pending, query]);
+
   return (
     <>
       <Topbar />
       <main className="eq-page">
-        <div className="eq-page__header">
-          <h1 className="eq-page__title">Cards — pending review</h1>
-          <p className="eq-page__lede">
-            Staff who've submitted their details in EQ Cards but haven't been added to Field yet.
-            Approve to create their Field profile; dismiss to skip them.
-          </p>
+        <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <div>
+            <h1 className="eq-page__title">New staff</h1>
+            <p className="eq-page__lede">
+              Cards profiles not yet added to Field.
+              {pending !== null && (
+                <span style={{ marginLeft: 6, color: 'var(--eq-grey)' }}>
+                  {pending.length} pending
+                </span>
+              )}
+            </p>
+          </div>
+          {pending !== null && pending.length > 0 && (
+            <input
+              type="search"
+              placeholder="Search by name or email"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{
+                padding: '6px 12px',
+                border: '1px solid var(--eq-border)',
+                borderRadius: 6,
+                fontSize: 13,
+                width: 220,
+                outline: 'none',
+              }}
+            />
+          )}
         </div>
 
         {err && <EqError title="Couldn't load pending staff" message={err} onRetry={load} />}
+
         {actionErr && (
-          <p style={{ color: 'var(--eq-error)', fontSize: 13, marginBottom: 12 }}>{actionErr}</p>
+          <p style={{ color: 'var(--eq-error)', fontSize: 13, marginBottom: 12 }}>
+            {actionErr}
+          </p>
         )}
 
-        {pending === null && !err && <Skeleton variant="row" count={3} />}
-
-        {pending !== null && pending.length === 0 && (
-          <div className="eq-empty">
-            <p className="eq-empty__title">All up to date</p>
-            <p>No Cards profiles waiting for review.</p>
-          </div>
-        )}
-
-        {pending !== null &&
-          pending.map((p) => (
-            <StaffCard key={p.staff_id} person={p} onDecision={decide} />
-          ))}
+        <div className="eq-table-wrap">
+          <table className="eq-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Contact</th>
+                <th>Licences</th>
+                <th>Submitted</th>
+                <th style={{ width: 160 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {pending === null && !err ? (
+                <tr>
+                  <td colSpan={5}>
+                    <Skeleton variant="row" count={4} />
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: 40, color: 'var(--eq-grey)' }}>
+                    {query ? 'No matches.' : 'No Cards profiles waiting for review.'}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((p) => (
+                  <tr key={p.staff_id}>
+                    <td>
+                      <span style={{ fontWeight: 500 }}>{fullName(p)}</span>
+                    </td>
+                    <td>
+                      <span>{p.email ?? '—'}</span>
+                      {p.phone && (
+                        <span className="eq-table__mute" style={{ display: 'block', fontSize: 12 }}>
+                          {p.phone}
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {p.licences.length === 0 ? (
+                        <span className="eq-table__mute">None</span>
+                      ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {p.licences.map((l) => (
+                            <span key={l.licence_id} className="eq-pill eq-pill--info">
+                              {l.licence_type}
+                              {l.expiry_date ? ` · ${formatDate(l.expiry_date)}` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="eq-table__mute">{formatDate(p.created_at)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                        <button
+                          className="eq-btn-primary"
+                          style={{ padding: '4px 12px', fontSize: 13 }}
+                          disabled={busy === p.staff_id}
+                          onClick={() => void decide(p.staff_id, 'approve')}
+                        >
+                          {busy === p.staff_id ? '…' : 'Add to Field'}
+                        </button>
+                        <button
+                          className="eq-btn-ghost"
+                          style={{ padding: '4px 12px', fontSize: 13 }}
+                          disabled={busy === p.staff_id}
+                          onClick={() => void decide(p.staff_id, 'reject')}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </main>
     </>
   );
