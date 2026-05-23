@@ -33,6 +33,7 @@ Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Qu
 | 1.D | End-to-end smoke (browser flow verified against `core.eq.solutions`) | Shipped 2026-05-19 |
 | 1.E | Consolidation — drop `eq-shell-control`, single `eq-canonical` Supabase for the EQ tenant; iframe headers loosened on EQ Field | Shipped 2026-05-19 |
 | 1.F | Unified Identity — 5-tier `eq_role` enum + `is_platform_admin` flag, session cookie + Supabase JWT carry both (`app_metadata` claims), `useCan()` + `<Gate>` + closed-union `PermKey`, on-demand `/.netlify/functions/mint-supabase-jwt`, admin invite + edit flow, Field iframe bridge carries the new fields. RLS swept from `user_metadata` to `app_metadata` across 13 canonical entity tables + intake spine + 3 RPC functions. | 2026-05-20 |
+| 1.G | **Shell-side Field tenant picker** at `/core/field`. Shell mints the iframe token with the chosen Field organisation slug (`eq` / `demo-trades` / `melbourne`); Field cross-checks the slug against the iframe URL's `?tenant=` param and rejects mismatches. Three dev-loop fixes landed alongside: session cookie `Domain` now scopes per request host (works on previews + localhost), Netlify env vars confirmed scoped to all deploy contexts, and `scripts/smoke-preview.sh` catches future env regressions. Field-side companion (CSP `frame-ancestors` broadened for preview hosts) is eq-field PR #125. | 2026-05-23 |
 | 2 | **Intake module live** at `/core/intake` (drop CSV → map → validate → commit via the `@eq/*` engine; SimPRO fixtures validated end-to-end through parser + customer/contact/site mapping + validation). Writes route only through the `eq_intake_commit_batch` SECURITY DEFINER RPC; RLS predicates read `app_metadata.tenant_id`. **Further Phase 2 modules paused** — next module deferred pending GTM validation gate per `eq/pending.md`. | Intake shipped 2026-05-19; Phase 2 otherwise paused |
 | 3+ | Replace each EQ Field surface (roster, schedule, leave, tenders, audits, prestarts, toolbox talks) with a shell module backed by `eq-canonical`. Each surface goes live in the shell, then its EQ Field equivalent gets retired. Sequencing is undecided — re-pick after GTM gate clears, based on what early customers actually pay for. | Long-term |
 | 4 | EQ Field demo deploy + its `ktmjmdzqrogauaevbktn` Supabase decommissioned, once every surface has a shell replacement | Long-term |
@@ -118,7 +119,9 @@ These must be set on the `eq-shell` Netlify project before functions run success
 
 ## Auth contract
 
-Cookie name: `eq_shell_session`. Domain: `.eq.solutions`. HttpOnly, Secure, SameSite=Lax, 7 day Max-Age.
+Cookie name: `eq_shell_session`. HttpOnly, Secure, SameSite=Lax, 7 day Max-Age.
+
+**Domain is set per request host** (Phase 1.G, 2026-05-23) — `Domain=.eq.solutions` only when the function's `Host` header is `eq.solutions` or any subdomain. Off-domain hosts (deploy previews on `*.netlify.app`, `localhost` under `netlify dev`) omit the `Domain` attribute, scoping the cookie to the exact origin that set it. Production behaviour unchanged; previews + local dev finally have a working cookie. See `netlify/functions/_shared/cookie.ts`.
 
 **Session cookie payload (Phase 1.F):** `{ user_id, tenant_id, role: EqRole, is_platform_admin: boolean, exp }`. `role` is one of `manager | supervisor | employee | apprentice | labour_hire`. `is_platform_admin` is the EQ Solutions internal cross-tenant flag.
 
@@ -145,7 +148,7 @@ RLS policies on `eq-canonical` read `auth.jwt() -> 'app_metadata' ->> 'tenant_id
 | `/.netlify/functions/shell-login` | POST | Email + PIN login | `{ email, pin } → 200 { valid: true, user, tenant, entitlements, supabase_jwt } + Set-Cookie` or `200 { valid: false }`. `user` carries `role` + `is_platform_admin` (Phase 1.F). |
 | `/.netlify/functions/verify-shell-session` | GET | Hydrate session from cookie | `200 { valid: true, user, tenant, entitlements, supabase_jwt }` or `401 { valid: false }`. Re-mints `supabase_jwt` on every call. |
 | `/.netlify/functions/mint-supabase-jwt` | POST | On-demand fresh Supabase JWT (for Cards Flutter, external modules) | `200 { token, exp }` or `401 { valid: false }`. Optional `?ttl=<seconds>` (clamped [60, 900]). |
-| `/.netlify/functions/mint-iframe-token` | POST | Mint 60s HMAC for EQ Field iframe | `200 { token }` or `401 { valid: false }`. Phase 1.F: token now carries `eq_role` + `is_platform_admin` alongside the legacy `staff\|supervisor` field. |
+| `/.netlify/functions/mint-iframe-token` | POST | Mint 60s HMAC for EQ Field iframe (chosen Field tenant in body) | `{ tenant_slug } → 200 { token, tenant_slug }`, or `400 { error, allowed: [...] }` on invalid/missing slug, or `401 { valid: false }` on missing session. Auth check runs **before** body validation so unauthenticated callers can't probe the tenant allow-list. Phase 1.F payload (`eq_role` + `is_platform_admin`) preserved; Phase 1.G adds `tenant_slug` to the signed payload — Field cross-checks against the iframe URL's `?tenant=` param and rejects mismatches with a `tenant-mismatch` postMessage. |
 | `/.netlify/functions/invite-user` | POST | Admin invites a user | `{ email, role, entitlements? } → 200 { ok: true, invite_id, invite_url, email_delivered }`. Requires manager OR platform_admin. |
 | `/.netlify/functions/accept-invite` | POST | Public — set PIN + sign in | `{ invite_token, pin } → 200 { valid: true, user, tenant, entitlements, supabase_jwt } + Set-Cookie`. Public endpoint; invite token IS the authentication. |
 | `/.netlify/functions/edit-user` | POST | Admin edits a user (role / active / entitlements) | `{ user_id, patch } → 200 { ok: true, user }`. Requires manager OR platform_admin. Self-edit forbidden. |
@@ -161,9 +164,10 @@ EQ Field validates the minted iframe token via its existing `/.netlify/functions
 │       ├── _shared/
 │       │   ├── email.ts              # outbound email helper (log-only until EQ_EMAIL_PROVIDER set)
 │       │   ├── sentry.ts             # withSentry() wrapper
+│       │   ├── cookie.ts             # session cookie builder; scopes Domain per request host (Phase 1.G)
 │       │   ├── supabase.ts           # service-role client + CanonicalUser/Tenant types + EqRole
 │       │   ├── supabase-jwt.ts       # mints Supabase-format JWTs with app_metadata
-│       │   └── token.ts              # session cookie + iframe HMAC helpers
+│       │   └── token.ts              # session cookie + iframe HMAC helpers (ShellTokenPayload now carries tenant_slug)
 │       ├── shell-login.ts
 │       ├── verify-shell-session.ts
 │       ├── mint-iframe-token.ts
@@ -176,8 +180,8 @@ EQ Field validates the minted iframe token via its existing `/.netlify/functions
 │   │   └── intake/
 │   │       ├── index.tsx             # IntakeModule wrapper (Gate + createSupabaseClient)
 │   │       └── permissions.ts        # per-module perm keys (intake.view/.import/.commit)
-│   ├── pages/                        # LoginPage, TenantHome, FieldIframe, ComingSoon,
-│   │                                 # AcceptInvite, AdminInviteUser, AdminUserList, AdminEditUser
+│   ├── pages/                        # LoginPage, TenantHome, FieldIframe (Phase 1.G picker),
+│   │                                 # ComingSoon, AcceptInvite, AdminInviteUser, AdminUserList, AdminEditUser
 │   ├── permissions.ts                # useCan() hook (Phase 1.F)
 │   ├── permissions/
 │   │   ├── Gate.tsx                  # <Gate perm="..."> component
@@ -189,9 +193,27 @@ EQ Field validates the minted iframe token via its existing `/.netlify/functions
 │   ├── session.ts                    # SessionContext + EqRole + useSession + moduleEnabled
 │   ├── supabase.ts                   # legacy useSupabaseClient (kept for back-compat; new code uses lib/supabaseJwt.ts)
 │   └── main.tsx
+├── docs/
+│   └── runbooks/
+│       ├── deploy-preview-env.md     # which env vars must be scoped to Deploy Previews + how to verify (Phase 1.G)
+│       ├── sentry-setup.md
+│       ├── posthog-setup.md
+│       └── clarity-setup.md
+├── scripts/
+│   └── smoke-preview.sh              # black-box smoke for /shell-login + /verify-shell-session + /mint-iframe-token
 ├── netlify.toml
 └── README.md
 ```
+
+## Pre-merge preview smoke
+
+Every eq-shell PR gets a Netlify deploy preview at `https://deploy-preview-<N>--eq-shell.netlify.app`. The critical functions can be smoked in one shot:
+
+```bash
+./scripts/smoke-preview.sh https://deploy-preview-15--eq-shell.netlify.app
+```
+
+Passes on production; fails (with a pointer at `docs/runbooks/deploy-preview-env.md`) when server-side env vars aren't scoped to the Deploy Previews context. Run after opening any PR that touches auth, env wiring, or canonical DB access.
 
 ## Conventions
 

@@ -1,5 +1,9 @@
 # Shell tenant picker — fresh-session prompt
 
+> **STATUS — SHIPPED 2026-05-23.** Picker merged via [eq-shell #15](https://github.com/eq-solutions/eq-shell/pull/15); supporting dev-loop fixes in [#16](https://github.com/eq-solutions/eq-shell/pull/16) (env smoke script + runbook) and [#17](https://github.com/eq-solutions/eq-shell/pull/17) (cookie Domain scoped per host). Field-side CSP companion is [eq-field #125](https://github.com/eq-solutions/eq-field/pull/125). The README's Phase 1.G row and `docs/runbooks/deploy-preview-env.md` capture the current state. This file is kept as a historical artifact of the hand-off; nothing below is current operational guidance.
+
+---
+
 **Run this prompt as a fresh Claude Code session.** It is self-contained — you will not have memory of the conversation that produced it. Read this whole document before doing anything.
 
 You are Claude Opus 4.7, picking up where a previous session left off after that session blew through its token budget. Goal: implement a **tenant picker on the shell's FieldIframe page** so users can choose which Field tenant to load, then have the shell mint a handoff token for that tenant and embed the iframe. This is the final step of a multi-session arc that built up EQ Field's multi-tenant surface (Waves 1-4 + 4.5) and a Field-side picker (4.5b) — see "What's already shipped" below.
