@@ -349,36 +349,41 @@ Target: tenant provisioned in under 30 minutes (most of that is waiting for Supa
 
 ## Migration sequence (current → target)
 
-### Phase 2.B.1 — Foundation (this sprint)
+### Phase 2.B.1 — Foundation
 - [x] Mission reset in repo docs
 - [x] Architecture doc (this file)
-- [ ] `shell_control.tenant_routing` table + encryption helpers + routing helper
-- [ ] No data movement yet — purely additive plumbing
+- [x] `shell_control.tenant_routing` table + encryption helpers + routing helper
+- [x] No data movement yet — purely additive plumbing
 
 ### Phase 2.B.2 — Provisioning + runner
-- [ ] `scripts/provision-tenant.ts`
-- [ ] `scripts/migrate-tenants.ts`
-- [ ] Initial migrations directory with current schema as the baseline
+- [x] `scripts/provision-tenant.mjs` (filename `.mjs`, not `.ts` — matches existing scripts/ convention; no tsx dep required)
+- [x] `scripts/migrate-tenants.mjs`
+- [x] `supabase/tenant-migrations/0001_baseline.sql` — initial schema for tenant DBs (mirrors shared eq-canonical app_data for the 6 frontier tables)
 
-### Phase 2.B.3 — canonical-api
-- [ ] `netlify/functions/canonical-api.ts` with sites, customers, staff, licences, jobs, contacts resources
-- [ ] Provision `eq-canonical-internal` for the EQ tenant via the script
-- [ ] Insert routing row pointing EQ at the new DB (status still 'provisioning')
-- [ ] Run end-to-end test: API call with `X-Tenant: core` routes correctly
+### Phase 2.B.3 — canonical-api + provisioning
+- [x] `netlify/functions/canonical-api.ts` with sites, customers, staff, licences, jobs, contacts, events resources
+- [x] Provision `eq-canonical-internal` (project `zaapmfdkgedqupfjtchl`, ap-southeast-2)
+- [x] Provision `sks-canonical` (project `ehowgjardagevnrluult`, ap-southeast-2)
+- [x] Apply baseline migration to both
+- [x] Insert routing rows for both (status='provisioning')
+- [x] `netlify/functions/tenant-routing-health.ts` — admin probe to verify wiring
 
-### Phase 2.B.4 — EQ internal migration
-- [ ] Dump EQ rows from shared `eq-canonical app_data`
-- [ ] Restore into `eq-canonical-internal app_data`
-- [ ] Validation: row counts + checksums match
+### Phase 2.B.4 — EQ internal data migration ← NEXT
+- [ ] `scripts/sync-tenant-data.mjs --slug=core --dry-run` to verify expected row counts
+- [ ] `scripts/sync-tenant-data.mjs --slug=core` to commit
+- [ ] Validation: row counts match in target
+- [ ] Refactor browser-side `app_data` reads to go through canonical-api (EntityBrowserPage, Jobs module, TenantHome dashboard) — gated by env flag
 - [ ] Flip `tenant_routing.status` for EQ to 'active'
-- [ ] Refactor browser-side `app_data` reads to go through canonical-api (EntityBrowserPage, Jobs module, TenantHome dashboard)
 - [ ] Smoke test all EQ flows
 - [ ] 14-day retention of shared rows for rollback
 
-### Phase 2.B.5 — SKS migration
-- [ ] Provision `sks-canonical` (Pro tier, ap-southeast-2)
+### Phase 2.B.5 — SKS migration (requires maintenance window)
+- [x] Provision `sks-canonical`
+- [x] Apply baseline schema
 - [ ] Maintenance window scheduled with SKS users
-- [ ] Dump SKS rows, restore, validate
+- [ ] `scripts/sync-tenant-data.mjs --slug=sks --dry-run` then commit
+- [ ] Validate row counts
+- [ ] Cards bridge (`cards-approve-staff`) refactored to read SKS app_data from sks-canonical
 - [ ] Flip routing → 'active'
 - [ ] Smoke test all SKS flows including Cards bridge to Field
 - [ ] 14-day retention; communicate cutover to SKS team
@@ -386,9 +391,59 @@ Target: tenant provisioned in under 30 minutes (most of that is waiting for Supa
 ### Phase 2.B.6 — Cleanup
 - [ ] Confirm all browser code reaches `app_data` via canonical-api (no direct Supabase reads from React)
 - [ ] Drop `app_data` schema from shared `eq-canonical` (leave `shell_control` in place)
+- [ ] Migrate remaining `app_data` tables (assets, timesheets, leave_requests, schedule_entries, prestart_checks, toolbox_talks, tenders, quote, contacts/customers extended cols, intake_*, etc.) — table-by-table as their consumers move to canonical-api
 - [ ] Document final architecture state
 - [ ] Pen test (independent)
 - [ ] Update CLAUDE.md and runbooks to reflect new operational reality
+
+---
+
+## Cutover runbook (Phase 2.B.4 / 2.B.5)
+
+When you're ready to migrate a tenant's data from shared `eq-canonical` to its dedicated data plane:
+
+1. **Smoke-test the routing** (no data movement)
+   ```
+   curl -i https://core.eq.solutions/.netlify/functions/tenant-routing-health \
+     -H "Cookie: eq_shell_session=<platform-admin-session>"
+   ```
+   Expect every tenant to be `reachable: true` with `table_counts` all zero.
+
+2. **Dry-run the sync** to see what would copy
+   ```
+   SHARED_SUPABASE_URL=...           \
+   SHARED_SUPABASE_SERVICE_KEY=...   \
+   CONTROL_SUPABASE_URL=...          \
+   CONTROL_SUPABASE_SERVICE_KEY=...  \
+   TENANT_ROUTING_MASTER_KEY=...     \
+   node scripts/sync-tenant-data.mjs --slug=core --dry-run
+   ```
+
+3. **Run the sync for real** — idempotent, safe to re-run
+   ```
+   node scripts/sync-tenant-data.mjs --slug=core
+   ```
+
+4. **Verify counts** in the target
+   ```
+   curl -i https://core.eq.solutions/.netlify/functions/tenant-routing-health \
+     -H "Cookie: eq_shell_session=<platform-admin-session>"
+   ```
+   Each table should now have rows.
+
+5. **Flip status to active**
+   ```sql
+   UPDATE shell_control.tenant_routing
+   SET    status = 'active'
+   WHERE  tenant_id = (SELECT id FROM shell_control.tenants WHERE slug='core');
+   ```
+   `canonical-api` and `getTenantDataClient` will now serve this tenant.
+
+6. **Smoke-test the live flows** — Cards bridge, Jobs module, dashboards, etc.
+
+7. **14-day rollback window** — shared `app_data` rows for this tenant are preserved. If something breaks, flip status back to 'provisioning'; readers fall back to shared eq-canonical until the issue is fixed.
+
+For SKS specifically: do step 1–3 outside business hours, with the SKS team forewarned. Steps 4–6 are the actual cutover window.
 
 ---
 
