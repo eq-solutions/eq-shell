@@ -42,12 +42,14 @@ function buildFieldSrc(tenantSlug: string, token: string): string {
   return `${base}?tenant=${encodeURIComponent(tenantSlug)}#sh=${encodeURIComponent(token)}`;
 }
 
-// Field has up to ~10s of cold-start latency in iframe context
-// (SW install + tenant config + Supabase round-trip). If no message
-// arrives in that window we assume the iframe is dead and show a
-// retry prompt. Generous on purpose — false-positive timeouts here
-// would be the most annoying possible UX.
-const HANDOFF_TIMEOUT_MS = 10_000;
+// Field has cold-start latency in iframe context: SW install, two
+// sequential Supabase round-trips inside loadTenantConfig(), then the
+// verify-pin call inside _consumeShellToken(). On mobile this chain
+// easily hits 15-25s. The 'boot' signal now fires from auth.js before
+// those Supabase calls (see _earlyBootSignal), so in practice the
+// overlay resolves within a second or two — but we keep a generous
+// hard cap here so a genuinely dead iframe is still surfaced.
+const HANDOFF_TIMEOUT_MS = 30_000;
 
 // 2026-05-22 — Wave 5: the picker cards. Must stay in lock-step with
 // mint-iframe-token.ts ALLOWED_FIELD_TENANT_SLUGS — if you add a card
