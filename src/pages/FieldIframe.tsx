@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as Sentry from '@sentry/react';
+import { useSession } from '../session';
 import { Topbar } from '../components/Topbar';
 
 // Embeds the existing EQ Field deploy as an iframe. The shell mints
@@ -130,10 +131,18 @@ function isHandoffMessage(data: unknown): data is HandoffMessage {
 }
 
 export default function FieldIframe() {
+  const { session } = useSession();
   // null = picker shown; once set, mint+embed runs.
   const [selectedTenant, setSelectedTenant] = useState<TenantSlug | null>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [state, setState] = useState<HandoffState>({ phase: 'minting' });
+
+  // Platform admins see every tenant in the picker; everyone else sees
+  // only the tenant that matches their shell session. SKS staff should
+  // never see EQ Demo / Demo Trades / Melbourne.
+  const visibleOptions = (session?.user.is_platform_admin)
+    ? TENANT_OPTIONS
+    : TENANT_OPTIONS.filter((t) => t.slug === session?.tenant.slug);
 
   // Resetting src + state happens in the pick/switch event handlers
   // below (not in the mint effect) — keeps the effect a pure
@@ -253,12 +262,24 @@ export default function FieldIframe() {
     return () => clearTimeout(timer);
   }, [state.phase]);
 
-  // Picker — no tenant chosen yet.
+  // Picker — no tenant chosen yet. If only one option (non-admin users
+  // scoped to their own tenant) skip the picker and go straight to mint.
   if (!selectedTenant) {
+    if (visibleOptions.length === 1) {
+      // Auto-select the sole option on next tick so state updates don't
+      // happen during render.
+      setTimeout(() => pickTenant(visibleOptions[0].slug), 0);
+      return (
+        <>
+          <Topbar />
+          <div className="eq-field-frame-loading">Connecting to EQ Field…</div>
+        </>
+      );
+    }
     return (
       <>
         <Topbar />
-        <TenantPicker onPick={pickTenant} />
+        <TenantPicker options={visibleOptions} onPick={pickTenant} />
       </>
     );
   }
@@ -315,17 +336,23 @@ export default function FieldIframe() {
   );
 }
 
-function TenantPicker({ onPick }: { onPick: (slug: TenantSlug) => void }) {
+function TenantPicker({
+  options,
+  onPick,
+}: {
+  options: readonly TenantOption[];
+  onPick: (slug: TenantSlug) => void;
+}) {
   return (
     <div className="eq-field-picker">
       <div className="eq-field-picker__inner">
         <div className="eq-field-picker__eyebrow">EQ Solves · Field</div>
-        <h1 className="eq-field-picker__title">Pick a Field tenant</h1>
+        <h1 className="eq-field-picker__title">Pick a Field workspace</h1>
         <p className="eq-field-picker__lede">
-          Each tenant exercises a different tier of the product. The shell signs you in — no PIN needed.
+          Select the workspace to open. You'll be signed in automatically — no PIN needed.
         </p>
         <div className="eq-field-picker__grid">
-          {TENANT_OPTIONS.map((t) => (
+          {options.map((t) => (
             <button
               key={t.slug}
               type="button"
