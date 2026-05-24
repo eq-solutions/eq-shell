@@ -10,4 +10,5 @@
 # `git submodule update --init --recursive` after a fresh clone locally —
 # see README.md "Cloning" section.
 packages:
+  - "."
   - "./eq-intake/eq-platform/packages/*"
