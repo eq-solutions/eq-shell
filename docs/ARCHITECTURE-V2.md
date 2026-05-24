@@ -369,29 +369,28 @@ Target: tenant provisioned in under 30 minutes (most of that is waiting for Supa
 - [x] `netlify/functions/tenant-routing-health.ts` — admin probe to verify wiring
 
 ### Phase 2.B.4 — EQ internal data migration
-- [x] `scripts/sync-tenant-data.mjs --slug=core --dry-run` (verified 235 rows expected)
-- [x] `scripts/sync-tenant-data.mjs --slug=core` committed (50/30/26/100/29/0)
+- [x] `scripts/sync-tenant-data.mjs --slug=core --dry-run` (verified counts)
+- [x] `scripts/sync-tenant-data.mjs --slug=core` committed
+- [x] All 43 app_data tables migrated (885 rows total: 50 customers / 30 sites / 26 staff / 100 contacts / 29 licences / 500 schedule_entries / 75 timesheets / 30 prestart / 20 toolbox / 15 leave / 10 tenders)
 - [x] Validation: row counts match in target (eq-canonical-internal)
+- [x] `tenant_routing.status` = 'active'
 - [ ] Refactor browser-side `app_data` reads to go through canonical-api (EntityBrowserPage, Jobs module, TenantHome dashboard, AdminUserList, AdminTenantSettings, AdminEditUser, AdminAuditPage, StorageBrowser)
 - [ ] Refactor writers (intake commit RPC, any direct INSERT) to write to tenant DB
-- [ ] Flip `tenant_routing.status` for EQ to 'active'
-- [ ] Re-run sync to catch any drift between sync and refactor deploy
 - [ ] Smoke test all EQ flows
 - [ ] 14-day retention of shared rows for rollback
 
 ### Phase 2.B.5 — SKS migration
 - [x] Provision `sks-canonical`
-- [x] Apply baseline schema
-- [x] `scripts/sync-tenant-data.mjs --slug=sks` committed (525/52/50/0/0/0)
+- [x] Apply baseline + 0002 schema
+- [x] `scripts/sync-tenant-data.mjs --slug=sks` committed (1,644 rows: 525 customers / 52 sites / 50 staff / 1000 assets / 6 quote / 11 quote_line_item)
 - [x] Validation: row counts match in target (sks-canonical)
-- [ ] Cards bridge (`cards-approve-staff`, `cards-pending-staff`) refactored to read SKS app_data from sks-canonical via tenant routing
-- [ ] Maintenance window scheduled with SKS users
-- [ ] Re-run sync immediately before cutover to catch drift
-- [ ] Flip routing → 'active'
-- [ ] Smoke test all SKS flows including Cards bridge to Field
+- [x] `tenant_routing.status` = 'active'
+- [x] Cards bridge (`cards-approve-staff`, `cards-pending-staff`) refactored to read SKS app_data from sks-canonical via tenant routing
+- [ ] Maintenance window scheduled with SKS users (only matters when shell browser pages flip — not for Cards bridge)
+- [ ] Smoke test SKS Cards bridge to Field
 - [ ] 14-day retention; communicate cutover to SKS team
 
-> **Status note (2026-05-24):** Data planes are populated and ready to serve. Routing rows are intentionally still `provisioning` — flipping to `active` is the coherent step that happens *together with* the reader/writer refactor (otherwise we'd have two live sources of truth and writes would drift). Re-run `sync-tenant-data.mjs` immediately before the active flip to mop up any rows that landed in shared `app_data` between sync and cutover.
+> **Status note (2026-05-24):** Both tenant routing rows now `active`. Cards bridge (cards-pending-staff, cards-approve-staff) is the first live consumer of the routing layer — when PR #20 merges, those two functions start reading staff + licences from the per-tenant DB. Everything else (browser pages, intake commit RPC) still reads/writes shared `app_data`; that's the next coherent refactor.
 
 ### Phase 2.B.6 — Cleanup
 - [ ] Confirm all browser code reaches `app_data` via canonical-api (no direct Supabase reads from React)

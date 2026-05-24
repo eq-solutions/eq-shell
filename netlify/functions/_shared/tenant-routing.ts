@@ -240,6 +240,21 @@ export async function getTenantDataClient(
 }
 
 /**
+ * Same as getTenantDataClient, but takes the canonical tenant UUID instead
+ * of the slug. Most session-driven callers (Cards bridge, future shell
+ * functions) have session.tenant_id but not the slug, so this saves them
+ * an explicit slug lookup. Both lookups are cache-served after the first
+ * call per warm function instance, so the cost is ~0.
+ */
+export async function getTenantDataClientById(
+  tenant_id: string,
+  requireActive: boolean = true,
+): Promise<SupabaseClient<any, any, any>> {
+  const routing = await getRoutingById(tenant_id, requireActive);
+  return getTenantDataClient(routing.tenant_slug, requireActive);
+}
+
+/**
  * Invalidate cached routing for a tenant. Use after a tenant_routing UPDATE
  * (status change, key rotation, etc.) if you need the change to take effect
  * before the natural cache TTL expires.
