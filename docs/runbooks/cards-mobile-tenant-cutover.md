@@ -1,169 +1,213 @@
 # Cards mobile → tenant data plane cutover
 
-**Status:** Runbook for the Cards Flutter app. Shell-side is ready (orchestrator
-endpoint `/.netlify/functions/intake-commit` live on `core.eq.solutions` as of
-PR #25, 2026-05-24). Cards mobile is the next consumer to migrate.
+**Status:** Shell side is ready. Cards mobile is the next consumer to migrate.
 
-**Why:** Cards mobile currently writes licences to **shared eq-canonical**
-(`jvknxcmbtrfnxfrwfimn`). The Shell now reads licences from the **per-tenant
-data plane** (`eq-canonical-internal` / `sks-canonical`). Until Cards mobile
-points at the tenant data plane, every Cards upload requires a manual
-`sync-tenant-data.mjs --slug=<slug>` to become visible in Shell.
+> **Supersedes** the first draft of this runbook (in the merged PR #26) which
+> assumed Cards mobile called `eq_intake_commit_batch`. It doesn't — Cards has
+> its own dedicated RPC family (`eq_cards_*`). This document covers the real
+> migration.
 
-## Current state
+## What Cards mobile currently does
 
-| Surface | Reads from | Writes to |
+The Flutter app in `C:\Projects\eq-cards` reads/writes licences via four
+SECURITY DEFINER RPCs on **shared eq-canonical**:
+
+| RPC | Caller | What it does |
 |---|---|---|
-| Cards mobile (Flutter) | shared eq-canonical | **shared eq-canonical** ← needs to change |
-| Shell — cards-pending-staff | tenant DB | n/a |
-| Shell — cards-approve-staff | tenant DB (read) + Field Supabase (write) | n/a |
-| Shell — Cards admin UI | via shell functions ↑ | n/a |
-| Licence-photos bucket (images) | shared `licence-photos` | shared `licence-photos` |
+| `eq_cards_current_staff()` | `licence_repository.dart` (indirectly via profile screens) | Returns the tradie's own `app_data.staff` row |
+| `eq_cards_list_my_licences()` | `LicenceRepository.getAllForCurrentUser()` | Returns the tradie's licences |
+| `eq_cards_upsert_my_licence(payload)` | `LicenceRepository.upsert(licence)` | Insert or update a licence (handles photo paths) |
+| `eq_cards_soft_delete_my_licence(id)` | `LicenceRepository.softDelete(id)` | Sets `active = false` |
 
-Images are NOT consumed by Shell today, so the image side of the divergence is
-cosmetic for now. **This runbook covers DATA only.**
+All four read `tenant_id` and `user_id` from `auth.jwt() app_metadata`. Cards
+mobile mints that JWT via `/.netlify/functions/mint-supabase-jwt`.
 
-## What changes in Cards mobile
+Photo uploads use `supabase.storage.from('licence-photos')` against shared
+eq-canonical's Storage. Path format: `<tenant_id>/<staff_id>/<licence_id>/{front|back}.jpg`.
 
-### Old call (today, Flutter)
+## What Shell side now offers (2026-05-24)
+
+- **Tenant-DB RPCs** (`supabase/tenant-migrations/0006_cards_rpcs.sql`):
+  Same four RPCs copied verbatim onto `eq-canonical-internal` and
+  `sks-canonical`. They take `p_tenant_id` and `p_user_id` as explicit
+  parameters because service-role callers don't carry a JWT.
+
+- **Netlify function** `netlify/functions/cards-api.ts`: JWT-authed
+  multiplexer. Multiplexes by `?op=…`:
+
+  | Verb + path | Op |
+  |---|---|
+  | `GET /cards-api?op=current_staff` | → `eq_cards_current_staff(t, u)` |
+  | `GET /cards-api?op=list_my_licences` | → `eq_cards_list_my_licences(t, u)` |
+  | `POST /cards-api?op=upsert_my_licence` body `{ payload }` | → `eq_cards_upsert_my_licence(t, u, payload)` |
+  | `POST /cards-api?op=soft_delete_my_licence` body `{ licence_id }` | → `eq_cards_soft_delete_my_licence(t, u, id)` |
+
+  Auth: `Authorization: Bearer <supabase_jwt>`. Same JWT Cards already mints.
+
+## What Cards mobile needs to change
+
+**One file**: `lib/features/licences/data/licence_repository.dart`.
+
+### Constructor — point at the cards-api base URL
 
 ```dart
-// Cards mobile uses Supabase Flutter SDK, authenticated via Supabase JWT.
-final result = await supabase.rpc('eq_intake_commit_batch', {
-  'p_intake_id':       intakeId,            // uuid generated client-side
-  'p_tenant_id':       session.tenantId,    // user's tenant
-  'p_table':           'licences',
-  'p_rows':            licencesAsJsonArray,
-  'p_confirm_replace': false,
-  'p_intake_mode':     'strict',
-});
+class LicenceRepository {
+  LicenceRepository(this._client, {String? apiBase})
+      : _apiBase = apiBase ?? 'https://core.eq.solutions';
+  final SupabaseClient _client;
+  final String _apiBase;
+
+  // _bucket stays — image storage migration is a separate, later step.
+  static const _bucket = 'licence-photos';
+  static const _signedUrlSeconds = 3600;
 ```
 
-This goes straight to shared eq-canonical's PostgREST and lands in
-`shared.app_data.licences`.
-
-### New call (after cutover)
+### `getAllForCurrentUser` — list licences
 
 ```dart
-// HTTPS POST to the Shell orchestrator. Auth changes from Supabase JWT
-// (Bearer token in Authorization header) to the eq_shell_session cookie
-// — Cards mobile needs to either share the Shell session or use a
-// service bearer key.
-final response = await http.post(
-  Uri.parse('https://core.eq.solutions/.netlify/functions/intake-commit'),
-  headers: {
-    'Cookie':       'eq_shell_session=$shellSessionCookie',
-    'Content-Type': 'application/json',
-  },
-  body: jsonEncode({
-    'intake_id':        intakeId,               // uuid generated client-side
-    'table':            'licences',
-    'rows':             licencesAsJsonArray,
-    'source_sig':       'cards-mobile/$bundleId/$version',  // for audit trail
-    'schema_version':   '1.0.0',
-    'import_mode':      'append',               // 'append' | 'upsert' | 'replace'
-    'confirm_replace':  false,                   // only checked for replace mode
-  }),
-);
+Future<List<Licence>> getAllForCurrentUser() async {
+  final session = _client.auth.currentSession;
+  if (session == null) throw const NotAuthenticatedFailure();
+  try {
+    final res = await http.get(
+      Uri.parse('$_apiBase/.netlify/functions/cards-api?op=list_my_licences'),
+      headers: {'Authorization': 'Bearer ${session.accessToken}'},
+    );
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode != 200 || body['ok'] != true) {
+      throw _fromBody(body, res.statusCode);
+    }
+    final list = (body['licences'] as List)
+        .cast<Map<String, dynamic>>()
+        .map(Licence.fromJson)
+        .toList();
+    return Future.wait(list.map(_withSignedUrls));
+  } catch (e) {
+    throw mapSupabaseError(e);
+  }
+}
+```
 
-if (response.statusCode != 200) {
-  // Error envelope: { ok: false, error: '<code>', detail?: '<human>' }
-  throw IntakeError.fromResponse(response);
+### `upsert` — same payload shape, new transport
+
+```dart
+Future<Licence> upsert(Licence licence) async {
+  final session = _client.auth.currentSession;
+  if (session == null) throw const NotAuthenticatedFailure();
+  try {
+    final res = await http.post(
+      Uri.parse('$_apiBase/.netlify/functions/cards-api?op=upsert_my_licence'),
+      headers: {
+        'Authorization': 'Bearer ${session.accessToken}',
+        'Content-Type':  'application/json',
+      },
+      body: jsonEncode({'payload': licenceToUpsertPayload(licence)}),
+    );
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode != 200 || body['ok'] != true) {
+      throw _fromBody(body, res.statusCode);
+    }
+    return _withSignedUrls(Licence.fromJson(body['licence'] as Map<String, dynamic>));
+  } catch (e) {
+    throw mapSupabaseError(e);
+  }
+}
+```
+
+### `softDelete` — same shape
+
+```dart
+Future<void> softDelete(String id) async {
+  final session = _client.auth.currentSession;
+  if (session == null) throw const NotAuthenticatedFailure();
+  try {
+    final res = await http.post(
+      Uri.parse('$_apiBase/.netlify/functions/cards-api?op=soft_delete_my_licence'),
+      headers: {
+        'Authorization': 'Bearer ${session.accessToken}',
+        'Content-Type':  'application/json',
+      },
+      body: jsonEncode({'licence_id': id}),
+    );
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode != 200 || body['ok'] != true) {
+      throw _fromBody(body, res.statusCode);
+    }
+  } catch (e) {
+    throw mapSupabaseError(e);
+  }
 }
 
-final body = jsonDecode(response.body);
-// Same shape as the old RPC:
-//   { ok: true, module: 'cards', committed_count: int, committed_ids: [uuid] }
+Failure _fromBody(Map<String, dynamic> body, int status) {
+  final code   = body['error']  as String? ?? 'unknown';
+  final detail = body['detail'] as String?;
+  if (code == 'licence_not_found') return const NotFoundFailure();
+  if (status == 401)                return const NotAuthenticatedFailure();
+  return ServerFailure(detail ?? code);
+}
 ```
 
-## Auth — the tricky bit
+`eq_cards_current_staff` lives in `profile_repository.dart` (or similar) —
+same pattern: swap `_client.rpc(...)` for `http.get` against `?op=current_staff`,
+expect `{ ok: true, staff: <row> | null }`.
 
-Cards mobile currently authenticates against shared eq-canonical with a Supabase
-JWT (issued by `mint-supabase-jwt`). The new orchestrator requires an
-`eq_shell_session` cookie (the Shell's HMAC session cookie set by `shell-login`).
+### What does NOT change
 
-Three paths to consider:
+- `_withSignedUrls()` keeps using `_client.storage.from('licence-photos')` —
+  image storage migration is a separate, later step (Shell doesn't display
+  these images today, so the divergence is harmless for now).
+- `licenceToUpsertPayload()` — pure function, payload shape unchanged.
+- `Licence.fromJson` — return shape is identical to old RPC.
+- Auth flow — same Supabase JWT, just sent in `Authorization` header to a
+  different URL.
 
-### Option A: Cards mobile becomes a real Shell session holder
-Cards mobile calls `/.netlify/functions/shell-login` with the user's email + PIN,
-stores the resulting `eq_shell_session` cookie, sends it as `Cookie:` header on
-every intake-commit. Same auth model as the browser.
+## Smoke checklist (post-Cards-mobile deploy)
 
-**Pros:** Cleanest. Identical to browser auth, audit trail consistent.
-**Cons:** Cards mobile needs cookie storage + needs to handle 401 (re-login).
-
-### Option B: Per-app bearer key (like canonical-api)
-Add a `CANONICAL_API_KEY_CARDS_MOBILE` env var and an alternative auth path on
-`intake-commit` that accepts `Authorization: Bearer <key>` + an explicit
-`X-User-Id` and `X-Tenant-Slug` header. Cards mobile keeps a long-lived secret.
-
-**Pros:** No session management. Easy for mobile.
-**Cons:** Long-lived secret on every Cards device is a recoverable but real
-risk. Per-device key rotation is harder than per-session.
-
-### Option C: Keep mint-supabase-jwt + extend intake-commit to accept the JWT
-Cards mobile keeps using `mint-supabase-jwt` to get a Supabase JWT. The
-orchestrator function reads the JWT from the Authorization header, validates it
-with `SUPABASE_JWT_SECRET`, extracts tenant_id from `app_metadata`. No session
-cookie needed.
-
-**Pros:** Zero change to Cards mobile auth flow.
-**Cons:** Adds a second auth path to maintain in `intake-commit`. JWT
-verification logic needs careful tenant_id extraction.
-
-**Recommended: Option C.** Lowest Cards-side change (just swap the RPC for an
-HTTPS POST, keep JWT auth). Adds one auth path in the orchestrator that
-existing Shell functions already do (see `_shared/supabase-jwt.ts`).
-
-## Implementation order
-
-1. **(Shell side) Add Supabase JWT auth path to intake-commit.** Accept
-   `Authorization: Bearer <jwt>` as an alternative to session cookie. Decode +
-   validate against `SUPABASE_JWT_SECRET`, extract `tenant_id` from
-   `app_metadata.tenant_id`. Allow either auth method — session OR JWT.
-
-2. **(Cards mobile) Swap the RPC for an HTTPS POST.** Code change is local to
-   wherever Cards mobile calls `eq_intake_commit_batch`. Auth headers stay
-   the same.
-
-3. **(Smoke)** Add a licence via Cards mobile. Verify in `sks-canonical`:
+1. **Cards mobile cold start**: Open the app, sign in. Wallet should
+   populate. (Reads through `cards-api?op=list_my_licences` → tenant DB.)
+2. **Edit a licence**: Change a field, save. Should persist. (Writes through
+   `cards-api?op=upsert_my_licence` → tenant DB.)
+3. **Verify on tenant DB directly**:
    ```sql
-   SELECT count(*) FROM app_data.licences
+   -- For SKS (tenant_id 7dee117c-...)
+   SELECT licence_id, licence_type, licence_number, updated_at
+   FROM app_data.licences
    WHERE updated_at > now() - interval '5 minutes';
    ```
-   Should return ≥ 1. Then verify in Shell admin (`/sks/cards`) — the new
-   licence should show up without a manual sync.
-
-4. **(Shell side, later) Delete the old RPC bodies on shared eq-canonical**
-   only after all 5 modules (cards, service, quotes, core, field) have
-   migrated. Until then keep the dispatcher functional for any legacy callers.
-
-## Storage migration — separate concern
-
-Cards mobile uploads images to bucket `licence-photos` on shared eq-canonical.
-Path format: `<tenant_id>/<staff_id>/<licence_id>/{front|back}.jpg`.
-
-**Today:** the Shell never displays these images, so the divergence doesn't
-matter functionally. Cards mobile reads its own uploads from shared.
-
-**Future:** If Shell adds a "review licence with photo" view, either:
-- Sync the bucket (one-off + periodic) from shared to tenant
-- Have Cards mobile upload directly to tenant storage (requires tenant URL +
-  storage key — separate from the data orchestrator)
-
-Defer until a Shell-side image consumer lands.
+   Should see the row in `sks-canonical`, NOT shared eq-canonical.
+4. **Shell admin cross-check**: Open `/sks/cards` in the Shell. The
+   licence should appear in the pending list immediately (no manual
+   sync needed). This validates the cards bridge + cards-api both read
+   from the same tenant DB.
 
 ## Rollback
 
-If the new path fails post-cutover, Cards mobile flips back to the old
-`eq_intake_commit_batch` RPC. The dispatcher on shared eq-canonical still
-routes to the cards RPC. No data loss — writes either land on shared (old
-path) or tenant (new path); the manual sync command catches up either way.
+If anything misbehaves post-deploy:
+- Cards mobile: revert the `licence_repository.dart` diff, redeploy. The
+  old `supabase.rpc('eq_cards_*')` path against shared eq-canonical is
+  still functional (we never dropped those RPCs on shared).
+- New tenant-DB licences written via cards-api won't auto-appear in
+  shared if Cards mobile reverts — manual sync (`sync-tenant-data.mjs
+  --slug=<slug>`) covers the gap.
+
+## Storage migration (deferred)
+
+Cards mobile uploads to bucket `licence-photos` on shared eq-canonical.
+Shell doesn't display licence photos today, so this divergence is purely
+cosmetic for now. When/if we build a Shell admin "review with photo" view,
+options are:
+- Sync the bucket from shared to tenant
+- Have Cards mobile upload directly to tenant storage (requires per-tenant
+  storage credentials in the app — separate auth design)
+
+Defer until a Shell-side image consumer lands.
 
 ## References
 
 - Architecture: [docs/ARCHITECTURE-V2.md](../ARCHITECTURE-V2.md) §Phase 2.B.6
-- Orchestrator function: [netlify/functions/intake-commit.ts](../../netlify/functions/intake-commit.ts)
-- Tenant migration: [supabase/tenant-migrations/0005_intake_cards_rpc.sql](../../supabase/tenant-migrations/0005_intake_cards_rpc.sql)
-- Manual sync script: [scripts/sync-tenant-data.mjs](../../scripts/sync-tenant-data.mjs)
-- PR introducing this path: [eq-shell#25](https://github.com/eq-solutions/eq-shell/pull/25)
+- Shell function: [netlify/functions/cards-api.ts](../../netlify/functions/cards-api.ts)
+- Tenant migration: [supabase/tenant-migrations/0006_cards_rpcs.sql](../../supabase/tenant-migrations/0006_cards_rpcs.sql)
+- JWT verify helper: [netlify/functions/_shared/supabase-jwt.ts](../../netlify/functions/_shared/supabase-jwt.ts)
+- Cards Flutter repo (local): `C:\Projects\eq-cards`
+- Cards Flutter file to edit: `lib/features/licences/data/licence_repository.dart`
+- Manual sync script (rollback safety net): [scripts/sync-tenant-data.mjs](../../scripts/sync-tenant-data.mjs)
