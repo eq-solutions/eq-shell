@@ -28,11 +28,10 @@
 // stale. Caller can re-derive the count from app_data.<table> filtered
 // by intake_id (the rows carry it) if precise reconciliation is needed.
 //
-// Currently implemented modules: cards (licences), service (assets),
-// quotes (quote + 6 child/lookup tables), core (customers + sites + contacts —
-// the SimPRO bundle flow).
-// Other modules return 501 not_implemented — they ship in subsequent PRs
-// per the staged plan in ARCHITECTURE-V2.md.
+// All five modules implemented: cards, service, quotes, core, field.
+// Phase 2.B.6 staged intake-writer migration is complete on the
+// orchestrator side. Remaining cutover work is browser-side
+// (commit-canonical.ts refactor for core) — see Phase 2.B.7.
 
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
@@ -67,18 +66,37 @@ const TABLE_MODULE: Record<string, IntakeModule> = {
   customers: 'core',
   contacts: 'core',
   sites: 'core',
-  // field (representative subset — full list lands with the field module PR)
-  staff: 'field',
-  schedule_entries: 'field',
-  timesheets: 'field',
-  leave_requests: 'field',
-  prestart_checks: 'field',
-  toolbox_talks: 'field',
-  swms: 'field',
-  jsa_records: 'field',
-  itp_records: 'field',
-  incidents: 'field',
-  tenders: 'field',
+  // field — full list. Must mirror v_allowed in 0011_intake_field_rpc.sql.
+  staff:                     'field',
+  apprentice_profiles:       'field',
+  buddy_checkins:            'field',
+  checkins:                  'field',
+  engagement_logs:           'field',
+  feedback_entries:          'field',
+  incidents:                 'field',
+  itp_records:               'field',
+  jsa_records:               'field',
+  swms:                      'field',
+  prestart_checks:           'field',
+  toolbox_talks:             'field',
+  jobs:                      'field',
+  leave_approval_logs:       'field',
+  leave_balances:            'field',
+  leave_requests:            'field',
+  quarterly_reviews:         'field',
+  rotations:                 'field',
+  schedule_change_logs:      'field',
+  schedule_entries:          'field',
+  site_diaries:              'field',
+  skills_ratings:            'field',
+  tafe_calendars:            'field',
+  tender_enrichments:        'field',
+  tender_import_runs:        'field',
+  tender_nominations:        'field',
+  tender_review_decisions:   'field',
+  tenders:                   'field',
+  timesheets:                'field',
+  weekly_reports:            'field',
 };
 
 type IntakeModule = 'cards' | 'service' | 'quotes' | 'core' | 'field';
@@ -86,7 +104,7 @@ type ImportMode  = 'append' | 'upsert' | 'replace';
 
 // Modules implemented on tenant data plane so far. Add to this set as
 // each per-module PR lands.
-const IMPLEMENTED_MODULES: ReadonlySet<IntakeModule> = new Set<IntakeModule>(['cards', 'service', 'quotes', 'core']);
+const IMPLEMENTED_MODULES: ReadonlySet<IntakeModule> = new Set<IntakeModule>(['cards', 'service', 'quotes', 'core', 'field']);
 
 interface CommitBody {
   intake_id:        string;
