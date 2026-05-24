@@ -6,10 +6,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSession, moduleEnabled } from '../session';
-import { createSupabaseClient } from '../lib/supabaseJwt';
 import { Topbar } from '../components/Topbar';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
+
+// Dashboard payload comes from /.netlify/functions/tenant-dashboard which
+// fans out to the tenant data plane (counts) and the shared control plane
+// (intake events) in parallel. See netlify/functions/tenant-dashboard.ts.
+interface DashboardResponse {
+  ok:     boolean;
+  error?: string;
+  detail?: string;
+  counts?: DashboardCount[];
+  events?: IntakeEvent[];
+}
 
 interface DashboardCount {
   entity: string;
@@ -100,15 +110,15 @@ export default function TenantHome() {
     setLoading(true);
     setErr(null);
     try {
-      const sb = await createSupabaseClient();
-      const [countsRes, eventsRes] = await Promise.all([
-        sb.rpc('eq_tenant_dashboard_counts'),
-        sb.rpc('eq_recent_intake_events', { p_limit: 5 }),
-      ]);
-      if (countsRes.error) throw new Error(countsRes.error.message);
-      if (eventsRes.error) throw new Error(eventsRes.error.message);
-      setCounts(countsRes.data as DashboardCount[]);
-      setEvents(eventsRes.data as IntakeEvent[]);
+      const res = await fetch('/.netlify/functions/tenant-dashboard?events_limit=5', {
+        credentials: 'include',
+      });
+      const body = (await res.json()) as DashboardResponse;
+      if (!res.ok || !body.ok) {
+        throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
+      }
+      setCounts(body.counts ?? []);
+      setEvents(body.events ?? []);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
