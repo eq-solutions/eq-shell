@@ -1,13 +1,23 @@
 // GET /.netlify/functions/cards-pending-staff
 //
-// Returns Cards staff profiles (from eq-canonical app_data) that have not
-// yet been reviewed by an admin (i.e. no row in cards_field_approvals for
-// the current tenant).
+// Returns Cards staff profiles that have not yet been reviewed by an admin
+// (i.e. no row in cards_field_approvals for the current tenant).
 //
 // Manager + platform_admin only — enforced by checking the session role.
+//
+// Data plane (Phase 2.B post-cutover):
+//   - app_data.staff + app_data.licences  → tenant DB (via tenant_routing)
+//   - shell_control.cards_field_approvals → control plane (shared)
+//   - shell_control.tenants               → control plane (shared)
 
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
+import {
+  getTenantDataClientById,
+  TenantNotFoundError,
+  TenantNotActiveError,
+  TenantRoutingMisconfiguredError,
+} from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { withSentry } from './_shared/sentry.js';
 
@@ -58,7 +68,19 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const sb = getServiceClient();
   const tenantId = session.tenant_id;
 
+  // Open a client against this tenant's dedicated data plane (Phase 2.B).
+  // Throws TenantNotActiveError if routing is not in 'active' status.
+  let tenantDb;
+  try {
+    tenantDb = await getTenantDataClientById(tenantId);
+  } catch (e) {
+    return tenantRoutingError(e);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tenantAny = tenantDb as any;
+
   // Fetch approved/rejected staff_ids so we can exclude them.
+  // cards_field_approvals lives in shell_control (cross-tenant audit table).
   const { data: reviewed, error: revErr } = await sb
     .from('cards_field_approvals')
     .select('staff_id')
@@ -70,11 +92,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     ((reviewed ?? []) as Array<{ staff_id: string }>).map((r) => r.staff_id),
   );
 
-  // Fetch all active staff for this tenant from eq-canonical app_data schema.
-  // Schema is untyped (any) so we cast via unknown after the call.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sbAny = sb as any;
-  const { data: allStaff, error: staffErr } = (await sbAny
+  // Fetch all active staff from the tenant data plane. The tenant_id filter
+  // is redundant (tenant DB is single-tenant) but kept as defence-in-depth
+  // — if a misrouted request reaches the wrong DB, RLS catches it but the
+  // service-role bypasses RLS, so this explicit filter is the last line.
+  const { data: allStaff, error: staffErr } = (await tenantAny
     .schema('app_data')
     .from('staff')
     .select(
@@ -102,7 +124,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   // Fetch licences for all pending staff in one query.
   const staffIds = staff.map((s) => s.staff_id);
-  const { data: allLicences, error: licErr } = (await sbAny
+  const { data: allLicences, error: licErr } = (await tenantAny
     .schema('app_data')
     .from('licences')
     .select(
@@ -133,3 +155,18 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   return json(200, { pending });
 });
+
+function tenantRoutingError(e: unknown): Response {
+  if (e instanceof TenantNotFoundError) {
+    return json(500, { error: `No tenant data plane registered for this session (${e.identifier}). Run scripts/provision-tenant.mjs.` });
+  }
+  if (e instanceof TenantNotActiveError) {
+    return json(503, { error: `Tenant data plane not active (status: ${e.status}). Cutover incomplete.` });
+  }
+  if (e instanceof TenantRoutingMisconfiguredError) {
+    console.error('[cards-pending-staff] tenant routing misconfigured', e);
+    return json(500, { error: 'Tenant routing unavailable — see server logs' });
+  }
+  console.error('[cards-pending-staff] unexpected tenant resolution error', e);
+  return json(500, { error: 'Tenant resolution failed' });
+}

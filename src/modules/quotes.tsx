@@ -1,6 +1,10 @@
-// Lazy-loaded stub for the Quotes module. Per the post-cull strategy
-// (2026-04-29), Quotes is position 4 in the module-mounting queue —
-// after Field has 20 paying customers.
+// Lazy-loaded stub for the Quotes module.
+//
+// Quotes currently lives as a standalone Flask app at quotes.eq.solutions.
+// The in-shell module here is a placeholder until Quotes is rebuilt as a
+// React shell module backed by the per-tenant canonical data plane (see
+// docs/ARCHITECTURE-V2.md). Sequencing is driven by what Royce needs next
+// for SKS NSW operations, not by external customer demand.
 
 import ComingSoon from '../pages/ComingSoon';
 
@@ -16,7 +20,7 @@ export default function QuotesModule() {
         'Cross-app: quote a defect from EQ Service in one click',
         'Cross-app: pull staff costs from EQ Field per assignment',
       ]}
-      eta="Position 4 in the EQ Shell mounting queue. Lands after EQ Field hits 20 paying customers (per the post-cull validation gate)."
+      eta="Standalone today at quotes.eq.solutions. In-shell rebuild sequenced after the per-tenant data plane migration completes."
     />
   );
 }

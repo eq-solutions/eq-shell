@@ -131,6 +131,14 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .maybeSingle<CanonicalUser>();
 
   if (userErr) {
+    // PGRST116 = multiple rows returned — two tenants share this email.
+    // Return invalid-credentials (don't leak the collision to the caller).
+    if ((userErr as unknown as { code?: string }).code === 'PGRST116') {
+      // eslint-disable-next-line no-console
+      console.error('[shell-login] duplicate email across tenants — needs unique constraint migration:', email);
+      logShellLogin(req, email, 'failed', 'duplicate-email');
+      return jsonResponse(200, { valid: false });
+    }
     // Log the DB error server-side but don't leak the message to the client.
     // Postgres error strings can include column names, query fragments, and
     // schema details that help an attacker shape follow-up probes.
@@ -155,7 +163,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Hydrate tenant + entitlements for the response payload.
   const { data: tenant, error: tenantErr } = await sb
     .from('tenants')
-    .select('id, slug, name, brand_color, brand_logo_url, active')
+    .select('id, slug, name, brand_color, brand_logo_url, tier, active')
     .eq('id', user.tenant_id)
     .maybeSingle<CanonicalTenant>();
 

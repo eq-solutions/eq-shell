@@ -2,15 +2,28 @@
 //
 // Body: { staff_id: string; action: 'approve' | 'reject'; rejection_reason?: string }
 //
-// Approve: reads the Cards profile from eq-canonical → writes a people row +
-//   qualifications rows to Field → records the approval.
+// Approve: reads the Cards profile from the tenant's data plane → writes a
+//   people row + qualifications rows to Field's Supabase → records the
+//   approval in shell_control.cards_field_approvals.
 // Reject:  records the rejection only (no Field writes).
 //
 // Manager + platform_admin only.
+//
+// Data plane (Phase 2.B post-cutover):
+//   - app_data.staff + app_data.licences  → tenant DB (via tenant_routing)
+//   - shell_control.cards_field_approvals → control plane (shared)
+//   - shell_control.tenants               → control plane (shared)
+//   - Field people + qualifications       → Field's Supabase (unchanged)
 
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import { getFieldServiceClient } from './_shared/field-supabase.js';
+import {
+  getTenantDataClientById,
+  TenantNotFoundError,
+  TenantNotActiveError,
+  TenantRoutingMisconfiguredError,
+} from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { withSentry } from './_shared/sentry.js';
 
@@ -51,11 +64,10 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 
   const sb = getServiceClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sbAny = sb as any;
   const tenantId = session.tenant_id;
 
-  // Guard: can't review the same person twice.
+  // Guard: can't review the same person twice. cards_field_approvals lives
+  // in shell_control (cross-tenant audit).
   const { data: existing } = await sb
     .from('cards_field_approvals')
     .select('id, status')
@@ -68,6 +80,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 
   if (action === 'reject') {
+    // Rejection doesn't read app_data — no tenant DB round-trip needed.
     await sb.from('cards_field_approvals').insert({
       staff_id,
       tenant_id: tenantId,
@@ -79,8 +92,17 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(200, { ok: true, action: 'rejected' });
   }
 
-  // Approve — read full profile + licences from eq-canonical.
-  const { data: staffRow, error: staffErr } = (await sbAny
+  // Approve — open the tenant's data plane to read the full profile.
+  let tenantDb;
+  try {
+    tenantDb = await getTenantDataClientById(tenantId);
+  } catch (e) {
+    return tenantRoutingError(e);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tenantAny = tenantDb as any;
+
+  const { data: staffRow, error: staffErr } = (await tenantAny
     .schema('app_data')
     .from('staff')
     .select('staff_id, first_name, last_name, email, phone, date_of_birth, tenant_id')
@@ -96,7 +118,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(404, { error: 'Staff record not found or not in your tenant' });
   }
 
-  const { data: licences, error: licErr } = (await sbAny
+  const { data: licences, error: licErr } = (await tenantAny
     .schema('app_data')
     .from('licences')
     .select('licence_id, licence_type, licence_number, issuing_authority, state, issue_date, expiry_date, notes')
@@ -198,3 +220,18 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   return json(200, { ok: true, action: 'approved', field_people_id: fieldPeopleId });
 });
+
+function tenantRoutingError(e: unknown): Response {
+  if (e instanceof TenantNotFoundError) {
+    return json(500, { error: `No tenant data plane registered for this session (${e.identifier}). Run scripts/provision-tenant.mjs.` });
+  }
+  if (e instanceof TenantNotActiveError) {
+    return json(503, { error: `Tenant data plane not active (status: ${e.status}). Cutover incomplete.` });
+  }
+  if (e instanceof TenantRoutingMisconfiguredError) {
+    console.error('[cards-approve-staff] tenant routing misconfigured', e);
+    return json(500, { error: 'Tenant routing unavailable — see server logs' });
+  }
+  console.error('[cards-approve-staff] unexpected tenant resolution error', e);
+  return json(500, { error: 'Tenant resolution failed' });
+}
