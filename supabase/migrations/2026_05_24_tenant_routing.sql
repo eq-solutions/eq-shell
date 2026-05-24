@@ -75,6 +75,14 @@ CREATE INDEX tenant_routing_status_idx
   ON shell_control.tenant_routing (status)
   WHERE status = 'active';
 
+-- Service-role needs explicit grants on shell_control (Supabase only
+-- auto-grants on public schema). Without these, even service_role gets
+-- "permission denied for table tenant_routing".
+GRANT USAGE ON SCHEMA shell_control TO service_role;
+GRANT USAGE ON TYPE  shell_control.tenant_routing_status TO service_role;
+GRANT ALL   ON       shell_control.tenant_routing        TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA shell_control GRANT ALL ON TABLES TO service_role;
+
 -- Lock down: RLS enabled, NO policies = only service_role can touch it.
 -- Service role bypasses RLS by design. Any authenticated user role
 -- (anon, authenticated) sees an empty table.

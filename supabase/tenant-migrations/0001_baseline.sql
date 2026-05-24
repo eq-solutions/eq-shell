@@ -30,6 +30,16 @@ BEGIN;
 
 CREATE SCHEMA IF NOT EXISTS app_data;
 
+-- Grants. Supabase doesn't auto-grant on schemas created by MCP/migrations
+-- (only on dashboard-created schemas), so we do it explicitly. Without
+-- these, the service-role REST path returns "permission denied for schema
+-- app_data" / "Invalid schema: app_data". Idempotent — GRANT is fine to
+-- re-apply.
+GRANT USAGE ON SCHEMA app_data TO service_role, anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA app_data GRANT ALL ON TABLES    TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA app_data GRANT ALL ON SEQUENCES TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA app_data GRANT ALL ON FUNCTIONS TO service_role;
+
 CREATE TABLE IF NOT EXISTS app_data._eq_migrations (
   name        text PRIMARY KEY,
   applied_at  timestamptz NOT NULL DEFAULT now(),
@@ -325,6 +335,21 @@ CREATE INDEX IF NOT EXISTS canonical_events_event_idx
 -- ──────────────────────────────────────────────────────────────────────
 -- RLS — defence in depth.
 -- ──────────────────────────────────────────────────────────────────────
+
+-- Service-role needs explicit grants per table too (the default-privileges
+-- ALTER above only kicks in for tables created AFTER it runs; the CREATE
+-- TABLEs above were already done).
+GRANT ALL ON
+  app_data.customers,
+  app_data.contacts,
+  app_data.sites,
+  app_data.staff,
+  app_data.licences,
+  app_data.jobs,
+  app_data.canonical_events,
+  app_data._eq_migrations
+TO service_role;
+GRANT USAGE, SELECT ON SEQUENCE app_data.canonical_events_id_seq TO service_role;
 
 ALTER TABLE app_data.customers          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app_data.contacts           ENABLE ROW LEVEL SECURITY;
