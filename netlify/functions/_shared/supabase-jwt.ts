@@ -69,8 +69,11 @@ export interface SupabaseJwtClaims {
   jti: string;
   app_metadata: {
     tenant_id: string;
-    eq_role: EqRole;
-    is_platform_admin: boolean;
+    // Optional — not injected by the Supabase auth hook (only tenant_id is).
+    // Shell-minted JWTs (signSupabaseJwt) always set these; Supabase-native
+    // JWTs from Cards mobile sign-in may not until the hook is fully extended.
+    eq_role?: EqRole;
+    is_platform_admin?: boolean;
     source_app?: string;
   };
   iat: number;
@@ -197,8 +200,6 @@ export function verifySupabaseJwt(token: string | null | undefined): SupabaseJwt
   if (!claims.app_metadata || typeof claims.app_metadata !== 'object') return null;
   const meta = claims.app_metadata;
   if (typeof meta.tenant_id !== 'string' || !meta.tenant_id) return null;
-  if (typeof meta.eq_role !== 'string') return null;
-  if (typeof meta.is_platform_admin !== 'boolean') return null;
 
   return claims;
 }
