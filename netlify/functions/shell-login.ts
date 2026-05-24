@@ -107,9 +107,9 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     p_key: rlKey,
   });
   if (rlErr) {
-    // Non-fatal: if rate limit check fails, log and allow the attempt.
     // eslint-disable-next-line no-console
-    console.warn('[shell-login] rate-limit check failed (allowing):', rlErr.message);
+    console.error('[shell-login] rate-limit check failed — blocking as precaution:', rlErr.message);
+    return jsonResponse(503, { valid: false, error: 'service-unavailable' });
   } else {
     const rl = rlResult as { blocked: boolean; retry_after_seconds: number } | null;
     if (rl?.blocked) {

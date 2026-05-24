@@ -139,7 +139,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   }
 
   // Create the user.
-  const pinHash = await bcrypt.hash(pin, 10);
+  const pinHash = await bcrypt.hash(pin, 12);
   const { data: created, error: insertErr } = await sb
     .from('users')
     .insert({

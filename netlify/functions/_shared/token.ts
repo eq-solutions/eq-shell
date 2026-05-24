@@ -91,6 +91,7 @@ export interface ShellTokenPayload {
 }
 
 function sign(payloadJson: string): string {
+  if (!SECRET_SALT) throw new Error('EQ_SECRET_SALT is not set — server misconfigured');
   return createHmac('sha256', SECRET_SALT).update(payloadJson).digest('hex');
 }
 
