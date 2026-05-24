@@ -4,10 +4,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSession } from '../session';
-import { createSupabaseClient } from '../lib/supabaseJwt';
 import { Topbar } from '../components/Topbar';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
+
+// Response from /.netlify/functions/entity-rows. The function reads from
+// the tenant data plane via eq_browse_entity RPC (see
+// supabase/tenant-migrations/0004_browse_entity_rpc.sql).
+interface EntityRowsResponse {
+  ok:      boolean;
+  error?:  string;
+  detail?: string;
+  rows?:   Record<string, unknown>[];
+  total?:  number;
+}
 
 // Maps the URL :entity (singular registry name) → app_data table (plural)
 // and a small set of "preferred columns" so the table doesn't have to
@@ -179,21 +189,25 @@ function EntityBrowserInner({ entity }: { entity: string }) {
       setLoading(true);
       setErr(null);
       try {
-        const sb = await createSupabaseClient();
-        // Use RPC instead of schema('app_data').from() because Supabase
-        // PostgREST exposed-schemas is a dashboard toggle, not a SQL config.
-        // The RPC lives in public schema and returns jsonb rows + total count.
-        const { data, error } = await sb.rpc('eq_browse_entity', {
-          p_entity: entity,
-          p_limit: PAGE_SIZE,
-          p_offset: page * PAGE_SIZE,
+        // Server-side: tenant_routing resolves the session's tenant to its
+        // dedicated Supabase project, then eq_browse_entity (public schema,
+        // SECURITY DEFINER) does the count + paged select on app_data.
+        // We don't pass tenant in the URL — the function reads it from the
+        // session cookie so users can't browse other tenants' data.
+        const qs = new URLSearchParams({
+          entity,
+          limit:  String(PAGE_SIZE),
+          offset: String(page * PAGE_SIZE),
         });
-        if (error) throw new Error(error.message);
-
-        type RpcRow = { row_json: Record<string, unknown>; total_count: number };
-        const result = (data as RpcRow[]) ?? [];
-        setRows(result.map((r) => r.row_json));
-        setCount(result.length > 0 ? Number(result[0].total_count) : 0);
+        const res = await fetch(`/.netlify/functions/entity-rows?${qs}`, {
+          credentials: 'include',
+        });
+        const body = (await res.json()) as EntityRowsResponse;
+        if (!res.ok || !body.ok) {
+          throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
+        }
+        setRows(body.rows ?? []);
+        setCount(body.total ?? 0);
       } catch (e) {
         setErr((e as Error).message);
       } finally {
