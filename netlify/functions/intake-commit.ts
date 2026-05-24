@@ -28,7 +28,7 @@
 // stale. Caller can re-derive the count from app_data.<table> filtered
 // by intake_id (the rows carry it) if precise reconciliation is needed.
 //
-// Currently implemented modules: cards (licences).
+// Currently implemented modules: cards (licences), service (assets).
 // Other modules return 501 not_implemented — they ship in subsequent PRs
 // per the staged plan in ARCHITECTURE-V2.md.
 
@@ -84,7 +84,7 @@ type ImportMode  = 'append' | 'upsert' | 'replace';
 
 // Modules implemented on tenant data plane so far. Add to this set as
 // each per-module PR lands.
-const IMPLEMENTED_MODULES: ReadonlySet<IntakeModule> = new Set<IntakeModule>(['cards']);
+const IMPLEMENTED_MODULES: ReadonlySet<IntakeModule> = new Set<IntakeModule>(['cards', 'service']);
 
 interface CommitBody {
   intake_id:        string;
@@ -158,10 +158,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   if (!Array.isArray(body.rows)) {
     return json(400, { ok: false, error: 'rows_must_be_array' });
   }
-  if (body.rows.length === 0) {
-    // Empty batch is fine — return 0 committed without touching the DB.
-    return json(200, { ok: true, module: 'cards', committed_count: 0, committed_ids: [] });
-  }
   if (body.rows.length > 10_000) {
     return json(400, { ok: false, error: 'batch_too_large', detail: 'max 10,000 rows per call' });
   }
@@ -188,6 +184,13 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       error: 'module_not_implemented',
       detail: `module ${moduleName} hasn't been migrated to tenant data plane yet — caller should keep using sb.rpc('eq_intake_commit_batch') for now`,
     });
+  }
+
+  // Empty batch is fine — return 0 committed without touching the DB.
+  // Done after module resolution so the response carries the right module
+  // (was hardcoded to 'cards' before the multi-module rollout).
+  if (body.rows.length === 0) {
+    return json(200, { ok: true, module: moduleName, committed_count: 0, committed_ids: [] });
   }
 
   // ─── open tenant DB ─────────────────────────────────────────────────
