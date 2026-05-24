@@ -55,6 +55,27 @@ const SettingsIcon = () => (
   </svg>
 );
 
+const IntakeIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M8 2v8M5 7l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M3 12h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const UsersIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M6 7a2 2 0 100-4 2 2 0 000 4zM2 13c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M11 5a2 2 0 010 4M14 13c0-1.7-1-3.2-2.5-3.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const AuditIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <rect x="3" y="2" width="10" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M6 5.5h4M6 8h4M6 10.5h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
 const LogoutIcon = () => (
   <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
     <path d="M5.5 3H3a1 1 0 00-1 1v7a1 1 0 001 1h2.5M9.5 10.5l3-3-3-3M12.5 7.5H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
@@ -124,17 +145,29 @@ export function HubSidebar({ apps }: Props) {
         ))}
       </nav>
 
-      <NavLink
-        to={`/${tenantSlug}/admin/settings`}
-        className={({ isActive }) =>
-          `eq-hub-sidebar__nav-item eq-hub-sidebar__nav-item--settings${isActive ? ' active' : ''}`
-        }
-      >
-        <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
-          <SettingsIcon />
-        </span>
-        <span className="eq-hub-sidebar__nav-label">Settings</span>
-      </NavLink>
+      {(session.user.role === 'manager' || session.user.is_platform_admin) && (
+        <>
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>MANAGE</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Admin navigation">
+            <NavLink to={`/${tenantSlug}/intake`} className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}>
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><IntakeIcon /></span>
+              <span className="eq-hub-sidebar__nav-label">Intake</span>
+            </NavLink>
+            <NavLink to={`/${tenantSlug}/admin/users`} className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}>
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><UsersIcon /></span>
+              <span className="eq-hub-sidebar__nav-label">Users</span>
+            </NavLink>
+            <NavLink to={`/${tenantSlug}/admin/audit`} className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}>
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><AuditIcon /></span>
+              <span className="eq-hub-sidebar__nav-label">Audit log</span>
+            </NavLink>
+            <NavLink to={`/${tenantSlug}/admin/settings`} className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}>
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><SettingsIcon /></span>
+              <span className="eq-hub-sidebar__nav-label">Settings</span>
+            </NavLink>
+          </nav>
+        </>
+      )}
 
       <div className="eq-hub-sidebar__user">
         <div className="eq-hub-sidebar__user-avatar" aria-hidden="true">
