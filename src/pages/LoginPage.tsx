@@ -74,6 +74,9 @@ export default function LoginPage() {
 
       <div className="eq-login-form-wrap">
         <form className="eq-login-form" onSubmit={onSubmit}>
+          <div className="eq-login-mobile-brand">
+            <EqLogo size={28} variant="wordmark" />
+          </div>
           <h2>Sign in</h2>
           <p className="lede">Use your work email and PIN.</p>
           <label htmlFor="email">Email</label>
