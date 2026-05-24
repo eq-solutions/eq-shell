@@ -1935,6 +1935,44 @@
   vertical-align: middle;
 }
 
+/* ── Alert strip ── */
+
+.eq-hub-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 32px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.eq-hub-alert--action {
+  background: #F59E0B;
+  color: #fff;
+}
+
+.eq-hub-alert--clear {
+  background: #3DA8D8;
+  color: #fff;
+}
+
+.eq-hub-alert__icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.eq-hub-alert__link {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.eq-hub-alert__link:hover {
+  opacity: 0.85;
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 900px) {

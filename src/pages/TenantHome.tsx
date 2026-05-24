@@ -110,6 +110,12 @@ export default function TenantHome() {
 
   const staffCount = counts?.find((c) => c.entity === 'staff')?.count_total ?? null;
 
+  const alertItems = events?.filter(
+    (e) => ['failed', 'rejected', 'rolled_back'].includes(e.status) || e.rows_flagged > 0 || e.rows_rejected > 0
+  ) ?? [];
+  const hasAlerts = !loading && events !== null && alertItems.length > 0;
+  const allClear  = !loading && events !== null && alertItems.length === 0;
+
   // Build sidebar apps — counts wired up as cross-app RPCs are added.
   // Field shows staff total for now; operational counts (on shift, open defects) come later.
   const sidebarApps: HubApp[] = HUB_APPS
@@ -131,6 +137,27 @@ export default function TenantHome() {
       <HubSidebar apps={sidebarApps} />
 
       <div className="eq-hub__content">
+
+        {hasAlerts && (
+          <div className="eq-hub-alert eq-hub-alert--action">
+            <span className="eq-hub-alert__icon" aria-hidden="true">⚠</span>
+            <span className="eq-hub-alert__text">
+              {alertItems.length === 1
+                ? '1 import needs attention'
+                : `${alertItems.length} imports need attention`}
+              {' — '}
+              <Link to={`/${tenantSlug}/intake`} className="eq-hub-alert__link">review now</Link>
+            </span>
+          </div>
+        )}
+
+        {allClear && (
+          <div className="eq-hub-alert eq-hub-alert--clear">
+            <span className="eq-hub-alert__icon" aria-hidden="true">✓</span>
+            <span className="eq-hub-alert__text">All clear — no action needed</span>
+          </div>
+        )}
+
         <div className="eq-hub-content">
 
           <div className="eq-hub-content__dateline">
