@@ -134,6 +134,47 @@
   text-align: center;
 }
 
+.eq-login-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--gray-300);
+  margin-bottom: 28px;
+}
+
+.eq-login-tab {
+  flex: 1;
+  height: 36px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--eq-grey);
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+  font-family: var(--eq-font);
+}
+
+.eq-login-tab:hover { color: var(--eq-ink); }
+
+.eq-login-tab--active {
+  color: var(--eq-sky);
+  border-bottom-color: var(--eq-sky);
+}
+
+.eq-login-back-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: var(--eq-sky);
+  cursor: pointer;
+  font-family: var(--eq-font);
+  text-decoration: underline;
+}
+
+.eq-login-back-link:hover { color: var(--eq-deep); }
+
 .eq-login-form { width: 100%; max-width: 360px; }
 
 .eq-login-form h2 {

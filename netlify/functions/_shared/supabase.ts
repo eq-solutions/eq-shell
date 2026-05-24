@@ -60,6 +60,7 @@ export interface CanonicalUser {
   id: string;
   email: string;
   name: string | null;
+  phone: string | null;
   tenant_id: string;
   role: EqRole;
   is_platform_admin: boolean;
