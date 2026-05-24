@@ -41,15 +41,71 @@ import { createClient } from '@supabase/supabase-js';
 import { createDecipheriv } from 'node:crypto';
 import { parseArgs } from 'node:util';
 
-// Tables, in foreign-key-safe order. Each entry:
-//   { name, pk, tenant_col, columns_to_copy }
+// Tables, in foreign-key-safe order. Each entry: { name, pk, tenant_col }.
+//
+// Order rules:
+//   1. Parents before children (FKs require parent row to exist).
+//   2. Tables with no in-schema FK can come first in any order.
+//   3. quote_* family lands after quote; tender_* after tenders;
+//      apprentice_* dependents (buddy_checkins, engagement_logs, etc.)
+//      after apprentice_profiles.
+//
+// All FKs to control-plane (shell_control.users) are soft references in
+// tenant DBs — Postgres no longer enforces them. The 0002 migration
+// strips those FKs at apply time.
 const PLAN = [
-  { name: 'customers', pk: 'customer_id', tenant_col: 'tenant_id' },
-  { name: 'sites',     pk: 'site_id',     tenant_col: 'tenant_id' },
-  { name: 'staff',     pk: 'staff_id',    tenant_col: 'tenant_id' },
-  { name: 'contacts',  pk: 'contact_id',  tenant_col: 'tenant_id' },
-  { name: 'licences',  pk: 'licence_id',  tenant_col: 'tenant_id' },
-  { name: 'jobs',      pk: 'job_id',      tenant_col: 'tenant_id' },
+  // 0001 baseline — frontier tables
+  { name: 'customers',            pk: 'customer_id',          tenant_col: 'tenant_id' },
+  { name: 'sites',                pk: 'site_id',              tenant_col: 'tenant_id' },
+  { name: 'staff',                pk: 'staff_id',             tenant_col: 'tenant_id' },
+  { name: 'contacts',             pk: 'contact_id',           tenant_col: 'tenant_id' },
+  { name: 'licences',             pk: 'licence_id',           tenant_col: 'tenant_id' },
+  { name: 'jobs',                 pk: 'job_id',               tenant_col: 'tenant_id' },
+
+  // Leaf tables (no in-schema FKs)
+  { name: 'rate_library',         pk: 'rate_id',              tenant_col: 'tenant_id' },
+  { name: 'scope_template',       pk: 'template_id',          tenant_col: 'tenant_id' },
+  { name: 'tenant_app_configs',   pk: 'config_id',            tenant_col: 'tenant_id' },
+  { name: 'tafe_calendars',       pk: 'tafe_calendar_id',     tenant_col: 'tenant_id' },
+
+  // Children of staff/sites/customers (0001 parents)
+  { name: 'apprentice_profiles',  pk: 'apprentice_profile_id', tenant_col: 'tenant_id' },
+  { name: 'assets',               pk: 'asset_id',             tenant_col: 'tenant_id' },
+  { name: 'checkins',             pk: 'checkin_id',           tenant_col: 'tenant_id' },
+  { name: 'incidents',            pk: 'incident_id',          tenant_col: 'tenant_id' },
+  { name: 'leave_balances',       pk: 'leave_balance_id',     tenant_col: 'tenant_id' },
+  { name: 'leave_requests',       pk: 'leave_request_id',     tenant_col: 'tenant_id' },
+  { name: 'prestart_checks',      pk: 'prestart_id',          tenant_col: 'tenant_id' },
+  { name: 'schedule_entries',     pk: 'schedule_id',          tenant_col: 'tenant_id' },
+  { name: 'site_diaries',         pk: 'site_diary_id',        tenant_col: 'tenant_id' },
+  { name: 'swms',                 pk: 'swms_id',              tenant_col: 'tenant_id' },
+  { name: 'tenders',              pk: 'tender_id',            tenant_col: 'tenant_id' },
+  { name: 'timesheets',           pk: 'timesheet_id',         tenant_col: 'tenant_id' },
+  { name: 'toolbox_talks',        pk: 'talk_id',              tenant_col: 'tenant_id' },
+  { name: 'weekly_reports',       pk: 'weekly_report_id',     tenant_col: 'tenant_id' },
+  { name: 'quote',                pk: 'quote_id',             tenant_col: 'tenant_id' },
+
+  // Children of 0002 parents
+  { name: 'buddy_checkins',           pk: 'buddy_checkin_id',     tenant_col: 'tenant_id' },
+  { name: 'engagement_logs',          pk: 'engagement_log_id',    tenant_col: 'tenant_id' },
+  { name: 'feedback_entries',         pk: 'feedback_entry_id',    tenant_col: 'tenant_id' },
+  { name: 'itp_records',              pk: 'itp_id',               tenant_col: 'tenant_id' },
+  { name: 'jsa_records',              pk: 'jsa_id',               tenant_col: 'tenant_id' },
+  { name: 'leave_approval_logs',      pk: 'log_id',               tenant_col: 'tenant_id' },
+  { name: 'quarterly_reviews',        pk: 'quarterly_review_id',  tenant_col: 'tenant_id' },
+  { name: 'rotations',                pk: 'rotation_id',          tenant_col: 'tenant_id' },
+  { name: 'schedule_change_logs',     pk: 'log_id',               tenant_col: 'tenant_id' },
+  { name: 'skills_ratings',           pk: 'skills_rating_id',     tenant_col: 'tenant_id' },
+  { name: 'tender_enrichments',       pk: 'enrichment_id',        tenant_col: 'tenant_id' },
+  { name: 'tender_import_runs',       pk: 'import_run_id',        tenant_col: 'tenant_id' },
+  { name: 'tender_nominations',       pk: 'nomination_id',        tenant_col: 'tenant_id' },
+  { name: 'tender_review_decisions',  pk: 'decision_id',          tenant_col: 'tenant_id' },
+
+  // Quote family (children of quote)
+  { name: 'quote_line_item',          pk: 'line_item_id',         tenant_col: 'tenant_id' },
+  { name: 'quote_status_history',     pk: 'history_id',           tenant_col: 'tenant_id' },
+  { name: 'quote_attachment',         pk: 'attachment_id',        tenant_col: 'tenant_id' },
+  { name: 'quote_email_outbox',       pk: 'outbox_id',            tenant_col: 'tenant_id' },
 ];
 
 // ─── args + env ────────────────────────────────────────────────────────
