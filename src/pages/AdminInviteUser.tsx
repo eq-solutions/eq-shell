@@ -9,7 +9,7 @@
 // copies + pastes it to the recipient manually. The component shows
 // the URL with a Copy button after a successful invite.
 
-import { useState, type FormEvent } from 'react';
+import React, { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
@@ -118,87 +118,79 @@ function AdminInviteUserForm() {
       <div className="eq-page__header">
         <h1 className="eq-page__title">Invite a user</h1>
         <p className="eq-page__lede">
-          The recipient gets a one-time link to set their PIN. They land
-          on the tenant home as soon as they accept.
+          They get a one-time link to set their PIN and land straight on the hub.
         </p>
       </div>
       <form onSubmit={onSubmit} style={{ maxWidth: 520 }}>
 
-        <label htmlFor="invite-email">Email</label>
-        <input
-          id="invite-email"
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={busy}
-        />
+        <div style={{ marginBottom: 20 }}>
+          <label htmlFor="invite-email" style={labelStyle}>Email</label>
+          <input
+            id="invite-email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={busy}
+            style={inputStyle}
+          />
+        </div>
 
-        <label htmlFor="invite-role">Role</label>
-        <select
-          id="invite-role"
-          value={role}
-          onChange={(e) => setRole(e.target.value as EqRole)}
-          disabled={busy}
-          style={{
-            width: '100%',
-            padding: '10px 12px',
-            border: '1px solid var(--eq-border)',
-            borderRadius: 6,
-            marginBottom: 6,
-            background: 'var(--eq-bg)',
-            color: 'var(--eq-ink)',
-          }}
-        >
-          {ROLE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <p style={{ fontSize: 12, color: 'var(--eq-mute)', margin: '0 0 16px' }}>
-          {ROLE_OPTIONS.find((o) => o.value === role)?.helper}
-        </p>
+        <div style={{ marginBottom: 20 }}>
+          <label htmlFor="invite-role" style={labelStyle}>Role</label>
+          <select
+            id="invite-role"
+            value={role}
+            onChange={(e) => setRole(e.target.value as EqRole)}
+            disabled={busy}
+            style={inputStyle}
+          >
+            {ROLE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <p style={{ fontSize: 12, color: 'var(--gray-500)', margin: '6px 0 0' }}>
+            {ROLE_OPTIONS.find((o) => o.value === role)?.helper}
+          </p>
+        </div>
 
-        <fieldset
-          style={{
-            border: '1px solid var(--eq-border)',
-            borderRadius: 6,
-            padding: 12,
-            margin: '0 0 16px',
-          }}
-        >
-          <legend style={{ fontSize: 13, fontWeight: 500, padding: '0 6px' }}>
-            Module access
-          </legend>
-          {MODULE_OPTIONS.map((m) => (
-            <label
-              key={m.key}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                marginBottom: 6,
-                fontSize: 14,
-                fontWeight: 400,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={entitlements.has(m.key)}
-                onChange={() => toggleEntitlement(m.key)}
-                disabled={busy}
-                style={{ width: 'auto', margin: 0 }}
-              />
-              {m.label}
-            </label>
-          ))}
-        </fieldset>
+        <div style={{ marginBottom: 24 }}>
+          <p style={labelStyle}>App access</p>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {MODULE_OPTIONS.map((m) => (
+              <label
+                key={m.key}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 14px', border: '1px solid var(--eq-border)',
+                  borderRadius: 6, background: 'var(--eq-bg)', cursor: 'pointer',
+                }}
+              >
+                <span style={{ fontSize: 14, fontWeight: 500 }}>{m.label}</span>
+                <input
+                  type="checkbox"
+                  checked={entitlements.has(m.key)}
+                  onChange={() => toggleEntitlement(m.key)}
+                  disabled={busy}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
 
-        <button type="submit" disabled={busy || !email}>
-          {busy ? 'Sending…' : 'Send invite'}
-        </button>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <button
+            type="submit"
+            className="eq-btn-primary"
+            disabled={busy || !email}
+            style={{ width: 'auto', padding: '0 20px' }}
+          >
+            {busy ? 'Sending…' : 'Send invite'}
+          </button>
+        </div>
 
         {err && (
-          <div className="err" role="alert">
+          <div className="eq-err" role="alert" style={{ marginTop: 16 }}>
             {err}
           </div>
         )}
@@ -206,56 +198,59 @@ function AdminInviteUserForm() {
         {success && (
           <div
             style={{
-              marginTop: 16,
-              padding: 12,
+              marginTop: 20,
+              padding: '14px 16px',
               border: '1px solid var(--eq-border)',
               borderRadius: 6,
-              background: 'var(--eq-bg)',
-              fontSize: 13,
+              background: 'var(--eq-ice)',
             }}
           >
-            <strong style={{ color: 'var(--eq-ink)' }}>Invite sent</strong>
-            <p style={{ margin: '6px 0', color: 'var(--eq-mute)' }}>
+            <p style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>Invite sent</p>
+            <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--gray-500)' }}>
               {success.email_delivered
                 ? 'Email delivered — the recipient should see it within a minute.'
-                : 'Email provider not configured yet. Copy this link and send it to them manually:'}
+                : 'Email not configured yet. Copy this link and send it manually:'}
             </p>
-            <input
-              readOnly
-              value={success.invite_url}
-              style={{
-                width: '100%',
-                padding: '6px 8px',
-                border: '1px solid var(--eq-border)',
-                borderRadius: 4,
-                fontSize: 12,
-                fontFamily: 'monospace',
-                marginBottom: 6,
-              }}
-              onFocus={(e) => e.target.select()}
-            />
-            <button
-              type="button"
-              onClick={() => copyInviteUrl(success.invite_url)}
-              style={{
-                background: 'transparent',
-                color: 'var(--eq-brand)',
-                border: '1px solid var(--eq-brand)',
-                padding: '6px 12px',
-                borderRadius: 4,
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
-              Copy link
-            </button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                readOnly
+                value={success.invite_url}
+                style={{
+                  flex: 1, padding: '6px 10px', border: '1px solid var(--eq-border)',
+                  borderRadius: 4, fontSize: 12,
+                  fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+                  background: 'var(--eq-bg)',
+                }}
+                onFocus={(e) => e.target.select()}
+              />
+              <button
+                type="button"
+                className="eq-btn-ghost"
+                style={{ padding: '0 14px', height: 32, fontSize: 13, whiteSpace: 'nowrap' }}
+                onClick={() => copyInviteUrl(success.invite_url)}
+              >
+                Copy
+              </button>
+            </div>
           </div>
         )}
       </form>
     </InviteShell>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', height: 40, padding: '0 12px',
+  border: '1px solid var(--gray-300)', borderRadius: 6,
+  background: 'var(--eq-bg)', color: 'var(--eq-ink)',
+  fontSize: 14,
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: 11, fontWeight: 600,
+  color: 'var(--eq-grey)', textTransform: 'uppercase',
+  letterSpacing: '0.06em', marginBottom: 8,
+};
 
 function InviteShell({ children }: { children: React.ReactNode }) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
