@@ -107,7 +107,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(404, { valid: false, error: 'token-not-found-or-expired' });
   }
 
-  const pinHash = await bcrypt.hash(pin, 10);
+  const pinHash = await bcrypt.hash(pin, 12);
 
   const { error: updateErr } = await sb
     .from('users')
