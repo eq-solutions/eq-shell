@@ -394,6 +394,25 @@ Target: tenant provisioned in under 30 minutes (most of that is waiting for Supa
 
 ### Phase 2.B.6 — Intake writer refactor (multi-session)
 
+> **Status (2026-05-24, post-overnight):** All 5 modules are server-side
+> complete. PRs landed: #25 (orchestrator + cards), #28 (service), #29
+> (quotes), #30 (core server half), #31 (field). The new
+> `/.netlify/functions/intake-commit` orchestrator dispatches every
+> table in `TABLE_MODULE` to the correct per-tenant RPC.
+>
+> **Remaining work** to fully close the cutover and unblock Phase 2.B.7:
+>
+> 1. **commit-canonical.ts refactor** (Phase 2.B.6.5 below) — the
+>    browser-side intake UI still calls `sb.rpc('eq_intake_commit_batch')`
+>    directly against shared `eq-canonical`. Until that's switched to
+>    `fetch('/.netlify/functions/intake-commit')`, the new RPCs sit
+>    unused by the UI. Affects the **core** module most (SimPRO flow);
+>    cards/service/quotes/field have no current browser-side intake
+>    caller other than this same vendored package.
+>
+> 2. **Confirm zero direct shared-app_data writers** — see Phase 2.B.7
+>    grep checks.
+
 This is the last piece before shared `app_data` can be dropped. It's
 intentionally staged because the intake commit path is large and
 load-bearing:
@@ -416,13 +435,13 @@ to the tenant data plane.
 ships, gets smoke-tested with a real CSV import in deploy preview, then
 merges. Order is by size + risk:
 
-| # | Module | Tables | Body chars | Why this order |
-|---|---|---|---:|---|
-| 1 | **cards**   | `licences` (29 rows in EQ) | 2,736 | Smallest. Only one entity. Easy first proof. |
-| 2 | **service** | `assets` (1,000 rows in SKS) | 2,490 | One entity. Validates with real-ish data volume. |
-| 3 | **quotes**  | `quote`, `quote_line_item`, `quote_status_history`, `quote_attachment`, `scope_template`, `rate_library`, `quote_email_outbox` (6 + 11 rows in SKS) | 3,106 | Multi-table with cross-batch FKs. First non-trivial case. |
-| 4 | **core**    | `customers`, `contacts`, `sites` (50/100/30 rows in EQ; 525/0/52 rows in SKS) | 4,540 | Real production data on both tenants. SimPRO import flow exercises this. |
-| 5 | **field**   | `staff`, `schedule_entries`, `prestart_checks`, `toolbox_talks`, `swms`, `jsa_records`, `itp_records`, `incidents`, `timesheets`, `leave_requests`, `leave_balances`, `checkins`, `tenders`, `tender_*`, `site_diaries`, `weekly_reports`, `apprentice_profiles`, `skills_ratings`, `feedback_entries`, `rotations`, `buddy_checkins`, `quarterly_reviews`, `engagement_logs`, `tafe_calendars`, `schedule_change_logs`, `leave_approval_logs` (≈26 tables) | 8,319 | Largest module. Last to migrate because it's the riskiest. |
+| # | Module | Tables | Migration | PR | Status |
+|---|---|---|---|---|---|
+| 1 | **cards**   | `licences` | `0005_intake_cards_rpc.sql` + `0006_cards_rpcs.sql` + `0007_cards_profile_rpc.sql` | #25, #26 | ✅ Live (Cards mobile cutover incl. CORS fix #27) |
+| 2 | **service** | `assets` | `0008_intake_service_rpc.sql` | #28 | ✅ Live |
+| 3 | **quotes**  | `quote`, `quote_line_item`, `quote_status_history`, `quote_attachment`, `scope_template`, `rate_library`, `quote_email_outbox` (7 tables) | `0009_intake_quotes_rpc.sql` | #29 | ✅ Live |
+| 4 | **core**    | `customers`, `sites`, `contacts` | `0010_intake_core_rpc.sql` | #30 | ✅ Server live; browser half pending (2.B.6.5) |
+| 5 | **field**   | 30 tables: `staff`, `apprentice_profiles`, `buddy_checkins`, `checkins`, `engagement_logs`, `feedback_entries`, `incidents`, `itp_records`, `jsa_records`, `swms`, `prestart_checks`, `toolbox_talks`, `jobs`, `leave_*`, `quarterly_reviews`, `rotations`, `schedule_*`, `site_diaries`, `skills_ratings`, `tafe_calendars`, `tender_*`, `timesheets`, `weekly_reports` | `0011_intake_field_rpc.sql` (dynamic dispatch — single function with `EXECUTE format()`, allow-list in `v_allowed`) | #31 | ✅ Live |
 
 **Per-PR shape (template):**
 
@@ -464,6 +483,35 @@ merges. Order is by size + risk:
   intake is migrated for cards but not for core, new core imports still
   land on shared, and the tenant DB stays stale for core until that module's
   PR ships. Acceptable.
+
+### Phase 2.B.6.5 — commit-canonical browser-side refactor
+
+The vendored `eq-intake/eq-platform/packages/eq-intake-demo/src/canonical/commit-canonical.ts`
+still calls `supabase.rpc('eq_intake_commit_batch', ...)` directly
+against shared `eq-canonical`. With Phase 2.B.6 server-complete, this
+is the final cutover step.
+
+**Scope:**
+
+1. Replace the `sb.rpc('eq_intake_commit_batch', ...)` call inside
+   `commitOneEntity` with `fetch('/.netlify/functions/intake-commit', ...)`
+   (POST, JSON body matching `CommitBody` in intake-commit.ts).
+2. Replace `buildCustomerIdMap()` — which currently reads back from
+   `app_data.customers` directly via the supabase client — with a read
+   of `fk_lookup` from the orchestrator's response. The 'core' RPC
+   (0010) returns this map alongside `committed_count` / `committed_ids`
+   for the customers batch specifically.
+3. Narrow the `SupabaseLikeClient` interface — `rpc` and the
+   `from('customers').select(...)` chain are no longer needed for
+   the commit path. Kept only if other consumers still need them.
+4. Update `commit-canonical.test.ts` — mock the fetch response instead
+   of `sb.rpc`.
+5. Backport the change into the upstream `eq-intake` repo once the
+   vendored copy is proven (separate session).
+
+**Risk:** Touches the production intake UI. Worth gating behind a
+manual smoke before merge (CSV drop in deploy preview → verify rows
+land in the right tenant DB + audit row shows `completed`).
 
 ### Phase 2.B.7 — Drop shared `app_data`
 - [ ] Confirm zero readers (`git grep "schema\\('app_data'\\)"` in src/ and
