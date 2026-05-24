@@ -546,13 +546,15 @@ land in the right tenant DB + audit row shows `completed`).
 >    will fail-fast if Jobs is reached during smoke.
 
 #### Checklist
-- [x] Confirm zero netlify/functions readers of shared `app_data` (above)
-- [x] Confirm zero browser readers/writers except Jobs (above)
+- [x] Confirm zero netlify/functions readers of shared `app_data`
+- [x] Confirm zero browser readers/writers except Jobs
 - [x] Confirm zero remaining intake writers against shared (Phase 2.B.6 + 2.B.6.5 done)
-- [ ] **Jobs module disposition** — pick option 1/2/3 above
-- [ ] Drop `app_data` schema from shared `eq-canonical` (after Jobs)
-- [ ] Update CLAUDE.md and runbooks
-- [ ] Pen test (independent)
+- [x] **Jobs module deleted** (PR #36, 2026-05-24) — Royce chose option 1 (delete)
+- [x] **Dropped `app_data` schema from shared `eq-canonical`** via MCP after PR #36 merge (2026-05-24). Also dropped 6 dead dispatchers (`public.eq_intake_commit_batch` + its 5 per-module variants). Surviving schemas: auth, extensions, graphql, graphql_public, public, realtime, **shell_control**, storage, supabase_migrations, vault.
+- [ ] Update CLAUDE.md and runbooks — defer, no urgency
+- [ ] Pen test (independent) — needs an external auditor
+
+**🎉 Per-tenant data-plane cutover is complete.** Operational data lives exclusively on per-tenant Supabase projects (eq-canonical-internal, sks-canonical). Shared eq-canonical holds only `shell_control` + auth + storage.
 
 **Schema drop checklist** (when ready):
 1. Final grep: `Grep "\\.schema\\('app_data'\\)" src/ netlify/functions/` returns ZERO blocking matches (only comments / scripts).
