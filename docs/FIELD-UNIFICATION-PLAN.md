@@ -84,6 +84,24 @@ Five stages — first three are build-only with zero SKS prod impact. Cut-over (
 
 ### F1 — Skeleton + tenant routing wiring (build only, ~1 sprint)
 
+> **Gating note (2026-05-25):** F1 is **blocked** on Royce's in-flight SKS work
+> to port Prestarts + Toolbox Talks from EQ Field into SKS NSW Labour. Reasons:
+>
+> 1. That work changes the SKS Labour Supabase (`nspbmirochztcjijmcrx`) shape
+>    — F2's `sync-field-app-to-canonical.mjs --slug=sks` reads from that DB,
+>    so syncing before it lands captures a half-done state.
+> 2. The EQ vs SKS audit in §"Current state" needs a **re-run** once the
+>    prestart/toolbox port lands — the unique-to-EQ / unique-to-SKS lists
+>    will shift, and F2's reconciliation backlog depends on them.
+> 3. The SKS-side `prestart_checks` and `toolbox_talks` table shapes must
+>    be **diffed against `supabase/tenant-migrations/0011_field.sql`** before
+>    F1 step 6 — if SKS introduces columns the per-tenant baseline doesn't
+>    have, 0012 (or an addendum to 0011) needs to cover them, otherwise the
+>    F2 sync will drop data on the floor.
+>
+> Action when Royce's SKS work lands: re-audit, diff the two schemas, then
+> start F1 step 1.
+
 Concrete deliverables:
 
 1. **New branch** `unified-tenant` on `eq-solves-field` (do NOT touch `main` or `demo`).
