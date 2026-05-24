@@ -1,25 +1,10 @@
-// TenantHome — the dashboard.
-// Dark-navy hero strip mirrors the login aesthetic so signed-in feels
-// like the same platform, not a Stripe billing page. Below the hero:
-// snapshot stats, recent intake activity, module grid.
-
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSession, moduleEnabled } from '../session';
-import { Topbar } from '../components/Topbar';
+import { createSupabaseClient } from '../lib/supabaseJwt';
+import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
-
-// Dashboard payload comes from /.netlify/functions/tenant-dashboard which
-// fans out to the tenant data plane (counts) and the shared control plane
-// (intake events) in parallel. See netlify/functions/tenant-dashboard.ts.
-interface DashboardResponse {
-  ok:     boolean;
-  error?: string;
-  detail?: string;
-  counts?: DashboardCount[];
-  events?: IntakeEvent[];
-}
 
 interface DashboardCount {
   entity: string;
@@ -39,62 +24,49 @@ interface IntakeEvent {
   started_at: string;
 }
 
-interface ModuleDef {
-  key: string;
-  label: string;
-  description: string;
-  to: string;
-  live: boolean;
-}
-
-const MODULES: ModuleDef[] = [
-  { key: 'intake', label: 'Intake', description: 'Drag-drop CSVs into your data with AI column mapping.', to: 'intake', live: true },
-  { key: 'cards', label: 'Cards', description: 'Tradie wallet — licences + tap-to-copy.', to: 'cards', live: true },
-  { key: 'field', label: 'Field', description: 'Roster, timesheets, sites.', to: 'field', live: true },
-  { key: 'quotes', label: 'Quotes', description: 'Job quoting from the EQ platform.', to: 'quotes', live: true },
-  { key: 'service', label: 'Service', description: 'PPM, work orders, assets.', to: 'service', live: true },
+const HUB_APPS: { key: string; label: string; to: string; isBeta: boolean }[] = [
+  { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
+  { key: 'service', label: 'EQ Service', to: 'service', isBeta: false },
+  { key: 'quotes',  label: 'EQ Quotes',  to: 'quotes',  isBeta: false },
+  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: true  },
 ];
 
-const ENTITY_LABELS: Record<string, string> = {
-  customer: 'Customers',
-  contact: 'Contacts',
-  site: 'Sites',
-  staff: 'Active staff',
-  schedule: 'Schedule (upcoming)',
-  timesheet: 'Timesheets',
-  leave_request: 'Pending leave',
-  tender: 'Tenders',
-  prestart: 'Prestart checks',
-  toolbox_talk: 'Toolbox talks',
-  licence: 'Licences',
+const APP_DESCRIPTIONS: Record<string, string> = {
+  field:   'Rosters, staff, licences and availability.',
+  service: 'Maintenance, defects and customer reports.',
+  quotes:  'Quoting and proposals.',
+  cards:   'Staff profiles and licence cards.',
 };
 
-// Hero number tiles get pulled from these entities in this order.
-const HERO_KEYS = ['customer', 'staff', 'tender'];
-// Secondary stats below the hero.
-const FEATURED_KEYS = ['site', 'schedule', 'timesheet', 'leave_request', 'prestart', 'toolbox_talk'];
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function formatDate(): string {
+  return new Date().toLocaleDateString('en-AU', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  }).toUpperCase();
+}
 
 function relativeTime(iso: string): string {
-  const d = new Date(iso).getTime();
-  const diff = Date.now() - d;
+  const diff = Date.now() - new Date(iso).getTime();
   const s = Math.max(1, Math.floor(diff / 1000));
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  const days = Math.floor(h / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return `${Math.floor(h / 24)}d ago`;
 }
 
-// Audit fix #4: DB stores 'completed' (past tense); we also accept the
-// shorter 'complete' for older rows. Both render green.
-function statusDot(status: string): 'ok' | 'warn' | 'err' | undefined {
-  if (status === 'complete' || status === 'completed' || status === 'approved') return 'ok';
-  if (status === 'committing' || status === 'pending' || status === 'submitted') return 'warn';
-  if (status === 'failed' || status === 'rejected' || status === 'rolled_back') return 'err';
-  return undefined;
+function statusDot(status: string): 'ok' | 'warn' | 'err' | 'default' {
+  if (['complete', 'completed', 'approved'].includes(status)) return 'ok';
+  if (['committing', 'pending', 'submitted'].includes(status)) return 'warn';
+  if (['failed', 'rejected', 'rolled_back'].includes(status)) return 'err';
+  return 'default';
 }
 
 export default function TenantHome() {
@@ -110,15 +82,15 @@ export default function TenantHome() {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch('/.netlify/functions/tenant-dashboard?events_limit=5', {
-        credentials: 'include',
-      });
-      const body = (await res.json()) as DashboardResponse;
-      if (!res.ok || !body.ok) {
-        throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
-      }
-      setCounts(body.counts ?? []);
-      setEvents(body.events ?? []);
+      const sb = await createSupabaseClient();
+      const [countsRes, eventsRes] = await Promise.all([
+        sb.rpc('eq_tenant_dashboard_counts'),
+        sb.rpc('eq_recent_intake_events', { p_limit: 5 }),
+      ]);
+      if (countsRes.error) throw new Error(countsRes.error.message);
+      if (eventsRes.error) throw new Error(eventsRes.error.message);
+      setCounts(countsRes.data as DashboardCount[]);
+      setEvents(eventsRes.data as IntakeEvent[]);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -126,253 +98,185 @@ export default function TenantHome() {
     }
   };
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  const liveModuleCount = useMemo(
-    () => (session ? MODULES.filter((m) => m.live && moduleEnabled(session, m.key)).length : 0),
-    [session],
-  );
-
-  const totalRowsThisWeek = useMemo(() => {
-    if (!counts) return null;
-    return counts.reduce((acc, c) => acc + (c.count_recent ?? 0), 0);
-  }, [counts]);
+  useEffect(() => { void loadData(); }, []);
 
   if (!session) return null;
 
-  const enabledModules = MODULES.filter((m) => moduleEnabled(session, m.key));
-  const heroCounts = HERO_KEYS.map((k) => counts?.find((c) => c.entity === k)).filter(
-    (c): c is DashboardCount => c !== undefined,
-  );
-  const featuredCounts = FEATURED_KEYS.map((k) => counts?.find((c) => c.entity === k)).filter(
-    (c): c is DashboardCount => c !== undefined,
-  );
+  const greetName = (() => {
+    if (session.user.name) return session.user.name.split(' ')[0];
+    const fromEmail = session.user.email.split('@')[0].split('.')[0];
+    return fromEmail.charAt(0).toUpperCase() + fromEmail.slice(1);
+  })();
 
-  const greetBase = session.user.name?.split(' ')[0] ?? session.user.email.split('@')[0].split('.')[0];
-  const greetNameCapitalised = greetBase.charAt(0).toUpperCase() + greetBase.slice(1);
-  const roleLabel = session.user.role.replace('_', ' ');
+  const staffCount = counts?.find((c) => c.entity === 'staff')?.count_total ?? null;
 
-  // Audit fix #5: the delta is "additions this week" regardless of
-  // status. For leave-style entities the wording "added" is more honest
-  // than "+N this week" which implied the counter and the delta were
-  // filtered the same way (they're not).
-  //
-  // Audit fix #2 (follow-up 2026-05-21): when delta == total, the
-  // entity was seeded this week — showing "+N this week" misleads
-  // execs into thinking the platform added that many records as
-  // organic activity. Return null so the caller skips the delta line
-  // for the all-seeded case.
-  function deltaLabel(entity: string, recent: number, total: number): string | null {
-    if (recent <= 0) return null;
-    if (recent >= total) return null; // all rows are "new this week" = seed data, don't mislead
-    if (entity === 'leave_request') return `${recent} added this week`;
-    return `+${recent} this week`;
-  }
+  // Build sidebar apps — counts wired up as cross-app RPCs are added.
+  // Field shows staff total for now; operational counts (on shift, open defects) come later.
+  const sidebarApps: HubApp[] = HUB_APPS
+    .filter((a) => moduleEnabled(session, a.key))
+    .map((a) => ({
+      key: a.key,
+      label: a.label,
+      to: a.to,
+      isBeta: a.isBeta,
+      count: a.key === 'field' ? staffCount : null,
+      hasAlert: false,
+      icon: HUB_APP_ICONS[a.key],
+    }));
+
+  const enabledApps = HUB_APPS.filter((a) => moduleEnabled(session, a.key));
 
   return (
-    <>
-      <Topbar />
-      <div className="eq-shell-page">
-        <section className="eq-home-hero">
-          <div className="eq-home-hero__inner">
-            <div className="eq-home-hero__chip-row">
-              <span className="eq-home-hero__chip">
-                <span className="eq-home-hero__chip-dot" />
-                {session.tenant.name.toUpperCase()} · {roleLabel.toUpperCase()}
-                {session.user.is_platform_admin ? ' · PLATFORM ADMIN' : ''}
-              </span>
+    <div className="eq-hub">
+      <HubSidebar apps={sidebarApps} />
+
+      <div className="eq-hub__content">
+        <div className="eq-hub-content">
+
+          <div className="eq-hub-content__dateline">
+            <span className="eq-hub-content__dateline-dot" aria-hidden="true" />
+            {formatDate()}
+          </div>
+
+          <h1 className="eq-hub-content__greeting">
+            {greeting()}, {greetName}.
+          </h1>
+
+          {/* KPI strip — values stubbed until cross-app RPCs are wired */}
+          <div className="eq-hub-kpis">
+            <div className="eq-hub-kpi">
+              <p className="eq-hub-kpi__label">Team</p>
+              {loading ? (
+                <Skeleton variant="text" width={60} />
+              ) : (
+                <p className="eq-hub-kpi__value">
+                  {staffCount !== null ? staffCount : '—'}
+                </p>
+              )}
+              <p className="eq-hub-kpi__sub">active staff</p>
             </div>
-
-            <h1 className="eq-home-hero__headline">
-              Operating <span className="eq-home-hero__accent">{session.tenant.name}</span>
-              <span className="eq-home-hero__sub-name">
-                {' '}— {greetNameCapitalised}
-              </span>
-            </h1>
-            <p className="eq-home-hero__sub">
-              {liveModuleCount} module{liveModuleCount === 1 ? '' : 's'} live ·{' '}
-              {totalRowsThisWeek != null ? `${totalRowsThisWeek.toLocaleString()} rows added this week` : ''}
-              {events && events.length > 0
-                ? ` · ${events.length} recent intake${events.length === 1 ? '' : 's'}`
-                : ''}
-            </p>
-
-            <div className="eq-home-hero__tiles">
-              {loading && !counts
-                ? Array.from({ length: 3 }).map((_, i) => (
-                    <div className="eq-home-hero__tile eq-home-hero__tile--skeleton" key={i}>
-                      <Skeleton variant="text" width={80} />
-                      <Skeleton variant="text" width={120} />
-                    </div>
-                  ))
-                : heroCounts.map((c) => (
-                    <Link
-                      key={c.entity}
-                      to={`/${tenantSlug}/data/${c.entity}`}
-                      className="eq-home-hero__tile"
-                    >
-                      <p className="eq-home-hero__tile-label">
-                        {ENTITY_LABELS[c.entity] ?? c.entity}
-                      </p>
-                      <p className="eq-home-hero__tile-value">{c.count_total.toLocaleString()}</p>
-                      {(() => {
-                        const label = deltaLabel(c.entity, c.count_recent, c.count_total);
-                        return label ? (
-                          <p className="eq-home-hero__tile-delta">{label}</p>
-                        ) : null;
-                      })()}
-                    </Link>
-                  ))}
+            <div className="eq-hub-kpi">
+              <p className="eq-hub-kpi__label">Activity</p>
+              {loading ? (
+                <Skeleton variant="text" width={60} />
+              ) : (
+                <p className="eq-hub-kpi__value">
+                  {events !== null ? events.length : '—'}
+                </p>
+              )}
+              <p className="eq-hub-kpi__sub">recent imports</p>
+            </div>
+            <div className="eq-hub-kpi">
+              <p className="eq-hub-kpi__label">Sites</p>
+              {loading ? (
+                <Skeleton variant="text" width={60} />
+              ) : (
+                <p className="eq-hub-kpi__value">
+                  {counts?.find((c) => c.entity === 'site')?.count_total ?? '—'}
+                </p>
+              )}
+              <p className="eq-hub-kpi__sub">active sites</p>
             </div>
           </div>
-        </section>
 
-        <main className="eq-page">
-          {err && <EqError title="Couldn't load dashboard" message={err} onRetry={loadData} />}
+          {err && (
+            <EqError title="Couldn't load dashboard" message={err} onRetry={loadData} />
+          )}
 
-          <section className="eq-section">
-            <div className="eq-section__head">
-              <h2 className="eq-section__heading">Snapshot</h2>
-              {counts && (
-                <span className="eq-section__hint">
-                  Tap a card to open the entity browser
-                </span>
-              )}
+          {/* App tiles */}
+          <div className="eq-hub-tiles">
+            {enabledApps.map((app) => (
+              <Link
+                key={app.key}
+                to={`/${tenantSlug}/${app.to}`}
+                className="eq-hub-tile"
+              >
+                <div className="eq-hub-tile__head">
+                  <span className="eq-hub-tile__name">{app.label}</span>
+                  <span className={`eq-hub-tile__badge eq-hub-tile__badge--${app.isBeta ? 'beta' : 'live'}`}>
+                    {app.isBeta ? 'BETA' : 'LIVE'}
+                  </span>
+                </div>
+                <p className="eq-hub-tile__desc">{APP_DESCRIPTIONS[app.key]}</p>
+                <div className="eq-hub-tile__footer">
+                  <span className="eq-hub-tile__open">Open →</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          {/* Recent activity */}
+          <div>
+            <div className="eq-hub-activity__head">
+              <span className="eq-hub-activity__title">Recent activity</span>
+              <Link
+                to={`/${tenantSlug}/intake`}
+                className="eq-hub-activity__view-all"
+              >
+                View all →
+              </Link>
             </div>
-            {loading && !counts ? (
-              <div className="eq-stat-grid">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} variant="card" />
-                ))}
-              </div>
-            ) : (
-              <div className="eq-stat-grid">
-                {featuredCounts.map((c) => (
-                  <Link
-                    key={c.entity}
-                    to={`/${tenantSlug}/data/${c.entity}`}
-                    className="eq-stat-card"
-                    style={{ textDecoration: 'none', color: 'inherit' }}
-                  >
-                    <p className="eq-stat-card__label">
-                      {ENTITY_LABELS[c.entity] ?? c.entity}
-                    </p>
-                    <p className="eq-stat-card__value">{c.count_total.toLocaleString()}</p>
-                    {(() => {
-                      const label = deltaLabel(c.entity, c.count_recent, c.count_total);
-                      return label ? (
-                        <p className="eq-stat-card__delta eq-stat-card__delta--up">{label}</p>
-                      ) : null;
-                    })()}
-                  </Link>
-                ))}
-              </div>
-            )}
-          </section>
 
-          <section className="eq-section">
-            <h2 className="eq-section__heading">Recent intake activity</h2>
             {loading && !events ? (
-              <div className="eq-activity">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div className="eq-activity__row" key={i}>
-                    <Skeleton variant="text" width={300} />
+              <div className="eq-hub-activity__list">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="eq-hub-activity__item">
+                    <Skeleton variant="text" width={280} />
                   </div>
                 ))}
               </div>
             ) : !events || events.length === 0 ? (
-              <div className="eq-empty">
-                <p className="eq-empty__title">No intake events yet</p>
-                <p>
-                  Drop a CSV at <Link to={`/${tenantSlug}/intake`}>Intake</Link> to see activity here.
-                </p>
+              <div className="eq-hub-activity__list eq-hub-activity__empty">
+                <p>No activity yet — <Link to={`/${tenantSlug}/intake`}>import some data</Link> to see it here.</p>
               </div>
             ) : (
-              <div className="eq-activity">
-                {events.map((e) => (
-                  <div key={e.intake_id} className="eq-activity__row">
-                    <span
-                      className={`eq-activity__dot ${
-                        statusDot(e.status) ? `eq-activity__dot--${statusDot(e.status)}` : ''
-                      }`}
-                    />
-                    <div className="eq-activity__main">
-                      <div className="eq-activity__title">
-                        {e.source_filename ?? `${e.entity} intake`} · {e.rows_committed.toLocaleString()} committed
-                        {e.rows_flagged > 0 && ` · ${e.rows_flagged} flagged`}
-                        {e.rows_rejected > 0 && ` · ${e.rows_rejected} rejected`}
+              <div className="eq-hub-activity__list">
+                {events.map((e) => {
+                  const dot = statusDot(e.status);
+                  return (
+                    <div key={e.intake_id} className="eq-hub-activity__item">
+                      <span className={`eq-hub-activity__dot eq-hub-activity__dot--${dot}`} aria-hidden="true" />
+                      <div className="eq-hub-activity__name">
+                        {e.source_filename ?? `${e.entity} import`}
+                        {e.rows_committed > 0 && (
+                          <span className="eq-hub-activity__rows"> · {e.rows_committed.toLocaleString()} rows</span>
+                        )}
                       </div>
-                      <div className="eq-activity__meta">
-                        {e.entity} · via {e.source_app ?? 'unknown'} · {e.status}
-                      </div>
+                      <span className="eq-hub-activity__source">
+                        {e.source_app ?? 'Intake'}
+                      </span>
+                      <span className="eq-hub-activity__time">
+                        {relativeTime(e.started_at)}
+                      </span>
                     </div>
-                    <span className="eq-activity__time">{relativeTime(e.started_at)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
-          </section>
+          </div>
 
-          <section className="eq-section">
-            <h2 className="eq-section__heading">Modules</h2>
-            <div className="eq-modules">
-              {enabledModules.map((m) => (
-                <Link
-                  key={m.key}
-                  to={`/${tenantSlug}/${m.to}`}
-                  className={`eq-module-card ${m.live ? '' : 'eq-module-card--soon'}`}
-                >
-                  <div className="eq-module-card__head">
-                    <h3>{m.label}</h3>
-                    <span className={`eq-module-card__chip ${m.live ? '' : 'eq-module-card__chip--soon'}`}>
-                      {m.live ? 'Live' : 'Soon'}
-                    </span>
-                  </div>
-                  <p>{m.description}</p>
-                </Link>
-              ))}
-            </div>
-          </section>
+          {/* Sync bar */}
+          <div className="eq-hub-syncbar">
+            <span>
+              <span className="eq-hub-syncbar__dot" aria-hidden="true" />
+              EQ FIELD
+            </span>
+            <span>
+              <span className="eq-hub-syncbar__dot" aria-hidden="true" />
+              EQ SERVICE
+            </span>
+            <span>
+              <span className="eq-hub-syncbar__dot" aria-hidden="true" />
+              EQ QUOTES
+            </span>
+            <span>
+              <span className="eq-hub-syncbar__dot" aria-hidden="true" />
+              EQ CARDS
+            </span>
+          </div>
 
-          <section className="eq-section">
-            <h2 className="eq-section__heading">Quick actions</h2>
-            <div className="eq-quick-actions">
-              <Link to={`/${tenantSlug}/intake`} className="eq-quick-action">
-                <span className="eq-quick-action__icon" aria-hidden="true">↑</span>
-                <span className="eq-quick-action__label">Import data</span>
-                <span className="eq-quick-action__hint">Drop a CSV</span>
-              </Link>
-              <Link to={`/${tenantSlug}/admin/users/invite`} className="eq-quick-action">
-                <span className="eq-quick-action__icon" aria-hidden="true">＋</span>
-                <span className="eq-quick-action__label">Invite user</span>
-                <span className="eq-quick-action__hint">Add a team member</span>
-              </Link>
-              <Link to={`/${tenantSlug}/data/customer`} className="eq-quick-action">
-                <span className="eq-quick-action__icon" aria-hidden="true">◈</span>
-                <span className="eq-quick-action__label">View customers</span>
-                <span className="eq-quick-action__hint">Browse your data</span>
-              </Link>
-              <Link to={`/${tenantSlug}/admin/audit`} className="eq-quick-action">
-                <span className="eq-quick-action__icon" aria-hidden="true">◷</span>
-                <span className="eq-quick-action__label">Audit log</span>
-                <span className="eq-quick-action__hint">Every write, every mint</span>
-              </Link>
-              <Link to={`/${tenantSlug}/storage`} className="eq-quick-action">
-                <span className="eq-quick-action__icon" aria-hidden="true">⊞</span>
-                <span className="eq-quick-action__label">Storage</span>
-                <span className="eq-quick-action__hint">Files in your bucket</span>
-              </Link>
-              <Link to={`/${tenantSlug}/admin/settings`} className="eq-quick-action">
-                <span className="eq-quick-action__icon" aria-hidden="true">✎</span>
-                <span className="eq-quick-action__label">Settings</span>
-                <span className="eq-quick-action__hint">Modules, branding</span>
-              </Link>
-            </div>
-          </section>
-        </main>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
