@@ -41,6 +41,7 @@ import {
   TenantRoutingMisconfiguredError,
 } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { verifySupabaseJwt, readBearerJwt } from './_shared/supabase-jwt.js';
 import { withSentry } from './_shared/sentry.js';
 
 // Table → module mapping. Mirrors the dispatcher in shared
@@ -120,8 +121,26 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
   if (req.method !== 'POST') return json(405, { ok: false, error: 'method_not_allowed' });
 
+  // Two accepted auth paths:
+  //   1. Browser: eq_shell_session cookie (HMAC) → verifySessionToken
+  //   2. Non-browser (Cards mobile, future eq-quotes Flask, future external
+  //      bulk-import jobs): Authorization: Bearer <supabase_jwt> → minted by
+  //      /.netlify/functions/mint-supabase-jwt, verified here against
+  //      SUPABASE_JWT_SECRET. Tenant_id is read from app_metadata.tenant_id.
+  // Either method gives us a tenant_id we trust to scope the commit.
+  let tenantId: string;
+  let callerKind: 'session' | 'jwt';
+
   const session = verifySessionToken(readSessionCookie(req));
-  if (!session) return json(401, { ok: false, error: 'not_signed_in' });
+  if (session) {
+    tenantId   = session.tenant_id;
+    callerKind = 'session';
+  } else {
+    const jwt = verifySupabaseJwt(readBearerJwt(req));
+    if (!jwt) return json(401, { ok: false, error: 'not_signed_in' });
+    tenantId   = jwt.app_metadata.tenant_id;
+    callerKind = 'jwt';
+  }
 
   // ─── body validation ────────────────────────────────────────────────
   let body: CommitBody;
@@ -172,7 +191,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 
   // ─── open tenant DB ─────────────────────────────────────────────────
-  const tenantId = session.tenant_id;
+  // tenantId resolved above from either session cookie or JWT.
+  void callerKind; // surfaced for logging in a future revision
   let tenantDb;
   try {
     tenantDb = await getTenantDataClientById(tenantId);

@@ -50,7 +50,7 @@
 // runtime dep just to format the same primitive differently isn't
 // worth it.
 
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { EqRole } from './supabase.js';
 
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET ?? '';
@@ -141,6 +141,78 @@ export function signSupabaseJwt(
 
 export function hasSupabaseJwtSecret(): boolean {
   return !!JWT_SECRET;
+}
+
+/**
+ * Verify a Supabase JWT signed with SUPABASE_JWT_SECRET. Returns the
+ * decoded claims on success, null on any failure (bad signature, expired,
+ * malformed, missing secret). The null-on-failure shape mirrors
+ * verifySessionToken so callers can `?? null` and fall through to other
+ * auth methods uniformly.
+ *
+ * Used by intake-commit (and any future non-browser endpoint) to accept
+ * Authorization: Bearer <jwt> as an alternative to session cookie auth.
+ * Cards mobile and the future eq-quotes Flask integration both already
+ * hold short-lived Supabase JWTs minted by /.netlify/functions/mint-supabase-jwt,
+ * so this lets them call into shell-side endpoints without needing to
+ * also juggle the eq_shell_session cookie.
+ *
+ * Does NOT check shell_control.revoked_sessions — that's an async DB
+ * lookup not appropriate inside a tight auth-decode path. If a caller
+ * needs revocation semantics it should do that check itself, the way
+ * verify-shell-session does.
+ */
+export function verifySupabaseJwt(token: string | null | undefined): SupabaseJwtClaims | null {
+  if (!token || !JWT_SECRET) return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, sigB64] = parts;
+
+  // Verify signature first (constant-time).
+  let providedSig: Buffer;
+  let expectedSig: Buffer;
+  try {
+    providedSig = Buffer.from(sigB64.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    expectedSig = createHmac('sha256', JWT_SECRET).update(`${headerB64}.${payloadB64}`).digest();
+  } catch {
+    return null;
+  }
+  if (providedSig.length !== expectedSig.length) return null;
+  if (!timingSafeEqual(providedSig, expectedSig)) return null;
+
+  // Decode + structural validate the claims.
+  let claims: SupabaseJwtClaims;
+  try {
+    const json = Buffer.from(payloadB64.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    claims = JSON.parse(json) as SupabaseJwtClaims;
+  } catch {
+    return null;
+  }
+
+  if (typeof claims.sub !== 'string' || !claims.sub) return null;
+  if (claims.role !== 'authenticated') return null;
+  if (claims.aud !== 'authenticated') return null;
+  if (typeof claims.exp !== 'number') return null;
+  if (claims.exp <= Math.floor(Date.now() / 1000)) return null;
+  if (!claims.app_metadata || typeof claims.app_metadata !== 'object') return null;
+  const meta = claims.app_metadata;
+  if (typeof meta.tenant_id !== 'string' || !meta.tenant_id) return null;
+  if (typeof meta.eq_role !== 'string') return null;
+  if (typeof meta.is_platform_admin !== 'boolean') return null;
+
+  return claims;
+}
+
+/**
+ * Pull a Bearer JWT out of the Authorization header. Returns null if
+ * absent or malformed shape.
+ */
+export function readBearerJwt(req: Request): string | null {
+  const header = req.headers.get('authorization') ?? '';
+  const m = /^Bearer\s+(.+)$/i.exec(header);
+  if (!m) return null;
+  const token = m[1].trim();
+  return token || null;
 }
 
 export const SUPABASE_JWT_TTL_SECONDS_EXPORTED = SUPABASE_JWT_TTL_SECONDS;
