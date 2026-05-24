@@ -42,7 +42,9 @@ export default function ServiceIframe() {
         if (!cancelled) {
           setState({
             phase: 'ready',
-            src: `${SERVICE_URL}/shell#sh=${encodeURIComponent(token)}`,
+            // base64 characters (+, /, =) are safe in URL hash fragments —
+            // no encoding needed, and Service reads the hash without decoding.
+            src: `${SERVICE_URL}/shell#sh=${token}`,
           });
         }
       } catch {
