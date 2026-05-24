@@ -15,7 +15,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useSession } from '../session';
 import { Gate } from '../permissions/Gate';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { createSupabaseClient } from '../lib/supabaseJwt';
@@ -37,15 +37,6 @@ const ROLE_OPTIONS: { value: EqRole; label: string }[] = [
   { value: 'apprentice',  label: 'Apprentice' },
   { value: 'labour_hire', label: 'Labour Hire' },
 ];
-
-function ShellWrap({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <Topbar />
-      <main className="eq-page">{children}</main>
-    </>
-  );
-}
 
 function AdminEditUserInner() {
   const { tenantSlug, userId } = useParams<{ tenantSlug: string; userId: string }>();
@@ -93,26 +84,26 @@ function AdminEditUserInner() {
 
   if (loadErr) {
     return (
-      <ShellWrap>
+      <HubLayout>
         <EqError title="Could not load user" message={loadErr} onRetry={load} />
         <p style={{ marginTop: 16 }}>
           <Link to={`/${tenantSlug}/admin/users`}>← Back to users</Link>
         </p>
-      </ShellWrap>
+      </HubLayout>
     );
   }
 
   if (!target) {
     return (
-      <ShellWrap>
+      <HubLayout>
         <Skeleton variant="card" />
-      </ShellWrap>
+      </HubLayout>
     );
   }
 
   if (target.id === session?.user.id) {
     return (
-      <ShellWrap>
+      <HubLayout>
         <div className="eq-empty">
           <p className="eq-empty__title">Can't edit yourself</p>
           <p>
@@ -123,7 +114,7 @@ function AdminEditUserInner() {
             <Link to={`/${tenantSlug}/admin/users`}>← Back to users</Link>
           </p>
         </div>
-      </ShellWrap>
+      </HubLayout>
     );
   }
 
@@ -171,7 +162,7 @@ function AdminEditUserInner() {
   }
 
   return (
-    <ShellWrap>
+    <HubLayout>
       <div className="eq-page__header">
         <h1 className="eq-page__title">
           {target.name ?? target.email.split('@')[0]}
@@ -329,7 +320,7 @@ function AdminEditUserInner() {
           </div>
         )}
       </section>
-    </ShellWrap>
+    </HubLayout>
   );
 }
 
@@ -338,12 +329,12 @@ export default function AdminEditUser() {
     <Gate
       perm="admin.edit_user"
       fallback={
-        <ShellWrap>
+        <HubLayout>
           <div className="eq-empty">
             <p className="eq-empty__title">Not allowed</p>
             <p>Only managers can edit users.</p>
           </div>
-        </ShellWrap>
+        </HubLayout>
       }
     >
       <AdminEditUserInner />

@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSession } from '../session';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 
@@ -223,15 +223,12 @@ function EntityBrowserInner({ entity }: { entity: string }) {
 
   if (!view) {
     return (
-      <>
-        <Topbar />
-        <main className="eq-page">
-          <div className="eq-empty">
-            <p className="eq-empty__title">Unknown entity "{entity}"</p>
-            <p>Try one of: {Object.keys(ENTITY_VIEW).join(', ')}.</p>
-          </div>
-        </main>
-      </>
+      <HubLayout>
+        <div className="eq-empty">
+          <p className="eq-empty__title">Unknown entity "{entity}"</p>
+          <p>Try one of: {Object.keys(ENTITY_VIEW).join(', ')}.</p>
+        </div>
+      </HubLayout>
     );
   }
 
@@ -245,10 +242,8 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   });
 
   return (
-    <>
-      <Topbar />
-      <main className="eq-page">
-        <div className="eq-page__header">
+    <HubLayout>
+      <div className="eq-page__header">
           <h1 className="eq-page__title">{view.label}</h1>
           <p className="eq-page__lede">
             {count != null ? `${count.toLocaleString()} total` : '...'}
@@ -340,7 +335,6 @@ function EntityBrowserInner({ entity }: { entity: string }) {
             </button>
           </div>
         )}
-      </main>
 
       {detailRow && (
         <EntityDetailDrawer
@@ -349,7 +343,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
           onClose={() => setDetailRow(null)}
         />
       )}
-    </>
+    </HubLayout>
   );
 }
 

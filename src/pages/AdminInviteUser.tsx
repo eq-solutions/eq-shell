@@ -12,7 +12,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Gate } from '../permissions/Gate';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 import type { EqRole } from '../session';
 
 const ROLE_OPTIONS: { value: EqRole; label: string; helper: string }[] = [
@@ -260,17 +260,14 @@ function AdminInviteUserForm() {
 function InviteShell({ children }: { children: React.ReactNode }) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   return (
-    <>
-      <Topbar />
-      <main className="eq-page">
-        <p style={{ marginBottom: 16 }}>
-          <Link to={`/${tenantSlug}/admin/users`} style={{ fontSize: 13 }}>
-            ← Back to users
-          </Link>
-        </p>
-        {children}
-      </main>
-    </>
+    <HubLayout>
+      <p style={{ marginBottom: 16 }}>
+        <Link to={`/${tenantSlug}/admin/users`} style={{ fontSize: 13 }}>
+          ← Back to users
+        </Link>
+      </p>
+      {children}
+    </HubLayout>
   );
 }
 

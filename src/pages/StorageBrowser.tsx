@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useSession } from '../session';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { createSupabaseClient } from '../lib/supabaseJwt';
@@ -107,9 +107,7 @@ export default function StorageBrowser() {
   const crumbs = prefix.split('/').filter(Boolean);
 
   return (
-    <>
-      <Topbar />
-      <main className="eq-page">
+    <HubLayout>
         <div className="eq-page__header">
           <h1 className="eq-page__title">Storage</h1>
           <p className="eq-page__lede">
@@ -252,7 +250,6 @@ export default function StorageBrowser() {
             Pagination + upload + delete land in the next polish pass.
           </Link>
         </p>
-      </main>
-    </>
+    </HubLayout>
   );
 }

@@ -17,7 +17,7 @@ import { IntakeModule } from '@eq/intake-demo';
 import '@eq/intake-demo/styles.css';
 import { useSession } from '../../session';
 import { Gate } from '../../permissions/Gate';
-import { Topbar } from '../../components/Topbar';
+import { HubLayout } from '../../components/HubLayout';
 import { createSupabaseClient } from '../../lib/supabaseJwt';
 
 // IntakeModule's structural SupabaseLikeClient expects insert(row) to
@@ -107,30 +107,27 @@ function IntakePivotBanner() {
 
 export default function ShellIntakeModule() {
   return (
-    <>
-      <Topbar />
-      <main className="eq-page">
-        <div className="eq-page__header">
-          <h1 className="eq-page__title">Intake</h1>
-          <p className="eq-page__lede">
-            Drag-drop CSVs and structured exports into your tenant data.
-          </p>
-        </div>
-        <Gate
-          perm="intake.view"
-          fallback={
-            <div className="eq-coming-soon">
-              <p>Your role doesn't include Intake access. Ask your manager.</p>
-            </div>
-          }
-        >
-          <IntakePivotBanner />
-          <section className="eq-section">
-            <h2 className="eq-section__heading">Legacy SimPRO bundle</h2>
-            <IntakeShell />
-          </section>
-        </Gate>
-      </main>
-    </>
+    <HubLayout>
+      <div className="eq-page__header">
+        <h1 className="eq-page__title">Intake</h1>
+        <p className="eq-page__lede">
+          Drag-drop CSVs and structured exports into your tenant data.
+        </p>
+      </div>
+      <Gate
+        perm="intake.view"
+        fallback={
+          <div className="eq-coming-soon">
+            <p>Your role doesn't include Intake access. Ask your manager.</p>
+          </div>
+        }
+      >
+        <IntakePivotBanner />
+        <section className="eq-section">
+          <h2 className="eq-section__heading">Legacy SimPRO bundle</h2>
+          <IntakeShell />
+        </section>
+      </Gate>
+    </HubLayout>
   );
 }

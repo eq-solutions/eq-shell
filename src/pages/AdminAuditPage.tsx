@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { createSupabaseClient } from '../lib/supabaseJwt';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { Gate } from '../permissions/Gate';
@@ -167,10 +167,8 @@ function AdminAuditInner() {
   };
 
   return (
-    <>
-      <Topbar />
-      <main className="eq-page">
-        <div className="eq-page__header">
+    <HubLayout>
+      <div className="eq-page__header">
           <h1 className="eq-page__title">Audit log</h1>
           <p className="eq-page__lede">
             Every data write and every sign-in token, scoped to your tenant.
@@ -514,8 +512,7 @@ function AdminAuditInner() {
             </div>
           </div>
         )}
-      </main>
-    </>
+    </HubLayout>
   );
 }
 
@@ -524,15 +521,12 @@ export default function AdminAuditPage() {
     <Gate
       perm="audit.view"
       fallback={
-        <>
-          <Topbar />
-          <main className="eq-page">
-            <div className="eq-empty">
-              <p className="eq-empty__title">Audit log requires manager access</p>
-              <p>Talk to your tenant manager if you need this view.</p>
-            </div>
-          </main>
-        </>
+        <HubLayout>
+          <div className="eq-empty">
+            <p className="eq-empty__title">Audit log requires manager access</p>
+            <p>Talk to your tenant manager if you need this view.</p>
+          </div>
+        </HubLayout>
       }
     >
       <AdminAuditInner />

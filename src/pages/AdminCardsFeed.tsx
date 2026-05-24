@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Gate } from '../permissions/Gate';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 
@@ -92,10 +92,8 @@ function AdminCardsFeedInner() {
   }, [pending, query]);
 
   return (
-    <>
-      <Topbar />
-      <main className="eq-page">
-        <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+    <HubLayout>
+      <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
           <div>
             <h1 className="eq-page__title">New staff</h1>
             <p className="eq-page__lede">
@@ -212,8 +210,7 @@ function AdminCardsFeedInner() {
             </tbody>
           </table>
         </div>
-      </main>
-    </>
+    </HubLayout>
   );
 }
 
@@ -222,15 +219,12 @@ export default function AdminCardsFeed() {
     <Gate
       perm="admin.review_cards"
       fallback={
-        <>
-          <Topbar />
-          <main className="eq-page">
-            <div className="eq-empty">
-              <p className="eq-empty__title">Not allowed</p>
-              <p>Only managers can review Cards submissions.</p>
-            </div>
-          </main>
-        </>
+        <HubLayout>
+          <div className="eq-empty">
+            <p className="eq-empty__title">Not allowed</p>
+            <p>Only managers can review Cards submissions.</p>
+          </div>
+        </HubLayout>
       }
     >
       <AdminCardsFeedInner />

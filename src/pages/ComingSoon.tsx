@@ -3,7 +3,7 @@
 // dead end. Wrapped in Topbar so the user isn't trapped.
 
 import { Link, useParams } from 'react-router-dom';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 
 export interface ComingSoonProps {
   module: string;
@@ -27,9 +27,7 @@ export interface ComingSoonProps {
 export default function ComingSoon({ module, description, features, eta }: ComingSoonProps) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   return (
-    <>
-      <Topbar />
-      <main className="eq-page">
+    <HubLayout>
         <div className="eq-page__header">
           <span
             className="eq-pill eq-pill--info"
@@ -95,7 +93,6 @@ export default function ComingSoon({ module, description, features, eta }: Comin
             ← Back to home
           </Link>
         </section>
-      </main>
-    </>
+    </HubLayout>
   );
 }

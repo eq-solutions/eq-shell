@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSession } from '../session';
 import { Gate } from '../permissions/Gate';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { createSupabaseClient } from '../lib/supabaseJwt';
@@ -70,10 +70,8 @@ function AdminUserListInner() {
   }, []);
 
   return (
-    <>
-      <Topbar />
-      <main className="eq-page">
-        <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+    <HubLayout>
+      <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
           <div>
             <h1 className="eq-page__title">Users</h1>
             <p className="eq-page__lede">
@@ -163,8 +161,7 @@ function AdminUserListInner() {
             </tbody>
           </table>
         </div>
-      </main>
-    </>
+    </HubLayout>
   );
 }
 
@@ -173,15 +170,12 @@ export default function AdminUserList() {
     <Gate
       perm="admin.list_users"
       fallback={
-        <>
-          <Topbar />
-          <main className="eq-page">
-            <div className="eq-empty">
-              <p className="eq-empty__title">Not allowed</p>
-              <p>Only managers can manage users.</p>
-            </div>
-          </main>
-        </>
+        <HubLayout>
+          <div className="eq-empty">
+            <p className="eq-empty__title">Not allowed</p>
+            <p>Only managers can manage users.</p>
+          </div>
+        </HubLayout>
       }
     >
       <AdminUserListInner />

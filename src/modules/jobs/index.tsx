@@ -8,7 +8,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { Gate } from '../../permissions/Gate';
-import { Topbar } from '../../components/Topbar';
+import { HubLayout } from '../../components/HubLayout';
 import { Skeleton } from '../../components/Skeleton';
 import { EqError } from '../../components/EqError';
 import { createSupabaseClient } from '../../lib/supabaseJwt';
@@ -52,15 +52,6 @@ function statusPill(status: string) {
 function fmt(iso: string | null) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-function ShellWrap({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <Topbar />
-      <main className="eq-page">{children}</main>
-    </>
-  );
 }
 
 // ── Create form ──────────────────────────────────────────────────────────────
@@ -261,7 +252,7 @@ function JobsInner() {
   }, {} as Record<string, number>);
 
   return (
-    <ShellWrap>
+    <HubLayout>
       <div className="eq-page__header">
         <div>
           <h1 className="eq-page__title">Jobs</h1>
@@ -360,7 +351,7 @@ function JobsInner() {
           )}
         </>
       )}
-    </ShellWrap>
+    </HubLayout>
   );
 }
 
@@ -369,12 +360,12 @@ export default function JobsModule() {
     <Gate
       perm="admin.list_users"
       fallback={
-        <ShellWrap>
+        <HubLayout>
           <div className="eq-empty">
             <p className="eq-empty__title">Not allowed</p>
             <p>Manager access required to view jobs.</p>
           </div>
-        </ShellWrap>
+        </HubLayout>
       }
     >
       <JobsInner />

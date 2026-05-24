@@ -3,15 +3,13 @@
 // no reason, which is worse than a clear "page not found" message.
 
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 
 export default function NotFound() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const loc = useLocation();
   return (
-    <>
-      <Topbar />
-      <main className="eq-page">
+    <HubLayout>
         <div className="eq-page__header">
           <span
             className="eq-pill eq-pill--warn"
@@ -59,7 +57,6 @@ export default function NotFound() {
             </Link>
           </div>
         </section>
-      </main>
-    </>
+    </HubLayout>
   );
 }
