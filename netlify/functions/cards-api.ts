@@ -43,24 +43,57 @@ import {
 import { verifySupabaseJwt, readBearerJwt } from './_shared/supabase-jwt.js';
 import { withSentry } from './_shared/sentry.js';
 
-type Op = 'current_staff' | 'list_my_licences' | 'upsert_my_licence' | 'soft_delete_my_licence';
+type Op =
+  | 'current_staff'
+  | 'list_my_licences'
+  | 'upsert_my_licence'
+  | 'soft_delete_my_licence'
+  | 'upsert_my_profile';
 
 const READ_OPS:  ReadonlySet<Op> = new Set<Op>(['current_staff', 'list_my_licences']);
-const WRITE_OPS: ReadonlySet<Op> = new Set<Op>(['upsert_my_licence', 'soft_delete_my_licence']);
+const WRITE_OPS: ReadonlySet<Op> = new Set<Op>(['upsert_my_licence', 'soft_delete_my_licence', 'upsert_my_profile']);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface OkBody { ok: true; [k: string]: unknown }
 interface ErrBody { ok: false; error: string; detail?: string }
 
-function json(status: number, body: OkBody | ErrBody): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-  });
+// Cards Flutter web lives at cards.eq.solutions and calls this function
+// on core.eq.solutions — cross-origin. Native iOS/Android builds don't
+// send an Origin header so CORS is a no-op for them; this only matters
+// for the web build, but the web build is how Royce smoke-tests.
+const ALLOWED_ORIGIN_EXACT = new Set<string>(['https://cards.eq.solutions']);
+const ALLOWED_ORIGIN_RE    = /^https:\/\/deploy-preview-\d+--eq-cards\.netlify\.app$/;
+
+function corsHeaders(origin: string | null): Record<string, string> {
+  if (!origin) return {};
+  const ok = ALLOWED_ORIGIN_EXACT.has(origin) || ALLOWED_ORIGIN_RE.test(origin);
+  if (!ok) return {};
+  return {
+    'Access-Control-Allow-Origin':  origin,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, content-type',
+    'Access-Control-Max-Age':       '600',
+    'Vary':                         'Origin',
+  };
 }
 
 export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
+  const origin = req.headers.get('origin');
+  const cors   = corsHeaders(origin);
+
+  // Preflight — browsers send OPTIONS before the real request when the
+  // request includes Authorization. Reply 204 with the allow headers.
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: cors });
+  }
+
+  const json = (status: number, body: OkBody | ErrBody): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cors },
+    });
+
   const url = new URL(req.url);
   const op  = url.searchParams.get('op') as Op | null;
 
@@ -73,7 +106,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   // ─── op validation + method enforcement ────────────────────────────
   if (!op || (!READ_OPS.has(op) && !WRITE_OPS.has(op))) {
-    return json(400, { ok: false, error: 'unknown_op', detail: 'op must be one of: current_staff, list_my_licences, upsert_my_licence, soft_delete_my_licence' });
+    return json(400, { ok: false, error: 'unknown_op', detail: 'op must be one of: current_staff, list_my_licences, upsert_my_licence, soft_delete_my_licence, upsert_my_profile' });
   }
   const isWrite = WRITE_OPS.has(op);
   if (isWrite && req.method !== 'POST') return json(405, { ok: false, error: 'method_not_allowed', detail: 'write ops require POST' });
@@ -84,7 +117,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   try {
     tenantDb = await getTenantDataClientById(tenantId);
   } catch (e) {
-    return tenantRoutingError(e);
+    const r = tenantRoutingError(e);
+    return json(r.status, r.body);
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tenantAny = tenantDb as any;
@@ -96,7 +130,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         const { data, error } = await tenantAny
           .schema('public')
           .rpc('eq_cards_current_staff', { p_tenant_id: tenantId, p_user_id: userId });
-        if (error) return rpcError('current_staff', error);
+        if (error) { const r = rpcError('current_staff', error); return json(r.status, r.body); }
         const staff = Array.isArray(data) && data.length > 0 ? data[0] : null;
         return json(200, { ok: true, staff });
       }
@@ -105,7 +139,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         const { data, error } = await tenantAny
           .schema('public')
           .rpc('eq_cards_list_my_licences', { p_tenant_id: tenantId, p_user_id: userId });
-        if (error) return rpcError('list_my_licences', error);
+        if (error) { const r = rpcError('list_my_licences', error); return json(r.status, r.body); }
         return json(200, { ok: true, licences: data ?? [] });
       }
 
@@ -118,10 +152,25 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         const { data, error } = await tenantAny
           .schema('public')
           .rpc('eq_cards_upsert_my_licence', { p_tenant_id: tenantId, p_user_id: userId, p_payload: body.payload });
-        if (error) return rpcError('upsert_my_licence', error);
+        if (error) { const r = rpcError('upsert_my_licence', error); return json(r.status, r.body); }
         const licence = Array.isArray(data) && data.length > 0 ? data[0] : null;
         if (!licence) return json(500, { ok: false, error: 'rpc_returned_empty' });
         return json(200, { ok: true, licence });
+      }
+
+      case 'upsert_my_profile': {
+        let body: { payload?: unknown };
+        try { body = (await req.json()) as { payload?: unknown }; } catch { return json(400, { ok: false, error: 'invalid_body' }); }
+        if (!body.payload || typeof body.payload !== 'object' || Array.isArray(body.payload)) {
+          return json(400, { ok: false, error: 'invalid_payload', detail: 'payload must be a JSON object' });
+        }
+        const { data, error } = await tenantAny
+          .schema('public')
+          .rpc('eq_cards_upsert_my_profile', { p_tenant_id: tenantId, p_user_id: userId, p_payload: body.payload });
+        if (error) { const r = rpcError('upsert_my_profile', error); return json(r.status, r.body); }
+        const profile = Array.isArray(data) && data.length > 0 ? data[0] : null;
+        if (!profile) return json(500, { ok: false, error: 'rpc_returned_empty' });
+        return json(200, { ok: true, profile });
       }
 
       case 'soft_delete_my_licence': {
@@ -141,7 +190,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
           // 'not found or not yours' from the RPC maps to 404 for the
           // Flutter side so it can render the right empty state.
           if (/licence not found/i.test(error.message)) return json(404, { ok: false, error: 'licence_not_found' });
-          return rpcError('soft_delete_my_licence', error);
+          const r = rpcError('soft_delete_my_licence', error);
+          return json(r.status, r.body);
         }
         return json(200, { ok: true });
       }
@@ -152,22 +202,24 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 });
 
-function rpcError(op: string, error: { message: string }): Response {
+interface PartialResponse { status: number; body: ErrBody }
+
+function rpcError(op: string, error: { message: string }): PartialResponse {
   console.error('[cards-api] rpc failed', { op, error: error.message });
-  return json(500, { ok: false, error: 'tenant_rpc_failed', detail: error.message });
+  return { status: 500, body: { ok: false, error: 'tenant_rpc_failed', detail: error.message } };
 }
 
-function tenantRoutingError(e: unknown): Response {
+function tenantRoutingError(e: unknown): PartialResponse {
   if (e instanceof TenantNotFoundError) {
-    return json(500, { ok: false, error: 'tenant_not_provisioned', detail: e.identifier });
+    return { status: 500, body: { ok: false, error: 'tenant_not_provisioned', detail: e.identifier } };
   }
   if (e instanceof TenantNotActiveError) {
-    return json(503, { ok: false, error: 'tenant_inactive', detail: e.status });
+    return { status: 503, body: { ok: false, error: 'tenant_inactive', detail: e.status } };
   }
   if (e instanceof TenantRoutingMisconfiguredError) {
     console.error('[cards-api] tenant routing misconfigured', e);
-    return json(500, { ok: false, error: 'routing_misconfigured' });
+    return { status: 500, body: { ok: false, error: 'routing_misconfigured' } };
   }
   console.error('[cards-api] unexpected tenant resolution error', e);
-  return json(500, { ok: false, error: 'internal_error' });
+  return { status: 500, body: { ok: false, error: 'internal_error' } };
 }
