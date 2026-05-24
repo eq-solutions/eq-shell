@@ -48,6 +48,13 @@ const CardsIcon = () => (
   </svg>
 );
 
+const SettingsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M8 2v1.5M8 12.5V14M14 8h-1.5M3.5 8H2M12.24 3.76l-1.06 1.06M4.82 11.18l-1.06 1.06M12.24 12.24l-1.06-1.06M4.82 4.82L3.76 3.76" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
 const LogoutIcon = () => (
   <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
     <path d="M5.5 3H3a1 1 0 00-1 1v7a1 1 0 001 1h2.5M9.5 10.5l3-3-3-3M12.5 7.5H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
@@ -116,6 +123,18 @@ export function HubSidebar({ apps }: Props) {
           </NavLink>
         ))}
       </nav>
+
+      <NavLink
+        to={`/${tenantSlug}/admin/settings`}
+        className={({ isActive }) =>
+          `eq-hub-sidebar__nav-item eq-hub-sidebar__nav-item--settings${isActive ? ' active' : ''}`
+        }
+      >
+        <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
+          <SettingsIcon />
+        </span>
+        <span className="eq-hub-sidebar__nav-label">Settings</span>
+      </NavLink>
 
       <div className="eq-hub-sidebar__user">
         <div className="eq-hub-sidebar__user-avatar" aria-hidden="true">
