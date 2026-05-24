@@ -29,7 +29,8 @@
 // by intake_id (the rows carry it) if precise reconciliation is needed.
 //
 // Currently implemented modules: cards (licences), service (assets),
-// quotes (quote + 6 child/lookup tables).
+// quotes (quote + 6 child/lookup tables), core (customers + sites + contacts —
+// the SimPRO bundle flow).
 // Other modules return 501 not_implemented — they ship in subsequent PRs
 // per the staged plan in ARCHITECTURE-V2.md.
 
@@ -85,7 +86,7 @@ type ImportMode  = 'append' | 'upsert' | 'replace';
 
 // Modules implemented on tenant data plane so far. Add to this set as
 // each per-module PR lands.
-const IMPLEMENTED_MODULES: ReadonlySet<IntakeModule> = new Set<IntakeModule>(['cards', 'service', 'quotes']);
+const IMPLEMENTED_MODULES: ReadonlySet<IntakeModule> = new Set<IntakeModule>(['cards', 'service', 'quotes', 'core']);
 
 interface CommitBody {
   intake_id:        string;
@@ -102,6 +103,13 @@ interface CommitOk {
   module:           IntakeModule;
   committed_count:  number;
   committed_ids:    string[];
+  /**
+   * Only populated by the 'core' module's customers batch. Maps each row's
+   * external_id (e.g. SimPRO Customer ID) → canonical customer_id (uuid).
+   * Browser-side commit-canonical uses it to resolve site/contact FKs
+   * without a second tenant-DB read. Empty object for any other batch.
+   */
+  fk_lookup?:       Record<string, string>;
 }
 
 interface CommitErr {
@@ -231,11 +239,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(500, { ok: false, error: 'tenant_rpc_failed', detail: error.message });
   }
 
-  // RPC returns TABLE(committed_count integer, committed_ids uuid[]) — one row.
-  // supabase-js shapes that as Array<{ committed_count, committed_ids }>.
+  // RPC returns TABLE(committed_count integer, committed_ids uuid[]) for
+  // cards/service/quotes, plus committed_keys jsonb for core. supabase-js
+  // shapes that as Array<{ ... }>. committed_keys is undefined for the
+  // non-core modules — fine, we expose it conditionally below.
   const row = Array.isArray(data) ? data[0] : data;
   const committedCount = (row?.committed_count as number) ?? 0;
   const committedIds   = (row?.committed_ids as string[]) ?? [];
+  const committedKeys  = (row?.committed_keys as Record<string, string> | undefined);
 
   // ─── audit increment on control plane ───────────────────────────────
   // Best-effort. Data is already committed by this point — if the audit
@@ -262,6 +273,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     module:           moduleName,
     committed_count:  committedCount,
     committed_ids:    committedIds,
+    ...(committedKeys && Object.keys(committedKeys).length > 0 ? { fk_lookup: committedKeys } : {}),
   });
 });
 
