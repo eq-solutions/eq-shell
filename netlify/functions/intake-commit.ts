@@ -28,7 +28,8 @@
 // stale. Caller can re-derive the count from app_data.<table> filtered
 // by intake_id (the rows carry it) if precise reconciliation is needed.
 //
-// Currently implemented modules: cards (licences), service (assets).
+// Currently implemented modules: cards (licences), service (assets),
+// quotes (quote + 6 child/lookup tables).
 // Other modules return 501 not_implemented — they ship in subsequent PRs
 // per the staged plan in ARCHITECTURE-V2.md.
 
@@ -84,7 +85,7 @@ type ImportMode  = 'append' | 'upsert' | 'replace';
 
 // Modules implemented on tenant data plane so far. Add to this set as
 // each per-module PR lands.
-const IMPLEMENTED_MODULES: ReadonlySet<IntakeModule> = new Set<IntakeModule>(['cards', 'service']);
+const IMPLEMENTED_MODULES: ReadonlySet<IntakeModule> = new Set<IntakeModule>(['cards', 'service', 'quotes']);
 
 interface CommitBody {
   intake_id:        string;
