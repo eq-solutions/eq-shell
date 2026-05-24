@@ -392,13 +392,88 @@ Target: tenant provisioned in under 30 minutes (most of that is waiting for Supa
 
 > **Status note (2026-05-24):** Both tenant routing rows now `active`. Cards bridge (cards-pending-staff, cards-approve-staff) is the first live consumer of the routing layer — when PR #20 merges, those two functions start reading staff + licences from the per-tenant DB. Everything else (browser pages, intake commit RPC) still reads/writes shared `app_data`; that's the next coherent refactor.
 
-### Phase 2.B.6 — Cleanup
-- [ ] Confirm all browser code reaches `app_data` via canonical-api (no direct Supabase reads from React)
-- [ ] Drop `app_data` schema from shared `eq-canonical` (leave `shell_control` in place)
-- [ ] Migrate remaining `app_data` tables (assets, timesheets, leave_requests, schedule_entries, prestart_checks, toolbox_talks, tenders, quote, contacts/customers extended cols, intake_*, etc.) — table-by-table as their consumers move to canonical-api
-- [ ] Document final architecture state
+### Phase 2.B.6 — Intake writer refactor (multi-session)
+
+This is the last piece before shared `app_data` can be dropped. It's
+intentionally staged because the intake commit path is large and
+load-bearing:
+
+- 6 dispatcher + per-module commit RPCs (~25 k chars of plpgsql)
+- 5 unwind / rollback RPCs
+- Helpers (`_eq_intake_apply_metadata`, `_eq_intake_check_tenant_match`,
+  `_eq_intake_load_event_meta`, `_eq_intake_record_committed`)
+- Browser-side orchestrator in vendored `@eq/intake-demo`
+  (`commit-canonical.ts`) handling cross-batch FK resolution + per-entity
+  audit transitions
+- Writes span 38 entities across 5 modules (core / field / cards / quotes /
+  service)
+
+The audit trail (`shell_control.eq_intake_events` + `_row_audit`) lives
+on the control plane and stays put — only the *data* writes need to move
+to the tenant data plane.
+
+**Staged plan:** one PR per module, smallest blast radius first. Each PR
+ships, gets smoke-tested with a real CSV import in deploy preview, then
+merges. Order is by size + risk:
+
+| # | Module | Tables | Body chars | Why this order |
+|---|---|---|---:|---|
+| 1 | **cards**   | `licences` (29 rows in EQ) | 2,736 | Smallest. Only one entity. Easy first proof. |
+| 2 | **service** | `assets` (1,000 rows in SKS) | 2,490 | One entity. Validates with real-ish data volume. |
+| 3 | **quotes**  | `quote`, `quote_line_item`, `quote_status_history`, `quote_attachment`, `scope_template`, `rate_library`, `quote_email_outbox` (6 + 11 rows in SKS) | 3,106 | Multi-table with cross-batch FKs. First non-trivial case. |
+| 4 | **core**    | `customers`, `contacts`, `sites` (50/100/30 rows in EQ; 525/0/52 rows in SKS) | 4,540 | Real production data on both tenants. SimPRO import flow exercises this. |
+| 5 | **field**   | `staff`, `schedule_entries`, `prestart_checks`, `toolbox_talks`, `swms`, `jsa_records`, `itp_records`, `incidents`, `timesheets`, `leave_requests`, `leave_balances`, `checkins`, `tenders`, `tender_*`, `site_diaries`, `weekly_reports`, `apprentice_profiles`, `skills_ratings`, `feedback_entries`, `rotations`, `buddy_checkins`, `quarterly_reviews`, `engagement_logs`, `tafe_calendars`, `schedule_change_logs`, `leave_approval_logs` (≈26 tables) | 8,319 | Largest module. Last to migrate because it's the riskiest. |
+
+**Per-PR shape (template):**
+
+1. New tenant-plane migration (`supabase/tenant-migrations/000N_intake_<module>.sql`)
+   - Copy `eq_intake_commit_batch_<module>` body verbatim from shared
+   - Strip `_eq_intake_check_tenant_match` (the tenant DB is single-tenant)
+   - Strip audit writes (audit stays on shared via a separate path)
+   - Take tenant_id as explicit parameter (service-role has no JWT)
+
+2. New Netlify function `netlify/functions/intake-commit.ts` (built once,
+   in PR #1)
+   - Session-authed
+   - Step 1: insert `shell_control.eq_intake_events` row, status `committing`
+     (returns intake_id)
+   - Step 2: open tenant data client, call the per-module RPC
+   - Step 3: write `shell_control.eq_intake_row_audit` rows
+   - Step 4: update intake_events row to `completed` or `failed`
+   - If step 2 fails, tenant DB transaction rolls back; step 4 marks `failed`
+
+3. Refactor vendored `commit-canonical.ts` to call the new function
+   instead of `sb.rpc('eq_intake_commit_batch', ...)`. Vendor change
+   isolated to one branch; eventual upstream push to the eq-intake repo.
+
+4. **Smoke test in deploy preview**: drop a CSV through the Intake UI,
+   verify rows land in tenant DB (`SELECT count(*) FROM app_data.<tbl>`
+   on the right project), verify audit row in `shell_control.eq_intake_events`
+   shows `completed`.
+
+5. Merge. Roll forward to the next module.
+
+**Cross-PR concerns:**
+- The dispatcher (`eq_intake_commit_batch`) stays on shared until all 5
+  modules have moved. It routes by `eq_schema_registry.module` so it can
+  continue to call the OLD per-module RPC for not-yet-migrated modules and
+  redirect (via the new Netlify function?) for migrated ones. Alternative:
+  flip the dispatcher to always call the Netlify function and let the
+  function decide.
+- Sync drift between intake and reads continues during the migration. If
+  intake is migrated for cards but not for core, new core imports still
+  land on shared, and the tenant DB stays stale for core until that module's
+  PR ships. Acceptable.
+
+### Phase 2.B.7 — Drop shared `app_data`
+- [ ] Confirm zero readers (`git grep "schema\\('app_data'\\)"` in src/ and
+      `netlify/functions/`)
+- [ ] Confirm zero writers (intake writer fully migrated — Phase 2.B.6 done)
+- [ ] Jobs module refactor (last direct-`app_data` reader, dormant —
+      bundle with one of the above PRs)
+- [ ] Drop `app_data` schema from shared `eq-canonical`
+- [ ] Update CLAUDE.md and runbooks
 - [ ] Pen test (independent)
-- [ ] Update CLAUDE.md and runbooks to reflect new operational reality
 
 ---
 
