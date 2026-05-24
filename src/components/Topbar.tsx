@@ -18,14 +18,14 @@ export function Topbar() {
 
   if (!session) return null;
 
-  const navItems: { to: string; label: string; module?: string; admin?: boolean; audit?: boolean; cards?: boolean }[] = [
+  const navItems: { to: string; label: string; module?: string; admin?: boolean; audit?: boolean; cards?: boolean; platformAdmin?: boolean }[] = [
     { to: `/${tenantSlug}`, label: 'Home' },
     { to: `/${tenantSlug}/intake`, label: 'Intake', module: 'intake' },
     { to: `/${tenantSlug}/cards`, label: 'Cards', module: 'cards' },
     { to: `/${tenantSlug}/field`, label: 'Field', module: 'field' },
     { to: `/${tenantSlug}/quotes`, label: 'Quotes', module: 'quotes' },
     { to: `/${tenantSlug}/service`, label: 'Service', module: 'service' },
-    { to: `/${tenantSlug}/jobs`, label: 'Jobs', admin: true },
+    { to: `/${tenantSlug}/jobs`, label: 'Jobs', platformAdmin: true },
     { to: `/${tenantSlug}/admin/audit`, label: 'Audit', audit: true },
     { to: `/${tenantSlug}/admin/users`, label: 'Users', admin: true },
     { to: `/${tenantSlug}/admin/cards-feed`, label: 'New staff', cards: true },
@@ -37,6 +37,7 @@ export function Topbar() {
     if (i.admin && !canAdmin) return false;
     if (i.audit && !canAudit) return false;
     if (i.cards && !canReviewCards) return false;
+    if (i.platformAdmin && !session.user.is_platform_admin) return false;
     return true;
   });
 
