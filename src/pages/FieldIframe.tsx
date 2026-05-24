@@ -29,19 +29,10 @@ import { Topbar } from '../components/Topbar';
 // from the user's shell tenant_id was tried twice (PR #10, #12) and
 // reverted both times — see SHELL-TENANT-PICKER-PROMPT.md §2 for why.
 
-// Per-tenant Field deploy URLs. sks-nsw-labour is a single-tenant deploy; the
-// others share eq-solves-field and need ?tenant= to set the org context.
-const FIELD_TENANT_URLS: Record<string, string> = {
-  eq: 'https://eq-solves-field.netlify.app/',
-  'demo-trades': 'https://eq-solves-field.netlify.app/',
-  melbourne: 'https://eq-solves-field.netlify.app/',
-  sks: 'https://sks-nsw-labour.netlify.app/',
-};
-
-function buildFieldSrc(tenantSlug: string, token: string): string {
-  const base = FIELD_TENANT_URLS[tenantSlug] ?? 'https://eq-solves-field.netlify.app/';
-  return `${base}?tenant=${encodeURIComponent(tenantSlug)}#sh=${encodeURIComponent(token)}`;
-}
+// Field tenant configuration lives in src/lib/fieldTenants.ts — single
+// source of truth for TENANT_OPTIONS, FIELD_TENANT_URLS, and buildFieldSrc.
+// When adding a new Field org, update that file AND mint-iframe-token.ts
+// ALLOWED_FIELD_TENANT_SLUGS in the same PR.
 
 // Field has cold-start latency in iframe context: SW install, two
 // sequential Supabase round-trips inside loadTenantConfig(), then the
@@ -52,40 +43,12 @@ function buildFieldSrc(tenantSlug: string, token: string): string {
 // hard cap here so a genuinely dead iframe is still surfaced.
 const HANDOFF_TIMEOUT_MS = 30_000;
 
-// 2026-05-22 — Wave 5: the picker cards. Must stay in lock-step with
-// mint-iframe-token.ts ALLOWED_FIELD_TENANT_SLUGS — if you add a card
-// here without updating the allow-list, the mint endpoint will 400.
-// Card copy and PINs mirror EQ Field's in-app v3.5.18 picker so the
-// two entry surfaces feel like one product.
-const TENANT_OPTIONS = [
-  {
-    slug: 'sks',
-    tier: 'Live',
-    name: 'SKS Technologies',
-    tagline: 'Production workforce — SKS NSW.',
-  },
-  {
-    slug: 'eq',
-    tier: 'Standard',
-    name: 'EQ Demo',
-    tagline: 'SEED data, unchanged UI. The "before" baseline.',
-  },
-  {
-    slug: 'demo-trades',
-    tier: 'Advanced',
-    name: 'Demo Trades',
-    tagline: 'Adds Projects, Employment filter, People-form fields.',
-  },
-  {
-    slug: 'melbourne',
-    tier: 'Enterprise',
-    name: 'Melbourne',
-    tagline: 'Full surface: Forecast, Apprentice ratio, Region picker.',
-  },
-] as const;
-
-type TenantOption = (typeof TENANT_OPTIONS)[number];
-type TenantSlug = TenantOption['slug'];
+import {
+  TENANT_OPTIONS,
+  buildFieldSrc,
+  type TenantOption,
+  type TenantSlug,
+} from '../lib/fieldTenants';
 
 // Message shape contracted with eq-field-app `scripts/auth.js`
 // `_postHandoffStatus()` (added in v3.5.12, extended in v3.5.17 with
@@ -143,6 +106,15 @@ export default function FieldIframe() {
   const visibleOptions = (session?.user.is_platform_admin)
     ? TENANT_OPTIONS
     : TENANT_OPTIONS.filter((t) => t.slug === session?.tenant.slug);
+
+  // Auto-select the sole option for non-admin users. useEffect defers
+  // the state update out of render, replacing the prior setTimeout(0).
+  const autoSlug = visibleOptions.length === 1 ? visibleOptions[0].slug : null;
+  useEffect(() => {
+    if (autoSlug && !selectedTenant) {
+      pickTenant(autoSlug);
+    }
+  }, [autoSlug]); // autoSlug is stable after session loads; selectedTenant check guards re-fire
 
   // Resetting src + state happens in the pick/switch event handlers
   // below (not in the mint effect) — keeps the effect a pure
@@ -262,13 +234,10 @@ export default function FieldIframe() {
     return () => clearTimeout(timer);
   }, [state.phase]);
 
-  // Picker — no tenant chosen yet. If only one option (non-admin users
-  // scoped to their own tenant) skip the picker and go straight to mint.
+  // Picker — no tenant chosen yet. Auto-select fires via useEffect above
+  // for single-option users; show loading state while that fires.
   if (!selectedTenant) {
     if (visibleOptions.length === 1) {
-      // Auto-select the sole option on next tick so state updates don't
-      // happen during render.
-      setTimeout(() => pickTenant(visibleOptions[0].slug), 0);
       return (
         <>
           <Topbar />

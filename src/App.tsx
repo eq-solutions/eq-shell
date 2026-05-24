@@ -111,6 +111,15 @@ function SessionProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  // Background poll every 5 min so deactivated users / role changes
+  // take effect without requiring a page navigation. verify-shell-session
+  // checks active=true in the DB and returns 401 if the user is inactive,
+  // which setSession(null) + resetUser() handles above.
+  useEffect(() => {
+    const id = setInterval(() => { void refresh(); }, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
   return (
     <SessionContext.Provider value={{ session, loading, refresh, logout }}>
       {children}

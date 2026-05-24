@@ -42,7 +42,7 @@ const MODULES: ModuleDef[] = [
   { key: 'cards', label: 'Cards', description: 'Tradie wallet — licences + tap-to-copy.', to: 'cards', live: true },
   { key: 'field', label: 'Field', description: 'Roster, timesheets, sites.', to: 'field', live: true },
   { key: 'quotes', label: 'Quotes', description: 'Job quoting from the EQ platform.', to: 'quotes', live: true },
-  { key: 'service', label: 'Service', description: 'PPM, work orders, assets.', to: 'service', live: false },
+  { key: 'service', label: 'Service', description: 'PPM, work orders, assets.', to: 'service', live: true },
 ];
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -140,8 +140,8 @@ export default function TenantHome() {
     (c): c is DashboardCount => c !== undefined,
   );
 
-  const greetName = session.user.email.split('@')[0].split('.')[0];
-  const greetNameCapitalised = greetName.charAt(0).toUpperCase() + greetName.slice(1);
+  const greetBase = session.user.name?.split(' ')[0] ?? session.user.email.split('@')[0].split('.')[0];
+  const greetNameCapitalised = greetBase.charAt(0).toUpperCase() + greetBase.slice(1);
   const roleLabel = session.user.role.replace('_', ' ');
 
   // Audit fix #5: the delta is "additions this week" regardless of
@@ -176,7 +176,7 @@ export default function TenantHome() {
             </div>
 
             <h1 className="eq-home-hero__headline">
-              Operating <span className="eq-home-hero__accent">EQ Solutions</span>
+              Operating <span className="eq-home-hero__accent">{session.tenant.name}</span>
               <span className="eq-home-hero__sub-name">
                 {' '}— {greetNameCapitalised}
               </span>
