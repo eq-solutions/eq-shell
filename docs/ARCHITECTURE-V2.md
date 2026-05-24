@@ -514,14 +514,55 @@ manual smoke before merge (CSV drop in deploy preview → verify rows
 land in the right tenant DB + audit row shows `completed`).
 
 ### Phase 2.B.7 — Drop shared `app_data`
-- [ ] Confirm zero readers (`git grep "schema\\('app_data'\\)"` in src/ and
-      `netlify/functions/`)
-- [ ] Confirm zero writers (intake writer fully migrated — Phase 2.B.6 done)
-- [ ] Jobs module refactor (last direct-`app_data` reader, dormant —
-      bundle with one of the above PRs)
-- [ ] Drop `app_data` schema from shared `eq-canonical`
+
+> **Recon status (2026-05-24, post Phase 2.B.6.5 / commit-canonical
+> cutover):**
+>
+> Grep audit of `.schema('app_data')` usage across `src/` +
+> `netlify/functions/`:
+>
+> | Caller | Disposition |
+> |---|---|
+> | All `netlify/functions/*` callers (cards-pending-staff, cards-approve-staff, canonical-api, tenant-routing-health, intake-commit, tenant-dashboard, entity-rows) | Use the **tenant** Supabase client via `getTenantDataClientById()`. They read/write per-tenant `app_data`, not shared. ✅ Not a blocker. |
+> | `netlify/functions/_shared/supabase.ts` + `tenant-routing.ts` | Boilerplate / configuration; not a runtime caller. ✅ Not a blocker. |
+> | `src/pages/EntityBrowserPage.tsx` | Only comments mention `app_data`. Real query goes via `/entity-rows` → tenant DB. ✅ Not a blocker. |
+> | `src/modules/jobs/index.tsx` | **🛑 Lone blocker.** Calls `sb.schema('app_data').from('jobs'/customers/sites)` directly on the JWT-authed client against shared `eq-canonical`. List + create + update + delete all routed there. |
+> | `scripts/` (sync-*, migrate-tenants, etc.) | Operational scripts that intentionally read shared and write tenant. Allowed. |
+>
+> **Jobs module options** (need Royce's call):
+>
+> 1. **Delete the module** — Royce flagged it as "no jobs module?" in
+>    Cards-cutover convo and the architecture doc has called it
+>    "dormant" since intake-writer planning. Cleanest if unused.
+>    Removes `src/modules/jobs/`, the route registration, and the
+>    Gate/perm entries.
+> 2. **Refactor to tenant DB** — needs a new `/jobs-*` Netlify function
+>    family (list / create / update / soft-delete) + an `eq_browse_entity`
+>    entry for `'job'`. ~3 endpoints, mechanical. Defers the schema
+>    drop by one PR.
+> 3. **Mark as known shared reader, defer** — explicitly accept that
+>    Jobs keeps reading shared until someone actively uses it, and
+>    schedule the schema drop *after* either (1) or (2). Schema drop
+>    will fail-fast if Jobs is reached during smoke.
+
+#### Checklist
+- [x] Confirm zero netlify/functions readers of shared `app_data` (above)
+- [x] Confirm zero browser readers/writers except Jobs (above)
+- [x] Confirm zero remaining intake writers against shared (Phase 2.B.6 + 2.B.6.5 done)
+- [ ] **Jobs module disposition** — pick option 1/2/3 above
+- [ ] Drop `app_data` schema from shared `eq-canonical` (after Jobs)
 - [ ] Update CLAUDE.md and runbooks
 - [ ] Pen test (independent)
+
+**Schema drop checklist** (when ready):
+1. Final grep: `Grep "\\.schema\\('app_data'\\)" src/ netlify/functions/` returns ZERO blocking matches (only comments / scripts).
+2. Take a shared `eq-canonical` snapshot via Supabase dashboard.
+3. `DROP SCHEMA app_data CASCADE` on shared `eq-canonical`
+   (jvknxcmbtrfnxfrwfimn). Irreversible without restore.
+4. Smoke: open every Shell page in prod; intake CSV upload; Cards
+   mobile licence list/upsert; Field admin views.
+5. Wait 24h. Check Sentry for any `relation "app_data..." does not
+   exist` errors (would indicate a missed caller).
 
 ---
 
