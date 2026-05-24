@@ -1,26 +1,42 @@
 /**
- * commit-canonical — bundle → canonical Supabase tables, with audit trail.
+ * commit-canonical — bundle → canonical per-tenant tables, with audit trail.
  *
  * Takes a SimPRO bundle (parsed customer + site + contact sheets) and:
  *   1. Per entity, in FK order (customer → site → contact):
- *      a. Creates an eq_intake_events row (status: 'committing'), returns intake_id.
+ *      a. Creates an eq_intake_events row on shared (shell_control)
+ *         (status: 'committing'), returns intake_id.
  *      b. Maps source columns → canonical fields via x-eq-source-aliases.
  *      c. Validates against the canonical JSON Schema (`@eq/validation`'s
  *         validate()) — produces valid_rows + flagged_rows + rejected_rows.
- *      d. Resolves cross-batch FKs: sites/contacts both have customer_id that
- *         must point at a real customer UUID. We use the customer row's
- *         external_id (SimPRO Customer ID) as the join key.
- *      e. Calls supabase.rpc('eq_intake_commit_batch', { p_intake_id,
- *         p_tenant_id, p_table, p_rows }).
+ *      d. Resolves cross-batch FKs: sites/contacts both have customer_id
+ *         that must point at a real customer UUID. We use the customer
+ *         row's external_id (SimPRO Customer ID) as the join key. The
+ *         (external_id → customer_id) map comes back from the orchestrator
+ *         response as `fk_lookup` on the customers commit — no second
+ *         tenant-DB read.
+ *      e. POSTs to /.netlify/functions/intake-commit, which routes to the
+ *         caller's per-tenant data plane and calls
+ *         eq_intake_commit_batch_<module>(...). The orchestrator is
+ *         session-authed via the eq_shell_session cookie sent
+ *         credentials: 'same-origin' from the Shell-hosted UI.
  *      f. Updates the eq_intake_events row to 'completed' or 'failed'.
  *
  *   2. Returns a per-entity result with committed_count, rejected rows,
  *      and the intake_ids so the UI can render the audit trail.
  *
+ * Pre-cutover (before 2026-05-24) this called
+ * `supabase.rpc('eq_intake_commit_batch')` directly against shared
+ * eq-canonical's app_data, and `buildCustomerIdMap()` read back the
+ * customers table via the same client. After the Phase 2.B.6 cutover
+ * (PRs #25/#28/#29/#30/#31) data lives on per-tenant DBs that the
+ * browser has no direct client for. The orchestrator + fk_lookup
+ * response close that loop.
+ *
  * The Supabase client type is kept structural (SupabaseLikeClient interface
  * below) so this package doesn't take a hard dependency on
- * `@supabase/supabase-js`. The shell's `getSupabase()` returns a client that
- * satisfies the interface.
+ * `@supabase/supabase-js`. It's used only for eq_intake_events lifecycle
+ * (writes to shell_control on shared) and auth.getUser() — the actual
+ * data commit goes via fetch.
  */
 
 import { validate } from "@eq/validation";
@@ -46,10 +62,6 @@ export interface SupabaseLikeClient {
       ) => Promise<{ data: unknown; error: { message: string } | null }>;
     };
   };
-  rpc: (
-    name: string,
-    params: unknown,
-  ) => Promise<{ data: unknown; error: { message: string } | null }>;
   auth: {
     getUser: () => Promise<{
       data: { user: { id: string } | null };
@@ -57,6 +69,27 @@ export interface SupabaseLikeClient {
     }>;
   };
 }
+
+/**
+ * Response shape from /.netlify/functions/intake-commit. Mirrors the
+ * CommitOk interface declared server-side in netlify/functions/intake-commit.ts.
+ * `fk_lookup` is only populated by the 'core' module's customers batch.
+ */
+interface IntakeCommitOkResponse {
+  ok:               true;
+  module:           string;
+  committed_count:  number;
+  committed_ids:    string[];
+  fk_lookup?:       Record<string, string>;
+}
+
+interface IntakeCommitErrResponse {
+  ok:     false;
+  error:  string;
+  detail?: string;
+}
+
+type IntakeCommitResponse = IntakeCommitOkResponse | IntakeCommitErrResponse;
 
 export type CanonicalEntity = "customer" | "site" | "contact";
 
@@ -75,8 +108,15 @@ export interface EntityCommitResult {
   rejectedCount: number;
   /** Per-row rejection reasons for the operator to see. */
   rejectedRows: Array<{ source_row_index: number; reasons: string[] }>;
-  /** If the whole entity commit failed (RPC error, network, etc.), the message. */
+  /** If the whole entity commit failed (HTTP / network / RPC), the message. */
   fatalError?: string;
+  /**
+   * Only set on the 'customer' entity result: { external_id: customer_id }
+   * map returned by the orchestrator. Used internally to resolve site/
+   * contact FKs in the next batches; surfaced on the result for callers
+   * that want to inspect it.
+   */
+  fkLookup?: Record<string, string>;
 }
 
 export interface CommitOptions {
@@ -270,52 +310,6 @@ async function finishIntakeEvent(args: FinishIntakeEventArgs): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Build an external_id → canonical UUID map from a freshly-committed
- * customer batch. Sites/contacts use this to resolve their customer_id
- * before validate() runs.
- *
- * Reads back from the DB rather than relying on commit_batch's
- * committed_ids array (which we have, but we don't have the mapping
- * back to the input rows the customer rows came from).
- */
-async function buildCustomerIdMap(
-  supabase: SupabaseLikeClient,
-  tenantId: string,
-  intakeId: string,
-): Promise<Map<string, string>> {
-  // We need (external_id, customer_id) pairs for rows just committed.
-  // The commit_batch RPC tags rows with intake_id, so we can fetch by it.
-  // Use the structural client's from()/select chain — TS-typed loosely.
-  const map = new Map<string, string>();
-  const client = supabase as unknown as {
-    from: (t: string) => {
-      select: (cols: string) => {
-        eq: (
-          c: string,
-          v: unknown,
-        ) => Promise<{ data: Array<Record<string, string>> | null; error: { message: string } | null }>;
-      };
-    };
-  };
-  const { data, error } = await client
-    .from("customers")
-    .select("customer_id, external_id")
-    .eq("intake_id", intakeId);
-  if (error) {
-    throw new Error(`Failed to read back customers for FK resolution: ${error.message}`);
-  }
-  for (const row of data ?? []) {
-    if (row.external_id) {
-      map.set(row.external_id, row.customer_id);
-    }
-  }
-  // Tenant ID is in scope via the original commit, but RLS would scope this
-  // automatically. Keeping the unused param for future hardening.
-  void tenantId;
-  return map;
-}
-
-/**
  * Apply a customerId map to a list of pre-validation rows. Each row's
  * external_customer_id (from SimPRO) gets translated into customer_id
  * (canonical UUID). Rows whose external_customer_id isn't in the map are
@@ -471,15 +465,39 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
     };
   }
 
-  // RPC call.
-  const { data, error } = await args.supabase.rpc("eq_intake_commit_batch", {
-    p_intake_id: intakeId,
-    p_tenant_id: args.tenantId,
-    p_table: table,
-    p_rows: toCommit,
-  });
+  // POST to the per-tenant intake orchestrator. Same-origin call from the
+  // Shell-hosted UI; the eq_shell_session cookie rides along and gives
+  // the orchestrator the tenant_id (it does NOT trust the p_tenant_id
+  // we pass in here — kept for parity with the prior RPC shape but
+  // ignored server-side, which is fine).
+  let commitData: IntakeCommitResponse;
+  let fatalErr: string | null = null;
+  try {
+    const res = await fetch("/.netlify/functions/intake-commit", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        intake_id:      intakeId,
+        table,
+        rows:           toCommit,
+        source_sig:     args.sourceFilename ?? `intake-${intakeId}`,
+        schema_version: schemaVersion,
+        import_mode:    "append",
+      }),
+    });
+    commitData = (await res.json()) as IntakeCommitResponse;
+    if (!res.ok || !commitData.ok) {
+      fatalErr = !commitData.ok
+        ? `${commitData.error}${commitData.detail ? `: ${commitData.detail}` : ""}`
+        : `HTTP ${res.status}`;
+    }
+  } catch (e) {
+    fatalErr = e instanceof Error ? e.message : String(e);
+    commitData = { ok: false, error: "fetch_failed", detail: fatalErr };
+  }
 
-  if (error) {
+  if (fatalErr) {
     await finishIntakeEvent({
       supabase: args.supabase,
       intakeId,
@@ -487,7 +505,7 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       rowsCommitted: 0,
       rowsFlagged: validationResult.summary.flagged,
       rowsRejected: validationResult.summary.rejected,
-      errorMessage: error.message,
+      errorMessage: fatalErr,
     });
     return {
       entity: args.entity,
@@ -500,14 +518,16 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
         source_row_index: r.source_row_index,
         reasons: r.errors.map(formatValidationError),
       })),
-      fatalError: error.message,
+      fatalError: fatalErr,
     };
   }
 
-  // The RPC returns `[{ committed_count, committed_ids }]`. supabase-js returns
-  // the rows array as `data`; pick the first row.
-  const rpcRow = Array.isArray(data) ? (data[0] as { committed_count?: number } | undefined) : undefined;
-  const committedCount = rpcRow?.committed_count ?? 0;
+  // fatalErr was null → commitData is the ok variant.
+  const okData = commitData as IntakeCommitOkResponse;
+  const committedCount = okData.committed_count;
+  // fk_lookup is only populated for the 'core' module's customers commit.
+  // Sites/contacts batches get an empty object or undefined.
+  const fkLookup = okData.fk_lookup;
 
   await finishIntakeEvent({
     supabase: args.supabase,
@@ -529,6 +549,7 @@ async function commitOneEntity(args: CommitOneEntityArgs): Promise<EntityCommitR
       source_row_index: r.source_row_index,
       reasons: r.errors.map(formatValidationError),
     })),
+    fkLookup,
   };
 }
 
@@ -575,22 +596,13 @@ export async function commitBundleToCanonical(opts: CommitOptions): Promise<Comm
       break;
     }
 
-    // If we just committed customers, build the FK lookup for sites + contacts.
-    if (entity === "customer" && result.committedCount > 0 && result.intakeId) {
-      try {
-        customerIdMap = await buildCustomerIdMap(
-          opts.supabase,
-          opts.tenantId,
-          result.intakeId,
-        );
-      } catch (e) {
-        // Non-fatal — sites/contacts will just have missing FK rejections.
-        // eslint-disable-next-line no-console
-        console.warn(
-          `Failed to build customer FK map: ${e instanceof Error ? e.message : String(e)}`,
-        );
-        customerIdMap = new Map();
-      }
+    // If we just committed customers, harvest the FK lookup from the
+    // orchestrator's response for sites + contacts to consume. Pre-cutover
+    // we did a second read against shared eq-canonical's customers table
+    // here; post-cutover that data lives in the per-tenant DB and the
+    // orchestrator returns the (external_id → customer_id) map inline.
+    if (entity === "customer" && result.committedCount > 0 && result.fkLookup) {
+      customerIdMap = new Map(Object.entries(result.fkLookup));
     }
   }
 
