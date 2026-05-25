@@ -220,13 +220,14 @@
   font-size: 20px;
   color: var(--eq-ink);
   font-family: var(--eq-font);
-  transition: border-color 150ms ease;
-  caret-color: transparent;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  caret-color: var(--eq-sky);
 }
 
 .eq-login-pin-box:focus {
   outline: none;
   border-color: var(--eq-sky);
+  box-shadow: 0 0 0 3px rgba(61, 168, 216, 0.18);
 }
 
 /* ── Stay signed in ── */

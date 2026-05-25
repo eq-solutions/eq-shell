@@ -55,7 +55,17 @@ export default function LoginPage() {
   }
 
   function onPinChange(index: number, value: string) {
-    const digit = value.replace(/\D/g, '').slice(-1);
+    const digits = value.replace(/\D/g, '');
+    // Autofill / paste dumps multiple chars into one box — distribute from here.
+    if (digits.length > 1) {
+      const next = [...pinDigits];
+      digits.slice(0, 4 - index).split('').forEach((d, i) => { next[index + i] = d; });
+      setPinDigits(next);
+      const lastFilled = Math.min(index + digits.length - 1, 3);
+      pinRefs[lastFilled].current?.focus();
+      return;
+    }
+    const digit = digits;
     const next = [...pinDigits];
     next[index] = digit;
     setPinDigits(next);
