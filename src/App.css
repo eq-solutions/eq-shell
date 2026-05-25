@@ -1089,6 +1089,19 @@
   color: var(--eq-grey);
 }
 
+/* Overlaid loading scrim — sits on top of an already-mounted iframe
+   while waiting for its onLoad event (e.g. Cards Flutter cold-start). */
+.eq-loading--overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+  z-index: 10;
+  pointer-events: none;
+}
+
 .eq-error {
   padding: 16px;
   background: var(--status-error-bg);
