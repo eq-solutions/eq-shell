@@ -556,7 +556,7 @@ land in the right tenant DB + audit row shows `completed`).
 - [ ] Update CLAUDE.md and runbooks — defer, no urgency
 - [ ] Pen test (independent) — needs an external auditor
 
-**🎉 Per-tenant data-plane cutover is complete.** Operational data lives exclusively on per-tenant Supabase projects (eq-canonical-internal, sks-canonical). Shared eq-canonical holds only `shell_control` + auth + storage.
+**🎉 Per-tenant data-plane cutover is complete.** Operational tables live exclusively on per-tenant Supabase projects (eq-canonical-internal, sks-canonical). Shared eq-canonical holds `shell_control` + auth + storage. **Storage stays shared by design** — `licence-photos`, `certificates`, and the `tenant-<uuid>` per-tenant buckets are RLS-isolated via `(storage.foldername(name))[1]::uuid = (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid` (verified 2026-05-25). Splitting storage per-tenant would add operational cost without adding isolation — RLS reads the same tenant_id claim the data-plane uses.
 
 ---
 

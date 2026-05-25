@@ -20,7 +20,7 @@ Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Qu
 
 | Resource | Identifier | Purpose |
 |---|---|---|
-| Supabase project | `eq-canonical` (id: `jvknxcmbtrfnxfrwfimn`, region `ap-southeast-2`) | **Control plane only** (post Phase 2.B.7, 2026-05-25). Holds `shell_control` (tenants, users, module_entitlements, audit_log, rate_limit_buckets, tenant_routing, pin_reset_tokens) + auth + storage. The `app_data` schema is dropped — surviving schemas: auth, extensions, graphql, graphql_public, public, realtime, **shell_control**, storage, supabase_migrations, vault. |
+| Supabase project | `eq-canonical` (id: `jvknxcmbtrfnxfrwfimn`, region `ap-southeast-2`) | **Control plane + shared storage** (post Phase 2.B.7, 2026-05-25). Holds `shell_control` (tenants, users, module_entitlements, audit_log, rate_limit_buckets, tenant_routing, pin_reset_tokens) + auth. Storage buckets (`licence-photos`, `certificates`, `tenant-<uuid>`) are deliberately shared on this project — tenant isolation enforced via storage RLS reading `app_metadata.tenant_id` from the JWT. The `app_data` schema is dropped. Surviving schemas: auth, extensions, graphql, graphql_public, public, realtime, **shell_control**, storage, supabase_migrations, vault. |
 | Supabase project | `eq-canonical-internal` (id: `zaapmfdkgedqupfjtchl`, region `ap-southeast-2`) | **EQ tenant data plane** — active, holds all EQ operational entities under `app_data` schema. Routing row `active`. |
 | Supabase project | `sks-canonical` (id: `ehowgjardagevnrluult`, region `ap-southeast-2`) | **SKS tenant data plane** — active, holds all SKS operational entities under `app_data` schema. Routing row `active`. |
 | GitHub repo | `eq-solutions/eq-shell` (this) | Shell source. |
