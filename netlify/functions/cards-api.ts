@@ -35,7 +35,7 @@
 
 import type { Context } from '@netlify/functions';
 import {
-  getTenantDataClientById,
+  getTenantRpcClientById,
   TenantNotFoundError,
   TenantNotActiveError,
   TenantRoutingMisconfiguredError,
@@ -115,7 +115,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   // ─── open tenant DB ────────────────────────────────────────────────
   let tenantDb;
   try {
-    tenantDb = await getTenantDataClientById(tenantId);
+    tenantDb = await getTenantRpcClientById(tenantId);
   } catch (e) {
     const r = tenantRoutingError(e);
     return json(r.status, r.body);
@@ -128,7 +128,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     switch (op) {
       case 'current_staff': {
         const { data, error } = await tenantAny
-          .schema('public')
           .rpc('eq_cards_current_staff', { p_tenant_id: tenantId, p_user_id: userId });
         if (error) { const r = rpcError('current_staff', error); return json(r.status, r.body); }
         const staff = Array.isArray(data) && data.length > 0 ? data[0] : null;
@@ -137,7 +136,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
       case 'list_my_licences': {
         const { data, error } = await tenantAny
-          .schema('public')
           .rpc('eq_cards_list_my_licences', { p_tenant_id: tenantId, p_user_id: userId });
         if (error) { const r = rpcError('list_my_licences', error); return json(r.status, r.body); }
         return json(200, { ok: true, licences: data ?? [] });
@@ -150,7 +148,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
           return json(400, { ok: false, error: 'invalid_payload', detail: 'payload must be a JSON object' });
         }
         const { data, error } = await tenantAny
-          .schema('public')
           .rpc('eq_cards_upsert_my_licence', { p_tenant_id: tenantId, p_user_id: userId, p_payload: body.payload });
         if (error) { const r = rpcError('upsert_my_licence', error); return json(r.status, r.body); }
         const licence = Array.isArray(data) && data.length > 0 ? data[0] : null;
@@ -165,7 +162,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
           return json(400, { ok: false, error: 'invalid_payload', detail: 'payload must be a JSON object' });
         }
         const { data, error } = await tenantAny
-          .schema('public')
           .rpc('eq_cards_upsert_my_profile', { p_tenant_id: tenantId, p_user_id: userId, p_payload: body.payload });
         if (error) { const r = rpcError('upsert_my_profile', error); return json(r.status, r.body); }
         const profile = Array.isArray(data) && data.length > 0 ? data[0] : null;
@@ -180,7 +176,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
           return json(400, { ok: false, error: 'invalid_licence_id' });
         }
         const { error } = await tenantAny
-          .schema('public')
           .rpc('eq_cards_soft_delete_my_licence', {
             p_tenant_id:  tenantId,
             p_user_id:    userId,

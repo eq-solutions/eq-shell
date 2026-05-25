@@ -43,9 +43,18 @@ const cacheById = new Map<string, CachedRouting>();
 
 // Supabase clients keyed by tenant_id. Each tenant gets one cached client per
 // warm function instance. Typed with wide generics because we pin schema at
-// construction (app_data) and supabase-js infers a different generic in that
-// case — matches the pattern in _shared/supabase.ts.
-const tenantClients = new Map<string, SupabaseClient<any, any, any>>();
+// construction and supabase-js infers a different generic in that case —
+// matches the pattern in _shared/supabase.ts.
+//
+// Two flavours:
+//   tenantClients     — db.schema='app_data'  — for .schema('app_data').from()
+//   tenantRpcClients  — db.schema='public'    — for direct .rpc() calls
+//
+// Keeping two clients avoids the supabase-js v2.106 bug where
+// .schema('X').rpc(fn, args) on a client whose default is 'Y' sends
+// an empty body to PostgREST (schema header arrives, args do not).
+const tenantClients    = new Map<string, SupabaseClient<any, any, any>>();
+const tenantRpcClients = new Map<string, SupabaseClient<any, any, any>>();
 
 export class TenantNotFoundError extends Error {
   public readonly identifier: string;
@@ -233,9 +242,31 @@ export async function getTenantDataClient(
   }
   const client = createClient(routing.supabase_url, routing.service_role_key, {
     auth: { persistSession: false, autoRefreshToken: false },
-    db: { schema: 'app_data' },        // tenant DBs only hold app_data
+    db: { schema: 'app_data' },
   });
   tenantClients.set(routing.tenant_id, client);
+  return client;
+}
+
+/**
+ * Same as getTenantDataClient but the returned client defaults to the
+ * 'public' schema so callers can call .rpc() directly without a
+ * .schema('public') override. Use this for RPC-only callers (cards-api, etc.)
+ * to avoid the supabase-js v2.106 bug where .schema('X').rpc(fn, args) on a
+ * 'Y'-default client sends args as an empty body.
+ */
+async function getTenantRpcClient(
+  slug: string,
+  requireActive: boolean = true,
+): Promise<SupabaseClient<any, any, any>> {
+  const routing = await getRoutingBySlug(slug, requireActive);
+  const existing = tenantRpcClients.get(routing.tenant_id);
+  if (existing) return existing;
+  const client = createClient(routing.supabase_url, routing.service_role_key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    db: { schema: 'public' },
+  });
+  tenantRpcClients.set(routing.tenant_id, client);
   return client;
 }
 
@@ -255,6 +286,18 @@ export async function getTenantDataClientById(
 }
 
 /**
+ * Same as getTenantDataClientById but returns the public-schema RPC client.
+ * Use for functions that only call .rpc() (no direct .from() table access).
+ */
+export async function getTenantRpcClientById(
+  tenant_id: string,
+  requireActive: boolean = true,
+): Promise<SupabaseClient<any, any, any>> {
+  const routing = await getRoutingById(tenant_id, requireActive);
+  return getTenantRpcClient(routing.tenant_slug, requireActive);
+}
+
+/**
  * Invalidate cached routing for a tenant. Use after a tenant_routing UPDATE
  * (status change, key rotation, etc.) if you need the change to take effect
  * before the natural cache TTL expires.
@@ -266,11 +309,13 @@ export function invalidateRoutingCache(slugOrId: string): void {
     cacheBySlug.delete(bySlug.tenant_slug);
     cacheById.delete(bySlug.tenant_id);
     tenantClients.delete(bySlug.tenant_id);
+    tenantRpcClients.delete(bySlug.tenant_id);
   }
   if (byId && byId !== bySlug) {
     cacheBySlug.delete(byId.tenant_slug);
     cacheById.delete(byId.tenant_id);
     tenantClients.delete(byId.tenant_id);
+    tenantRpcClients.delete(byId.tenant_id);
   }
 }
 
@@ -282,4 +327,5 @@ export function flushRoutingCache(): void {
   cacheBySlug.clear();
   cacheById.clear();
   tenantClients.clear();
+  tenantRpcClients.clear();
 }
