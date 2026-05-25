@@ -19,7 +19,8 @@
 const ORG_SLUG     = 'eq-solutions';
 const PROJECT_SLUG = 'eq-shell';
 const NOTIFY_EMAIL = 'dev@eq.solutions';
-const BASE_URL     = 'https://sentry.io/api/0';
+// eq-solutions org is on Sentry's EU/DE region — use de.sentry.io, not sentry.io.
+const BASE_URL     = 'https://de.sentry.io/api/0';
 
 const AUTH_TOKEN = process.env.SENTRY_AUTH_TOKEN;
 if (!AUTH_TOKEN) {
@@ -54,40 +55,32 @@ async function sentry(method, path, body) {
 // your Sentry org if the email action 422s (Sentry doesn't auto-create
 // the recipient by address for all account types).
 
+// Shared action: notify IssueOwners, fall through to ActiveMembers.
+// targetIdentifier must be empty string for IssueOwners target type.
+const NOTIFY_ACTION = {
+  id: 'sentry.mail.actions.NotifyEmailAction',
+  targetType: 'IssueOwners',
+  fallthroughType: 'ActiveMembers',
+  targetIdentifier: '',
+};
+
 const ISSUE_ALERT_RULES = [
   {
     name: '[eq-shell] 5xx error spike',
     environment: 'production',
-    // Fires when ANY error with a 5xx HTTP status tag is seen. This
-    // catches both browser-side Sentry captures (Sentry.captureMessage)
-    // and any exception propagating out of a Netlify function that
-    // withSentry wraps. For rate-based gating see conditions below.
+    // ≥10 errors in 1h. All Netlify function errors that reach Sentry
+    // (via withSentry) count. No status-code filter — tag filter operators
+    // in the Sentry API don't support gte; using a volume threshold instead.
     conditions: [
       {
-        id: 'sentry.rules.conditions.first_seen_event.FirstSeenEventCondition',
-      },
-      {
         id: 'sentry.rules.conditions.event_frequency.EventFrequencyCondition',
-        value: 5,
+        value: 10,
         comparisonType: 'count',
         interval: '1h',
       },
     ],
-    filters: [
-      {
-        id: 'sentry.rules.filters.tagged_event.TaggedEventFilter',
-        key: 'http.status_code',
-        match: 'gte',
-        value: '500',
-      },
-    ],
-    actions: [
-      {
-        id: 'sentry.mail.actions.NotifyEmailAction',
-        targetType: 'Member',
-        targetIdentifier: NOTIFY_EMAIL,
-      },
-    ],
+    filters: [],
+    actions: [NOTIFY_ACTION],
     actionMatch: 'all',
     filterMatch: 'all',
     frequency: 60,
@@ -95,42 +88,35 @@ const ISSUE_ALERT_RULES = [
   {
     name: '[eq-shell] Auth failure spike',
     environment: 'production',
-    // Fires when shell-login, verify-shell-session, or any auth surface
-    // returns not_signed_in / unauthorized / jwt_missing_tenant_or_user
-    // at volume — indicates a broken auth flow, not just a stale session.
+    // ≥10 events in 15 min whose message contains "not_signed_in" or
+    // "unauthorized" — indicates a broken auth flow at volume.
     conditions: [
       {
         id: 'sentry.rules.conditions.event_frequency.EventFrequencyCondition',
         value: 10,
         comparisonType: 'count',
-        interval: '10m',
+        interval: '15m',
       },
     ],
     filters: [
       {
-        id: 'sentry.rules.filters.tagged_event.TaggedEventFilter',
-        key: 'logger',
-        match: 'eq',
-        value: 'auth',
+        id: 'sentry.rules.filters.event_attribute.EventAttributeFilter',
+        attribute: 'message',
+        match: 'co',
+        value: 'not_signed_in',
       },
     ],
-    actions: [
-      {
-        id: 'sentry.mail.actions.NotifyEmailAction',
-        targetType: 'Member',
-        targetIdentifier: NOTIFY_EMAIL,
-      },
-    ],
+    actions: [NOTIFY_ACTION],
     actionMatch: 'all',
-    filterMatch: 'any',
+    filterMatch: 'all',
     frequency: 30,
   },
   {
     name: '[eq-shell] RLS / permission denied',
     environment: 'production',
-    // Fires on any event whose message contains Postgres RLS-error strings.
-    // These should never happen in prod — every RLS policy was written to
-    // return empty, not throw. If one fires, a policy is mis-wired.
+    // First occurrence OR regression of any event whose message contains
+    // "permission denied". These should never reach Sentry in prod —
+    // RLS policies return empty, not throw. Fires as soon as one appears.
     conditions: [
       {
         id: 'sentry.rules.conditions.first_seen_event.FirstSeenEventCondition',
@@ -147,13 +133,7 @@ const ISSUE_ALERT_RULES = [
         value: 'permission denied',
       },
     ],
-    actions: [
-      {
-        id: 'sentry.mail.actions.NotifyEmailAction',
-        targetType: 'Member',
-        targetIdentifier: NOTIFY_EMAIL,
-      },
-    ],
+    actions: [NOTIFY_ACTION],
     actionMatch: 'any',
     filterMatch: 'all',
     frequency: 15,
@@ -161,9 +141,8 @@ const ISSUE_ALERT_RULES = [
   {
     name: '[eq-shell] JWT / token mint failure',
     environment: 'production',
-    // Fires when mint-supabase-jwt, mint-cards-iframe-token, or any other
-    // token mint function fails. Sentry.captureMessage is called in each
-    // mint function on non-2xx; this rule escalates recurrences to email.
+    // ≥3 events containing "mint" in 5 min — Cards/Field iframe loads
+    // break when the mint function fails at volume.
     conditions: [
       {
         id: 'sentry.rules.conditions.event_frequency.EventFrequencyCondition',
@@ -180,13 +159,7 @@ const ISSUE_ALERT_RULES = [
         value: 'mint',
       },
     ],
-    actions: [
-      {
-        id: 'sentry.mail.actions.NotifyEmailAction',
-        targetType: 'Member',
-        targetIdentifier: NOTIFY_EMAIL,
-      },
-    ],
+    actions: [NOTIFY_ACTION],
     actionMatch: 'all',
     filterMatch: 'all',
     frequency: 15,
