@@ -41,6 +41,7 @@ import {
   TenantRoutingMisconfiguredError,
 } from './_shared/tenant-routing.js';
 import { verifySupabaseJwt, readBearerJwt } from './_shared/supabase-jwt.js';
+import { getServiceClient } from './_shared/supabase.js';
 import { withSentry } from './_shared/sentry.js';
 
 type Op =
@@ -48,10 +49,15 @@ type Op =
   | 'list_my_licences'
   | 'upsert_my_licence'
   | 'soft_delete_my_licence'
-  | 'upsert_my_profile';
+  | 'upsert_my_profile'
+  // Control-plane ops — hit eq-canonical via service role, no tenant routing.
+  | 'list_licence_types'
+  | 'has_pin'
+  | 'set_pin'
+  | 'verify_pin';
 
-const READ_OPS:  ReadonlySet<Op> = new Set<Op>(['current_staff', 'list_my_licences']);
-const WRITE_OPS: ReadonlySet<Op> = new Set<Op>(['upsert_my_licence', 'soft_delete_my_licence', 'upsert_my_profile']);
+const READ_OPS:  ReadonlySet<Op> = new Set<Op>(['current_staff', 'list_my_licences', 'list_licence_types', 'has_pin']);
+const WRITE_OPS: ReadonlySet<Op> = new Set<Op>(['upsert_my_licence', 'soft_delete_my_licence', 'upsert_my_profile', 'set_pin', 'verify_pin']);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -106,11 +112,62 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   // ─── op validation + method enforcement ────────────────────────────
   if (!op || (!READ_OPS.has(op) && !WRITE_OPS.has(op))) {
-    return json(400, { ok: false, error: 'unknown_op', detail: 'op must be one of: current_staff, list_my_licences, upsert_my_licence, soft_delete_my_licence, upsert_my_profile' });
+    return json(400, { ok: false, error: 'unknown_op', detail: 'op must be one of: current_staff, list_my_licences, upsert_my_licence, soft_delete_my_licence, upsert_my_profile, list_licence_types, has_pin, set_pin, verify_pin' });
   }
   const isWrite = WRITE_OPS.has(op);
   if (isWrite && req.method !== 'POST') return json(405, { ok: false, error: 'method_not_allowed', detail: 'write ops require POST' });
   if (!isWrite && req.method !== 'GET' && req.method !== 'POST') return json(405, { ok: false, error: 'method_not_allowed' });
+
+  // ─── control-plane ops (eq-canonical, no tenant routing) ───────────
+  const controlOps = new Set<Op>(['list_licence_types', 'has_pin', 'set_pin', 'verify_pin']);
+  if (controlOps.has(op)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctrl = getServiceClient() as any;
+    try {
+      switch (op) {
+        case 'list_licence_types': {
+          const { data, error } = await ctrl
+            .schema('public')
+            .from('licence_types')
+            .select('*')
+            .order('label');
+          if (error) return json(500, { ok: false, error: 'licence_types_failed', detail: error.message });
+          return json(200, { ok: true, licence_types: data ?? [] });
+        }
+        case 'has_pin': {
+          const { data, error } = await ctrl
+            .rpc('has_pin_for_user', { p_user_id: userId });
+          if (error) return json(500, { ok: false, error: 'pin_rpc_failed', detail: error.message });
+          return json(200, { ok: true, has_pin: data === true });
+        }
+        case 'set_pin': {
+          let body: { pin?: string };
+          try { body = (await req.json()) as { pin?: string }; } catch { return json(400, { ok: false, error: 'invalid_body' }); }
+          if (!body.pin || !/^\d{4}$/.test(body.pin)) {
+            return json(400, { ok: false, error: 'invalid_pin', detail: 'pin must be exactly 4 digits' });
+          }
+          const { error } = await ctrl
+            .rpc('set_pin_for_user', { p_user_id: userId, p_pin: body.pin });
+          if (error) return json(500, { ok: false, error: 'pin_rpc_failed', detail: error.message });
+          return json(200, { ok: true });
+        }
+        case 'verify_pin': {
+          let body: { pin?: string };
+          try { body = (await req.json()) as { pin?: string }; } catch { return json(400, { ok: false, error: 'invalid_body' }); }
+          if (!body.pin || !/^\d{4}$/.test(body.pin)) {
+            return json(400, { ok: false, error: 'invalid_pin', detail: 'pin must be exactly 4 digits' });
+          }
+          const { data, error } = await ctrl
+            .rpc('verify_pin_for_user', { p_user_id: userId, p_pin: body.pin });
+          if (error) return json(500, { ok: false, error: 'pin_rpc_failed', detail: error.message });
+          return json(200, { ok: true, verified: data === true });
+        }
+      }
+    } catch (e) {
+      console.error('[cards-api] control-plane op failed', { op, error: (e as Error).message });
+      return json(500, { ok: false, error: 'internal_error', detail: (e as Error).message });
+    }
+  }
 
   // ─── open tenant DB ────────────────────────────────────────────────
   let tenantDb;
