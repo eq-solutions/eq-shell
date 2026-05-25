@@ -1,17 +1,13 @@
 // Outbound email helper for shell functions.
 //
-// Phase 1.F MVP: log-only fallback. Real provider wiring (Resend?
-// SendGrid? — match whatever eq-field's send-email.js settles on) is
-// a separate task — when env vars `EQ_EMAIL_PROVIDER` + provider
-// API key are present, the helper switches from log-only to real
-// delivery automatically.
+// Provider is selected by `EQ_EMAIL_PROVIDER` env var (case-insensitive):
+//   "resend"  → Resend REST API (see email/resend.ts). Requires RESEND_API_KEY.
+//   (unset)   → log-only fallback — invite URL printed to function logs only.
 //
-// Until real wiring lands, invite emails appear in the Netlify
-// Functions log only. Royce or a tenant admin pastes the invite URL
-// to the user manually. Documented in the AdminInviteUser screen.
-//
-// Tracking item for follow-up: pick a provider + add the wiring,
-// matching eq-field's pattern. See `eq-context/eq/pending.md`.
+// The log-only fallback lets the invite flow work without email during
+// local dev and before the provider is configured. `email_delivered: false`
+// is returned in the invite-user response body so the caller can surface a
+// warning to the admin ("Email not sent — copy the link below").
 
 export interface EmailMessage {
   to: string;
@@ -61,16 +57,12 @@ export async function sendEmail(msg: EmailMessage): Promise<EmailResult> {
     return { delivered: false, messageId: null, reason: 'missing required fields (to/subject/text)' };
   }
 
-  if (!PROVIDER) {
-    return logOnly(msg);
+  if (PROVIDER === 'resend') {
+    const { sendViaResend } = await import('./email/resend.js');
+    return sendViaResend(msg);
   }
 
-  // Future providers slot in here. When ready, add a branch like:
-  //
-  //   if (PROVIDER === 'resend') return sendViaResend(msg);
-  //   if (PROVIDER === 'sendgrid') return sendViaSendGrid(msg);
-  //
-  // Each provider lives in its own file under _shared/email/<provider>.ts.
-
+  // No provider configured — log and return delivered:false so the
+  // caller can surface a manual-copy prompt to the admin.
   return logOnly(msg);
 }
