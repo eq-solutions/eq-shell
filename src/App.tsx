@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, lazy, Suspense, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, lazy, Suspense, type ReactNode } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -8,6 +8,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import { SessionContext, useSession, type ShellSession, moduleEnabled } from './session';
+import { seedSupabaseJwtCache } from './lib/supabaseJwt';
 import { BrandProvider } from './brand';
 import { identifyUser, resetUser } from './observability';
 import LoginPage from './pages/LoginPage';
@@ -52,10 +53,39 @@ const IntakeServiceLanding = lazy(() =>
 );
 const QuotesModule = lazy(() => import('./modules/quotes'));
 
+// Session cache — stores last good session in sessionStorage so returning
+// users see content immediately while verify-shell-session runs in background.
+const SESSION_STORE_KEY = 'eq_s';
+
+function readStoredSession(): ShellSession | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORE_KEY);
+    return raw ? (JSON.parse(raw) as ShellSession) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSession(s: ShellSession | null): void {
+  try {
+    if (s) {
+      sessionStorage.setItem(SESSION_STORE_KEY, JSON.stringify(s));
+    } else {
+      sessionStorage.removeItem(SESSION_STORE_KEY);
+    }
+  } catch {
+    // sessionStorage unavailable (private browsing, quota) — ignore.
+  }
+}
+
 // SessionProvider — hydrates session via verify-shell-session on mount,
 // re-exposes the result to the rest of the tree.
 function SessionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<ShellSession | null>(null);
+  const [session, setSession] = useState<ShellSession | null>(() => {
+    const s = readStoredSession();
+    if (s) seedSupabaseJwtCache(s.supabase_jwt);
+    return s;
+  });
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -67,7 +97,10 @@ function SessionProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const body = (await res.json()) as ShellSession & { valid: true };
         const { user, tenant, entitlements, supabase_jwt } = body;
-        setSession({ user, tenant, entitlements, supabase_jwt });
+        const s = { user, tenant, entitlements, supabase_jwt };
+        setSession(s);
+        writeStoredSession(s);
+        seedSupabaseJwtCache(supabase_jwt);
         identifyUser(user.id, {
           tenant: tenant.slug,
           role: user.role,
@@ -75,10 +108,12 @@ function SessionProvider({ children }: { children: ReactNode }) {
         });
       } else {
         setSession(null);
+        writeStoredSession(null);
         resetUser();
       }
     } catch {
       setSession(null);
+      writeStoredSession(null);
       resetUser();
     } finally {
       setLoading(false);
@@ -102,6 +137,7 @@ function SessionProvider({ children }: { children: ReactNode }) {
       // clear local state below so the UI reflects signed-out.
     }
     setSession(null);
+    writeStoredSession(null);
     resetUser();
     window.location.assign('/');
   }, []);
@@ -134,7 +170,11 @@ function RequireSession({ children }: { children: ReactNode }) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const location = useLocation();
 
-  if (loading) {
+  // Only block on the loading spinner when there is no session at all.
+  // If a cached session exists, render optimistically — verify-shell-session
+  // runs in the background and clears the session if it finds the user
+  // deactivated or their token expired.
+  if (loading && !session) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
         <span className="eq-skeleton eq-skeleton--text" style={{ width: 120 }} aria-label="Loading…" />
@@ -162,6 +202,7 @@ function ModuleGate({ module, children }: { module: string; children: ReactNode 
 
 function RootRoute() {
   const { session, loading } = useSession();
+  if (session) return <Navigate to={`/${session.tenant.slug}`} replace />;
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
@@ -169,31 +210,67 @@ function RootRoute() {
       </div>
     );
   }
-  if (session) return <Navigate to={`/${session.tenant.slug}`} replace />;
   return <LoginPage />;
 }
 
 function TenantTree() {
   const { session } = useSession();
+  const location = useLocation();
+  const { tenantSlug } = useParams<{ tenantSlug: string }>();
+
+  // Derive which iframe route is currently active (field / cards / service).
+  const activeIframe = (() => {
+    if (!tenantSlug) return null;
+    const base = `/${tenantSlug}/`;
+    const rest = location.pathname.startsWith(base)
+      ? location.pathname.slice(base.length)
+      : '';
+    if (rest === 'field' || rest.startsWith('field/')) return 'field' as const;
+    if (rest === 'cards' || rest.startsWith('cards/')) return 'cards' as const;
+    if (rest === 'service' || rest.startsWith('service/')) return 'service' as const;
+    return null;
+  })();
+
+  // Tracks iframes that have ever been activated. Ref (not state) so the
+  // mutation doesn't trigger extra renders. Mutated during render — safe
+  // because Set.add is idempotent and refs are not tracked by React.
+  const evermounted = useRef(new Set<'field' | 'cards' | 'service'>());
+  if (activeIframe) evermounted.current.add(activeIframe);
+
+  const fieldEnabled = moduleEnabled(session, 'field');
+  const cardsEnabled = moduleEnabled(session, 'cards');
+  const serviceEnabled = moduleEnabled(session, 'service');
+
   return (
     <BrandProvider tenant={session?.tenant ?? null}>
+      {/* Persistent iframe keepers — mounted on first visit, then toggled
+          display:none so the iframe process keeps running between navigations.
+          All iframe children use position:fixed so display:none on the wrapper
+          is sufficient to hide them without unmounting. */}
+      {fieldEnabled && evermounted.current.has('field') && (
+        <div style={activeIframe === 'field' ? undefined : { display: 'none' }}>
+          <FieldIframe />
+        </div>
+      )}
+      {cardsEnabled && evermounted.current.has('cards') && (
+        <div style={activeIframe === 'cards' ? undefined : { display: 'none' }}>
+          <CardsIframe />
+        </div>
+      )}
+      {serviceEnabled && evermounted.current.has('service') && (
+        <div style={activeIframe === 'service' ? undefined : { display: 'none' }}>
+          <ServiceIframe />
+        </div>
+      )}
       <Routes>
         <Route index element={<TenantHome />} />
         <Route
           path="field"
-          element={
-            <ModuleGate module="field">
-              <FieldIframe />
-            </ModuleGate>
-          }
+          element={<ModuleGate module="field">{null}</ModuleGate>}
         />
         <Route
           path="cards"
-          element={
-            <ModuleGate module="cards">
-              <CardsIframe />
-            </ModuleGate>
-          }
+          element={<ModuleGate module="cards">{null}</ModuleGate>}
         />
         <Route
           path="intake"
@@ -261,11 +338,7 @@ function TenantTree() {
         />
         <Route
           path="service"
-          element={
-            <ModuleGate module="service">
-              <ServiceIframe />
-            </ModuleGate>
-          }
+          element={<ModuleGate module="service">{null}</ModuleGate>}
         />
         <Route
           path="quotes"
