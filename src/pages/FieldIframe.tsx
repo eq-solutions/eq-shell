@@ -229,7 +229,7 @@ export default function FieldIframe() {
     if (state.phase !== 'waiting') return;
     const timer = setTimeout(() => {
       setState((prev) => (prev.phase === 'waiting' ? { phase: 'timeout' } : prev));
-      Sentry.captureMessage('EQ Field handoff timeout — no postMessage in 10s', { level: 'error' });
+      Sentry.captureMessage('EQ Field handoff timeout — no postMessage in 30s', { level: 'error' });
     }, HANDOFF_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [state.phase]);
@@ -393,7 +393,7 @@ function overlayMessage(state: HandoffState): string {
     case 'tenant-mismatch':
       return `EQ Field expected tenant "${state.expected}" but the sign-in token was for "${state.got}". Switch tenant and try again.`;
     case 'timeout':
-      return "EQ Field didn't respond within 10 seconds. Refresh to retry.";
+      return "EQ Field didn't respond within 30 seconds. Refresh to retry.";
     default:
       return '';
   }

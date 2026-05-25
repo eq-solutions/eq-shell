@@ -241,8 +241,8 @@ function AdminEditUserInner() {
         )}
 
         <p style={{ marginTop: 24, fontSize: 12, color: 'var(--eq-grey)' }}>
-          Role changes take effect on the user's next login. Deactivating
-          a user logs them out on their next request.
+          Role and status changes take effect immediately on the user's next
+          page load. Deactivating a user blocks their next request.
         </p>
       </form>
 
