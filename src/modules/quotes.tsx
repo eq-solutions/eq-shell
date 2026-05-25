@@ -1,26 +1,63 @@
-// Lazy-loaded stub for the Quotes module.
+// Lazy-loaded shell module for EQ Quotes.
 //
-// Quotes currently lives as a standalone Flask app at quotes.eq.solutions.
-// The in-shell module here is a placeholder until Quotes is rebuilt as a
-// React shell module backed by the per-tenant canonical data plane (see
-// docs/ARCHITECTURE-V2.md). Sequencing is driven by what Royce needs next
-// for SKS NSW operations, not by external customer demand.
+// EQ Quotes lives at quotes.eq.solutions (standalone Flask app today). The
+// in-shell rebuild is a Phase 3+ item — sequenced after Field unification.
+// Until then this module is a deliberate, useful pointer rather than a
+// "Coming soon" stub that lands trial users in a dead end.
+//
+// Trial users don't see this tile at all (TenantHome hides it for tier='trial').
+// Paying tiers see this surface and can jump straight to the standalone app.
 
-import ComingSoon from '../pages/ComingSoon';
+import { HubLayout } from '../components/HubLayout';
+
+const STANDALONE_URL = 'https://quotes.eq.solutions';
 
 export default function QuotesModule() {
   return (
-    <ComingSoon
-      module="Quotes"
-      description="EQ Quotes will reuse the v1 Flask pilot's logic — scope tree, rate library, labour curve — rebuilt as a React shell module backed by the canonical schema."
-      features={[
-        'Scope tree builder with rate-library autocomplete',
-        'Labour-curve estimator (defaults from historical jobs)',
-        'PDF + Outlook draft export',
-        'Cross-app: quote a defect from EQ Service in one click',
-        'Cross-app: pull staff costs from EQ Field per assignment',
-      ]}
-      eta="Standalone today at quotes.eq.solutions. In-shell rebuild sequenced after the per-tenant data plane migration completes."
-    />
+    <HubLayout>
+      <div className="eq-page__header">
+        <h1 className="eq-page__title">EQ Quotes</h1>
+        <p className="eq-page__lede">
+          Build quotes, manage your rate library, and send proposals.
+        </p>
+      </div>
+
+      <div
+        style={{
+          maxWidth: 640,
+          padding: 24,
+          border: '1px solid #EAF5FB',
+          borderRadius: 12,
+          background: '#fff',
+        }}
+      >
+        <p style={{ margin: '0 0 16px', color: '#1A1A2E' }}>
+          EQ Quotes runs as a separate app at{' '}
+          <a
+            href={STANDALONE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#2986B4', fontWeight: 500 }}
+          >
+            quotes.eq.solutions
+          </a>
+          . Sign in with the same email you use here.
+        </p>
+        <p style={{ margin: '0 0 24px', fontSize: 14, color: '#1A1A2E', opacity: 0.7 }}>
+          We're rebuilding Quotes as a shell module backed by your tenant's
+          data plane. Until that lands, the standalone app keeps doing the
+          job — same data, same login.
+        </p>
+        <a
+          href={STANDALONE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="eq-btn"
+          style={{ display: 'inline-block' }}
+        >
+          Open EQ Quotes →
+        </a>
+      </div>
+    </HubLayout>
   );
 }

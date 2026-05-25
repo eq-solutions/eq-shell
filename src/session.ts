@@ -7,7 +7,7 @@
 
 import { createContext, useContext } from 'react';
 
-export type EqTier = 'standard' | 'advanced' | 'enterprise';
+export type EqTier = 'trial' | 'standard' | 'advanced' | 'enterprise';
 
 export interface Tenant {
   id: string;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useSession, moduleEnabled } from '../session';
+import { useSession, moduleEnabled, type EqTier } from '../session';
 import { createSupabaseClient } from '../lib/supabaseJwt';
 import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
 import { Skeleton } from '../components/Skeleton';
@@ -24,11 +24,15 @@ interface IntakeEvent {
   started_at: string;
 }
 
-const HUB_APPS: { key: string; label: string; to: string; isBeta: boolean }[] = [
+// `hideForTier` lets us hide tiles for tiers where the module isn't trial-grade.
+// Today: trial users don't see Quotes (the in-shell Quotes module is just a
+// pointer to the standalone Flask pilot — confusing for new users) and don't
+// see Service (the Next.js app is still in active development).
+const HUB_APPS: { key: string; label: string; to: string; isBeta: boolean; hideForTier?: EqTier[] }[] = [
+  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: false },
   { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
-  { key: 'service', label: 'EQ Service', to: 'service', isBeta: false },
-  { key: 'quotes',  label: 'EQ Quotes',  to: 'quotes',  isBeta: false },
-  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: true  },
+  { key: 'service', label: 'EQ Service', to: 'service', isBeta: true,  hideForTier: ['trial'] },
+  { key: 'quotes',  label: 'EQ Quotes',  to: 'quotes',  isBeta: false, hideForTier: ['trial'] },
 ];
 
 const APP_DESCRIPTIONS: Record<string, string> = {
@@ -118,19 +122,24 @@ export default function TenantHome() {
 
   // Build sidebar apps — counts wired up as cross-app RPCs are added.
   // Field shows staff total for now; operational counts (on shift, open defects) come later.
-  const sidebarApps: HubApp[] = HUB_APPS
+  // Trial-tier users don't see modules that aren't trial-grade yet (Service in
+  // active dev, Quotes is just a pointer to the standalone pilot).
+  const tier: EqTier = session.tenant.tier;
+  const visibleApps = HUB_APPS
     .filter((a) => moduleEnabled(session, a.key))
-    .map((a) => ({
-      key: a.key,
-      label: a.label,
-      to: a.to,
-      isBeta: a.isBeta,
-      count: a.key === 'field' ? staffCount : null,
-      hasAlert: false,
-      icon: HUB_APP_ICONS[a.key],
-    }));
+    .filter((a) => !a.hideForTier?.includes(tier));
 
-  const enabledApps = HUB_APPS.filter((a) => moduleEnabled(session, a.key));
+  const sidebarApps: HubApp[] = visibleApps.map((a) => ({
+    key: a.key,
+    label: a.label,
+    to: a.to,
+    isBeta: a.isBeta,
+    count: a.key === 'field' ? staffCount : null,
+    hasAlert: false,
+    icon: HUB_APP_ICONS[a.key],
+  }));
+
+  const enabledApps = visibleApps;
 
   return (
     <div className="eq-hub">
