@@ -142,42 +142,13 @@ export default function LoginPage() {
 
   return (
     <div className="eq-login-page">
-      <aside className="eq-login-hero">
-        <header className="eq-login-hero__top">
-          <EqLogo size={32} onDark variant="wordmark" />
-        </header>
-        <div className="eq-login-hero__main">
-          <span className="eq-login-hero__eyebrow">
-            <span className="eq-login-hero__eyebrow-dot" />
-            BUILT IN SYDNEY · FOR AUSTRALIAN BUSINESSES
-          </span>
-          <h1 className="eq-login-hero__headline">
-            The operating system for businesses that <span className="eq-login-hero__accent">actually do the work.</span>
-          </h1>
-          <p className="eq-login-hero__sub">
-            EQ is a modular suite. Start with rostering. Add quoting. Add service. Add assets.
-            One login, one set of data, one bill. Pay for what you use — nothing you don't.
-          </p>
-          <div className="eq-login-hero__trust">
-            <span>Pick a module. Trial it free. Keep what works.</span>
-            <span className="eq-login-hero__trust-sep">·</span>
-            <span>Data stays in Australia</span>
-            <span className="eq-login-hero__trust-sep">·</span>
-            <span>Built for operators, by operators</span>
-          </div>
-        </div>
-        <footer className="eq-login-hero__foot">
-          © EQ Solutions · {new Date().getFullYear()} · core.eq.solutions
-        </footer>
-      </aside>
-
-      <div className="eq-login-form-wrap">
-        <div className="eq-login-form">
-          <div className="eq-login-mobile-brand">
+      <div className="eq-login-card-wrap">
+        <div className="eq-login-card">
+          <div className="eq-login-card__brand">
             <EqLogo size={28} variant="wordmark" />
           </div>
 
-          <h2>Sign in</h2>
+          <h2 className="eq-login-card__title">Sign in</h2>
 
           <div className="eq-login-tabs" role="tablist">
             <button
@@ -202,106 +173,116 @@ export default function LoginPage() {
 
           {mode === 'email' && (
             <form onSubmit={onEmailSubmit}>
-              <p className="lede">Use your work email and PIN.</p>
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="username"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <label htmlFor="pin">PIN</label>
-              <input
-                id="pin"
-                type="password"
-                autoComplete="current-password"
-                inputMode="numeric"
-                required
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-              />
+              <div className="eq-login-field">
+                <label htmlFor="email" className="eq-login-label">Email</label>
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="username"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="eq-login-input"
+                />
+              </div>
+              <div className="eq-login-field">
+                <label htmlFor="pin" className="eq-login-label">PIN</label>
+                <input
+                  id="pin"
+                  type="password"
+                  autoComplete="current-password"
+                  inputMode="numeric"
+                  required
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  className="eq-login-input"
+                />
+              </div>
               <button
                 type="submit"
-                className="eq-btn-primary"
+                className="eq-login-submit"
                 disabled={busy || !email || !pin}
               >
-                {busy ? 'Signing in…' : 'Sign in →'}
+                {busy ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
           )}
 
           {mode === 'phone' && phoneStep === 'number' && (
             <form onSubmit={onSendCode}>
-              <p className="lede">We'll send a 6-digit code to your mobile.</p>
-              <label htmlFor="mobile">Mobile number</label>
-              <input
-                id="mobile"
-                type="tel"
-                autoComplete="tel"
-                placeholder="0412 345 678"
-                required
-                value={phoneRaw}
-                onChange={(e) => setPhoneRaw(e.target.value)}
-              />
+              <div className="eq-login-field">
+                <label htmlFor="mobile" className="eq-login-label">Mobile number</label>
+                <input
+                  id="mobile"
+                  type="tel"
+                  autoComplete="tel"
+                  placeholder="0412 345 678"
+                  required
+                  value={phoneRaw}
+                  onChange={(e) => setPhoneRaw(e.target.value)}
+                  className="eq-login-input"
+                />
+              </div>
               <button
                 type="submit"
-                className="eq-btn-primary"
+                className="eq-login-submit"
                 disabled={busy || !phoneRaw.trim()}
               >
-                {busy ? 'Sending…' : 'Send code →'}
+                {busy ? 'Sending…' : 'Send code'}
               </button>
             </form>
           )}
 
           {mode === 'phone' && phoneStep === 'code' && (
             <form onSubmit={onVerifyCode}>
-              <p className="lede">
+              <p className="eq-login-hint">
                 Code sent to {phoneNormalized}.{' '}
                 <button
                   type="button"
                   className="eq-login-back-link"
-                  onClick={() => {
-                    setPhoneStep('number');
-                    setOtp('');
-                    setErr(null);
-                  }}
+                  onClick={() => { setPhoneStep('number'); setOtp(''); setErr(null); }}
                 >
-                  Change number
+                  Change
                 </button>
               </p>
-              <label htmlFor="otp">6-digit code</label>
-              <input
-                id="otp"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                required
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              />
+              <div className="eq-login-field">
+                <label htmlFor="otp" className="eq-login-label">6-digit code</label>
+                <input
+                  id="otp"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  required
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="eq-login-input"
+                />
+              </div>
               <button
                 type="submit"
-                className="eq-btn-primary"
+                className="eq-login-submit"
                 disabled={busy || otp.length !== 6}
               >
-                {busy ? 'Signing in…' : 'Sign in →'}
+                {busy ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
           )}
 
           {err && (
-            <div className="eq-err" role="alert">
+            <div className="eq-err" role="alert" style={{ marginTop: 16 }}>
               {err}
             </div>
           )}
 
-          <p className="eq-login-form__foot">
-            Don't have access? Talk to your EQ admin.
+          <p className="eq-login-card__foot">
+            No access? Contact your administrator.
           </p>
         </div>
+
+        <p className="eq-login-page__copy">
+          © EQ Solutions · {new Date().getFullYear()}
+        </p>
       </div>
     </div>
   );
