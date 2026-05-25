@@ -1,7 +1,4 @@
-// LoginPage — echoes eq.solutions marketing aesthetic.
-// Dark navy left, white sign-in card right. Sky used as accent only.
-
-import { useState, type FormEvent } from 'react';
+import React, { useState, useRef, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import { useSession } from '../session';
@@ -11,7 +8,6 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 // Stateless anon client for OTP calls — no session, no auto-refresh.
-// Created fresh per call so the sign-in page has no persistent Supabase state.
 function makeAnonClient() {
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -19,7 +15,6 @@ function makeAnonClient() {
 }
 
 // Normalize an AU mobile to E.164 (+61XXXXXXXXX).
-// Accepts: 0412 345 678 · +61 412 345 678 · 412345678
 function normalizeAuPhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, '');
   if (raw.startsWith('+61') && digits.length === 11) return raw;
@@ -37,9 +32,16 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Email + PIN
+  // Email + 4-box PIN
   const [email, setEmail] = useState('');
-  const [pin, setPin] = useState('');
+  const [pinDigits, setPinDigits] = useState(['', '', '', '']);
+  const [staySignedIn, setStaySignedIn] = useState(false);
+  const [showForgotPin, setShowForgotPin] = useState(false);
+  const pinRef0 = useRef<HTMLInputElement>(null);
+  const pinRef1 = useRef<HTMLInputElement>(null);
+  const pinRef2 = useRef<HTMLInputElement>(null);
+  const pinRef3 = useRef<HTMLInputElement>(null);
+  const pinRefs = [pinRef0, pinRef1, pinRef2, pinRef3];
 
   // Phone OTP
   const [phoneRaw, setPhoneRaw] = useState('');
@@ -52,8 +54,26 @@ export default function LoginPage() {
     setErr(null);
   }
 
+  function onPinChange(index: number, value: string) {
+    const digit = value.replace(/\D/g, '').slice(-1);
+    const next = [...pinDigits];
+    next[index] = digit;
+    setPinDigits(next);
+    if (digit && index < 3) {
+      pinRefs[index + 1].current?.focus();
+    }
+  }
+
+  function onPinKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Backspace' && !pinDigits[index] && index > 0) {
+      pinRefs[index - 1].current?.focus();
+    }
+  }
+
   async function onEmailSubmit(e: FormEvent) {
     e.preventDefault();
+    const pin = pinDigits.join('');
+    if (pin.length < 4) return;
     setBusy(true);
     setErr(null);
     try {
@@ -61,7 +81,7 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, pin }),
+        body: JSON.stringify({ email, pin, persist: staySignedIn }),
       });
       const body = (await res.json()) as
         | { valid: true; tenant: { slug: string } }
@@ -128,7 +148,7 @@ export default function LoginPage() {
         | { valid: true; tenant: { slug: string } }
         | { valid: false };
       if (!body.valid) {
-        setErr("No account found for that mobile number. Contact your admin.");
+        setErr('No account found for that mobile number. Contact your admin.');
         setBusy(false);
         return;
       }
@@ -140,144 +160,200 @@ export default function LoginPage() {
     }
   }
 
+  const pin = pinDigits.join('');
+
   return (
     <div className="eq-login-page">
       <div className="eq-login-card-wrap">
-        <div className="eq-login-card">
-          <div className="eq-login-card__brand">
-            <EqLogo size={28} variant="wordmark" />
-          </div>
+        <div className="eq-login-split">
 
-          <h2 className="eq-login-card__title">Sign in</h2>
-
-          <div className="eq-login-tabs" role="tablist">
-            <button
-              role="tab"
-              type="button"
-              aria-selected={mode === 'email'}
-              className={`eq-login-tab${mode === 'email' ? ' eq-login-tab--active' : ''}`}
-              onClick={() => switchMode('email')}
-            >
-              Email
-            </button>
-            <button
-              role="tab"
-              type="button"
-              aria-selected={mode === 'phone'}
-              className={`eq-login-tab${mode === 'phone' ? ' eq-login-tab--active' : ''}`}
-              onClick={() => switchMode('phone')}
-            >
-              Mobile
-            </button>
-          </div>
-
-          {mode === 'email' && (
-            <form onSubmit={onEmailSubmit}>
-              <div className="eq-login-field">
-                <label htmlFor="email" className="eq-login-label">Email</label>
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="username"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="eq-login-input"
-                />
-              </div>
-              <div className="eq-login-field">
-                <label htmlFor="pin" className="eq-login-label">PIN</label>
-                <input
-                  id="pin"
-                  type="password"
-                  autoComplete="current-password"
-                  inputMode="numeric"
-                  required
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  className="eq-login-input"
-                />
-              </div>
-              <button
-                type="submit"
-                className="eq-login-submit"
-                disabled={busy || !email || !pin}
-              >
-                {busy ? 'Signing in…' : 'Sign in'}
-              </button>
-            </form>
-          )}
-
-          {mode === 'phone' && phoneStep === 'number' && (
-            <form onSubmit={onSendCode}>
-              <div className="eq-login-field">
-                <label htmlFor="mobile" className="eq-login-label">Mobile number</label>
-                <input
-                  id="mobile"
-                  type="tel"
-                  autoComplete="tel"
-                  placeholder="0412 345 678"
-                  required
-                  value={phoneRaw}
-                  onChange={(e) => setPhoneRaw(e.target.value)}
-                  className="eq-login-input"
-                />
-              </div>
-              <button
-                type="submit"
-                className="eq-login-submit"
-                disabled={busy || !phoneRaw.trim()}
-              >
-                {busy ? 'Sending…' : 'Send code'}
-              </button>
-            </form>
-          )}
-
-          {mode === 'phone' && phoneStep === 'code' && (
-            <form onSubmit={onVerifyCode}>
-              <p className="eq-login-hint">
-                Code sent to {phoneNormalized}.{' '}
-                <button
-                  type="button"
-                  className="eq-login-back-link"
-                  onClick={() => { setPhoneStep('number'); setOtp(''); setErr(null); }}
-                >
-                  Change
-                </button>
-              </p>
-              <div className="eq-login-field">
-                <label htmlFor="otp" className="eq-login-label">6-digit code</label>
-                <input
-                  id="otp"
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  required
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="eq-login-input"
-                />
-              </div>
-              <button
-                type="submit"
-                className="eq-login-submit"
-                disabled={busy || otp.length !== 6}
-              >
-                {busy ? 'Signing in…' : 'Sign in'}
-              </button>
-            </form>
-          )}
-
-          {err && (
-            <div className="eq-err" role="alert" style={{ marginTop: 16 }}>
-              {err}
+          {/* Dark left panel */}
+          <div className="eq-login-left">
+            <div className="eq-login-left__brand">
+              <EqLogo size={28} variant="wordmark" onDark />
             </div>
-          )}
+            <p className="eq-login-left__eyebrow">EQ Shell</p>
+            <h1 className="eq-login-left__heading">
+              Your tools.<br /><strong>One sign-in.</strong>
+            </h1>
+            <ul className="eq-login-left__apps">
+              <li>Field</li>
+              <li>Service</li>
+              <li>Quotes</li>
+              <li>Cards</li>
+            </ul>
+          </div>
 
-          <p className="eq-login-card__foot">
-            No access? Contact your administrator.
-          </p>
+          {/* White right panel */}
+          <div className="eq-login-right">
+            <p className="eq-login-right__eyebrow">Sign in</p>
+            <h2 className="eq-login-right__title">Welcome back.</h2>
+            <p className="eq-login-right__sub">
+              Use the email or mobile linked to your account.
+            </p>
+
+            <div className="eq-login-tabs" role="tablist">
+              <button
+                role="tab"
+                type="button"
+                aria-selected={mode === 'email'}
+                className={`eq-login-tab${mode === 'email' ? ' eq-login-tab--active' : ''}`}
+                onClick={() => switchMode('email')}
+              >
+                Email
+              </button>
+              <button
+                role="tab"
+                type="button"
+                aria-selected={mode === 'phone'}
+                className={`eq-login-tab${mode === 'phone' ? ' eq-login-tab--active' : ''}`}
+                onClick={() => switchMode('phone')}
+              >
+                Mobile
+              </button>
+            </div>
+
+            {mode === 'email' && (
+              <form onSubmit={onEmailSubmit}>
+                <div className="eq-login-field">
+                  <label htmlFor="email" className="eq-login-label">Email</label>
+                  <input
+                    id="email"
+                    type="email"
+                    autoComplete="username"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="eq-login-input"
+                  />
+                </div>
+
+                <div className="eq-login-field">
+                  <div className="eq-login-pin-header">
+                    <span className="eq-login-label" style={{ margin: 0 }}>PIN</span>
+                    <button
+                      type="button"
+                      className="eq-login-pin-forgot"
+                      onClick={() => setShowForgotPin((p) => !p)}
+                    >
+                      Forgot PIN?
+                    </button>
+                  </div>
+                  {showForgotPin && (
+                    <p style={{ fontSize: 12, color: 'var(--gray-500)', margin: '0 0 8px' }}>
+                      Ask your administrator to send you a reset link.
+                    </p>
+                  )}
+                  <div className="eq-login-pin-row">
+                    {pinRefs.map((ref, i) => (
+                      <input
+                        key={i}
+                        ref={ref}
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete={i === 0 ? 'current-password' : 'off'}
+                        maxLength={1}
+                        value={pinDigits[i]}
+                        onChange={(e) => onPinChange(i, e.target.value)}
+                        onKeyDown={(e) => onPinKeyDown(i, e)}
+                        className="eq-login-pin-box"
+                        disabled={busy}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <label className="eq-login-stay">
+                  <input
+                    type="checkbox"
+                    checked={staySignedIn}
+                    onChange={(e) => setStaySignedIn(e.target.checked)}
+                    disabled={busy}
+                  />
+                  Stay signed in on this device
+                </label>
+
+                <button
+                  type="submit"
+                  className="eq-login-submit"
+                  disabled={busy || !email || pin.length < 4}
+                >
+                  {busy ? 'Signing in…' : 'Sign in to the Shell →'}
+                </button>
+              </form>
+            )}
+
+            {mode === 'phone' && phoneStep === 'number' && (
+              <form onSubmit={onSendCode}>
+                <div className="eq-login-field">
+                  <label htmlFor="mobile" className="eq-login-label">Mobile number</label>
+                  <input
+                    id="mobile"
+                    type="tel"
+                    autoComplete="tel"
+                    placeholder="0412 345 678"
+                    required
+                    value={phoneRaw}
+                    onChange={(e) => setPhoneRaw(e.target.value)}
+                    className="eq-login-input"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="eq-login-submit"
+                  disabled={busy || !phoneRaw.trim()}
+                >
+                  {busy ? 'Sending…' : 'Send code'}
+                </button>
+              </form>
+            )}
+
+            {mode === 'phone' && phoneStep === 'code' && (
+              <form onSubmit={onVerifyCode}>
+                <p className="eq-login-hint">
+                  Code sent to {phoneNormalized}.{' '}
+                  <button
+                    type="button"
+                    className="eq-login-back-link"
+                    onClick={() => { setPhoneStep('number'); setOtp(''); setErr(null); }}
+                  >
+                    Change
+                  </button>
+                </p>
+                <div className="eq-login-field">
+                  <label htmlFor="otp" className="eq-login-label">6-digit code</label>
+                  <input
+                    id="otp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    required
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="eq-login-input"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="eq-login-submit"
+                  disabled={busy || otp.length !== 6}
+                >
+                  {busy ? 'Signing in…' : 'Sign in to the Shell →'}
+                </button>
+              </form>
+            )}
+
+            {err && (
+              <div className="eq-err" role="alert" style={{ marginTop: 16 }}>
+                {err}
+              </div>
+            )}
+
+            <p className="eq-login-foot">
+              No access yet? Contact your administrator.
+            </p>
+          </div>
         </div>
 
         <p className="eq-login-page__copy">
