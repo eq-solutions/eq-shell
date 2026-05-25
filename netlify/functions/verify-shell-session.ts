@@ -71,21 +71,25 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(401, { valid: false });
   }
 
-  const { data: tenant, error: tenantErr } = await sb
-    .from('tenants')
-    .select('id, slug, name, brand_color, brand_logo_url, tier, active')
-    .eq('id', user.tenant_id)
-    .maybeSingle<CanonicalTenant>();
+  const [
+    { data: tenant, error: tenantErr },
+    { data: entitlements },
+  ] = await Promise.all([
+    sb
+      .from('tenants')
+      .select('id, slug, name, brand_color, brand_logo_url, tier, active')
+      .eq('id', user.tenant_id)
+      .maybeSingle<CanonicalTenant>(),
+    sb
+      .from('module_entitlements')
+      .select('module, enabled')
+      .eq('tenant_id', user.tenant_id)
+      .returns<CanonicalEntitlement[]>(),
+  ]);
 
   if (tenantErr || !tenant || !tenant.active) {
     return jsonResponse(401, { valid: false });
   }
-
-  const { data: entitlements } = await sb
-    .from('module_entitlements')
-    .select('module, enabled')
-    .eq('tenant_id', tenant.id)
-    .returns<CanonicalEntitlement[]>();
 
   // Mint a fresh Supabase JWT on every session-verify. JWT TTL is short
   // (15min post-1.F) so periodic refresh on route mounts keeps the

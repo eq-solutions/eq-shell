@@ -101,6 +101,25 @@ export function clearSupabaseJwt(): void {
 }
 
 /**
+ * Seed the in-memory JWT cache from an already-signed token (e.g. the
+ * supabase_jwt returned by verify-shell-session). Decodes the payload to
+ * extract `exp` so freshness checks work without a round-trip to
+ * mint-supabase-jwt. Ignores malformed tokens silently.
+ */
+export function seedSupabaseJwtCache(token: string): void {
+  try {
+    const payload = JSON.parse(
+      atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')),
+    ) as { exp?: unknown };
+    if (typeof payload.exp === 'number' && payload.exp - nowSeconds() > REFRESH_BUFFER_SECONDS) {
+      cached = { token, exp: payload.exp };
+    }
+  } catch {
+    // Malformed token — leave cache unchanged.
+  }
+}
+
+/**
  * Build a Supabase JS client wired up to use the cached JWT.
  *
  * The client refreshes the token via a global fetch interceptor — on
