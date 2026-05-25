@@ -252,6 +252,12 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     console.error('[cards-api] dispatch failed', { op, error: (e as Error).message });
     return json(500, { ok: false, error: 'internal_error', detail: (e as Error).message });
   }
+
+  // Unreachable in practice — every op case above returns. Belt-and-braces
+  // for TS exhaustiveness: if a new op is added to READ_OPS / WRITE_OPS
+  // without a switch case, this 500 ships rather than a silent undefined.
+  console.error('[cards-api] op handled none of the switch cases', { op });
+  return json(500, { ok: false, error: 'internal_error', detail: `op '${op}' has no handler` });
 });
 
 interface PartialResponse { status: number; body: ErrBody }
