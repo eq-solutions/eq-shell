@@ -552,10 +552,32 @@ land in the right tenant DB + audit row shows `completed`).
 - [x] **Jobs module deleted** (PR #36, 2026-05-24) — Royce chose option 1 (delete)
 - [x] **Dropped `app_data` schema from shared `eq-canonical`** via MCP after PR #36 merge (2026-05-24). Also dropped 6 dead dispatchers (`public.eq_intake_commit_batch` + its 5 per-module variants). Surviving schemas: auth, extensions, graphql, graphql_public, public, realtime, **shell_control**, storage, supabase_migrations, vault.
 - [x] **Hotfix — clean up `app_data` leftovers** (PR after #38, migration `2026_05_24d_post_drop_app_data_cleanup.sql`). The DROP CASCADE missed two artefacts that took prod login down for ~20 min: (a) 12 stale `public.*` functions whose bodies still referenced `app_data.*` tables (e.g. `eq_cards_list_my_licences`, `eq_browse_entity`, the five `_eq_intake_unwind_*`), and (b) `app_data` was still in the project's PostgREST exposed-schemas config. Both made PostgREST's schema-cache load throw `schema "app_data" does not exist` and return 503 on every REST call. Fix: dropped the 12 functions + recreated `app_data` as an empty schema (belt-and-braces) and removed it from the dashboard exposed list. Lesson for future schema drops: the pre-flight checklist also needs to grep `pg_proc.prosrc ILIKE '%<schema>%'` and check the project's PostgREST exposed-schemas list, not just `.schema('app_data')` in source code.
+- [x] **Final cleanup — DROP empty `app_data` schema** (2026-05-25, migration `2026_05_25_drop_empty_app_data.sql`). After Royce removed `app_data` from PostgREST's exposed-schemas list in the Supabase dashboard (the manual step that couldn't ship via SQL), the empty schema kept as a belt-and-braces no-op by 24d was dropped via MCP. Pre-flight verified `pg_class` join returned 0 objects in `app_data`. Surviving schemas on shared `eq-canonical`: auth, extensions, graphql, graphql_public, public, realtime, **shell_control**, storage, supabase_migrations, vault.
 - [ ] Update CLAUDE.md and runbooks — defer, no urgency
 - [ ] Pen test (independent) — needs an external auditor
 
 **🎉 Per-tenant data-plane cutover is complete.** Operational data lives exclusively on per-tenant Supabase projects (eq-canonical-internal, sks-canonical). Shared eq-canonical holds only `shell_control` + auth + storage.
+
+---
+
+## Phase 2 close-out (2026-05-25)
+
+**Architecture build complete.** Three sessions ran in sequence:
+
+1. **2026-05-24 morning** — Phase 2.B.7: deleted Jobs module, dropped shared `app_data CASCADE`. Caused a 20-min prod login outage from leftover PGRST artefacts (orphan functions + dashboard exposed-schemas config). Captured fix in `2026_05_24d_post_drop_app_data_cleanup.sql`.
+2. **2026-05-24 evening** — Security audit Block 1: 6 headers + CSP (frame-ancestors 'none' on the auth hub), `EQ_SECRET_SALT` fail-loud, rate-limit fail-closed, bcrypt 10 → 12, phone-OTP gated behind `ENABLE_PHONE_OTP=true`. Shipped as PR #40.
+3. **2026-05-25** — Security audit Block 2: uniform `400 invalid-reset` on accept-pin-reset (collapses bad-PIN / token-not-found / user-not-found side channel), uniform `403 forbidden` on reset-user-pin, **per-app tenant scope on `canonical-api`** (leaked bearer key no longer hops tenants — Field allow-listed to `{eq, sks, demo-trades, melbourne}`, others remain `'*'` for now until `shell_control.app_tenant_scope` table is built). New repo-root [SECURITY-PATTERNS.md](../SECURITY-PATTERNS.md) — 10 standards every future EQ app inherits. Shipped as PR #42. Final follow-up migration to drop the now-empty `app_data` shipped as PR #43.
+
+**Outstanding (not blocking Phase 3+ work):**
+
+| Item | Owner | Notes |
+|---|---|---|
+| OPS 1 — `licence-photos` bucket RLS check on eq-canonical-internal | Royce (Supabase dashboard, manual) | Storage policy must enforce `(storage.foldername(name))[1] = (auth.jwt() -> 'app_metadata' ->> 'tenant_id')`. Only thing preventing cross-tenant photo access. |
+| OPS 2 — Set `EQ_SECRET_SALT` on eq-solves-service Netlify env | Royce (Netlify dashboard, manual) | **Verified missing 2026-05-25.** `app/api/shell-auth/route.ts` reads `process.env.EQ_SECRET_SALT` and returns `500 misconfigured` if absent. Shell → Service SSO silently breaks until set. Value must match Shell / Field / Cards. |
+| Independent pen test | Royce / external auditor | Block 1 + 2 reduced the obvious surface; an independent pass is the right next gate before any external customer touches the suite. |
+| Cards mobile smoke (deferred from Phase 2.B.6 sprint) | Royce + Claude paired | Flutter web build is in the runbook; needs a paired live walkthrough to confirm the licence-photo upload round-trips through `cards-api` → tenant storage. |
+
+**Next planned arc:** Field unification — see [FIELD-UNIFICATION-PLAN.md](FIELD-UNIFICATION-PLAN.md). F1 (skeleton + routing) is blocked on Royce's SKS prestart/toolbox port landing first; once that's in, re-run the EQ-only/SKS-only audit and compare SKS `prestart_checks` / `toolbox_talks` shapes against tenant migration `0011_intake_field_rpc.sql`.
 
 **Schema drop checklist** (when ready):
 1. Final grep: `Grep "\\.schema\\('app_data'\\)" src/ netlify/functions/` returns ZERO blocking matches (only comments / scripts).
