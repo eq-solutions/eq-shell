@@ -103,7 +103,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
            ?? 'unknown';
   const rlKey = `login::${ip}`;
 
-  const { data: rlResult, error: rlErr } = await sb.rpc('check_and_increment_rate_limit', {
+  const { data: rlResult, error: rlErr } = await sb.schema('public').rpc('check_and_increment_rate_limit', {
     p_key: rlKey,
   });
   if (rlErr) {
@@ -149,14 +149,14 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   }
   if (!user || !user.pin_hash) {
     logShellLogin(req, email, 'failed', 'no-user-or-no-pin');
-    void sb.rpc('eq_write_audit_log', { p_event: 'login.failed', p_ip: ip, p_detail: { reason: 'no-user-or-no-pin' } });
+    void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.failed', p_ip: ip, p_detail: { reason: 'no-user-or-no-pin' } });
     return jsonResponse(200, { valid: false });
   }
 
   const pinOk = await bcrypt.compare(pin, user.pin_hash);
   if (!pinOk) {
     logShellLogin(req, email, 'failed', 'bad-pin');
-    void sb.rpc('eq_write_audit_log', { p_event: 'login.failed', p_ip: ip, p_detail: { reason: 'bad-pin' } });
+    void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.failed', p_ip: ip, p_detail: { reason: 'bad-pin' } });
     return jsonResponse(200, { valid: false });
   }
 
@@ -192,10 +192,10 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   // Clear the rate-limit bucket on successful login so the user's
   // next session starts with a clean slate. Best-effort — non-fatal.
-  void sb.rpc('clear_rate_limit', { p_key: rlKey });
+  void sb.schema('public').rpc('clear_rate_limit', { p_key: rlKey });
 
   logShellLogin(req, email, 'success');
-  void sb.rpc('eq_write_audit_log', { p_event: 'login.success', p_actor_id: user.id, p_tenant_id: tenant.id, p_ip: ip, p_detail: { role: user.role } });
+  void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.success', p_actor_id: user.id, p_tenant_id: tenant.id, p_ip: ip, p_detail: { role: user.role } });
 
   // Sign the session cookie.
   // Phase 1.F: payload carries the 5-tier role + is_platform_admin so

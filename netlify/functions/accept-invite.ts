@@ -188,7 +188,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   const inviteIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
                  ?? req.headers.get('client-ip')
                  ?? 'unknown';
-  void sb.rpc('eq_write_audit_log', { p_event: 'invite.accepted', p_actor_id: created.id, p_tenant_id: invite.tenant_id, p_ip: inviteIp, p_detail: { role: created.role } });
+  void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'invite.accepted', p_actor_id: created.id, p_tenant_id: invite.tenant_id, p_ip: inviteIp, p_detail: { role: created.role } });
 
   // Hydrate tenant for the response.
   const { data: tenant } = await sb

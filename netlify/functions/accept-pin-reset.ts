@@ -131,7 +131,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
            ?? req.headers.get('client-ip')
            ?? 'unknown';
-  void sb.rpc('eq_write_audit_log', { p_event: 'pin.reset.accepted', p_actor_id: user.id, p_tenant_id: user.tenant_id, p_ip: ip, p_detail: {} });
+  void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'pin.reset.accepted', p_actor_id: user.id, p_tenant_id: user.tenant_id, p_ip: ip, p_detail: {} });
 
   const { data: tenant } = await sb
     .from('tenants')

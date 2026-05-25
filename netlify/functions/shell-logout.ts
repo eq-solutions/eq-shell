@@ -46,7 +46,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
                ?? req.headers.get('client-ip')
                ?? 'unknown';
-      void sb.rpc('eq_write_audit_log', { p_event: 'logout', p_actor_id: session.user_id, p_tenant_id: session.tenant_id, p_ip: ip, p_detail: {} });
+      void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'logout', p_actor_id: session.user_id, p_tenant_id: session.tenant_id, p_ip: ip, p_detail: {} });
     } catch {
       // Non-fatal — proceed with cookie clear regardless.
     }

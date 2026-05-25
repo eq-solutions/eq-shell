@@ -142,7 +142,7 @@ This link expires in ${RESET_TTL_HOURS} hours. If you didn't expect this, ignore
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
            ?? req.headers.get('client-ip')
            ?? 'unknown';
-  void sb.rpc('eq_write_audit_log', { p_event: 'pin.reset', p_actor_id: session.user_id, p_tenant_id: session.tenant_id, p_ip: ip, p_detail: { target_user: target.id } });
+  void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'pin.reset', p_actor_id: session.user_id, p_tenant_id: session.tenant_id, p_ip: ip, p_detail: { target_user: target.id } });
 
   return jsonResponse(200, {
     ok: true,
