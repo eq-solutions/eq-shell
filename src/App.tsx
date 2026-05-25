@@ -27,6 +27,7 @@ import EntityBrowserPage from './pages/EntityBrowserPage';
 import ServiceIframe from './pages/ServiceIframe';
 import StorageBrowser from './pages/StorageBrowser';
 import NotFound from './pages/NotFound';
+import { RouteProgressBar } from './components/RouteProgressBar';
 import './App.css';
 
 // Q5 lock: each module is its own lazy chunk so disabled tenants
@@ -378,6 +379,7 @@ function App() {
   return (
     <SessionProvider>
       <BrowserRouter>
+        <RouteProgressBar />
         <Routes>
           <Route path="/" element={<RootRoute />} />
           {/* Phase 1.F: public invite-accept landing. Lives OUTSIDE

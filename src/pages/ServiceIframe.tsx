@@ -12,9 +12,9 @@ import { Topbar } from '../components/Topbar';
 //   5. Service's /shell page calls supabase.auth.verifyOtp → session set.
 //   6. Service redirects to / — app is live inside the iframe.
 //
-// Because Service is a full Next.js app (not a static site), we get a
-// proper browser-side redirect once the session is established. No
-// postMessage contract is needed — Service handles everything internally.
+// Service signals readiness via postMessage ({ type: 'EQ_SERVICE_READY' })
+// from its (app)/layout.tsx once the session and app shell are established.
+// The onLoad fallback (2 events) catches preview deploys and any missed signals.
 
 const SERVICE_URL = 'https://eq-solves-service.netlify.app';
 
@@ -36,6 +36,7 @@ export default function ServiceIframe() {
   // on initial load; the redirect to / fires again. Two events = auth
   // round-trip completed (success or failure — we can't distinguish
   // cross-origin, but at least we know Service responded).
+  // Used as fallback when the postMessage readiness signal doesn't fire.
   const loadCount = useRef(0);
 
   useEffect(() => {
@@ -85,10 +86,30 @@ export default function ServiceIframe() {
     return () => clearTimeout(timer);
   }, [state.phase]);
 
+  // Prefer postMessage over the onLoad count — Service signals readiness
+  // explicitly once the session and app layout are established.
+  // Falls back to the onLoad count (below) if the message never fires.
+  useEffect(() => {
+    if (state.phase !== 'loading') return;
+    function onMessage(ev: MessageEvent) {
+      if (ev.origin !== SERVICE_URL) return;
+      if (
+        ev.data &&
+        typeof ev.data === 'object' &&
+        ev.data.type === 'EQ_SERVICE_READY'
+      ) {
+        setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [state.phase]);
+
   function onIframeLoad() {
     loadCount.current += 1;
-    // Reveal the iframe after the first load so the /shell auth page
-    // isn't briefly visible before the redirect completes.
+    // Fallback: reveal after 2 onLoad events (initial /shell load + redirect
+    // to /). The postMessage listener above should fire first for new Service
+    // deploys; this catches preview URLs and any case where the signal is missed.
     if (loadCount.current >= 2) {
       setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
     }

@@ -372,6 +372,39 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────
+ * Route progress bar
+ * ────────────────────────────────────────────────────────────────── */
+
+.eq-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: #3DA8D8;
+  z-index: 9999;
+  pointer-events: none;
+  transform-origin: left center;
+}
+
+.eq-progress-bar--running {
+  animation: eq-progress-run 300ms ease-out forwards;
+}
+
+.eq-progress-bar--done {
+  animation: eq-progress-done 200ms ease-out forwards;
+}
+
+@keyframes eq-progress-run {
+  from { width: 0; opacity: 1; }
+  to   { width: 85%; opacity: 1; }
+}
+
+@keyframes eq-progress-done {
+  from { width: 85%; opacity: 1; }
+  to   { width: 100%; opacity: 0; }
+}
+
+/* ──────────────────────────────────────────────────────────────────
  * Topbar
  * ────────────────────────────────────────────────────────────────── */
 

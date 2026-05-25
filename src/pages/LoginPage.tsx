@@ -101,7 +101,7 @@ export default function LoginPage() {
         setBusy(false);
         return;
       }
-      await refresh();
+      void refresh();
       navigate(`/${body.tenant.slug}`, { replace: true });
     } catch {
       setErr('Network error — please try again.');
@@ -162,7 +162,7 @@ export default function LoginPage() {
         setBusy(false);
         return;
       }
-      await refresh();
+      void refresh();
       navigate(`/${body.tenant.slug}`, { replace: true });
     } catch {
       setErr('Network error — please try again.');
