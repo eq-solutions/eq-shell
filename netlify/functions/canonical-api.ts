@@ -488,6 +488,24 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return err(400, 'invalid_tenant', 'tenant slug shape rejected');
   }
 
+  // Per-app tenant scope check. A leaked bearer key authenticates the calling
+  // app — but it must NOT grant access to arbitrary tenants. Each app gets an
+  // explicit allow-list. '*' means cross-tenant (platform tools only).
+  // Temporary hardcoded map — replace with a shell_control.app_tenant_scope
+  // table lookup when app-tenant registration is built.
+  // TODO: replace APP_TENANT_SCOPE with a shell_control.app_tenant_scope table lookup
+  const APP_TENANT_SCOPE: Record<AppIdentity['app'], string[]> = {
+    cards:   ['*'],
+    field:   ['eq', 'sks', 'demo-trades', 'melbourne'],
+    service: ['*'],
+    quotes:  ['*'],
+    shell:   ['*'],
+  };
+  const scope = APP_TENANT_SCOPE[caller.app] ?? [];
+  if (!scope.includes('*') && !scope.includes(tenantSlug)) {
+    return err(403, 'forbidden', 'App not authorised for this tenant');
+  }
+
   if (req.method === 'GET')  return handleGet(req, url, caller, tenantSlug);
   // eslint-disable-line @typescript-eslint/no-unused-vars  (suppress "_req unused" — kept for symmetry + future use)
   if (req.method === 'POST') return handlePost(req, caller, tenantSlug);

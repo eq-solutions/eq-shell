@@ -71,7 +71,9 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(400, { valid: false, error: 'bad-request' });
   }
   if (!isValidPin(pin)) {
-    return jsonResponse(400, { valid: false, error: 'bad-pin' });
+    // Generic response — don't let an attacker distinguish "bad PIN format"
+    // from "bad reset token" by status code or error string.
+    return jsonResponse(400, { valid: false, error: 'invalid-reset' });
   }
 
   const tokenHash = createHash('sha256').update(rawToken).digest('hex');
@@ -93,7 +95,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .maybeSingle<ResetTokenRow>();
 
   if (!tokenRow) {
-    return jsonResponse(404, { valid: false, error: 'token-not-found-or-expired' });
+    return jsonResponse(400, { valid: false, error: 'invalid-reset' });
   }
 
   const { data: user } = await sb
@@ -104,7 +106,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .maybeSingle<Omit<CanonicalUser, 'pin_hash' | 'last_login_at' | 'name'>>();
 
   if (!user) {
-    return jsonResponse(404, { valid: false, error: 'token-not-found-or-expired' });
+    return jsonResponse(400, { valid: false, error: 'invalid-reset' });
   }
 
   const pinHash = await bcrypt.hash(pin, 12);

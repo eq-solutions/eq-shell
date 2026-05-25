@@ -81,7 +81,8 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .maybeSingle<Pick<CanonicalUser, 'id' | 'email' | 'tenant_id' | 'active'>>();
 
   if (!target) {
-    return jsonResponse(404, { ok: false, error: 'user-not-found' });
+    // Generic response — never leak whether a user_id exists.
+    return jsonResponse(403, { ok: false, error: 'forbidden' });
   }
 
   // Managers can only reset users in their own tenant.
@@ -90,7 +91,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   }
 
   if (!target.active) {
-    return jsonResponse(403, { ok: false, error: 'user-inactive' });
+    return jsonResponse(403, { ok: false, error: 'forbidden' });
   }
 
   const rawToken = randomBytes(32).toString('hex');
