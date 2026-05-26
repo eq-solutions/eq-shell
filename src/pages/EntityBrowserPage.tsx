@@ -407,61 +407,79 @@ function EntityDetailDrawer({
           position: 'fixed',
           right: 0,
           top: 0,
-          bottom: 0,
-          width: 'min(520px, 100vw)',
-          background: 'var(--eq-bg)',
-          boxShadow: 'var(--shadow-lg)',
+          height: '100vh',
+          width: 360,
+          background: 'white',
+          borderLeft: '1px solid #E5E7EB',
           zIndex: 51,
+          display: 'flex',
+          flexDirection: 'column',
           overflowY: 'auto',
-          padding: '24px 28px',
         }}
       >
-        <header
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            justifyContent: 'space-between',
-            marginBottom: 8,
-          }}
-        >
-          <span
-            className="eq-pill eq-pill--info"
-            style={{ textTransform: 'uppercase' }}
+        <div style={{ padding: '20px 24px 0' }}>
+          <header
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+            }}
           >
-            {entity}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="eq-btn-ghost"
-            aria-label="Close detail"
-            style={{ padding: '4px 12px' }}
-          >
-            Close ✕
-          </button>
-        </header>
-        <h2
-          style={{
-            fontSize: 22,
-            fontWeight: 700,
-            letterSpacing: '-0.01em',
-            margin: '8px 0 24px',
-            color: 'var(--eq-ink)',
-          }}
-        >
-          {title}
-        </h2>
+            <div>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  color: '#666666',
+                }}
+              >
+                {entity}
+              </span>
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: '#1A1A2E',
+                  marginTop: 2,
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {title}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close detail"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 18,
+                color: '#666666',
+                lineHeight: 1,
+                padding: '4px 6px',
+                flexShrink: 0,
+              }}
+            >
+              ✕
+            </button>
+          </header>
+        </div>
 
-        <dl style={{ margin: 0 }}>
+        <dl style={{ margin: 0, padding: '0 24px 24px', flex: 1 }}>
           {sortedEntries.map(([key, value]) => (
             <div
               key={key}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '170px 1fr',
+                gridTemplateColumns: '140px 1fr',
                 gap: 12,
                 padding: '10px 0',
-                borderBottom: '1px solid var(--gray-200)',
+                borderBottom: '1px solid #E5E7EB',
                 alignItems: 'baseline',
               }}
             >
@@ -469,7 +487,7 @@ function EntityDetailDrawer({
                 style={{
                   fontSize: 11,
                   fontWeight: 600,
-                  color: 'var(--eq-grey)',
+                  color: '#666666',
                   textTransform: 'uppercase',
                   letterSpacing: '0.06em',
                 }}
@@ -480,7 +498,7 @@ function EntityDetailDrawer({
                 style={{
                   margin: 0,
                   fontSize: 14,
-                  color: 'var(--eq-ink)',
+                  color: '#1A1A2E',
                   wordBreak: 'break-word',
                   fontFamily:
                     value === null || typeof value === 'object'
@@ -489,7 +507,7 @@ function EntityDetailDrawer({
                 }}
               >
                 {value === null || value === undefined ? (
-                  <span style={{ color: 'var(--eq-grey)' }}>—</span>
+                  <span style={{ color: '#666666' }}>—</span>
                 ) : typeof value === 'boolean' ? (
                   value ? 'Yes' : 'No'
                 ) : typeof value === 'object' ? (
