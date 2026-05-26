@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
@@ -102,6 +102,7 @@ export default function FieldIframe() {
   const [selectedTenant, setSelectedTenant] = useState<TenantSlug | null>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [state, setState] = useState<HandoffState>({ phase: 'minting' });
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Platform admins see every tenant in the picker; everyone else sees
   // only the tenant that matches their shell session. SKS staff should
@@ -237,6 +238,52 @@ export default function FieldIframe() {
     return () => clearTimeout(timer);
   }, [state.phase]);
 
+  // Respond to token refresh requests from the Field iframe. Field posts
+  // REQUEST_SHELL_TOKEN when its 60s handoff token is near expiry and it
+  // needs a fresh one without a full page reload.
+  useEffect(() => {
+    const expectedOrigin = import.meta.env.VITE_FIELD_URL as string | undefined;
+    async function onMessage(ev: MessageEvent) {
+      if (!ev.data || typeof ev.data !== 'object') return;
+      if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
+      if (expectedOrigin) {
+        if (ev.origin !== expectedOrigin) return;
+      } else {
+        if (import.meta.env.DEV) {
+          console.warn('[FieldIframe] VITE_FIELD_URL not set — accepting REQUEST_SHELL_TOKEN from any origin');
+        }
+      }
+      const origin = expectedOrigin ?? ev.origin;
+      try {
+        const res = await fetch('/.netlify/functions/mint-iframe-token', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_slug: selectedTenant }),
+        });
+        if (!res.ok) {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
+            origin,
+          );
+          return;
+        }
+        const body = (await res.json()) as { token: string };
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'SHELL_TOKEN_RESPONSE', token: body.token },
+          origin,
+        );
+      } catch {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
+          origin,
+        );
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [selectedTenant]);
+
   // Picker — no tenant chosen yet. Auto-select fires via useEffect above
   // for single-option users; show loading state while that fires.
   if (!selectedTenant) {
@@ -282,6 +329,7 @@ export default function FieldIframe() {
       {tenantMeta && <FieldTenantBar tenant={tenantMeta} onSwitch={onSwitch} />}
       {src && (
         <iframe
+          ref={iframeRef}
           className="eq-field-frame eq-field-frame--with-tenantbar"
           style={{ flex: 1, minHeight: 0 }}
           title="EQ Field"

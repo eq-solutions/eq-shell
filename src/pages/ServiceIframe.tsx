@@ -41,6 +41,7 @@ export default function ServiceIframe() {
   // cross-origin, but at least we know Service responded).
   // Used as fallback when the postMessage readiness signal doesn't fire.
   const loadCount = useRef(0);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +109,49 @@ export default function ServiceIframe() {
     return () => window.removeEventListener('message', onMessage);
   }, [state.phase]);
 
+  // Respond to token refresh requests from the Service iframe.
+  useEffect(() => {
+    const expectedOrigin = import.meta.env.VITE_SERVICE_URL as string | undefined;
+    async function onMessage(ev: MessageEvent) {
+      if (!ev.data || typeof ev.data !== 'object') return;
+      if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
+      if (expectedOrigin) {
+        if (ev.origin !== expectedOrigin) return;
+      } else {
+        if (import.meta.env.DEV) {
+          console.warn('[ServiceIframe] VITE_SERVICE_URL not set — accepting REQUEST_SHELL_TOKEN from any origin');
+        }
+      }
+      const origin = expectedOrigin ?? ev.origin;
+      try {
+        const res = await fetch('/.netlify/functions/mint-service-iframe-token', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
+            origin,
+          );
+          return;
+        }
+        const body = (await res.json()) as { token: string };
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'SHELL_TOKEN_RESPONSE', token: body.token },
+          origin,
+        );
+      } catch {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
+          origin,
+        );
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
   function onIframeLoad() {
     loadCount.current += 1;
     // Fallback: reveal after 2 onLoad events (initial /shell load + redirect
@@ -133,6 +177,7 @@ export default function ServiceIframe() {
         )}
         {src && (
           <iframe
+            ref={iframeRef}
             className="eq-service-frame"
             style={state.phase !== 'ready' ? { visibility: 'hidden', position: 'absolute' } : undefined}
             title="EQ Service"

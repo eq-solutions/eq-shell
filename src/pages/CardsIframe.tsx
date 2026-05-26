@@ -52,6 +52,7 @@ export default function CardsIframe() {
   // Incremented by the Retry button to force useEffect re-run.
   const [attempt, setAttempt] = useState(0);
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const clearLoadTimer = () => {
     if (loadTimerRef.current !== null) {
@@ -117,6 +118,48 @@ export default function CardsIframe() {
     return clearLoadTimer;
   }, [phase]);
 
+  // Respond to token refresh requests from the Cards iframe.
+  useEffect(() => {
+    const expectedOrigin = import.meta.env.VITE_CARDS_URL as string | undefined;
+    async function onMessage(ev: MessageEvent) {
+      if (!ev.data || typeof ev.data !== 'object') return;
+      if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
+      if (expectedOrigin) {
+        if (ev.origin !== expectedOrigin) return;
+      } else {
+        if (import.meta.env.DEV) {
+          console.warn('[CardsIframe] VITE_CARDS_URL not set — accepting REQUEST_SHELL_TOKEN from any origin');
+        }
+      }
+      const origin = expectedOrigin ?? ev.origin;
+      try {
+        const res = await fetch('/.netlify/functions/mint-cards-iframe-token', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
+            origin,
+          );
+          return;
+        }
+        const body = (await res.json()) as { token: string };
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'SHELL_TOKEN_RESPONSE', token: body.token },
+          origin,
+        );
+      } catch {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
+          origin,
+        );
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
   const onIframeLoad = () => {
     clearLoadTimer();
     setPhase('ready');
@@ -169,6 +212,7 @@ export default function CardsIframe() {
       )}
       {iframeSrc && (
         <iframe
+          ref={iframeRef}
           className="eq-cards-frame"
           style={{ flex: 1, minHeight: 0 }}
           title="EQ Cards"
