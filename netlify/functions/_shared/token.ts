@@ -209,6 +209,48 @@ export function verifyTenantSelectionToken(token: string | null | undefined): Te
   }
 }
 
+/**
+ * Quotes iframe handshake token — minted by mint-quotes-iframe-token (shell-side).
+ * Validated by EQ Quotes' receiver route once Phase 3 ships.
+ *
+ * Carries full identity so Quotes can establish a session without a round-trip
+ * to canonical. TTL is intentionally 60s — one-shot exchange only.
+ */
+export interface QuotesTokenPayload {
+  kind: 'quotes-token';
+  user_id: string;
+  tenant_id: string;
+  role: EqRole;
+  eq_role: EqRole;
+  is_platform_admin: boolean;
+  name: string | null;
+  exp: number;
+}
+
+export function signQuotesToken(payload: QuotesTokenPayload): string {
+  const json = JSON.stringify(payload);
+  const sig = sign(json);
+  return Buffer.from(json).toString('base64') + '.' + sig;
+}
+
+export function verifyQuotesToken(token: string | null | undefined): QuotesTokenPayload | null {
+  if (!token) return null;
+  try {
+    const [b64, sig] = token.split('.');
+    if (!b64 || !sig) return null;
+    const json = Buffer.from(b64, 'base64').toString();
+    const expected = sign(json);
+    if (!sigsEqual(expected, sig)) return null;
+    const data = JSON.parse(json) as QuotesTokenPayload;
+    if (data.kind !== 'quotes-token') return null;
+    if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
+    if (!data.user_id || !data.tenant_id) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 // Parses the eq_shell_session cookie value out of a Cookie header.
 // Cookie header looks like: "foo=bar; eq_shell_session=<token>; baz=qux".
 export function readSessionCookie(req: Request): string | null {
