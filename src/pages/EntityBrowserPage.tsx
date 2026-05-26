@@ -1,7 +1,7 @@
 // EntityBrowserPage — a generic paged table for any canonical entity.
 // URL: /:tenant/data/:entity (entity is the singular registry name)
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
@@ -184,7 +184,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [detailRow, setDetailRow] = useState<Record<string, unknown> | null>(null);
+  const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
 
   const load = useMemo(
     () => async () => {
@@ -307,7 +307,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
                 filtered.map((r, i) => (
                   <tr
                     key={(r[`${entity}_id`] as string) ?? i}
-                    onClick={() => setDetailRow(r)}
+                    onClick={() => setSelectedRow(r)}
                     style={{ cursor: 'pointer' }}
                   >
                     {view.columns.map((col) => (
@@ -339,12 +339,12 @@ function EntityBrowserInner({ entity }: { entity: string }) {
           </div>
         )}
 
-      {detailRow && (
+      {selectedRow && (
         <EntityDetailDrawer
           entity={entity}
-          row={detailRow}
-          onClose={() => setDetailRow(null)}
-          onMutated={() => { setDetailRow(null); void load(); }}
+          row={selectedRow}
+          onClose={() => setSelectedRow(null)}
+          onMutated={() => { setSelectedRow(null); void load(); }}
           isManager={isManager}
         />
       )}
@@ -374,6 +374,16 @@ function EntityDetailDrawer({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [open, setOpen] = useState(false);
+  const rafRef = useRef<number | null>(null);
+
+  // Trigger the slide-in on mount via a rAF so the initial transform is painted first.
+  useEffect(() => {
+    rafRef.current = requestAnimationFrame(() => setOpen(true));
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   // ESC closes the drawer — keyboard-first.
   useEffect(() => {
@@ -440,8 +450,8 @@ function EntityDetailDrawer({
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(26, 26, 46, 0.4)',
-          zIndex: 50,
+          background: 'rgba(0,0,0,0.3)',
+          zIndex: 40,
         }}
       />
       <aside
@@ -452,13 +462,15 @@ function EntityDetailDrawer({
           right: 0,
           top: 0,
           height: '100vh',
-          width: 360,
+          width: 'min(380px, 100vw)',
           background: 'white',
-          borderLeft: '1px solid #E5E7EB',
-          zIndex: 51,
+          borderLeft: '1px solid #E2E8F0',
+          zIndex: 50,
           display: 'flex',
           flexDirection: 'column',
           overflowY: 'auto',
+          transform: open ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 200ms ease',
         }}
       >
         <div style={{ padding: '20px 24px 0' }}>
@@ -477,7 +489,7 @@ function EntityDetailDrawer({
                   fontWeight: 600,
                   textTransform: 'uppercase',
                   letterSpacing: '0.06em',
-                  color: '#666666',
+                  color: '#64748B',
                 }}
               >
                 {entity}
@@ -503,7 +515,7 @@ function EntityDetailDrawer({
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: 18,
-                color: '#666666',
+                color: '#64748B',
                 lineHeight: 1,
                 padding: '4px 6px',
                 flexShrink: 0,
@@ -520,7 +532,7 @@ function EntityDetailDrawer({
               gap: 8,
               paddingBottom: 16,
               marginBottom: 4,
-              borderBottom: '1px solid #E5E7EB',
+              borderBottom: '1px solid #E2E8F0',
               flexWrap: 'wrap',
             }}>
               {isActive ? (
@@ -605,15 +617,15 @@ function EntityDetailDrawer({
                 gridTemplateColumns: '140px 1fr',
                 gap: 12,
                 padding: '10px 0',
-                borderBottom: '1px solid #E5E7EB',
+                borderBottom: '1px solid #E2E8F0',
                 alignItems: 'baseline',
               }}
             >
               <dt
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 600,
-                  color: '#666666',
+                  color: '#64748B',
                   textTransform: 'uppercase',
                   letterSpacing: '0.06em',
                 }}
@@ -623,7 +635,7 @@ function EntityDetailDrawer({
               <dd
                 style={{
                   margin: 0,
-                  fontSize: 14,
+                  fontSize: 13,
                   color: '#1A1A2E',
                   wordBreak: 'break-word',
                   fontFamily:
@@ -633,7 +645,7 @@ function EntityDetailDrawer({
                 }}
               >
                 {value === null || value === undefined ? (
-                  <span style={{ color: '#666666' }}>—</span>
+                  <span style={{ color: '#64748B' }}>—</span>
                 ) : typeof value === 'boolean' ? (
                   value ? 'Yes' : 'No'
                 ) : typeof value === 'object' ? (
