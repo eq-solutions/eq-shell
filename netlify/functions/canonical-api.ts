@@ -511,38 +511,80 @@ async function handlePut(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cAny = client as any;
 
-  // Upsert. The partial unique index on (tenant_id, external_id) WHERE
-  // external_id IS NOT NULL (migration 022) makes the conflict resolution
-  // deterministic. `ignoreDuplicates: false` means the DO UPDATE fires.
-  const { data: upserted, error: upsertErr } = await cAny
+  // PostgREST's `.upsert()` with onConflict does not support partial unique
+  // indexes (the WHERE external_id IS NOT NULL clause on migration 022).
+  // Use a select-then-insert-or-update pattern instead — two round-trips but
+  // deterministic and compatible with partial indexes.
+
+  // Step 1: look up existing row by (tenant_id, external_id)
+  const { data: existing, error: selectErr } = await cAny
     .schema('app_data')
     .from(def.table)
-    .upsert(row, {
-      onConflict:       'tenant_id,external_id',
-      ignoreDuplicates: false,
-    })
-    .select(`${pk}, created_at, updated_at`)
-    .single();
+    .select(`${pk}, created_at`)
+    .eq('tenant_id', routing.tenant_id)
+    .eq('external_id', body.external_id)
+    .maybeSingle();
 
-  if (upsertErr) {
-    console.error('[canonical-api] PUT upsert failed', {
+  if (selectErr) {
+    console.error('[canonical-api] PUT select failed', {
       app: caller.app, tenantSlug, resource: resourceName,
-      external_id: body.external_id, error: upsertErr.message,
+      external_id: body.external_id, error: selectErr.message,
     });
-    return err(500, 'internal_error', upsertErr.message);
+    return err(500, 'internal_error', selectErr.message);
   }
 
-  // `created` is true when created_at == updated_at (within 1 second).
-  // Supabase doesn't expose xmax/xmin, so this is the simplest heuristic.
-  const createdAt  = new Date(upserted.created_at as string).getTime();
-  const updatedAt  = new Date(upserted.updated_at as string).getTime();
-  const created    = Math.abs(createdAt - updatedAt) < 1000;
+  let canonicalId: string;
+  let created: boolean;
+
+  if (existing) {
+    // Step 2a: UPDATE — merge incoming fields; don't overwrite with nulls
+    const updateRow = { ...row, updated_at: new Date().toISOString() };
+    delete updateRow.tenant_id; // can't change tenant
+    delete updateRow.external_id; // can't change external_id
+
+    const { error: updateErr } = await cAny
+      .schema('app_data')
+      .from(def.table)
+      .update(updateRow)
+      .eq('tenant_id', routing.tenant_id)
+      .eq(pk, existing[pk]);
+
+    if (updateErr) {
+      console.error('[canonical-api] PUT update failed', {
+        app: caller.app, tenantSlug, resource: resourceName,
+        external_id: body.external_id, error: updateErr.message,
+      });
+      return err(500, 'internal_error', updateErr.message);
+    }
+
+    canonicalId = existing[pk] as string;
+    created = false;
+  } else {
+    // Step 2b: INSERT new row
+    const { data: inserted, error: insertErr } = await cAny
+      .schema('app_data')
+      .from(def.table)
+      .insert(row)
+      .select(pk)
+      .single();
+
+    if (insertErr) {
+      console.error('[canonical-api] PUT insert failed', {
+        app: caller.app, tenantSlug, resource: resourceName,
+        external_id: body.external_id, error: insertErr.message,
+      });
+      return err(500, 'internal_error', insertErr.message);
+    }
+
+    canonicalId = inserted[pk] as string;
+    created = true;
+  }
 
   const responseBody: UpsertOkBody = {
     ok:           true,
     tenant:       tenantSlug,
     resource:     resourceName,
-    canonical_id: upserted[pk] as string,
+    canonical_id: canonicalId,
     created,
   };
 
