@@ -51,14 +51,18 @@ AS $$
     UNION ALL SELECT 'licence',
       (SELECT count(*) FROM app_data.licences s, t WHERE s.tenant_id = t.tid)::bigint,
       (SELECT count(*) FROM app_data.licences s, t WHERE s.tenant_id = t.tid AND s.created_at > now() - interval '7 days')::bigint
-    -- TODO: confirm table name — app_data.work_orders does not exist in baseline migrations yet (EQ Service)
-    UNION ALL SELECT 'work_order',
-      (SELECT count(*) FROM app_data.work_orders s, t WHERE s.tenant_id = t.tid)::bigint,
-      (SELECT count(*) FROM app_data.work_orders s, t WHERE s.tenant_id = t.tid AND s.created_at > now() - interval '7 days')::bigint
-    -- TODO: confirm table name — app_data.issued_cards does not exist in baseline migrations yet (EQ Cards)
-    UNION ALL SELECT 'card',
-      (SELECT count(*) FROM app_data.issued_cards s, t WHERE s.tenant_id = t.tid)::bigint,
-      (SELECT count(*) FROM app_data.issued_cards s, t WHERE s.tenant_id = t.tid AND s.created_at > now() - interval '7 days')::bigint
+    -- TODO: EQ Service has no work_orders table in any migration as of 2026-05-27.
+    -- The service schema uses job_plans, test_records, defects, etc. — no work order entity yet.
+    -- Uncomment and use the correct table name once EQ Service adds work orders.
+    -- UNION ALL SELECT 'work_order',
+    --   (SELECT count(*) FROM app_data.work_orders s, t WHERE s.tenant_id = t.tid)::bigint,
+    --   (SELECT count(*) FROM app_data.work_orders s, t WHERE s.tenant_id = t.tid AND s.created_at > now() - interval '7 days')::bigint
+    -- TODO: EQ Cards has no issued_cards table as of 2026-05-27.
+    -- Cards stores worker credentials in public.licences and public.certificates (both in public schema, not app_data).
+    -- Uncomment and correct schema/table once EQ Cards adds a tenant-scoped issued-card concept.
+    -- UNION ALL SELECT 'card',
+    --   (SELECT count(*) FROM app_data.issued_cards s, t WHERE s.tenant_id = t.tid)::bigint,
+    --   (SELECT count(*) FROM app_data.issued_cards s, t WHERE s.tenant_id = t.tid AND s.created_at > now() - interval '7 days')::bigint
   )
   SELECT * FROM per_entity;
 $$;
