@@ -1910,6 +1910,21 @@
   margin: 3px 0 0;
 }
 
+.eq-hub-kpi--link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.1s ease;
+}
+
+.eq-hub-kpi--link:hover {
+  background: var(--eq-ice, #EAF5FB);
+}
+
+.eq-hub-kpi--link .eq-hub-kpi__sub {
+  color: var(--eq-primary, #3DA8D8);
+}
+
 /* App tiles */
 
 .eq-hub-tiles {

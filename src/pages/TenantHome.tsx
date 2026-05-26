@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSession, moduleEnabled, type EqTier } from '../session';
 import { createSupabaseClient } from '../lib/supabaseJwt';
-import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
+import { HubSidebar, HUB_APP_ICONS, type HubApp, type RecordLink } from '../components/HubSidebar';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 
@@ -112,7 +112,16 @@ export default function TenantHome() {
     return fromEmail.charAt(0).toUpperCase() + fromEmail.slice(1);
   })();
 
-  const staffCount = counts?.find((c) => c.entity === 'staff')?.count_total ?? null;
+  const staffCount    = counts?.find((c) => c.entity === 'staff')?.count_total    ?? null;
+  const customerCount = counts?.find((c) => c.entity === 'customer')?.count_total ?? null;
+  const siteCount     = counts?.find((c) => c.entity === 'site')?.count_total     ?? null;
+  const contactCount  = counts?.find((c) => c.entity === 'contact')?.count_total  ?? null;
+
+  const sidebarRecords: RecordLink[] = [
+    { key: 'customer', label: 'Customers', entity: 'customer', count: customerCount },
+    { key: 'site',     label: 'Sites',     entity: 'site',     count: siteCount     },
+    { key: 'contact',  label: 'Contacts',  entity: 'contact',  count: contactCount  },
+  ];
 
   const alertItems = events?.filter(
     (e) => ['failed', 'rejected', 'rolled_back'].includes(e.status) || e.rows_flagged > 0 || e.rows_rejected > 0
@@ -143,7 +152,7 @@ export default function TenantHome() {
 
   return (
     <div className="eq-hub">
-      <HubSidebar apps={sidebarApps} />
+      <HubSidebar apps={sidebarApps} records={sidebarRecords} />
 
       <div className="eq-hub__content">
 
@@ -202,17 +211,17 @@ export default function TenantHome() {
               )}
               <p className="eq-hub-kpi__sub">recent imports</p>
             </div>
-            <div className="eq-hub-kpi">
+            <Link to={`/${tenantSlug}/data/site`} className="eq-hub-kpi eq-hub-kpi--link">
               <p className="eq-hub-kpi__label">Sites</p>
               {loading ? (
                 <Skeleton variant="text" width={60} />
               ) : (
                 <p className="eq-hub-kpi__value">
-                  {counts?.find((c) => c.entity === 'site')?.count_total ?? '—'}
+                  {siteCount ?? '—'}
                 </p>
               )}
-              <p className="eq-hub-kpi__sub">active sites</p>
-            </div>
+              <p className="eq-hub-kpi__sub">active sites →</p>
+            </Link>
           </div>
 
           {err && (

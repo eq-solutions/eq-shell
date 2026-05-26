@@ -12,6 +12,13 @@ export interface HubApp {
   icon: React.ReactNode;
 }
 
+export interface RecordLink {
+  key: string;
+  label: string;
+  entity: string;   // matches /data/:entity route
+  count: number | null;
+}
+
 function initials(name: string | null, email: string): string {
   if (name) {
     const parts = name.trim().split(' ');
@@ -19,6 +26,8 @@ function initials(name: string | null, email: string): string {
   }
   return email.slice(0, 2).toUpperCase();
 }
+
+// ── Icons ────────────────────────────────────────────────────────────────────
 
 const FieldIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -45,6 +54,27 @@ const CardsIcon = () => (
     <rect x="2" y="4" width="12" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
     <path d="M2 7.5h12" stroke="currentColor" strokeWidth="1.5" />
     <path d="M5 10.5h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const CustomerIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M5 7h6M5 10h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const SiteIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M8 2C5.8 2 4 3.8 4 6c0 3 4 8 4 8s4-5 4-8c0-2.2-1.8-4-4-4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    <circle cx="8" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);
+
+const ContactIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <circle cx="8" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
   </svg>
 );
 
@@ -83,17 +113,20 @@ const LogoutIcon = () => (
 );
 
 export const HUB_APP_ICONS: Record<string, React.ReactNode> = {
-  field: <FieldIcon />,
+  field:   <FieldIcon />,
   service: <ServiceIcon />,
-  quotes: <QuotesIcon />,
-  cards: <CardsIcon />,
+  quotes:  <QuotesIcon />,
+  cards:   <CardsIcon />,
 };
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
   apps: HubApp[];
+  records?: RecordLink[];
 }
 
-export function HubSidebar({ apps }: Props) {
+export function HubSidebar({ apps, records }: Props) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const { session, logout } = useSession();
 
@@ -102,6 +135,7 @@ export function HubSidebar({ apps }: Props) {
   const userInitials = initials(session.user.name, session.user.email);
   const userName = session.user.name ?? session.user.email.split('@')[0].replace('.', ' ');
   const roleLabel = session.user.role.replace(/_/g, ' ').toUpperCase();
+  const isManager = session.user.role === 'manager' || session.user.is_platform_admin;
 
   return (
     <aside className="eq-hub__sidebar">
@@ -116,8 +150,39 @@ export function HubSidebar({ apps }: Props) {
         LIVE
       </div>
 
-      <p className="eq-hub-sidebar__section-label">LAUNCH</p>
+      {/* ── RECORDS ── */}
+      {records && records.length > 0 && (
+        <>
+          <p className="eq-hub-sidebar__section-label">RECORDS</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Records navigation">
+            {records.map((r) => (
+              <NavLink
+                key={r.key}
+                to={`/${tenantSlug}/data/${r.entity}`}
+                className={({ isActive }) =>
+                  `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`
+                }
+              >
+                <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
+                  {r.key === 'customer' && <CustomerIcon />}
+                  {r.key === 'site'     && <SiteIcon />}
+                  {r.key === 'contact'  && <ContactIcon />}
+                </span>
+                <span className="eq-hub-sidebar__nav-label">{r.label}</span>
+                {r.count !== null && (
+                  <span className="eq-hub-sidebar__nav-count">{r.count}</span>
+                )}
+                <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+              </NavLink>
+            ))}
+          </nav>
+        </>
+      )}
 
+      {/* ── APPS ── */}
+      <p className="eq-hub-sidebar__section-label" style={{ marginTop: records?.length ? 16 : 0 }}>
+        APPS
+      </p>
       <nav className="eq-hub-sidebar__nav" aria-label="App navigation">
         {apps.map((app) => (
           <NavLink
@@ -145,23 +210,46 @@ export function HubSidebar({ apps }: Props) {
         ))}
       </nav>
 
-      {(session.user.role === 'manager' || session.user.is_platform_admin) && (
+      {/* ── INTAKE ── */}
+      {isManager && (
         <>
-          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>MANAGE</p>
-          <nav className="eq-hub-sidebar__nav" aria-label="Admin navigation">
-            <NavLink to={`/${tenantSlug}/intake`} className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}>
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>INTAKE</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Intake navigation">
+            <NavLink
+              to={`/${tenantSlug}/intake`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><IntakeIcon /></span>
-              <span className="eq-hub-sidebar__nav-label">Intake</span>
+              <span className="eq-hub-sidebar__nav-label">Import</span>
+              <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
             </NavLink>
-            <NavLink to={`/${tenantSlug}/admin/users`} className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}>
+          </nav>
+        </>
+      )}
+
+      {/* ── ADMIN ── */}
+      {isManager && (
+        <>
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>ADMIN</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Admin navigation">
+            <NavLink
+              to={`/${tenantSlug}/admin/users`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><UsersIcon /></span>
               <span className="eq-hub-sidebar__nav-label">Users</span>
             </NavLink>
-            <NavLink to={`/${tenantSlug}/admin/audit`} className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}>
+            <NavLink
+              to={`/${tenantSlug}/admin/audit`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><AuditIcon /></span>
               <span className="eq-hub-sidebar__nav-label">Audit log</span>
             </NavLink>
-            <NavLink to={`/${tenantSlug}/admin/settings`} className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}>
+            <NavLink
+              to={`/${tenantSlug}/admin/settings`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><SettingsIcon /></span>
               <span className="eq-hub-sidebar__nav-label">Settings</span>
             </NavLink>
