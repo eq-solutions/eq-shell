@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSession, moduleEnabled } from '../session';
 import { HubSidebar, HUB_APP_ICONS, type HubApp } from './HubSidebar';
 
@@ -58,6 +58,8 @@ export function HubLayout({
     service: null,
     cards: null,
   });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
   // Fetch live counts once on mount. No polling — the hub sidebar is a
   // lightweight nav aid, not a realtime dashboard.
@@ -97,9 +99,29 @@ export function HubLayout({
 
   return (
     <div className="eq-hub">
-      <HubSidebar apps={sidebarApps} />
+      {iframe && sidebarOpen && (
+        <div
+          className="eq-hub__mobile-backdrop"
+          aria-hidden="true"
+          onClick={closeSidebar}
+        />
+      )}
+      <div className={iframe && sidebarOpen ? 'eq-hub__sidebar-overlay' : undefined}>
+        <HubSidebar apps={sidebarApps} />
+      </div>
       {iframe ? (
-        <div className="eq-hub__iframe-content">{children}</div>
+        <div className="eq-hub__iframe-content">
+          <button
+            className="eq-hub__mobile-toggle"
+            aria-label="Open navigation"
+            onClick={() => setSidebarOpen((v) => !v)}
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
+          {children}
+        </div>
       ) : (
         <div className="eq-hub__content">
           <main className="eq-hub-content">
