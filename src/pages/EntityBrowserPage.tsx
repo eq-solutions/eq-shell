@@ -1,7 +1,7 @@
 // EntityBrowserPage — a generic paged table for any canonical entity.
 // URL: /:tenant/data/:entity (entity is the singular registry name)
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
@@ -175,6 +175,9 @@ const PAGE_SIZE = 50;
 
 function EntityBrowserInner({ entity }: { entity: string }) {
   const view = ENTITY_VIEW[entity];
+  const { session } = useSession();
+  const isManager =
+    session?.user.role === 'manager' || session?.user.is_platform_admin === true;
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [count, setCount] = useState<number | null>(null);
   const [page, setPage] = useState(0);
@@ -341,11 +344,17 @@ function EntityBrowserInner({ entity }: { entity: string }) {
           entity={entity}
           row={detailRow}
           onClose={() => setDetailRow(null)}
+          onMutated={() => { setDetailRow(null); void load(); }}
+          isManager={isManager}
         />
       )}
     </HubLayout>
   );
 }
+
+// Entities that support archive/delete from the shell.
+// Staff and operational entities are managed inside EQ Field.
+const MANAGEABLE_ENTITIES = new Set(['customer', 'site', 'contact']);
 
 // Slide-out drawer showing the full row. Floating UI (not static),
 // so per the design spec it CAN have a drop-shadow.
@@ -353,19 +362,51 @@ function EntityDetailDrawer({
   entity,
   row,
   onClose,
+  onMutated,
+  isManager,
 }: {
   entity: string;
   row: Record<string, unknown>;
   onClose: () => void;
+  onMutated: () => void;
+  isManager: boolean;
 }) {
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionErr, setActionErr] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   // ESC closes the drawer — keyboard-first.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (confirmDelete) { setConfirmDelete(false); return; }
+        onClose();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, confirmDelete]);
+
+  const handleAction = useCallback(async (action: 'archive' | 'unarchive' | 'delete') => {
+    const id = row[`${entity}_id`] as string;
+    setActionLoading(action);
+    setActionErr(null);
+    try {
+      const res = await fetch('/.netlify/functions/entity-actions', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity, id, action }),
+      });
+      const body = await res.json() as { ok: boolean; error?: string; detail?: string };
+      if (!res.ok || !body.ok) throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
+      onMutated();
+    } catch (e) {
+      setActionErr((e as Error).message);
+      setActionLoading(null);
+      setConfirmDelete(false);
+    }
+  }, [entity, row, onMutated]);
 
   // Sort keys so identifiers come first, audit fields last.
   const sortedEntries = Object.entries(row).sort(([a], [b]) => {
@@ -384,10 +425,13 @@ function EntityDetailDrawer({
   const title =
     (row.company_name as string | null) ??
     (row.full_name as string | null) ??
-    [row.first_name, row.last_name].filter(Boolean).join(' ') ??
+    ([row.first_name, row.last_name].filter(Boolean).join(' ') || null) ??
     (row.name as string | null) ??
     (row[`${entity}_id`] as string | null)?.slice(0, 8) ??
     `${entity} detail`;
+
+  const isActive      = row.active !== false;
+  const isManageable  = MANAGEABLE_ENTITIES.has(entity);
 
   return (
     <>
@@ -407,61 +451,161 @@ function EntityDetailDrawer({
           position: 'fixed',
           right: 0,
           top: 0,
-          bottom: 0,
-          width: 'min(520px, 100vw)',
-          background: 'var(--eq-bg)',
-          boxShadow: 'var(--shadow-lg)',
+          height: '100vh',
+          width: 360,
+          background: 'white',
+          borderLeft: '1px solid #E5E7EB',
           zIndex: 51,
+          display: 'flex',
+          flexDirection: 'column',
           overflowY: 'auto',
-          padding: '24px 28px',
         }}
       >
-        <header
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            justifyContent: 'space-between',
-            marginBottom: 8,
-          }}
-        >
-          <span
-            className="eq-pill eq-pill--info"
-            style={{ textTransform: 'uppercase' }}
+        <div style={{ padding: '20px 24px 0' }}>
+          <header
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+            }}
           >
-            {entity}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="eq-btn-ghost"
-            aria-label="Close detail"
-            style={{ padding: '4px 12px' }}
-          >
-            Close ✕
-          </button>
-        </header>
-        <h2
-          style={{
-            fontSize: 22,
-            fontWeight: 700,
-            letterSpacing: '-0.01em',
-            margin: '8px 0 24px',
-            color: 'var(--eq-ink)',
-          }}
-        >
-          {title}
-        </h2>
+            <div>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  color: '#666666',
+                }}
+              >
+                {entity}
+              </span>
+              <div
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: '#1A1A2E',
+                  marginTop: 2,
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {title}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close detail"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 18,
+                color: '#666666',
+                lineHeight: 1,
+                padding: '4px 6px',
+                flexShrink: 0,
+              }}
+            >
+              ✕
+            </button>
+          </header>
 
-        <dl style={{ margin: 0 }}>
+          {/* Management actions (customer / site / contact only) */}
+          {isManageable && (
+            <div style={{
+              display: 'flex',
+              gap: 8,
+              paddingBottom: 16,
+              marginBottom: 4,
+              borderBottom: '1px solid #E5E7EB',
+              flexWrap: 'wrap',
+            }}>
+              {isActive ? (
+                <button
+                  type="button"
+                  className="eq-btn-ghost"
+                  disabled={actionLoading !== null}
+                  onClick={() => void handleAction('archive')}
+                  style={{ fontSize: 12 }}
+                >
+                  {actionLoading === 'archive' ? 'Archiving…' : 'Archive'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="eq-btn-ghost"
+                  disabled={actionLoading !== null}
+                  onClick={() => void handleAction('unarchive')}
+                  style={{ fontSize: 12 }}
+                >
+                  {actionLoading === 'unarchive' ? 'Restoring…' : 'Restore'}
+                </button>
+              )}
+
+              {isManager && (
+                confirmDelete ? (
+                  <>
+                    <button
+                      type="button"
+                      className="eq-btn-ghost"
+                      disabled={actionLoading !== null}
+                      onClick={() => void handleAction('delete')}
+                      style={{ fontSize: 12, color: '#c0392b' }}
+                    >
+                      {actionLoading === 'delete' ? 'Deleting…' : 'Confirm delete'}
+                    </button>
+                    <button
+                      type="button"
+                      className="eq-btn-ghost"
+                      disabled={actionLoading !== null}
+                      onClick={() => setConfirmDelete(false)}
+                      style={{ fontSize: 12 }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="eq-btn-ghost"
+                    onClick={() => setConfirmDelete(true)}
+                    style={{ fontSize: 12, color: '#c0392b' }}
+                  >
+                    Delete
+                  </button>
+                )
+              )}
+            </div>
+          )}
+
+          {actionErr && (
+            <div style={{
+              background: '#fdf2f2',
+              border: '1px solid #c0392b',
+              borderRadius: 6,
+              padding: '8px 12px',
+              fontSize: 12,
+              color: '#c0392b',
+              marginBottom: 12,
+            }}>
+              {actionErr}
+            </div>
+          )}
+        </div>
+
+        <dl style={{ margin: 0, padding: '0 24px 24px', flex: 1 }}>
           {sortedEntries.map(([key, value]) => (
             <div
               key={key}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '170px 1fr',
+                gridTemplateColumns: '140px 1fr',
                 gap: 12,
                 padding: '10px 0',
-                borderBottom: '1px solid var(--gray-200)',
+                borderBottom: '1px solid #E5E7EB',
                 alignItems: 'baseline',
               }}
             >
@@ -469,7 +613,7 @@ function EntityDetailDrawer({
                 style={{
                   fontSize: 11,
                   fontWeight: 600,
-                  color: 'var(--eq-grey)',
+                  color: '#666666',
                   textTransform: 'uppercase',
                   letterSpacing: '0.06em',
                 }}
@@ -480,7 +624,7 @@ function EntityDetailDrawer({
                 style={{
                   margin: 0,
                   fontSize: 14,
-                  color: 'var(--eq-ink)',
+                  color: '#1A1A2E',
                   wordBreak: 'break-word',
                   fontFamily:
                     value === null || typeof value === 'object'
@@ -489,7 +633,7 @@ function EntityDetailDrawer({
                 }}
               >
                 {value === null || value === undefined ? (
-                  <span style={{ color: 'var(--eq-grey)' }}>—</span>
+                  <span style={{ color: '#666666' }}>—</span>
                 ) : typeof value === 'boolean' ? (
                   value ? 'Yes' : 'No'
                 ) : typeof value === 'object' ? (

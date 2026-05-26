@@ -36,13 +36,28 @@ function sigsEqual(expected: string, provided: string): boolean {
 
 import type { EqRole } from './supabase.js';
 
+export interface SessionMembership {
+  tenant_id: string;
+  role: EqRole;
+}
+
 export interface SessionPayload {
   user_id: string;
+  /**
+   * Always equals active_tenant_id. Kept under this name because
+   * downstream consumers (eq-solves-field, eq-solves-service, the
+   * iframe mint endpoints) read `session.tenant_id` directly and we
+   * must not break that wire shape.
+   */
   tenant_id: string;
-  /** Phase 1.F: 5-tier role from the EQ unified identity model. */
+  /** The currently-operating tenant. Same value as tenant_id. */
+  active_tenant_id: string;
+  /** Phase 1.F: 5-tier role for the active tenant. */
   role: EqRole;
   /** Phase 1.F: EQ Solutions internal cross-tenant flag. */
   is_platform_admin: boolean;
+  /** All active memberships this user has, used by the UI to offer tenant switching. */
+  memberships: SessionMembership[];
   exp: number;
 }
 
@@ -118,6 +133,10 @@ export function verifySessionToken(token: string | null | undefined): SessionPay
     // mid-session at deploy time — they get a single re-auth and move on.
     if (!data.role) return null;
     if (typeof data.is_platform_admin !== 'boolean') return null;
+    if (!data.active_tenant_id) data.active_tenant_id = data.tenant_id;
+    if (!Array.isArray(data.memberships)) {
+      data.memberships = [{ tenant_id: data.tenant_id, role: data.role }];
+    }
     return data;
   } catch {
     return null;
@@ -152,6 +171,42 @@ export function signServiceToken(payload: ServiceTokenPayload): string {
   const json = JSON.stringify(payload);
   const sig = sign(json);
   return Buffer.from(json).toString('base64') + '.' + sig;
+}
+
+/**
+ * Short-lived token returned by shell-login when the user belongs to
+ * more than one tenant. Carried by the client back to select-tenant so
+ * the server can confirm the user authenticated within the last 5 min
+ * without forcing them to retype their PIN.
+ */
+export interface TenantSelectionTokenPayload {
+  kind: 'tenant-selection';
+  user_id: string;
+  exp: number;
+}
+
+export function signTenantSelectionToken(payload: TenantSelectionTokenPayload): string {
+  const json = JSON.stringify(payload);
+  const sig = sign(json);
+  return Buffer.from(json).toString('base64') + '.' + sig;
+}
+
+export function verifyTenantSelectionToken(token: string | null | undefined): TenantSelectionTokenPayload | null {
+  if (!token) return null;
+  try {
+    const [b64, sig] = token.split('.');
+    if (!b64 || !sig) return null;
+    const json = Buffer.from(b64, 'base64').toString();
+    const expected = sign(json);
+    if (!sigsEqual(expected, sig)) return null;
+    const data = JSON.parse(json) as TenantSelectionTokenPayload;
+    if (data.kind !== 'tenant-selection') return null;
+    if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
+    if (!data.user_id) return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 // Parses the eq_shell_session cookie value out of a Cookie header.

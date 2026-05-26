@@ -162,8 +162,10 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const cookieValue = signSessionToken({
     user_id: user.id,
     tenant_id: tenant.id,
+    active_tenant_id: tenant.id,
     role: user.role,
     is_platform_admin: user.is_platform_admin,
+    memberships: [{ tenant_id: tenant.id, role: user.role }],
     exp,
   });
   const cookie = buildSessionCookie(req, cookieValue, {

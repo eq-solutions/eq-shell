@@ -1,6 +1,7 @@
 import { NavLink, useParams } from 'react-router-dom';
 import { useSession } from '../session';
 import { EqLogo } from './EqLogo';
+import { TenantSwitcher } from './TenantSwitcher';
 
 export interface HubApp {
   key: string;
@@ -149,6 +150,12 @@ export function HubSidebar({ apps, records }: Props) {
         <span className="eq-hub-sidebar__live-dot" aria-hidden="true" />
         LIVE
       </div>
+
+      {session.memberships && session.memberships.length > 1 && (
+        <div style={{ margin: '8px 0 12px' }}>
+          <TenantSwitcher />
+        </div>
+      )}
 
       {/* ── RECORDS ── */}
       {records && records.length > 0 && (

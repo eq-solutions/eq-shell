@@ -111,15 +111,78 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(500, { ok: false, error: (e as Error).message });
   }
 
-  // Reject if a user with this email already exists in any tenant
-  // (Phase 1.B: emails are globally unique across tenants).
   const { data: existingUser } = await sb
     .from('users')
-    .select('id')
+    .select('id, name, email')
     .eq('email', email)
-    .maybeSingle<Pick<CanonicalUser, 'id'>>();
+    .maybeSingle<Pick<CanonicalUser, 'id' | 'name' | 'email'>>();
+
   if (existingUser) {
-    return jsonResponse(409, { ok: false, error: 'user-exists' });
+    const { data: existingMembership } = await sb
+      .schema('shell_control')
+      .from('user_tenant_memberships')
+      .select('user_id, tenant_id')
+      .eq('user_id', existingUser.id)
+      .eq('tenant_id', session.tenant_id)
+      .maybeSingle<{ user_id: string; tenant_id: string }>();
+
+    if (existingMembership) {
+      return jsonResponse(409, { ok: false, error: 'already-a-member' });
+    }
+
+    const { error: memErr } = await sb
+      .schema('shell_control')
+      .from('user_tenant_memberships')
+      .insert({
+        user_id: existingUser.id,
+        tenant_id: session.tenant_id,
+        role: role as EqRole,
+        active: true,
+      });
+
+    if (memErr) {
+      // eslint-disable-next-line no-console
+      console.error('[invite-user] membership insert failed:', memErr.message);
+      return jsonResponse(500, { ok: false, error: 'server-error' });
+    }
+
+    if (entitlements.length > 0) {
+      const rows = entitlements.map((mod) => ({
+        tenant_id: session.tenant_id,
+        module: mod,
+        enabled: true,
+      }));
+      void sb
+        .from('module_entitlements')
+        .upsert(rows, { onConflict: 'tenant_id,module', ignoreDuplicates: true });
+    }
+
+    const { data: tenantRow } = await sb
+      .from('tenants')
+      .select('name')
+      .eq('id', session.tenant_id)
+      .maybeSingle<{ name: string }>();
+    const tenantName = tenantRow?.name ?? 'an EQ Solutions workspace';
+
+    const addedEmailResult = await sendEmail({
+      to: email,
+      subject: `You've been added to ${tenantName} on EQ Solutions`,
+      text:
+`You've been added to ${tenantName} on EQ Solutions.
+
+Next time you sign in to your EQ Solutions account, you'll be able to choose ${tenantName} as your workspace.
+
+If you weren't expecting this, you can ignore this email.
+
+— EQ Solutions`,
+    });
+
+    return jsonResponse(200, {
+      ok: true,
+      added_to_tenant: true,
+      user_id: existingUser.id,
+      email_delivered: addedEmailResult.delivered,
+    });
   }
 
   // Reject if an active (non-accepted, non-expired) invite already

@@ -17,6 +17,7 @@ import FieldIframe from './pages/FieldIframe';
 import CardsIframe from './pages/CardsIframe';
 import AcceptInvite from './pages/AcceptInvite';
 import ResetPin from './pages/ResetPin';
+import TenantPicker from './pages/TenantPicker';
 import AdminInviteUser from './pages/AdminInviteUser';
 import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
@@ -97,8 +98,8 @@ function SessionProvider({ children }: { children: ReactNode }) {
       });
       if (res.ok) {
         const body = (await res.json()) as ShellSession & { valid: true };
-        const { user, tenant, entitlements, supabase_jwt } = body;
-        const s = { user, tenant, entitlements, supabase_jwt };
+        const { user, tenant, entitlements, supabase_jwt, memberships } = body;
+        const s = { user, tenant, entitlements, supabase_jwt, memberships: memberships ?? [{ tenant_id: tenant.id, role: user.role }] };
         setSession(s);
         writeStoredSession(s);
         seedSupabaseJwtCache(supabase_jwt);
@@ -388,6 +389,7 @@ function App() {
               on success. */}
           <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/reset-pin" element={<ResetPin />} />
+          <Route path="/select-tenant" element={<TenantPicker />} />
           <Route
             path="/:tenantSlug/*"
             element={

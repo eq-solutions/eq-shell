@@ -1064,33 +1064,37 @@
  * Iframes
  * ────────────────────────────────────────────────────────────────── */
 
+/* Iframe frames — sidebar-alongside layout.
+ * .eq-hub__iframe-content (flex column, flex:1) is the parent.
+ * Frames fill it with flex:1 + height:100% rather than fixed positioning. */
 .eq-field-frame, .eq-cards-frame, .eq-service-frame {
-  position: fixed;
-  inset: 48px 0 0;
+  flex: 1;
   border: 0;
-  width: 100vw;
-  height: calc(100svh - 48px);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: block;
 }
 
 .eq-service-frame-wrap {
-  position: fixed;
-  inset: 48px 0 0;
+  flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
 }
 
 .eq-field-frame-loading {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: calc(100svh - 48px);
   color: var(--eq-grey);
 }
 
 .eq-field-frame-overlay {
-  position: fixed;
-  inset: 48px 0 0;
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1123,8 +1127,7 @@
  * ────────────────────────────────────────────────────────────────── */
 
 .eq-field-picker {
-  position: fixed;
-  inset: 48px 0 0;
+  flex: 1;
   overflow-y: auto;
   background: var(--eq-bg);
   color: var(--eq-ink);
@@ -1213,9 +1216,8 @@
 }
 
 .eq-field-tenantbar {
-  position: fixed;
-  inset: 48px 0 auto;
   height: 36px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1223,7 +1225,6 @@
   background: var(--eq-bg);
   border-bottom: 1px solid var(--eq-border);
   font-size: 12px;
-  z-index: 5;
 }
 
 .eq-field-tenantbar__label {
@@ -1261,20 +1262,12 @@
   background: var(--eq-ice);
 }
 
-/* Variants that push the iframe / overlay / loading layouts down by
- * the 36px tenant bar. Total offset = 48 (topbar) + 36 (tenantbar). */
-.eq-field-frame--with-tenantbar {
-  inset: 84px 0 0;
-  height: calc(100svh - 84px);
-}
-
-.eq-field-frame-loading--with-tenantbar {
-  height: calc(100svh - 84px);
-}
-
-.eq-field-frame-overlay--with-tenantbar {
-  inset: 84px 0 0;
-}
+/* --with-tenantbar variants: the tenant bar is now in-flow above the iframe
+ * within the flex column, so no height offsets are needed. These classes
+ * are kept to avoid breaking existing JSX references but are no-ops. */
+.eq-field-frame--with-tenantbar {}
+.eq-field-frame-loading--with-tenantbar {}
+.eq-field-frame-overlay--with-tenantbar {}
 
 /* ──────────────────────────────────────────────────────────────────
  * Placeholder / loading / error / empty
@@ -1834,6 +1827,18 @@
   flex: 1;
   background: #F5F4F0;
   overflow-y: auto;
+}
+
+/* ── Iframe content area (sidebar-alongside mode) ──
+ * Used when <HubLayout iframe> wraps an iframe page.
+ * The sidebar stays visible; the iframe fills the remaining space
+ * edge-to-edge without shell-level scrollbars. */
+.eq-hub__iframe-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .eq-hub-content {

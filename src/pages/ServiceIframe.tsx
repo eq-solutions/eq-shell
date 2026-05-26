@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 
 // Embeds EQ Service (Next.js) as a Shell iframe.
 //
@@ -15,6 +15,9 @@ import { Topbar } from '../components/Topbar';
 // Service signals readiness via postMessage ({ type: 'EQ_SERVICE_READY' })
 // from its (app)/layout.tsx once the session and app shell are established.
 // The onLoad fallback (2 events) catches preview deploys and any missed signals.
+//
+// 2026-05-27 — sidebar-alongside layout. Topbar removed; HubLayout with
+// iframe prop keeps the sidebar visible while Service fills the content area.
 
 const SERVICE_URL = 'https://eq-solves-service.netlify.app';
 
@@ -118,8 +121,7 @@ export default function ServiceIframe() {
   const src = state.phase === 'loading' || state.phase === 'ready' ? state.src : null;
 
   return (
-    <>
-      <Topbar />
+    <HubLayout iframe>
       <div className="eq-service-frame-wrap">
         {(state.phase === 'minting' || state.phase === 'loading') && (
           <div className="eq-loading">
@@ -146,6 +148,6 @@ export default function ServiceIframe() {
           />
         )}
       </div>
-    </>
+    </HubLayout>
   );
 }

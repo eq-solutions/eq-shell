@@ -81,13 +81,21 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .maybeSingle<Pick<CanonicalUser, 'id' | 'email' | 'tenant_id' | 'active'>>();
 
   if (!target) {
-    // Generic response — never leak whether a user_id exists.
     return jsonResponse(403, { ok: false, error: 'forbidden' });
   }
 
-  // Managers can only reset users in their own tenant.
-  if (!session.is_platform_admin && target.tenant_id !== session.tenant_id) {
-    return jsonResponse(403, { ok: false, error: 'forbidden' });
+  if (!session.is_platform_admin) {
+    const { data: membership } = await sb
+      .schema('shell_control')
+      .from('user_tenant_memberships')
+      .select('user_id, tenant_id')
+      .eq('user_id', target.id)
+      .eq('tenant_id', session.tenant_id)
+      .eq('active', true)
+      .maybeSingle<{ user_id: string; tenant_id: string }>();
+    if (!membership) {
+      return jsonResponse(403, { ok: false, error: 'forbidden' });
+    }
   }
 
   if (!target.active) {

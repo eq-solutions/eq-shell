@@ -374,6 +374,185 @@ async function handleGet(
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// PUT handler — upsert a canonical record by external_id
+// ──────────────────────────────────────────────────────────────────────
+//
+// Body shape:
+//   {
+//     resource:    'customers' | 'sites' | 'contacts',
+//     external_id: string,          // upsert key (required)
+//     ...fields                     // any writable columns for that resource
+//   }
+//
+// Response:
+//   { ok: true, tenant, resource, canonical_id: uuid, created: boolean }
+//
+// The upsert uses the service-role client (bypasses RLS) with explicit
+// tenant_id from the routing layer — callers must not supply tenant_id in
+// the body (it's silently stripped).
+//
+// Depends on migration 022 unique partial indexes:
+//   (tenant_id, external_id) WHERE external_id IS NOT NULL
+// on customers, sites, contacts.
+// ──────────────────────────────────────────────────────────────────────
+
+// Allowed writable fields per resource.
+// tenant_id and the PK are always stripped (never writable by callers).
+// created_at / updated_at are managed by the database.
+const WRITABLE_FIELDS: Record<string, Set<string>> = {
+  customers: new Set([
+    'external_id', 'type',
+    'company_name', 'first_name', 'last_name', 'salutation',
+    'abn', 'acn',
+    'street_address', 'suburb', 'state', 'postcode', 'country',
+    'postal_address', 'postal_suburb', 'postal_state', 'postal_postcode', 'postal_country',
+    'primary_phone', 'mobile_phone', 'alt_phone', 'email', 'website',
+    'customer_group', 'account_manager', 'currency',
+    'active',
+  ]),
+  sites: new Set([
+    'external_id', 'customer_id', 'external_customer_id',
+    'name', 'code', 'client_name', 'site_type', 'slug',
+    'address_line_1', 'address_line_2', 'suburb', 'state', 'postcode', 'country',
+    'latitude', 'longitude',
+    'site_contact_name', 'site_contact_phone', 'site_contact_email',
+    'induction_required', 'induction_url',
+    'track_hours', 'budget_hours',
+    'active',
+  ]),
+  contacts: new Set([
+    'external_id', 'customer_id', 'external_customer_id',
+    'company_name', 'salutation', 'first_name', 'last_name',
+    'email', 'work_phone', 'mobile_phone',
+    'position', 'department',
+    'is_default_quote_contact', 'is_default_job_contact',
+    'is_default_invoice_contact', 'is_default_statement_contact',
+    'active',
+  ]),
+};
+
+// Resource → primary key column name (returned as canonical_id in response).
+const RESOURCE_PK: Record<string, string> = {
+  customers: 'customer_id',
+  sites:     'site_id',
+  contacts:  'contact_id',
+};
+
+interface UpsertBody {
+  resource:    string;
+  external_id: string;
+  [key: string]: unknown;
+}
+
+interface UpsertOkBody {
+  ok:           true;
+  tenant:       string;
+  resource:     string;
+  canonical_id: string;
+  created:      boolean;
+}
+
+async function handlePut(
+  req: Request,
+  caller: AppIdentity,
+  tenantSlug: string,
+): Promise<Response> {
+  // Parse body
+  let body: UpsertBody;
+  try {
+    body = await req.json() as UpsertBody;
+  } catch {
+    return err(400, 'invalid_filter', 'body must be valid JSON');
+  }
+
+  const resourceName = body.resource;
+  if (!resourceName || !WRITABLE_FIELDS[resourceName]) {
+    return err(400, 'unknown_resource',
+      `resource must be one of: ${Object.keys(WRITABLE_FIELDS).join(', ')}`);
+  }
+
+  if (!body.external_id || typeof body.external_id !== 'string') {
+    return err(400, 'invalid_filter', 'external_id must be a non-empty string');
+  }
+  if (body.external_id.length > 255) {
+    return err(400, 'invalid_filter', 'external_id must be <= 255 chars');
+  }
+
+  // Resolve tenant
+  const { getRoutingBySlug } = await import('./_shared/tenant-routing.js');
+  let routing: Awaited<ReturnType<typeof getRoutingBySlug>>;
+  try {
+    routing = await getRoutingBySlug(tenantSlug);
+  } catch (e) {
+    return tenantError(e);
+  }
+
+  // Build the upsert row — only allowed fields, tenant_id forced from routing
+  const allowed = WRITABLE_FIELDS[resourceName];
+  const row: Record<string, unknown> = { tenant_id: routing.tenant_id };
+  for (const [k, v] of Object.entries(body)) {
+    if (k !== 'resource' && allowed.has(k)) {
+      row[k] = v;
+    }
+  }
+  // Always set external_id from the body (already validated)
+  row.external_id = body.external_id;
+
+  const def = RESOURCES[resourceName];
+  const pk  = RESOURCE_PK[resourceName];
+
+  let client: SupabaseClient<any, any, any>;
+  try {
+    client = await getTenantDataClient(tenantSlug);
+  } catch (e) {
+    return tenantError(e);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cAny = client as any;
+
+  // Upsert. The partial unique index on (tenant_id, external_id) WHERE
+  // external_id IS NOT NULL (migration 022) makes the conflict resolution
+  // deterministic. `ignoreDuplicates: false` means the DO UPDATE fires.
+  const { data: upserted, error: upsertErr } = await cAny
+    .schema('app_data')
+    .from(def.table)
+    .upsert(row, {
+      onConflict:       'tenant_id,external_id',
+      ignoreDuplicates: false,
+    })
+    .select(`${pk}, created_at, updated_at`)
+    .single();
+
+  if (upsertErr) {
+    console.error('[canonical-api] PUT upsert failed', {
+      app: caller.app, tenantSlug, resource: resourceName,
+      external_id: body.external_id, error: upsertErr.message,
+    });
+    return err(500, 'internal_error', upsertErr.message);
+  }
+
+  // `created` is true when created_at == updated_at (within 1 second).
+  // Supabase doesn't expose xmax/xmin, so this is the simplest heuristic.
+  const createdAt  = new Date(upserted.created_at as string).getTime();
+  const updatedAt  = new Date(upserted.updated_at as string).getTime();
+  const created    = Math.abs(createdAt - updatedAt) < 1000;
+
+  const responseBody: UpsertOkBody = {
+    ok:           true,
+    tenant:       tenantSlug,
+    resource:     resourceName,
+    canonical_id: upserted[pk] as string,
+    created,
+  };
+
+  return new Response(JSON.stringify(responseBody), {
+    status:  created ? 201 : 200,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // POST handler (events only for now)
 // ──────────────────────────────────────────────────────────────────────
 
@@ -507,7 +686,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 
   if (req.method === 'GET')  return handleGet(req, url, caller, tenantSlug);
-  // eslint-disable-line @typescript-eslint/no-unused-vars  (suppress "_req unused" — kept for symmetry + future use)
+  if (req.method === 'PUT')  return handlePut(req, caller, tenantSlug);
   if (req.method === 'POST') return handlePost(req, caller, tenantSlug);
   return err(405, 'method_not_allowed');
 });

@@ -163,6 +163,19 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       return jsonResponse(500, { ok: false, error: 'server-error' });
     }
     updated = data;
+
+    if (patch.role !== undefined) {
+      const { error: memErr } = await sb
+        .schema('shell_control')
+        .from('user_tenant_memberships')
+        .update({ role: patch.role })
+        .eq('user_id', targetId)
+        .eq('tenant_id', session.tenant_id);
+      if (memErr) {
+        // eslint-disable-next-line no-console
+        console.warn('[edit-user] membership role update failed (non-fatal):', memErr.message);
+      }
+    }
   }
 
   // Entitlements upsert (additive only — never disables existing).
