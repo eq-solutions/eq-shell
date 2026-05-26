@@ -26,9 +26,9 @@
 
 import bcrypt from 'bcryptjs';
 import type { Context } from '@netlify/functions';
-import { getServiceClient } from './_shared/supabase.js';
-import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
-import { signSessionToken, hasSecretSalt } from './_shared/token.js';
+import { getServiceClient, getUserMemberships, getEnrichedMemberships } from './_shared/supabase.js';
+import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement, UserTenantMembership } from './_shared/supabase.js';
+import { signSessionToken, signTenantSelectionToken, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
 import { withSentry } from './_shared/sentry.js';
@@ -125,23 +125,12 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Supabase JWT both carry them.
   const { data: user, error: userErr } = await sb
     .from('users')
-    .select('id, email, tenant_id, role, is_platform_admin, active, pin_hash, last_login_at')
+    .select('id, email, tenant_id, role, is_platform_admin, active, pin_hash, last_login_at, last_active_tenant_id')
     .eq('email', email)
     .eq('active', true)
     .maybeSingle<CanonicalUser>();
 
   if (userErr) {
-    // PGRST116 = multiple rows returned — two tenants share this email.
-    // Return invalid-credentials (don't leak the collision to the caller).
-    if ((userErr as unknown as { code?: string }).code === 'PGRST116') {
-      // eslint-disable-next-line no-console
-      console.error('[shell-login] duplicate email across tenants — needs unique constraint migration:', email);
-      logShellLogin(req, email, 'failed', 'duplicate-email');
-      return jsonResponse(200, { valid: false });
-    }
-    // Log the DB error server-side but don't leak the message to the client.
-    // Postgres error strings can include column names, query fragments, and
-    // schema details that help an attacker shape follow-up probes.
     // eslint-disable-next-line no-console
     console.error('[shell-login] supabase users lookup error:', userErr.message);
     logShellLogin(req, email, 'failed', 'db-error');
@@ -160,11 +149,83 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(200, { valid: false });
   }
 
-  // Hydrate tenant + entitlements for the response payload.
+  let memberships: UserTenantMembership[];
+  try {
+    memberships = await getUserMemberships(user.id);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[shell-login] memberships lookup error:', (e as Error).message);
+    logShellLogin(req, email, 'failed', 'memberships-err');
+    return jsonResponse(500, { error: 'Database error' });
+  }
+
+  if (memberships.length === 0) {
+    logShellLogin(req, email, 'failed', 'no-memberships');
+    return jsonResponse(403, { valid: false, error: 'no-memberships' });
+  }
+
+  void sb.schema('public').rpc('clear_rate_limit', { p_key: rlKey });
+
+  if (memberships.length > 1) {
+    const preferred = user.last_active_tenant_id && memberships.find((m) => m.tenant_id === user.last_active_tenant_id)
+      ? user.last_active_tenant_id
+      : null;
+
+    const tenantIds = memberships.map((m) => m.tenant_id);
+    const { data: tenantRows } = await sb
+      .from('tenants')
+      .select('id, slug, name, brand_color, brand_logo_url, tier, active')
+      .in('id', tenantIds)
+      .returns<CanonicalTenant[]>();
+    const tenantMap = new Map((tenantRows ?? []).map((t) => [t.id, t]));
+
+    const enrichedMemberships = memberships
+      .map((m) => {
+        const t = tenantMap.get(m.tenant_id);
+        if (!t || !t.active) return null;
+        return {
+          tenant_id: m.tenant_id,
+          role: m.role,
+          tenant_slug: t.slug,
+          tenant_name: t.name,
+        };
+      })
+      .filter((m): m is { tenant_id: string; role: typeof memberships[0]['role']; tenant_slug: string; tenant_name: string } => m !== null);
+
+    if (enrichedMemberships.length === 0) {
+      logShellLogin(req, email, 'failed', 'no-active-tenants');
+      return jsonResponse(200, { valid: false });
+    }
+
+    if (enrichedMemberships.length === 1) {
+      memberships = [{ user_id: user.id, tenant_id: enrichedMemberships[0].tenant_id, role: enrichedMemberships[0].role, active: true }];
+    } else {
+      const selectionExp = Date.now() + 5 * 60 * 1000;
+      const selectionToken = signTenantSelectionToken({
+        kind: 'tenant-selection',
+        user_id: user.id,
+        exp: selectionExp,
+      });
+      logShellLogin(req, email, 'success', 'multi-tenant-pending-selection');
+      return jsonResponse(200, {
+        valid: true,
+        requires_tenant_selection: true,
+        user_id: user.id,
+        selection_token: selectionToken,
+        memberships: enrichedMemberships,
+        preferred_tenant_id: preferred,
+      });
+    }
+  }
+
+  const activeMembership = memberships[0];
+  const activeTenantId = activeMembership.tenant_id;
+  const activeRole = activeMembership.role;
+
   const { data: tenant, error: tenantErr } = await sb
     .from('tenants')
     .select('id, slug, name, brand_color, brand_logo_url, tier, active')
-    .eq('id', user.tenant_id)
+    .eq('id', activeTenantId)
     .maybeSingle<CanonicalTenant>();
 
   if (tenantErr || !tenant || !tenant.active) {
@@ -183,31 +244,24 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // session — we just log the issue and move on.
   const { error: lastLoginErr } = await sb
     .from('users')
-    .update({ last_login_at: new Date().toISOString() })
+    .update({ last_login_at: new Date().toISOString(), last_active_tenant_id: activeTenantId })
     .eq('id', user.id);
   if (lastLoginErr) {
     // eslint-disable-next-line no-console
     console.warn('[shell-login] last_login_at update failed:', lastLoginErr.message);
   }
 
-  // Clear the rate-limit bucket on successful login so the user's
-  // next session starts with a clean slate. Best-effort — non-fatal.
-  void sb.schema('public').rpc('clear_rate_limit', { p_key: rlKey });
-
   logShellLogin(req, email, 'success');
-  void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.success', p_actor_id: user.id, p_tenant_id: tenant.id, p_ip: ip, p_detail: { role: user.role } });
+  void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.success', p_actor_id: user.id, p_tenant_id: tenant.id, p_ip: ip, p_detail: { role: activeRole } });
 
-  // Sign the session cookie.
-  // Phase 1.F: payload carries the 5-tier role + is_platform_admin so
-  // useCan() on the React side reads them from SessionContext without
-  // a round-trip; mint-iframe-token (Field bridge) also reads them
-  // from the same cookie.
   const exp = Date.now() + SESSION_TTL_MS;
   const cookieValue = signSessionToken({
     user_id: user.id,
     tenant_id: tenant.id,
-    role: user.role,
+    active_tenant_id: tenant.id,
+    role: activeRole,
     is_platform_admin: user.is_platform_admin,
+    memberships: memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
     exp,
   });
   // Domain scoping handled by buildSessionCookie — set to .eq.solutions
@@ -228,17 +282,20 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   const supabaseJwt = signSupabaseJwt(
     user.id,
     tenant.id,
-    user.role,
+    activeRole,
     user.is_platform_admin,
   );
+
+  const userSafeWithActiveRole = { ...userSafe, role: activeRole, tenant_id: tenant.id };
 
   return jsonResponse(
     200,
     {
       valid: true,
-      user: userSafe,
+      user: userSafeWithActiveRole,
       tenant,
       entitlements: entitlements ?? [],
+      memberships: await getEnrichedMemberships(user.id).catch(() => memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role }))),
       supabase_jwt: supabaseJwt,
     },
     { 'Set-Cookie': cookie }

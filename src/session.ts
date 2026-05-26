@@ -55,10 +55,23 @@ export interface Entitlement {
   enabled: boolean;
 }
 
+export interface Membership {
+  tenant_id: string;
+  role: EqRole;
+  tenant_slug?: string;
+  tenant_name?: string;
+}
+
 export interface ShellSession {
   user: User;
   tenant: Tenant;
   entitlements: Entitlement[];
+  /**
+   * All active memberships this user has. UI uses length > 1 to decide
+   * whether to render the workspace switcher. Always at least the
+   * currently-active membership.
+   */
+  memberships: Membership[];
   /**
    * Supabase-format JWT signed by the shell-login / verify-shell-session
    * functions. Used to construct a browser Supabase client that talks

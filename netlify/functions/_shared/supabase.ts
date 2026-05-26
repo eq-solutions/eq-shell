@@ -67,6 +67,54 @@ export interface CanonicalUser {
   active: boolean;
   pin_hash: string | null;
   last_login_at: string | null;
+  last_active_tenant_id: string | null;
+}
+
+export interface UserTenantMembership {
+  user_id: string;
+  tenant_id: string;
+  role: EqRole;
+  active: boolean;
+  created_at?: string;
+}
+
+export async function getUserMemberships(userId: string): Promise<UserTenantMembership[]> {
+  const client = getServiceClient();
+  const { data, error } = await client
+    .schema('shell_control')
+    .from('user_tenant_memberships')
+    .select('user_id, tenant_id, role, active')
+    .eq('user_id', userId)
+    .eq('active', true);
+  if (error) throw error;
+  return (data ?? []) as UserTenantMembership[];
+}
+
+export interface EnrichedMembership {
+  tenant_id: string;
+  role: EqRole;
+  tenant_slug: string;
+  tenant_name: string;
+}
+
+export async function getEnrichedMemberships(userId: string): Promise<EnrichedMembership[]> {
+  const memberships = await getUserMemberships(userId);
+  if (memberships.length === 0) return [];
+  const client = getServiceClient();
+  const ids = memberships.map((m) => m.tenant_id);
+  const { data: tenantRows, error } = await client
+    .from('tenants')
+    .select('id, slug, name, active')
+    .in('id', ids);
+  if (error) throw error;
+  const tMap = new Map((tenantRows ?? []).map((t: { id: string; slug: string; name: string; active: boolean }) => [t.id, t]));
+  return memberships
+    .map((m) => {
+      const t = tMap.get(m.tenant_id);
+      if (!t || !t.active) return null;
+      return { tenant_id: m.tenant_id, role: m.role, tenant_slug: t.slug, tenant_name: t.name };
+    })
+    .filter((m): m is EnrichedMembership => m !== null);
 }
 
 export interface CanonicalTenant {

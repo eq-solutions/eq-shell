@@ -146,17 +146,32 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       email: invite.email,
       tenant_id: invite.tenant_id,
       role: invite.role,
-      is_platform_admin: false, // Invited users are never platform admins by default.
+      is_platform_admin: false,
       active: true,
       pin_hash: pinHash,
+      last_active_tenant_id: invite.tenant_id,
     })
     .select('id, email, tenant_id, role, is_platform_admin, active, last_login_at')
-    .single<Omit<CanonicalUser, 'pin_hash'>>();
+    .single<Omit<CanonicalUser, 'pin_hash' | 'phone' | 'name' | 'last_active_tenant_id'>>();
 
   if (insertErr || !created) {
     // eslint-disable-next-line no-console
     console.error('[accept-invite] user insert failed:', insertErr?.message);
     return jsonResponse(500, { valid: false, error: 'server-error' });
+  }
+
+  const { error: memErr } = await sb
+    .schema('shell_control')
+    .from('user_tenant_memberships')
+    .insert({
+      user_id: created.id,
+      tenant_id: invite.tenant_id,
+      role: invite.role,
+      active: true,
+    });
+  if (memErr) {
+    // eslint-disable-next-line no-console
+    console.warn('[accept-invite] membership insert failed (non-fatal):', memErr.message);
   }
 
   // Apply entitlements — enable any modules the invite specifies that
@@ -215,8 +230,10 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   const cookieValue = signSessionToken({
     user_id: created.id,
     tenant_id: tenant.id,
+    active_tenant_id: tenant.id,
     role: created.role,
     is_platform_admin: created.is_platform_admin,
+    memberships: [{ tenant_id: tenant.id, role: created.role }],
     exp,
   });
   // Domain scoping handled by buildSessionCookie — same rule as
@@ -239,6 +256,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       user: created,
       tenant,
       entitlements: entitlements ?? [],
+      memberships: [{ tenant_id: tenant.id, role: created.role }],
       supabase_jwt: supabaseJwt,
     },
     { 'Set-Cookie': cookie },

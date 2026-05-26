@@ -1,8 +1,9 @@
 import React, { useState, useRef, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
-import { useSession } from '../session';
+import { useSession, type EqRole } from '../session';
 import { EqLogo } from '../components/EqLogo';
+import { storePendingSelection } from './TenantPicker';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -94,15 +95,31 @@ export default function LoginPage() {
         body: JSON.stringify({ email, pin, persist: staySignedIn }),
       });
       const body = (await res.json()) as
+        | { valid: true; requires_tenant_selection: true; user_id: string; selection_token: string; memberships: Array<{ tenant_id: string; role: EqRole; tenant_slug: string; tenant_name: string }>; preferred_tenant_id: string | null }
         | { valid: true; tenant: { slug: string } }
-        | { valid: false };
+        | { valid: false; error?: string };
       if (!body.valid) {
-        setErr('Invalid email or PIN.');
+        const errCode = (body as { error?: string }).error;
+        if (errCode === 'no-memberships') {
+          setErr("You don't have access to any workspace yet. Ask your administrator.");
+        } else {
+          setErr('Invalid email or PIN.');
+        }
         setBusy(false);
         return;
       }
+      if ('requires_tenant_selection' in body && body.requires_tenant_selection) {
+        storePendingSelection({
+          user_id: body.user_id,
+          selection_token: body.selection_token,
+          memberships: body.memberships,
+          preferred_tenant_id: body.preferred_tenant_id,
+        });
+        navigate('/select-tenant', { replace: true });
+        return;
+      }
       void refresh();
-      navigate(`/${body.tenant.slug}`, { replace: true });
+      navigate(`/${(body as { tenant: { slug: string } }).tenant.slug}`, { replace: true });
     } catch {
       setErr('Network error — please try again.');
       setBusy(false);

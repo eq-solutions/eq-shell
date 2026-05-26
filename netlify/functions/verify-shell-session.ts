@@ -11,7 +11,7 @@
 // returns yes-then-401 thrash.
 
 import type { Context } from '@netlify/functions';
-import { getServiceClient } from './_shared/supabase.js';
+import { getServiceClient, getUserMemberships, getEnrichedMemberships } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
@@ -64,10 +64,16 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   if (userErr || !user) {
     return jsonResponse(401, { valid: false });
   }
-  // Defensive: cookie claims a tenant_id but the canonical user
-  // row now points somewhere else (admin moved them between tenants).
-  // Treat as invalid — force re-login so the new tenant context loads.
-  if (user.tenant_id !== session.tenant_id) {
+
+  let memberships;
+  try {
+    memberships = await getUserMemberships(user.id);
+  } catch {
+    return jsonResponse(401, { valid: false });
+  }
+
+  const activeMembership = memberships.find((m) => m.tenant_id === session.active_tenant_id);
+  if (!activeMembership) {
     return jsonResponse(401, { valid: false });
   }
 
@@ -78,12 +84,12 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     sb
       .from('tenants')
       .select('id, slug, name, brand_color, brand_logo_url, tier, active')
-      .eq('id', user.tenant_id)
+      .eq('id', session.active_tenant_id)
       .maybeSingle<CanonicalTenant>(),
     sb
       .from('module_entitlements')
       .select('module, enabled')
-      .eq('tenant_id', user.tenant_id)
+      .eq('tenant_id', session.active_tenant_id)
       .returns<CanonicalEntitlement[]>(),
   ]);
 
@@ -91,23 +97,21 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(401, { valid: false });
   }
 
-  // Mint a fresh Supabase JWT on every session-verify. JWT TTL is short
-  // (15min post-1.F) so periodic refresh on route mounts keeps the
-  // browser usable for the full session-cookie lifetime (7d) without
-  // long-lived bearer tokens sitting in memory. JWT claims now use
-  // app_metadata + carry eq_role + is_platform_admin (Phase 1.F).
   const supabaseJwt = signSupabaseJwt(
     user.id,
     tenant.id,
-    user.role,
+    activeMembership.role,
     user.is_platform_admin,
   );
 
+  const userForResponse = { ...user, tenant_id: tenant.id, role: activeMembership.role };
+
   return jsonResponse(200, {
     valid: true,
-    user,
+    user: userForResponse,
     tenant,
     entitlements: entitlements ?? [],
+    memberships: await getEnrichedMemberships(user.id).catch(() => memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role }))),
     supabase_jwt: supabaseJwt,
   });
 });

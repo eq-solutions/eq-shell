@@ -15,7 +15,7 @@
 import bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
 import type { Context } from '@netlify/functions';
-import { getServiceClient } from './_shared/supabase.js';
+import { getServiceClient, getUserMemberships } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import { signSessionToken, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
@@ -149,20 +149,40 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .eq('tenant_id', tenant.id)
     .returns<CanonicalEntitlement[]>();
 
+  let memberships;
+  try {
+    memberships = await getUserMemberships(user.id);
+  } catch {
+    memberships = [{ user_id: user.id, tenant_id: tenant.id, role: user.role, active: true }];
+  }
+  if (memberships.length === 0) {
+    memberships = [{ user_id: user.id, tenant_id: tenant.id, role: user.role, active: true }];
+  }
+  const activeMembership = memberships.find((m) => m.tenant_id === tenant.id) ?? memberships[0];
+
   const exp = Date.now() + SESSION_TTL_MS;
   const cookieValue = signSessionToken({
     user_id: user.id,
     tenant_id: tenant.id,
-    role: user.role,
+    active_tenant_id: tenant.id,
+    role: activeMembership.role,
     is_platform_admin: user.is_platform_admin,
+    memberships: memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
     exp,
   });
   const cookie = buildSessionCookie(req, cookieValue, { maxAgeSeconds: SESSION_TTL_MS / 1000 });
-  const supabaseJwt = signSupabaseJwt(user.id, tenant.id, user.role, user.is_platform_admin);
+  const supabaseJwt = signSupabaseJwt(user.id, tenant.id, activeMembership.role, user.is_platform_admin);
 
   return jsonResponse(
     200,
-    { valid: true, user, tenant, entitlements: entitlements ?? [], supabase_jwt: supabaseJwt },
+    {
+      valid: true,
+      user,
+      tenant,
+      entitlements: entitlements ?? [],
+      memberships: memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
+      supabase_jwt: supabaseJwt,
+    },
     { 'Set-Cookie': cookie },
   );
 });
