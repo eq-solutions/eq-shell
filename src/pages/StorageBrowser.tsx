@@ -2,14 +2,10 @@
 //
 // Lists files in the per-tenant Supabase storage bucket
 // `tenant-<uuid>` (created in S2.C, RLS scoped by
-// app_metadata.tenant_id). Read-only + signed-URL download. Upload
-// support is a follow-up (Phase 2.X), file moves/deletes likewise.
-//
-// Designed for the manager use-case: "where did that PDF go?" rather
-// than the dev use-case ("inspect storage internals"). One folder at
-// a time, breadcrumb nav, file size + last-modified timestamp shown.
+// app_metadata.tenant_id). Managers can upload; all authed users
+// can browse and download via signed URLs.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
@@ -50,11 +46,23 @@ export default function StorageBrowser() {
   const prefix = searchParams.get('p') ?? '';
   const [entries, setEntries] = useState<FileEntry[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<
+    | { kind: 'idle' }
+    | { kind: 'uploading' }
+    | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const bucket = useMemo(
     () => (session ? `tenant-${session.tenant.id}` : null),
     [session],
   );
+
+  // Upload permission: no specific upload perm key exists in the current
+  // matrix — direct role check is acceptable here per sprint spec.
+  const canUpload =
+    session != null &&
+    (session.user.role === 'manager' || session.user.is_platform_admin);
 
   const load = async () => {
     if (!bucket) return;
@@ -102,29 +110,106 @@ export default function StorageBrowser() {
     }
   }
 
+  async function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !bucket) return;
+    setUploadStatus({ kind: 'uploading' });
+
+    try {
+      const sb = await createSupabaseClient();
+      const uploads = Array.from(files).map((file) => {
+        const destPath = prefix ? `${prefix}/${file.name}` : file.name;
+        return sb.storage.from(bucket).upload(destPath, file, { upsert: true });
+      });
+      const results = await Promise.all(uploads);
+      const failed = results.filter((r) => r.error);
+      if (failed.length > 0) {
+        setUploadStatus({
+          kind: 'error',
+          message: failed[0].error!.message,
+        });
+        return;
+      }
+      setUploadStatus({ kind: 'idle' });
+      await load();
+    } catch (e) {
+      setUploadStatus({ kind: 'error', message: (e as Error).message });
+    } finally {
+      // Reset the input so the same file can be re-selected after an error.
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
   if (!session) return null;
 
   const crumbs = prefix.split('/').filter(Boolean);
 
   return (
     <HubLayout>
-        <div className="eq-page__header">
-          <h1 className="eq-page__title">Storage</h1>
-          <p className="eq-page__lede">
-            Files in your tenant bucket{' '}
-            <code
-              style={{
-                background: 'var(--gray-100)',
-                padding: '2px 6px',
-                borderRadius: 4,
-                fontSize: 12,
-                color: 'var(--eq-grey)',
-              }}
-            >
-              tenant-{session.tenant.id.slice(0, 8)}…
-            </code>
-            . Read-only · click a file to open a 60-second signed URL in a new tab.
-          </p>
+        <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+          <div>
+            <h1 className="eq-page__title">Storage</h1>
+            <p className="eq-page__lede">
+              Files in your tenant bucket{' '}
+              <code
+                style={{
+                  background: 'var(--gray-100)',
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  color: 'var(--eq-grey)',
+                }}
+              >
+                tenant-{session.tenant.id.slice(0, 8)}…
+              </code>
+              . Click a file to open a 60-second signed URL in a new tab.
+            </p>
+          </div>
+
+          {canUpload && (
+            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(e) => void handleFilesSelected(e)}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadStatus.kind === 'uploading'}
+                style={{
+                  background: uploadStatus.kind === 'uploading' ? '#2986B4' : '#3DA8D8',
+                  color: 'white',
+                  borderRadius: 6,
+                  padding: '8px 16px',
+                  border: 'none',
+                  fontSize: 14,
+                  cursor: uploadStatus.kind === 'uploading' ? 'not-allowed' : 'pointer',
+                  transition: 'background 150ms ease',
+                  opacity: uploadStatus.kind === 'uploading' ? 0.8 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (uploadStatus.kind !== 'uploading') {
+                    (e.currentTarget as HTMLButtonElement).style.background = '#2986B4';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (uploadStatus.kind !== 'uploading') {
+                    (e.currentTarget as HTMLButtonElement).style.background = '#3DA8D8';
+                  }
+                }}
+              >
+                {uploadStatus.kind === 'uploading' ? 'Uploading…' : 'Upload files'}
+              </button>
+              {uploadStatus.kind === 'error' && (
+                <span style={{ fontSize: 13, color: '#B91C1C' }}>
+                  {uploadStatus.message}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <nav
@@ -247,7 +332,7 @@ export default function StorageBrowser() {
         >
           Showing up to 100 entries per folder.{' '}
           <Link to=".." style={{ textDecoration: 'none' }}>
-            Pagination + upload + delete land in the next polish pass.
+            Pagination and file deletion land in the next polish pass.
           </Link>
         </p>
     </HubLayout>
