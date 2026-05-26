@@ -40,6 +40,7 @@ const HUB_APPS = [
 function AdminTenantSettingsInner() {
   const { session } = useSession();
   const fileRef = useRef<HTMLInputElement>(null);
+  const logoUploadRef = useRef<HTMLInputElement>(null);
 
   const [settings, setSettings] = useState<TenantSettings | null>(null);
   const [name, setName] = useState('');
@@ -51,6 +52,12 @@ function AdminTenantSettingsInner() {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [logoUploadStatus, setLogoUploadStatus] = useState<
+    | { kind: 'idle' }
+    | { kind: 'uploading' }
+    | { kind: 'success' }
+    | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
 
   const isPlatformAdmin = session?.user.is_platform_admin ?? false;
 
@@ -94,6 +101,67 @@ function AdminTenantSettingsInner() {
       setSaveErr((e as Error).message);
     } finally {
       setUploading(false);
+    }
+  }
+
+  const ALLOWED_LOGO_TYPES = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/svg+xml',
+    'image/webp',
+  ]);
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!ALLOWED_LOGO_TYPES.has(file.type)) {
+      setLogoUploadStatus({ kind: 'error', message: 'File type not supported. Use PNG, JPEG, SVG, or WebP.' });
+      if (logoUploadRef.current) logoUploadRef.current.value = '';
+      return;
+    }
+    if (file.size > 524288) {
+      setLogoUploadStatus({ kind: 'error', message: 'File must be under 512 KB.' });
+      if (logoUploadRef.current) logoUploadRef.current.value = '';
+      return;
+    }
+
+    setLogoUploadStatus({ kind: 'uploading' });
+
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch('/.netlify/functions/upload-tenant-logo', {
+        method: 'POST',
+        body,
+      });
+
+      if (res.status === 404) {
+        setLogoUploadStatus({ kind: 'error', message: 'Upload coming soon.' });
+        return;
+      }
+
+      if (!res.ok) {
+        let message = 'Upload failed.';
+        try {
+          const json = (await res.json()) as { error?: string; message?: string };
+          message = json.error ?? json.message ?? message;
+        } catch {
+          // ignore parse error — use fallback message
+        }
+        setLogoUploadStatus({ kind: 'error', message });
+        return;
+      }
+
+      const json = (await res.json()) as { url?: string };
+      setLogoUploadStatus({ kind: 'success' });
+      if (json.url) {
+        setBrandLogoUrl(json.url);
+      }
+    } catch (e) {
+      setLogoUploadStatus({ kind: 'error', message: (e as Error).message ?? 'Upload failed.' });
+    } finally {
+      if (logoUploadRef.current) logoUploadRef.current.value = '';
     }
   }
 
@@ -233,6 +301,66 @@ function AdminTenantSettingsInner() {
                         disabled={busy}
                         style={{ ...inputStyle, flex: 1, fontSize: 13 }}
                       />
+                    </div>
+
+                    {/* Logo upload widget — posts to Netlify function */}
+                    <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 12, marginTop: 4 }}>
+                      <p style={{ fontSize: 12, color: '#64748B', margin: '0 0 8px' }}>
+                        Upload via EQ — PNG, JPEG, SVG, or WebP · max 512 KB
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <input
+                          ref={logoUploadRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          style={{ display: 'none' }}
+                          onChange={(e) => void handleLogoUpload(e)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLogoUploadStatus({ kind: 'idle' });
+                            logoUploadRef.current?.click();
+                          }}
+                          disabled={logoUploadStatus.kind === 'uploading' || busy}
+                          style={{
+                            background: logoUploadStatus.kind === 'uploading' ? '#2986B4' : '#3DA8D8',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: 6,
+                            padding: '0 16px',
+                            height: 36,
+                            fontSize: 13,
+                            fontWeight: 500,
+                            cursor: logoUploadStatus.kind === 'uploading' || busy ? 'not-allowed' : 'pointer',
+                            opacity: logoUploadStatus.kind === 'uploading' || busy ? 0.8 : 1,
+                            transition: 'background 150ms ease',
+                            flexShrink: 0,
+                          }}
+                          onMouseEnter={(e) => {
+                            if (logoUploadStatus.kind !== 'uploading' && !busy) {
+                              (e.currentTarget as HTMLButtonElement).style.background = '#2986B4';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (logoUploadStatus.kind !== 'uploading' && !busy) {
+                              (e.currentTarget as HTMLButtonElement).style.background = '#3DA8D8';
+                            }
+                          }}
+                        >
+                          {logoUploadStatus.kind === 'uploading' ? 'Uploading…' : 'Upload logo'}
+                        </button>
+                        {logoUploadStatus.kind === 'success' && (
+                          <span style={{ fontSize: 13, color: '#15803D', fontWeight: 500 }}>
+                            Logo updated
+                          </span>
+                        )}
+                        {logoUploadStatus.kind === 'error' && (
+                          <span style={{ fontSize: 13, color: '#B91C1C' }}>
+                            {logoUploadStatus.message}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </FieldRow>
