@@ -537,10 +537,10 @@ async function handlePut(
   let created: boolean;
 
   if (existing) {
-    // Step 2a: UPDATE — merge incoming fields; don't overwrite with nulls
-    const updateRow = { ...row, updated_at: new Date().toISOString() };
-    delete updateRow.tenant_id; // can't change tenant
-    delete updateRow.external_id; // can't change external_id
+    // Step 2a: UPDATE — merge incoming fields; strip immutable columns
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { tenant_id: _tid, external_id: _eid, ...mutableFields } = row as Record<string, unknown>;
+    const updateRow: Record<string, unknown> = { ...mutableFields, updated_at: new Date().toISOString() };
 
     const { error: updateErr } = await cAny
       .schema('app_data')
