@@ -15,10 +15,13 @@
 // the flag and the legacy path entirely).
 //
 // Spec: eq/cards/canonical-migration/plan.md §Unit 4 + §Unit 5.
+//
+// 2026-05-27 — sidebar-alongside layout. Topbar removed; HubLayout with
+// iframe prop keeps the sidebar visible while Cards fills the content area.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 
 const CARDS_URL = 'https://cards.eq.solutions/';
 
@@ -126,8 +129,7 @@ export default function CardsIframe() {
         ? "Couldn't open EQ Cards. Check your connection and try again."
         : "EQ Cards took too long to load. Try again — if the problem persists, reload the page.";
     return (
-      <>
-        <Topbar />
+      <HubLayout iframe>
         <div
           className="eq-iframe-error"
           role="alert"
@@ -143,25 +145,23 @@ export default function CardsIframe() {
             Try again
           </button>
         </div>
-      </>
+      </HubLayout>
     );
   }
 
   // Token fetch in progress.
   if (phase === 'minting') {
     return (
-      <>
-        <Topbar />
+      <HubLayout iframe>
         <div className="eq-loading">Opening EQ Cards…</div>
-      </>
+      </HubLayout>
     );
   }
 
   // Iframe src is set — render it. A brief loading scrim overlays while
   // the Flutter app boots; once onLoad fires it disappears.
   return (
-    <>
-      <Topbar />
+    <HubLayout iframe>
       {phase === 'loading' && (
         <div className="eq-loading eq-loading--overlay" aria-busy="true">
           Opening EQ Cards…
@@ -170,6 +170,7 @@ export default function CardsIframe() {
       {iframeSrc && (
         <iframe
           className="eq-cards-frame"
+          style={{ flex: 1, minHeight: 0 }}
           title="EQ Cards"
           src={iframeSrc}
           sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
@@ -178,6 +179,6 @@ export default function CardsIframe() {
           onLoad={onIframeLoad}
         />
       )}
-    </>
+    </HubLayout>
   );
 }

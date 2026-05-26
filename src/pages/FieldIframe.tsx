@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import * as Sentry from '@sentry/react';
 import { useSession } from '../session';
-import { Topbar } from '../components/Topbar';
+import { HubLayout } from '../components/HubLayout';
 
 // Embeds the existing EQ Field deploy as an iframe. The shell mints
 // a 60s HMAC handoff token, passes it via URL hash (NOT query —
@@ -28,6 +28,9 @@ import { Topbar } from '../components/Topbar';
 // rejects mismatches with a 'tenant-mismatch' postMessage. Auto-routing
 // from the user's shell tenant_id was tried twice (PR #10, #12) and
 // reverted both times — see SHELL-TENANT-PICKER-PROMPT.md §2 for why.
+//
+// 2026-05-27 — sidebar-alongside layout. Topbar removed; HubLayout
+// stays visible alongside the iframe via `iframe` prop on HubLayout.
 
 // Field tenant configuration lives in src/lib/fieldTenants.ts — single
 // source of truth for TENANT_OPTIONS, FIELD_TENANT_URLS, and buildFieldSrc.
@@ -239,28 +242,25 @@ export default function FieldIframe() {
   if (!selectedTenant) {
     if (visibleOptions.length === 1) {
       return (
-        <>
-          <Topbar />
+        <HubLayout iframe>
           <div className="eq-field-frame-loading">Connecting to EQ Field…</div>
-        </>
+        </HubLayout>
       );
     }
     return (
-      <>
-        <Topbar />
+      <HubLayout iframe>
         <TenantPicker options={visibleOptions} onPick={pickTenant} />
-      </>
+      </HubLayout>
     );
   }
 
   const tenantMeta = TENANT_OPTIONS.find((t) => t.slug === selectedTenant);
 
-  // No iframe yet — show a pre-mount status (still under the shell topbar
+  // No iframe yet — show a pre-mount status (still under the sidebar
   // + tenant bar so the user can bail out to the picker).
   if (state.phase === 'minting' || state.phase === 'mint-failed') {
     return (
-      <>
-        <Topbar />
+      <HubLayout iframe>
         {tenantMeta && <FieldTenantBar tenant={tenantMeta} onSwitch={onSwitch} />}
         <div
           className="eq-field-frame-loading eq-field-frame-loading--with-tenantbar"
@@ -270,7 +270,7 @@ export default function FieldIframe() {
             ? 'Authorising EQ Field handoff…'
             : 'Could not authorise EQ Field. Sign out and back in, then retry.'}
         </div>
-      </>
+      </HubLayout>
     );
   }
 
@@ -278,12 +278,12 @@ export default function FieldIframe() {
   // sit on top for non-accepted states so we don't unmount Field
   // halfway through its bootstrap.
   return (
-    <>
-      <Topbar />
+    <HubLayout iframe>
       {tenantMeta && <FieldTenantBar tenant={tenantMeta} onSwitch={onSwitch} />}
       {src && (
         <iframe
           className="eq-field-frame eq-field-frame--with-tenantbar"
+          style={{ flex: 1, minHeight: 0 }}
           title="EQ Field"
           src={src}
           // Allow same-origin so Field's existing IndexedDB / cookies
@@ -301,7 +301,7 @@ export default function FieldIframe() {
         />
       )}
       <HandoffOverlay state={state} />
-    </>
+    </HubLayout>
   );
 }
 
