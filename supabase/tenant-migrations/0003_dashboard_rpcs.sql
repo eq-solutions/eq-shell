@@ -51,6 +51,14 @@ AS $$
     UNION ALL SELECT 'licence',
       (SELECT count(*) FROM app_data.licences s, t WHERE s.tenant_id = t.tid)::bigint,
       (SELECT count(*) FROM app_data.licences s, t WHERE s.tenant_id = t.tid AND s.created_at > now() - interval '7 days')::bigint
+    -- TODO: confirm table name — app_data.work_orders does not exist in baseline migrations yet (EQ Service)
+    UNION ALL SELECT 'work_order',
+      (SELECT count(*) FROM app_data.work_orders s, t WHERE s.tenant_id = t.tid)::bigint,
+      (SELECT count(*) FROM app_data.work_orders s, t WHERE s.tenant_id = t.tid AND s.created_at > now() - interval '7 days')::bigint
+    -- TODO: confirm table name — app_data.issued_cards does not exist in baseline migrations yet (EQ Cards)
+    UNION ALL SELECT 'card',
+      (SELECT count(*) FROM app_data.issued_cards s, t WHERE s.tenant_id = t.tid)::bigint,
+      (SELECT count(*) FROM app_data.issued_cards s, t WHERE s.tenant_id = t.tid AND s.created_at > now() - interval '7 days')::bigint
   )
   SELECT * FROM per_entity;
 $$;
