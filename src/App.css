@@ -3,6 +3,8 @@
  * 8-pixel grid. Radii 4/6/8/12. No gradients on static. No shadows on static.
  */
 
+/* Local vars mirror /eq-tokens.css — keep in sync when updating brand tokens */
+
 /* ──────────────────────────────────────────────────────────────────
  * Shell scaffold
  * ────────────────────────────────────────────────────────────────── */

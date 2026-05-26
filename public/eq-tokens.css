@@ -1,0 +1,58 @@
+/* EQ Design Tokens — published by eq-shell at /eq-tokens.css
+   Consume via: @import url('https://core.eq.solutions/eq-tokens.css')
+   All EQ apps (Field, Service, Cards, Quotes) should use these vars. */
+
+:root {
+  /* Brand colours */
+  --eq-sky:    #3DA8D8;
+  --eq-deep:   #2986B4;
+  --eq-ice:    #EAF5FB;
+  --eq-ink:    #1A1A2E;
+
+  /* Sidebar tokens (shell dark sidebar) */
+  --eq-sidebar-bg:        #0F1117;
+  --eq-sidebar-border:    #1E2130;
+  --eq-sidebar-text:      #A8B3CF;
+  --eq-sidebar-text-active: #FFFFFF;
+  --eq-sidebar-item-hover: #1A1E2A;
+
+  /* Content area */
+  --eq-content-bg:   #F5F4F0;
+  --eq-surface:      #FFFFFF;
+  --eq-border:       #E2E8F0;
+  --eq-border-light: #F1F5F9;
+
+  /* Text */
+  --eq-text:        #1A1A2E;
+  --eq-text-muted:  #64748B;
+  --eq-text-faint:  #94A3B8;
+
+  /* Status */
+  --eq-success:  #16A34A;
+  --eq-warning:  #D97706;
+  --eq-danger:   #DC2626;
+  --eq-info:     #3DA8D8;
+
+  /* Radius */
+  --eq-radius-sm: 4px;
+  --eq-radius:    8px;
+  --eq-radius-lg: 12px;
+
+  /* Spacing scale (use multiples of 4) */
+  --eq-space-1:  4px;
+  --eq-space-2:  8px;
+  --eq-space-3:  12px;
+  --eq-space-4:  16px;
+  --eq-space-6:  24px;
+  --eq-space-8:  32px;
+
+  /* Typography */
+  --eq-font:       'Plus Jakarta Sans', system-ui, sans-serif;
+  --eq-font-mono:  'JetBrains Mono', 'Fira Code', monospace;
+  --eq-text-xs:   11px;
+  --eq-text-sm:   13px;
+  --eq-text-base: 14px;
+  --eq-text-lg:   16px;
+  --eq-text-xl:   20px;
+  --eq-text-2xl:  24px;
+}
