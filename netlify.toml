@@ -21,6 +21,13 @@
   targetPort = 5173
   port = 8888
 
+# Static design token file — must be served as CSS before the SPA catch-all.
+[[redirects]]
+  from = "/eq-tokens.css"
+  to = "/eq-tokens.css"
+  status = 200
+  force = true
+
 # SPA history fallback so React Router owns all non-function routes.
 [[redirects]]
   from = "/*"
