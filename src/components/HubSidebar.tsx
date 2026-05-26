@@ -1,4 +1,5 @@
 import { NavLink, useParams } from 'react-router-dom';
+import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut } from 'lucide-react';
 import { useSession } from '../session';
 import { EqLogo } from './EqLogo';
 import { TenantSwitcher } from './TenantSwitcher';
@@ -28,96 +29,11 @@ function initials(name: string | null, email: string): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-// ── Icons ────────────────────────────────────────────────────────────────────
-
-const FieldIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M8 2a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM4 13c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-const ServiceIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M13 8A5 5 0 103 8M8 8v2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    <circle cx="8" cy="12" r="1" fill="currentColor" />
-  </svg>
-);
-
-const QuotesIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <rect x="3" y="2" width="10" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M6 6h4M6 9h2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-const CardsIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <rect x="2" y="4" width="12" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M2 7.5h12" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M5 10.5h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-const CustomerIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M5 7h6M5 10h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-const SiteIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M8 2C5.8 2 4 3.8 4 6c0 3 4 8 4 8s4-5 4-8c0-2.2-1.8-4-4-4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-    <circle cx="8" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.5" />
-  </svg>
-);
-
-const ContactIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <circle cx="8" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-const SettingsIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M8 2v1.5M8 12.5V14M14 8h-1.5M3.5 8H2M12.24 3.76l-1.06 1.06M4.82 11.18l-1.06 1.06M12.24 12.24l-1.06-1.06M4.82 4.82L3.76 3.76" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-const IntakeIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M8 2v8M5 7l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M3 12h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-const UsersIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M6 7a2 2 0 100-4 2 2 0 000 4zM2 13c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    <path d="M11 5a2 2 0 010 4M14 13c0-1.7-1-3.2-2.5-3.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-const AuditIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <rect x="3" y="2" width="10" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
-    <path d="M6 5.5h4M6 8h4M6 10.5h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
-
-const LogoutIcon = () => (
-  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
-    <path d="M5.5 3H3a1 1 0 00-1 1v7a1 1 0 001 1h2.5M9.5 10.5l3-3-3-3M12.5 7.5H5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
 export const HUB_APP_ICONS: Record<string, React.ReactNode> = {
-  field:   <FieldIcon />,
-  service: <ServiceIcon />,
-  quotes:  <QuotesIcon />,
-  cards:   <CardsIcon />,
+  field:   <Users size={16} aria-hidden="true" />,
+  service: <Wrench size={16} aria-hidden="true" />,
+  quotes:  <FileText size={16} aria-hidden="true" />,
+  cards:   <CreditCard size={16} aria-hidden="true" />,
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -171,9 +87,9 @@ export function HubSidebar({ apps, records }: Props) {
                 }
               >
                 <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
-                  {r.key === 'customer' && <CustomerIcon />}
-                  {r.key === 'site'     && <SiteIcon />}
-                  {r.key === 'contact'  && <ContactIcon />}
+                  {r.key === 'customer' && <Building2 size={16} aria-hidden="true" />}
+                  {r.key === 'site'     && <MapPin size={16} aria-hidden="true" />}
+                  {r.key === 'contact'  && <User size={16} aria-hidden="true" />}
                 </span>
                 <span className="eq-hub-sidebar__nav-label">{r.label}</span>
                 {r.count !== null && (
@@ -226,7 +142,7 @@ export function HubSidebar({ apps, records }: Props) {
               to={`/${tenantSlug}/intake`}
               className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
             >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><IntakeIcon /></span>
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Download size={16} aria-hidden="true" /></span>
               <span className="eq-hub-sidebar__nav-label">Import</span>
               <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
             </NavLink>
@@ -243,21 +159,21 @@ export function HubSidebar({ apps, records }: Props) {
               to={`/${tenantSlug}/admin/users`}
               className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
             >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><UsersIcon /></span>
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Users2 size={16} aria-hidden="true" /></span>
               <span className="eq-hub-sidebar__nav-label">Users</span>
             </NavLink>
             <NavLink
               to={`/${tenantSlug}/admin/audit`}
               className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
             >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><AuditIcon /></span>
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ClipboardList size={16} aria-hidden="true" /></span>
               <span className="eq-hub-sidebar__nav-label">Audit log</span>
             </NavLink>
             <NavLink
               to={`/${tenantSlug}/admin/settings`}
               className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
             >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><SettingsIcon /></span>
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Settings size={16} aria-hidden="true" /></span>
               <span className="eq-hub-sidebar__nav-label">Settings</span>
             </NavLink>
           </nav>
@@ -280,7 +196,7 @@ export function HubSidebar({ apps, records }: Props) {
           aria-label="Log out"
           title="Log out"
         >
-          <LogoutIcon />
+          <LogOut size={15} aria-hidden="true" />
         </button>
       </div>
     </aside>
