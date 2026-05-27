@@ -2253,6 +2253,18 @@
     opacity: 1;
   }
 
+  /* Icons pop against the dark rail */
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-icon {
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.75);
+  }
+
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-item.active .eq-hub-sidebar__nav-icon,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-item:hover .eq-hub-sidebar__nav-icon {
+    background: rgba(61,168,216,0.25);
+    color: #ffffff;
+  }
+
   /* User avatar stays centered in rail */
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__user {
     padding-left: 11px;
