@@ -2201,10 +2201,62 @@
     overflow: hidden;
     transition: width 0.18s ease;
     z-index: 20;
+    /* Thinner right border in collapsed state */
+    border-right: 1px solid rgba(255,255,255,0.04);
   }
 
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover {
     width: 260px;
+    border-right-color: rgba(255,255,255,0.06);
+  }
+
+  /* Center icons in the 52px rail */
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-item {
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+
+  /* Hide text content that would peek through the clip */
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__brand-sep,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__brand-label,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__live,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__section-label,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-label,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-count,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-badge,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-arrow,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__user-info,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__user-logout {
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    pointer-events: none;
+  }
+
+  /* Fade text in as the sidebar expands */
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__brand-sep,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__brand-label,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__live,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__section-label,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__nav-label,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__nav-count,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__nav-badge,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__nav-arrow,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__user-info,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__user-logout {
+    opacity: 1;
+    pointer-events: auto;
+    transition-delay: 0.08s;
+  }
+
+  /* Live dot stays visible as a status indicator */
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__live-dot {
+    opacity: 1;
+  }
+
+  /* User avatar stays centered in rail */
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__user {
+    padding-left: 11px;
+    padding-right: 11px;
   }
 }
 
