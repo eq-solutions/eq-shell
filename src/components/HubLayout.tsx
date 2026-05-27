@@ -106,7 +106,13 @@ export function HubLayout({
           onClick={closeSidebar}
         />
       )}
-      <div className={iframe && sidebarOpen ? 'eq-hub__sidebar-overlay' : undefined}>
+      <div className={
+        iframe
+          ? sidebarOpen
+            ? 'eq-hub__sidebar-rail-wrap eq-hub__sidebar-overlay'
+            : 'eq-hub__sidebar-rail-wrap'
+          : undefined
+      }>
         <HubSidebar apps={sidebarApps} />
       </div>
       {iframe ? (
