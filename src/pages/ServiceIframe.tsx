@@ -97,12 +97,18 @@ export default function ServiceIframe() {
     if (state.phase !== 'loading') return;
     function onMessage(ev: MessageEvent) {
       if (ev.origin !== SERVICE_URL) return;
-      if (
-        ev.data &&
-        typeof ev.data === 'object' &&
-        ev.data.type === 'EQ_SERVICE_READY'
-      ) {
+      if (!ev.data || typeof ev.data !== 'object') return;
+      if (ev.data.type === 'EQ_SERVICE_READY') {
         setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
+      } else if (ev.data.type === 'EQ_SERVICE_ERROR') {
+        const code = (ev.data as Record<string, unknown>).code;
+        const msg =
+          code === 'service-account-not-found'
+            ? "Your account isn't set up in EQ Service yet. Contact your administrator."
+            : code === 'invalid-token'
+              ? 'The sign-in link expired. Refresh the page to try again.'
+              : 'EQ Service could not sign you in. Refresh the page to try again.';
+        setState({ phase: 'error', msg });
       }
     }
     window.addEventListener('message', onMessage);
