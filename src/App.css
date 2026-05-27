@@ -2174,6 +2174,40 @@
   .eq-hub-content__greeting { font-size: 28px; }
 }
 
+/* ── Icon rail: sidebar collapses to 52px icon strip in iframe mode ──
+ * The wrapper takes 52px in the flex row so the iframe never shifts.
+ * The sidebar is position:absolute within the wrapper and expands to
+ * 260px on hover, overlaying the iframe. Mobile keeps its own overlay
+ * behaviour via .eq-hub__sidebar-overlay (below). */
+
+.eq-hub__sidebar-rail-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+@media (min-width: 681px) {
+  .eq-hub__sidebar-rail-wrap {
+    width: 52px;
+    min-width: 52px;
+  }
+
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 52px;
+    min-width: unset;
+    overflow: hidden;
+    transition: width 0.18s ease;
+    z-index: 20;
+  }
+
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover {
+    width: 260px;
+  }
+}
+
 /* ── Mobile iframe overlay sidebar ──
  * On ≤680px, iframe pages render a hamburger button top-left.
  * Tapping it wraps the sidebar in .eq-hub__sidebar-overlay so it
