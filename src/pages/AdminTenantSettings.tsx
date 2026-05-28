@@ -101,6 +101,8 @@ function AdminTenantSettingsInner() {
       if (upErr) throw new Error(upErr.message);
       const { data } = sb.storage.from('tenant-logos').getPublicUrl(path);
       setBrandLogoUrl(data.publicUrl);
+      const detected = await extractLogoColor(file);
+      if (detected) { setBrandColor(detected); setColorDetected(true); }
     } catch (e) {
       setSaveErr((e as Error).message);
     } finally {
@@ -199,13 +201,8 @@ function AdminTenantSettingsInner() {
       setLogoUploadStatus({ kind: 'success' });
       if (json.url) {
         setBrandLogoUrl(json.url);
-        if (!brandColor) {
-          const detected = await extractLogoColor(file);
-          if (detected) {
-            setBrandColor(detected);
-            setColorDetected(true);
-          }
-        }
+        const detected = await extractLogoColor(file);
+        if (detected) { setBrandColor(detected); setColorDetected(true); }
       }
     } catch (e) {
       setLogoUploadStatus({ kind: 'error', message: (e as Error).message ?? 'Upload failed.' });
@@ -330,7 +327,7 @@ function AdminTenantSettingsInner() {
                   )}
                 </FieldRow>
 
-                <FieldRow label="Logo" hint="PNG, SVG or JPG. Shown in the sidebar.">
+                <FieldRow label="Logo" hint="PNG, JPEG, SVG or WebP · max 512 KB. Brand colour is auto-detected on upload.">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {brandLogoUrl && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--gray-200)', borderRadius: 6, background: 'var(--gray-50)' }}>
@@ -338,20 +335,23 @@ function AdminTenantSettingsInner() {
                         <button type="button" onClick={() => setBrandLogoUrl('')} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--gray-400)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Remove</button>
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        ref={logoUploadRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                        style={{ display: 'none' }}
+                        onChange={(e) => void handleLogoUpload(e)}
+                      />
                       <button
                         type="button"
-                        onClick={() => fileRef.current?.click()}
-                        disabled={uploading || busy}
-                        className="eq-btn-secondary"
-                        style={{ fontSize: 13, padding: '0 14px', height: 36 }}
+                        onClick={() => { setLogoUploadStatus({ kind: 'idle' }); logoUploadRef.current?.click(); }}
+                        disabled={logoUploadStatus.kind === 'uploading' || busy}
+                        className="eq-btn-primary"
+                        style={{ fontSize: 13, padding: '0 16px', height: 36, flexShrink: 0 }}
                       >
-                        {uploading ? 'Uploading…' : 'Upload file'}
+                        {logoUploadStatus.kind === 'uploading' ? 'Uploading…' : 'Upload logo'}
                       </button>
-                      <input
-                        ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) void onUpload(f); }}
-                      />
                       <input
                         type="url" value={brandLogoUrl}
                         onChange={(e) => setBrandLogoUrl(e.target.value)}
@@ -360,66 +360,12 @@ function AdminTenantSettingsInner() {
                         style={{ ...inputStyle, flex: 1, fontSize: 13 }}
                       />
                     </div>
-
-                    {/* Logo upload widget — posts to Netlify function */}
-                    <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 12, marginTop: 4 }}>
-                      <p style={{ fontSize: 12, color: '#64748B', margin: '0 0 8px' }}>
-                        Upload via EQ — PNG, JPEG, SVG, or WebP · max 512 KB
-                      </p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <input
-                          ref={logoUploadRef}
-                          type="file"
-                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                          style={{ display: 'none' }}
-                          onChange={(e) => void handleLogoUpload(e)}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setLogoUploadStatus({ kind: 'idle' });
-                            logoUploadRef.current?.click();
-                          }}
-                          disabled={logoUploadStatus.kind === 'uploading' || busy}
-                          style={{
-                            background: logoUploadStatus.kind === 'uploading' ? '#2986B4' : '#3DA8D8',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: 6,
-                            padding: '0 16px',
-                            height: 36,
-                            fontSize: 13,
-                            fontWeight: 500,
-                            cursor: logoUploadStatus.kind === 'uploading' || busy ? 'not-allowed' : 'pointer',
-                            opacity: logoUploadStatus.kind === 'uploading' || busy ? 0.8 : 1,
-                            transition: 'background 150ms ease',
-                            flexShrink: 0,
-                          }}
-                          onMouseEnter={(e) => {
-                            if (logoUploadStatus.kind !== 'uploading' && !busy) {
-                              (e.currentTarget as HTMLButtonElement).style.background = '#2986B4';
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (logoUploadStatus.kind !== 'uploading' && !busy) {
-                              (e.currentTarget as HTMLButtonElement).style.background = '#3DA8D8';
-                            }
-                          }}
-                        >
-                          {logoUploadStatus.kind === 'uploading' ? 'Uploading…' : 'Upload logo'}
-                        </button>
-                        {logoUploadStatus.kind === 'success' && (
-                          <span style={{ fontSize: 13, color: '#15803D', fontWeight: 500 }}>
-                            Logo updated
-                          </span>
-                        )}
-                        {logoUploadStatus.kind === 'error' && (
-                          <span style={{ fontSize: 13, color: '#B91C1C' }}>
-                            {logoUploadStatus.message}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    {logoUploadStatus.kind === 'success' && (
+                      <span style={{ fontSize: 13, color: '#15803D', fontWeight: 500 }}>✓ Logo updated</span>
+                    )}
+                    {logoUploadStatus.kind === 'error' && (
+                      <span style={{ fontSize: 13, color: '#B91C1C' }}>{logoUploadStatus.message}</span>
+                    )}
                   </div>
                 </FieldRow>
               </section>

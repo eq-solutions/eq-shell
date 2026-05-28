@@ -1,7 +1,7 @@
 // EntityBrowserPage — a generic paged table for any canonical entity.
 // URL: /:tenant/data/:entity (entity is the singular registry name)
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
@@ -10,13 +10,16 @@ import { EqError } from '../components/EqError';
 
 // Response from /.netlify/functions/entity-rows. The function reads from
 // the tenant data plane via eq_browse_entity RPC (see
-// supabase/tenant-migrations/0004_browse_entity_rpc.sql).
+// supabase/tenant-migrations/0014_browse_entity_search.sql).
 interface EntityRowsResponse {
-  ok:      boolean;
-  error?:  string;
-  detail?: string;
-  rows?:   Record<string, unknown>[];
-  total?:  number;
+  ok:       boolean;
+  error?:   string;
+  detail?:  string;
+  rows?:    Record<string, unknown>[];
+  total?:   number;
+  search?:  string | null;
+  sort_col?: string;
+  sort_dir?: string;
 }
 
 // Maps the URL :entity (singular registry name) → app_data table (plural)
@@ -173,18 +176,51 @@ function formatCell(value: unknown, key: string): string {
 
 const PAGE_SIZE = 50;
 
+// Debounce helper — delays firing fn until ms of silence.
+function useDebounce<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
+
 function EntityBrowserInner({ entity }: { entity: string }) {
   const view = ENTITY_VIEW[entity];
   const { session } = useSession();
   const isManager =
     session?.user.role === 'manager' || session?.user.is_platform_admin === true;
+
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [count, setCount] = useState<number | null>(null);
   const [page, setPage] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [, startTransition] = useTransition();
+
+  // Search — input is immediate, server fetch is debounced.
+  const [searchInput, setSearchInput] = useState('');
+  const search = useDebounce(searchInput, 300);
+
+  // Sort — only allow columns declared in the view config.
+  const [sortCol, setSortCol] = useState('created_at');
+  const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('DESC');
+
   const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
+
+  // Reset to page 0 whenever search or sort changes.
+  const prevSearch = useRef(search);
+  const prevSort   = useRef({ sortCol, sortDir });
+  useEffect(() => {
+    if (prevSearch.current !== search ||
+        prevSort.current.sortCol !== sortCol ||
+        prevSort.current.sortDir !== sortDir) {
+      prevSearch.current = search;
+      prevSort.current   = { sortCol, sortDir };
+      setPage(0);
+    }
+  }, [search, sortCol, sortDir]);
 
   const load = useMemo(
     () => async () => {
@@ -193,15 +229,16 @@ function EntityBrowserInner({ entity }: { entity: string }) {
       setErr(null);
       try {
         // Server-side: tenant_routing resolves the session's tenant to its
-        // dedicated Supabase project, then eq_browse_entity (public schema,
-        // SECURITY DEFINER) does the count + paged select on app_data.
-        // We don't pass tenant in the URL — the function reads it from the
-        // session cookie so users can't browse other tenants' data.
+        // dedicated Supabase project, then eq_browse_entity does the count +
+        // paged select on app_data with optional search + sort.
         const qs = new URLSearchParams({
           entity,
-          limit:  String(PAGE_SIZE),
-          offset: String(page * PAGE_SIZE),
+          limit:    String(PAGE_SIZE),
+          offset:   String(page * PAGE_SIZE),
+          sort_col: sortCol,
+          sort_dir: sortDir,
         });
+        if (search) qs.set('search', search);
         const res = await fetch(`/.netlify/functions/entity-rows?${qs}`, {
           credentials: 'include',
         });
@@ -217,12 +254,21 @@ function EntityBrowserInner({ entity }: { entity: string }) {
         setLoading(false);
       }
     },
-    [view, page, entity],
+    [view, page, entity, search, sortCol, sortDir],
   );
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
+
+  const handleSort = (key: string) => {
+    startTransition(() => {
+      if (sortCol === key) {
+        setSortDir((d) => (d === 'DESC' ? 'ASC' : 'DESC'));
+      } else {
+        setSortCol(key);
+        setSortDir('DESC');
+      }
+    });
+  };
 
   if (!view) {
     return (
@@ -235,109 +281,129 @@ function EntityBrowserInner({ entity }: { entity: string }) {
     );
   }
 
-  const filtered = (rows ?? []).filter((r) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return view.columns.some((col) => {
-      const v = r[col.key];
-      return v != null && String(v).toLowerCase().includes(s);
-    });
-  });
+  const totalPages = count != null ? Math.ceil(count / PAGE_SIZE) : null;
 
   return (
     <HubLayout>
       <div className="eq-page__header">
-          <h1 className="eq-page__title">{view.label}</h1>
-          <p className="eq-page__lede">
-            {count != null ? `${count.toLocaleString()} total` : '...'}
-          </p>
-        </div>
+        <h1 className="eq-page__title">{view.label}</h1>
+        <p className="eq-page__lede">
+          {count != null
+            ? search
+              ? `${count.toLocaleString()} matching`
+              : `${count.toLocaleString()} total`
+            : '…'}
+        </p>
+      </div>
 
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
-          <input
-            type="search"
-            placeholder={`Search ${view.label.toLowerCase()}…`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              border: '1px solid var(--eq-border)',
-              borderRadius: 6,
-              flex: 1,
-              maxWidth: 320,
-              background: 'var(--eq-bg)',
-              color: 'var(--eq-ink)',
-            }}
-          />
-          {count != null && count > PAGE_SIZE && (
-            <span style={{ color: 'var(--eq-mute)', fontSize: 13 }}>
-              Page {page + 1} of {Math.ceil(count / PAGE_SIZE)}
-            </span>
-          )}
-        </div>
-
-        {err && <EqError message={err} onRetry={load} />}
-
-        <div className="eq-table-wrap">
-          <table className="eq-table">
-            <thead>
-              <tr>
-                {view.columns.map((c) => (
-                  <th key={c.key}>{c.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading && !rows ? (
-                <tr>
-                  <td colSpan={view.columns.length}>
-                    <Skeleton variant="row" count={10} />
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={view.columns.length}
-                    style={{ textAlign: 'center', padding: 32, color: 'var(--eq-mute)' }}
-                  >
-                    {search ? `No rows matching "${search}".` : 'No rows yet — drop a CSV via Intake.'}
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((r, i) => (
-                  <tr
-                    key={(r[`${entity}_id`] as string) ?? i}
-                    onClick={() => setSelectedRow(r)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {view.columns.map((col) => (
-                      <td key={col.key}>{formatCell(r[col.key], col.key)}</td>
-                    ))}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {count != null && count > PAGE_SIZE && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 16 }}>
-            <button
-              className="eq-btn-ghost"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-            >
-              Previous
-            </button>
-            <button
-              className="eq-btn-ghost"
-              onClick={() => setPage((p) => p + 1)}
-              disabled={(page + 1) * PAGE_SIZE >= count}
-            >
-              Next
-            </button>
-          </div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          type="search"
+          placeholder={`Search ${view.label.toLowerCase()}…`}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          style={{
+            padding: '8px 12px',
+            border: '1px solid var(--eq-border)',
+            borderRadius: 6,
+            flex: '1 1 200px',
+            maxWidth: 320,
+            background: 'var(--eq-bg)',
+            color: 'var(--eq-ink)',
+          }}
+        />
+        {search && (
+          <button
+            className="eq-btn-ghost"
+            style={{ fontSize: 12, padding: '0 10px', height: 36 }}
+            onClick={() => setSearchInput('')}
+          >
+            Clear
+          </button>
         )}
+        {totalPages != null && totalPages > 1 && (
+          <span style={{ color: 'var(--eq-mute)', fontSize: 13, marginLeft: 'auto' }}>
+            Page {page + 1} of {totalPages}
+          </span>
+        )}
+      </div>
+
+      {err && <EqError message={err} onRetry={load} />}
+
+      <div className="eq-table-wrap" style={{ opacity: loading && rows !== null ? 0.6 : 1, transition: 'opacity 150ms' }}>
+        <table className="eq-table">
+          <thead>
+            <tr>
+              {view.columns.map((c) => {
+                const isSorted = sortCol === c.key;
+                return (
+                  <th
+                    key={c.key}
+                    onClick={() => handleSort(c.key)}
+                    style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                    aria-sort={isSorted ? (sortDir === 'ASC' ? 'ascending' : 'descending') : 'none'}
+                  >
+                    {c.label}
+                    {' '}
+                    <span style={{ opacity: isSorted ? 1 : 0.25, fontSize: 11 }} aria-hidden="true">
+                      {isSorted ? (sortDir === 'ASC' ? '▲' : '▼') : '▼'}
+                    </span>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {loading && !rows ? (
+              <tr>
+                <td colSpan={view.columns.length}>
+                  <Skeleton variant="row" count={10} />
+                </td>
+              </tr>
+            ) : (rows ?? []).length === 0 ? (
+              <tr>
+                <td
+                  colSpan={view.columns.length}
+                  style={{ textAlign: 'center', padding: 32, color: 'var(--eq-mute)' }}
+                >
+                  {search ? `No rows matching "${search}".` : 'No rows yet — drop a CSV via Intake.'}
+                </td>
+              </tr>
+            ) : (
+              (rows ?? []).map((r, i) => (
+                <tr
+                  key={(r[`${entity}_id`] as string) ?? i}
+                  onClick={() => setSelectedRow(r)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {view.columns.map((col) => (
+                    <td key={col.key}>{formatCell(r[col.key], col.key)}</td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {totalPages != null && totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 16 }}>
+          <button
+            className="eq-btn-ghost"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0 || loading}
+          >
+            Previous
+          </button>
+          <button
+            className="eq-btn-ghost"
+            onClick={() => setPage((p) => p + 1)}
+            disabled={(page + 1) * PAGE_SIZE >= (count ?? 0) || loading}
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {selectedRow && (
         <EntityDetailDrawer

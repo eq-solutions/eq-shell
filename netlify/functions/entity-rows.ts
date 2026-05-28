@@ -1,4 +1,4 @@
-// GET /.netlify/functions/entity-rows?entity=<name>&limit=<n>&offset=<n>
+// GET /.netlify/functions/entity-rows?entity=<name>&limit=<n>&offset=<n>[&search=<q>&sort_col=<col>&sort_dir=ASC|DESC]
 //
 // Generic per-entity row lookup used by EntityBrowserPage. Pulls rows from
 // the tenant data plane via the eq_browse_entity RPC, returns them in the
@@ -68,6 +68,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(400, { ok: false, error: 'invalid_filter', detail: 'offset must be >= 0' });
   }
 
+  const search   = url.searchParams.get('search')   ?? undefined;
+  const sortCol  = url.searchParams.get('sort_col')  ?? undefined;
+  const sortDirRaw = (url.searchParams.get('sort_dir') ?? '').toUpperCase();
+  const sortDir  = sortDirRaw === 'ASC' ? 'ASC' : sortDirRaw === 'DESC' ? 'DESC' : undefined;
+
   let tenantDb;
   try {
     tenantDb = await getTenantDataClientById(session.tenant_id);
@@ -77,14 +82,19 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tenantAny = tenantDb as any;
 
+  const rpcParams: Record<string, unknown> = {
+    p_entity:    entity,
+    p_tenant_id: session.tenant_id,
+    p_limit:     limit,
+    p_offset:    offset,
+  };
+  if (search  !== undefined) rpcParams.p_search   = search;
+  if (sortCol !== undefined) rpcParams.p_sort_col  = sortCol;
+  if (sortDir !== undefined) rpcParams.p_sort_dir  = sortDir;
+
   const { data, error } = await tenantAny
     .schema('public')
-    .rpc('eq_browse_entity', {
-      p_entity:    entity,
-      p_tenant_id: session.tenant_id,
-      p_limit:     limit,
-      p_offset:    offset,
-    });
+    .rpc('eq_browse_entity', rpcParams);
 
   if (error) {
     console.error('[entity-rows] rpc failed', { entity, tenant: session.tenant_id, error: error.message });
@@ -102,6 +112,9 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     offset,
     total,
     rows,
+    search:   search   ?? null,
+    sort_col: sortCol  ?? 'created_at',
+    sort_dir: sortDir  ?? 'DESC',
   });
 });
 
