@@ -25,6 +25,48 @@ import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { withSentry } from './_shared/sentry.js';
 
+// Ensures the user has a row in Supabase's auth.users table.
+// Flutter's setSession() routes through GoTrue which calls getUser() on
+// auth.users — if the row is missing (users created before the accept-invite
+// auth-hook fix), setSession throws and Cards shows "Session expired."
+// This mirrors the ensureAuthUser logic in eq-cards/netlify/functions/shell-verify.js.
+async function ensureAuthUser(userId: string, email: string): Promise<void> {
+  const supabaseUrl = process.env.SUPABASE_URL ?? '';
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  if (!supabaseUrl || !serviceKey) return;
+
+  const headers = {
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    Accept: 'application/json',
+  };
+
+  const checkRes = await fetch(
+    `${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+    { headers },
+  );
+  if (checkRes.ok) return;
+  if (checkRes.status !== 404) {
+    console.warn('[mint-cards-iframe-token] admin getUser unexpected status:', checkRes.status);
+    return; // proceed optimistically
+  }
+
+  const createRes = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: userId, email, email_confirm: true }),
+  });
+
+  if (createRes.ok) {
+    console.info('[mint-cards-iframe-token] created missing auth.users row for', email);
+    return;
+  }
+  const body = await createRes.text();
+  if (!body.includes('already registered') && !body.includes('already exists')) {
+    console.warn('[mint-cards-iframe-token] ensureAuthUser failed:', createRes.status, body.slice(0, 200));
+  }
+}
+
 const CARDS_IFRAME_TTL_SECONDS = 15 * 60; // 15 min
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -61,13 +103,21 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const { data: user, error: userErr } = await sb
     .from('users')
-    .select('id, tenant_id, role, is_platform_admin, active')
+    .select('id, email, tenant_id, role, is_platform_admin, active')
     .eq('id', session.user_id)
     .eq('active', true)
-    .maybeSingle<Pick<CanonicalUser, 'id' | 'tenant_id' | 'role' | 'is_platform_admin' | 'active'>>();
+    .maybeSingle<Pick<CanonicalUser, 'id' | 'email' | 'tenant_id' | 'role' | 'is_platform_admin' | 'active'>>();
 
   if (userErr || !user || user.tenant_id !== session.tenant_id) {
     return jsonResponse(401, { valid: false });
+  }
+
+  // Ensure auth.users has a row before minting. Flutter's setSession() calls
+  // GoTrue getUser() which requires the sub UUID to exist in auth.users.
+  try {
+    await ensureAuthUser(user.id, user.email);
+  } catch (e) {
+    console.warn('[mint-cards-iframe-token] ensureAuthUser threw:', (e as Error).message);
   }
 
   const { token, jti, exp } = signSupabaseJwt(
