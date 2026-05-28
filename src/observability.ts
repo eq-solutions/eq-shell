@@ -103,20 +103,26 @@ function initClarity(env: ImportMetaEnvLike): void {
   }
   if (typeof document === 'undefined') return;
   try {
-    // Standard Clarity install snippet — injects the loader script tag
-    // with the project ID baked in. Clarity has no npm SDK; this is the
-    // canonical embed pattern.
-    const id = JSON.stringify(projectId);
-    const snippet =
-      '(function(c,l,a,r,i,t,y){' +
-      'c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};' +
-      't=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;' +
-      'y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);' +
-      `})(window, document, "clarity", "script", ${id});`;
+    // Load Clarity via an external src URL rather than the standard inline
+    // IIFE snippet. The standard snippet sets script.text = '(function...)',
+    // which is an inline script and is blocked by script-src 'self' CSP.
+    // Loading via src is CSP-safe and Clarity works identically either way.
+    //
+    // Pre-initialise the queue so identify() calls made before the script
+    // finishes loading are buffered correctly (same contract as the snippet).
+    type ClarityFn = ((...args: unknown[]) => void) & { q?: unknown[][] };
+    const w = window as unknown as { clarity?: ClarityFn };
+    if (!w.clarity) {
+      const fn: ClarityFn = (...args: unknown[]) => {
+        fn.q = fn.q ?? [];
+        fn.q.push(args);
+      };
+      w.clarity = fn;
+    }
 
     const script = document.createElement('script');
-    script.type = 'text/javascript';
-    script.text = snippet;
+    script.async = true;
+    script.src = `https://www.clarity.ms/tag/${encodeURIComponent(projectId)}`;
     document.head.appendChild(script);
     clarityReady = true;
   } catch (err) {
