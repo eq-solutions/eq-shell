@@ -15,6 +15,7 @@ export interface Tenant {
   name: string;
   brand_color: string | null;
   brand_logo_url: string | null;
+  field_tenant_slug: string | null;
   tier: EqTier;
   active: boolean;
 }

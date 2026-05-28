@@ -84,7 +84,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   ] = await Promise.all([
     sb
       .from('tenants')
-      .select('id, slug, name, brand_color, brand_logo_url, tier, active')
+      .select('id, slug, name, brand_color, brand_logo_url, field_tenant_slug, tier, active')
       .eq('id', session.active_tenant_id)
       .maybeSingle<CanonicalTenant>(),
     sb

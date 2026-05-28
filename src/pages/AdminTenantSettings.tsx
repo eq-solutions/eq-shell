@@ -18,6 +18,7 @@ interface TenantSettings {
   name: string;
   brand_color: string | null;
   brand_logo_url: string | null;
+  field_tenant_slug: string | null;
   active: boolean;
   modules: ModuleEntitlement[];
 }
@@ -58,6 +59,7 @@ function AdminTenantSettingsInner() {
     | { kind: 'success' }
     | { kind: 'error'; message: string }
   >({ kind: 'idle' });
+  const [fieldTenantSlug, setFieldTenantSlug] = useState<string>('');
   const [colorDetected, setColorDetected] = useState(false);
 
   const isPlatformAdmin = session?.user.is_platform_admin ?? false;
@@ -75,6 +77,7 @@ function AdminTenantSettingsInner() {
       setName(s.name);
       setBrandColor(s.brand_color ?? '');
       setBrandLogoUrl(s.brand_logo_url ?? '');
+      setFieldTenantSlug(s.field_tenant_slug ?? '');
       const m: Record<string, boolean> = {};
       s.modules.forEach((mod) => { m[mod.module] = mod.enabled; });
       setModuleState(m);
@@ -222,6 +225,9 @@ function AdminTenantSettingsInner() {
     if (name !== settings.name) payload.name = name;
     if (brandColor !== (settings.brand_color ?? '')) payload.brand_color = brandColor;
     if (brandLogoUrl !== (settings.brand_logo_url ?? '')) payload.brand_logo_url = brandLogoUrl;
+    if (isPlatformAdmin && fieldTenantSlug !== (settings.field_tenant_slug ?? '')) {
+      payload.field_tenant_slug = fieldTenantSlug || null;
+    }
 
     if (isPlatformAdmin) {
       const changedModules: ModuleEntitlement[] = [];
@@ -252,6 +258,7 @@ function AdminTenantSettingsInner() {
         const m: Record<string, boolean> = {};
         s.modules.forEach((mod) => { m[mod.module] = mod.enabled; });
         setModuleState(m);
+        setFieldTenantSlug(s.field_tenant_slug ?? '');
       }
       setSavedAt(Date.now());
     } catch (e) {
@@ -416,6 +423,30 @@ function AdminTenantSettingsInner() {
                   </div>
                 </FieldRow>
               </section>
+
+              {/* Integrations — Field workspace (platform admin only) */}
+              {isPlatformAdmin && (
+                <section className="eq-section">
+                  <h2 className="eq-section__heading">Integrations</h2>
+                  <FieldRow
+                    label="Field workspace"
+                    hint="Which EQ Field organisation users on this tenant open by default."
+                  >
+                    <select
+                      value={fieldTenantSlug}
+                      onChange={(e) => setFieldTenantSlug(e.target.value)}
+                      disabled={busy}
+                      style={{ ...inputStyle, cursor: 'pointer' }}
+                    >
+                      <option value="">None</option>
+                      <option value="sks">SKS Technologies</option>
+                      <option value="eq">EQ Demo</option>
+                      <option value="demo-trades">Demo Trades</option>
+                      <option value="melbourne">Melbourne</option>
+                    </select>
+                  </FieldRow>
+                </section>
+              )}
 
               {/* Apps */}
               <section className="eq-section">
