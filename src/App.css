@@ -2220,6 +2220,16 @@
     padding-right: 11px;
   }
 
+  /* Center the 32px logo in the 52px rail — (52-32)/2 = 10px each side */
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__brand {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__brand {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
   /* Hide text content that would peek through the clip */
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__brand-label,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__live,
