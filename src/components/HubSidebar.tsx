@@ -1,4 +1,4 @@
-import { NavLink, useParams } from 'react-router-dom';
+import { Link, NavLink, useParams } from 'react-router-dom';
 import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut } from 'lucide-react';
 import { useSession } from '../session';
 import { EqLogo } from './EqLogo';
@@ -56,11 +56,10 @@ export function HubSidebar({ apps, records }: Props) {
 
   return (
     <aside className="eq-hub__sidebar">
-      <div className="eq-hub-sidebar__brand">
-        <EqLogo size={22} />
-        <span className="eq-hub-sidebar__brand-sep">·</span>
-        <span className="eq-hub-sidebar__brand-label">SHELL</span>
-      </div>
+      <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand" aria-label="Go to dashboard">
+        <EqLogo size={32} />
+        <span className="eq-hub-sidebar__brand-label">EQ Solutions</span>
+      </Link>
 
       <div className="eq-hub-sidebar__live">
         <span className="eq-hub-sidebar__live-dot" aria-hidden="true" />
@@ -179,6 +178,16 @@ export function HubSidebar({ apps, records }: Props) {
           </nav>
         </>
       )}
+
+      {/* Phase 1.G: 2FA enrollment — accessible to all logged-in users */}
+      <NavLink
+        to={`/${tenantSlug}/settings/2fa`}
+        className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+        style={{ marginTop: 8 }}
+      >
+        <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Settings size={16} aria-hidden="true" /></span>
+        <span className="eq-hub-sidebar__nav-label">Security</span>
+      </NavLink>
 
       <div className="eq-hub-sidebar__user">
         <div className="eq-hub-sidebar__user-avatar" aria-hidden="true">

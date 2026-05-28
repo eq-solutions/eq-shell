@@ -83,11 +83,34 @@ export default function FieldIframe() {
   const [state, setState] = useState<HandoffState>({ phase: 'minting' });
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const visibleOptions = (session?.user.is_platform_admin)
-    ? TENANT_OPTIONS
-    : TENANT_OPTIONS.filter((t) => t.slug === session?.tenant.slug);
+  // For non-admins: resolve their Field workspace from field_tenant_slug
+  // (set in Admin → Settings), falling back to matching by shell tenant slug.
+  // Platform admins always see the full picker so they can switch between orgs.
+  const nonAdminSlug: TenantSlug | null = (() => {
+    if (session?.user.is_platform_admin) return null;
+    const configured = session?.tenant.field_tenant_slug;
+    if (configured && TENANT_OPTIONS.some((t) => t.slug === configured)) return configured as TenantSlug;
+    const matched = TENANT_OPTIONS.find((t) => t.slug === session?.tenant.slug);
+    return matched?.slug ?? null;
+  })();
 
-  const autoSlug = visibleOptions.length === 1 ? visibleOptions[0].slug : null;
+  const visibleOptions = session?.user.is_platform_admin
+    ? TENANT_OPTIONS
+    : nonAdminSlug
+      ? TENANT_OPTIONS.filter((t) => t.slug === nonAdminSlug)
+      : [];
+
+  // Platform admins: restore last-picked workspace from sessionStorage so
+  // they skip the picker on return visits. Non-admins always auto-route.
+  const storedDefaultSlug: TenantSlug | null = (() => {
+    if (!session?.user.is_platform_admin) return null;
+    const stored = localStorage.getItem('eq-field-default-tenant');
+    return stored && TENANT_OPTIONS.some((t) => t.slug === stored) ? (stored as TenantSlug) : null;
+  })();
+
+  const autoSlug: TenantSlug | null =
+    visibleOptions.length === 1 ? visibleOptions[0].slug : storedDefaultSlug;
+
   useEffect(() => {
     if (autoSlug && !selectedTenant) {
       pickTenant(autoSlug);
@@ -95,6 +118,9 @@ export default function FieldIframe() {
   }, [autoSlug]);
 
   const pickTenant = (slug: TenantSlug) => {
+    if (session?.user.is_platform_admin) {
+      localStorage.setItem('eq-field-default-tenant', slug);
+    }
     setSrc(null);
     setState({ phase: 'minting' });
     setSelectedTenant(slug);
@@ -239,7 +265,19 @@ export default function FieldIframe() {
     return () => window.removeEventListener('message', onMessage);
   }, [selectedTenant]);
 
+  // Picker — no tenant chosen yet.
   if (!selectedTenant) {
+    // No Field workspace configured for this account.
+    if (visibleOptions.length === 0) {
+      return (
+        <HubLayout iframe>
+          <div className="eq-field-frame-loading">
+            EQ Field isn't linked to this account yet. Contact your manager.
+          </div>
+        </HubLayout>
+      );
+    }
+    // Single option — auto-select fires via useEffect; show loading until it fires.
     if (visibleOptions.length === 1) {
       return (
         <HubLayout iframe>
@@ -247,6 +285,7 @@ export default function FieldIframe() {
         </HubLayout>
       );
     }
+    // Multiple options — show full picker (platform admins only).
     return (
       <HubLayout iframe>
         <TenantPicker options={visibleOptions} onPick={pickTenant} />

@@ -95,6 +95,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, pin, persist: staySignedIn }),
       });
       const body = (await res.json()) as
+        | { valid: true; requires_totp: true; totp_challenge_token: string }
         | { valid: true; requires_tenant_selection: true; user_id: string; selection_token: string; memberships: Array<{ tenant_id: string; role: EqRole; tenant_slug: string; tenant_name: string }>; preferred_tenant_id: string | null }
         | { valid: true; tenant: { slug: string } }
         | { valid: false; error?: string };
@@ -106,6 +107,13 @@ export default function LoginPage() {
           setErr('Invalid email or PIN.');
         }
         setBusy(false);
+        return;
+      }
+      if ('requires_totp' in body && body.requires_totp) {
+        navigate('/totp-challenge', {
+          replace: true,
+          state: { totpChallengeToken: body.totp_challenge_token },
+        });
         return;
       }
       if ('requires_tenant_selection' in body && body.requires_tenant_selection) {

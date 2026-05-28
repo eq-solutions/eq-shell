@@ -1648,20 +1648,24 @@
 .eq-hub-sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 0 20px 20px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: opacity 0.15s;
 }
-
-.eq-hub-sidebar__brand-sep {
-  color: rgba(255,255,255,0.2);
-  font-size: 14px;
+.eq-hub-sidebar__brand:hover {
+  opacity: 0.8;
 }
 
 .eq-hub-sidebar__brand-label {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: rgba(255,255,255,0.4);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.9);
+  white-space: nowrap;
 }
 
 .eq-hub-sidebar__live {
@@ -2217,7 +2221,6 @@
   }
 
   /* Hide text content that would peek through the clip */
-  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__brand-sep,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__brand-label,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__live,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__section-label,
@@ -2233,7 +2236,6 @@
   }
 
   /* Fade text in as the sidebar expands */
-  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__brand-sep,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__brand-label,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__live,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__section-label,

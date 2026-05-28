@@ -18,6 +18,7 @@ interface TenantSettings {
   name: string;
   brand_color: string | null;
   brand_logo_url: string | null;
+  field_tenant_slug: string | null;
   active: boolean;
   modules: ModuleEntitlement[];
 }
@@ -58,6 +59,8 @@ function AdminTenantSettingsInner() {
     | { kind: 'success' }
     | { kind: 'error'; message: string }
   >({ kind: 'idle' });
+  const [fieldTenantSlug, setFieldTenantSlug] = useState<string>('');
+  const [colorDetected, setColorDetected] = useState(false);
 
   const isPlatformAdmin = session?.user.is_platform_admin ?? false;
 
@@ -74,6 +77,7 @@ function AdminTenantSettingsInner() {
       setName(s.name);
       setBrandColor(s.brand_color ?? '');
       setBrandLogoUrl(s.brand_logo_url ?? '');
+      setFieldTenantSlug(s.field_tenant_slug ?? '');
       const m: Record<string, boolean> = {};
       s.modules.forEach((mod) => { m[mod.module] = mod.enabled; });
       setModuleState(m);
@@ -110,6 +114,44 @@ function AdminTenantSettingsInner() {
     'image/svg+xml',
     'image/webp',
   ]);
+
+  function extractLogoColor(file: File): Promise<string | null> {
+    if (file.type === 'image/svg+xml') return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 48;
+          canvas.height = 48;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { resolve(null); return; }
+          ctx.drawImage(img, 0, 0, 48, 48);
+          const { data } = ctx.getImageData(0, 0, 48, 48);
+          const counts = new Map<string, number>();
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+            if (a < 128) continue;
+            if (r > 220 && g > 220 && b > 220) continue;
+            if (r < 35 && g < 35 && b < 35) continue;
+            const key = `${Math.round(r / 32) * 32},${Math.round(g / 32) * 32},${Math.round(b / 32) * 32}`;
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+          }
+          let best = '', max = 0;
+          counts.forEach((n, k) => { if (n > max) { max = n; best = k; } });
+          if (!best) { resolve(null); return; }
+          const [rv, gv, bv] = best.split(',').map(Number);
+          resolve('#' + [rv, gv, bv].map((v) => Math.min(255, v).toString(16).padStart(2, '0')).join(''));
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -157,6 +199,13 @@ function AdminTenantSettingsInner() {
       setLogoUploadStatus({ kind: 'success' });
       if (json.url) {
         setBrandLogoUrl(json.url);
+        if (!brandColor) {
+          const detected = await extractLogoColor(file);
+          if (detected) {
+            setBrandColor(detected);
+            setColorDetected(true);
+          }
+        }
       }
     } catch (e) {
       setLogoUploadStatus({ kind: 'error', message: (e as Error).message ?? 'Upload failed.' });
@@ -176,6 +225,9 @@ function AdminTenantSettingsInner() {
     if (name !== settings.name) payload.name = name;
     if (brandColor !== (settings.brand_color ?? '')) payload.brand_color = brandColor;
     if (brandLogoUrl !== (settings.brand_logo_url ?? '')) payload.brand_logo_url = brandLogoUrl;
+    if (isPlatformAdmin && fieldTenantSlug !== (settings.field_tenant_slug ?? '')) {
+      payload.field_tenant_slug = fieldTenantSlug || null;
+    }
 
     if (isPlatformAdmin) {
       const changedModules: ModuleEntitlement[] = [];
@@ -206,6 +258,7 @@ function AdminTenantSettingsInner() {
         const m: Record<string, boolean> = {};
         s.modules.forEach((mod) => { m[mod.module] = mod.enabled; });
         setModuleState(m);
+        setFieldTenantSlug(s.field_tenant_slug ?? '');
       }
       setSavedAt(Date.now());
     } catch (e) {
@@ -257,19 +310,24 @@ function AdminTenantSettingsInner() {
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <input
                       type="text" value={brandColor}
-                      onChange={(e) => setBrandColor(e.target.value)}
+                      onChange={(e) => { setBrandColor(e.target.value); setColorDetected(false); }}
                       placeholder="#3DA8D8" disabled={busy}
                       style={{ ...inputStyle, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', flex: 1 }}
                     />
                     <input
                       type="color"
                       value={/^#[0-9A-Fa-f]{6}$/.test(brandColor) ? brandColor : '#3DA8D8'}
-                      onChange={(e) => setBrandColor(e.target.value)}
+                      onChange={(e) => { setBrandColor(e.target.value); setColorDetected(false); }}
                       disabled={busy}
                       style={{ width: 40, height: 40, padding: 2, border: '1px solid var(--gray-300)', borderRadius: 6, cursor: 'pointer', background: 'none' }}
                       title="Pick a colour"
                     />
                   </div>
+                  {colorDetected && (
+                    <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--eq-brand, #3DA8D8)' }}>
+                      Detected from logo — adjust if needed
+                    </p>
+                  )}
                 </FieldRow>
 
                 <FieldRow label="Logo" hint="PNG, SVG or JPG. Shown in the sidebar.">
@@ -365,6 +423,30 @@ function AdminTenantSettingsInner() {
                   </div>
                 </FieldRow>
               </section>
+
+              {/* Integrations — Field workspace (platform admin only) */}
+              {isPlatformAdmin && (
+                <section className="eq-section">
+                  <h2 className="eq-section__heading">Integrations</h2>
+                  <FieldRow
+                    label="Field workspace"
+                    hint="Which EQ Field organisation users on this tenant open by default."
+                  >
+                    <select
+                      value={fieldTenantSlug}
+                      onChange={(e) => setFieldTenantSlug(e.target.value)}
+                      disabled={busy}
+                      style={{ ...inputStyle, cursor: 'pointer' }}
+                    >
+                      <option value="">None</option>
+                      <option value="sks">SKS Technologies</option>
+                      <option value="eq">EQ Demo</option>
+                      <option value="demo-trades">Demo Trades</option>
+                      <option value="melbourne">Melbourne</option>
+                    </select>
+                  </FieldRow>
+                </section>
+              )}
 
               {/* Apps */}
               <section className="eq-section">

@@ -68,6 +68,8 @@ export interface CanonicalUser {
   pin_hash: string | null;
   last_login_at: string | null;
   last_active_tenant_id: string | null;
+  totp_secret: string | null;
+  totp_enrolled_at: string | null;
 }
 
 export interface UserTenantMembership {
@@ -123,6 +125,7 @@ export interface CanonicalTenant {
   name: string;
   brand_color: string | null;
   brand_logo_url: string | null;
+  field_tenant_slug: string | null;
   tier: 'standard' | 'advanced' | 'enterprise';
   active: boolean;
 }
