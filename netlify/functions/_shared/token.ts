@@ -58,6 +58,15 @@ export interface SessionPayload {
   is_platform_admin: boolean;
   /** All active memberships this user has, used by the UI to offer tenant switching. */
   memberships: SessionMembership[];
+  /**
+   * Carried from 2026-05-28 for cookie-based cross-app SSO.
+   * Lets Service and Field verify the shell cookie locally without a
+   * round-trip to the canonical DB. Absent on pre-migration cookies —
+   * verify-shell-session upgrades them transparently on next page load.
+   */
+  email?: string;
+  /** Display name — same caveat as email above. */
+  name?: string | null;
   exp: number;
 }
 

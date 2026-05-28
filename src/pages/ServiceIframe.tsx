@@ -4,28 +4,32 @@ import { HubLayout } from '../components/HubLayout';
 
 // Embeds EQ Service (Next.js) as a Shell iframe.
 //
-// Auth flow:
-//   1. Shell mints a 60s HMAC token via mint-service-iframe-token.
-//   2. Shell embeds Service at https://eq-solves-service.netlify.app/shell#sh=<token>
-//   3. Service's /shell page reads the hash, calls /api/shell-auth.
-//   4. shell-auth validates HMAC + calls Supabase admin.generateLink → OTP.
-//   5. Service's /shell page calls supabase.auth.verifyOtp → session set.
-//   6. Service redirects to / — app is live inside the iframe.
+// Two auth modes, selected by VITE_SERVICE_URL:
 //
-// Service signals readiness via postMessage ({ type: 'EQ_SERVICE_READY' })
-// from its (app)/layout.tsx once the session and app shell are established.
-// The onLoad fallback (2 events) catches preview deploys and any missed signals.
+// COOKIE MODE (VITE_SERVICE_URL=https://service.eq.solutions)
+//   The eq_shell_session cookie is Domain=.eq.solutions, so the browser
+//   sends it automatically when the iframe loads service.eq.solutions.
+//   Service's proxy.ts reads the cookie server-side and establishes a
+//   Supabase session before rendering any HTML. No token minting, no
+//   OTP round-trip, no client-visible auth loading. Activation steps:
+//     1. Add service.eq.solutions as Netlify custom domain on eq-solves-service.
+//     2. Set VITE_SERVICE_URL=https://service.eq.solutions in eq-shell Netlify env.
+//     3. Set VITE_SERVICE_URL=https://service.eq.solutions in Netlify env.
 //
-// 2026-05-27 — sidebar-alongside layout. Topbar removed; HubLayout with
-// iframe prop keeps the sidebar visible while Service fills the content area.
+// TOKEN MODE (fallback, any other VITE_SERVICE_URL value)
+//   Legacy HMAC handshake: Shell mints a 60s token → embeds Service at
+//   /shell#sh=<token> → Service's shell-auth function validates → OTP.
+//   Kept as fallback for deploy previews and before the custom domain is live.
 
-const SERVICE_URL = 'https://eq-solves-service.netlify.app';
+const SERVICE_URL = (import.meta.env.VITE_SERVICE_URL as string | undefined)
+  ?? 'https://eq-solves-service.netlify.app';
 
-// Service is a Next.js SSR app — cold start + OTP round-trip can be slow.
-// onLoad fires when the iframe completes any navigation (including the
-// /shell → / redirect after successful auth). We use it to clear the
-// loading overlay and to reset the no-load timeout.
-const SERVICE_TIMEOUT_MS = 45_000;
+// Cookie auth is active when Service is on the eq.solutions domain.
+const COOKIE_AUTH = SERVICE_URL === 'https://service.eq.solutions'
+  || SERVICE_URL.endsWith('.eq.solutions')
+  || SERVICE_URL.endsWith('.eq.solutions/');
+
+const SERVICE_TIMEOUT_MS = COOKIE_AUTH ? 20_000 : 45_000;
 
 type FrameState =
   | { phase: 'minting' }
@@ -34,16 +38,17 @@ type FrameState =
   | { phase: 'error'; msg: string };
 
 export default function ServiceIframe() {
-  const [state, setState] = useState<FrameState>({ phase: 'minting' });
-  // loadCount tracks iframe onLoad events. The /shell page fires once
-  // on initial load; the redirect to / fires again. Two events = auth
-  // round-trip completed (success or failure — we can't distinguish
-  // cross-origin, but at least we know Service responded).
-  // Used as fallback when the postMessage readiness signal doesn't fire.
+  const [state, setState] = useState<FrameState>(
+    COOKIE_AUTH
+      ? { phase: 'loading', src: SERVICE_URL }
+      : { phase: 'minting' },
+  );
   const loadCount = useRef(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  // TOKEN MODE: mint the HMAC handoff token before setting the iframe src.
   useEffect(() => {
+    if (COOKIE_AUTH) return;
     let cancelled = false;
     (async () => {
       try {
@@ -60,8 +65,6 @@ export default function ServiceIframe() {
         if (!cancelled) {
           setState({
             phase: 'loading',
-            // base64 characters (+, /, =) are safe in URL hash fragments —
-            // no encoding needed, and Service reads the hash without decoding.
             src: `${SERVICE_URL}/shell#sh=${token}`,
           });
         }
@@ -69,14 +72,10 @@ export default function ServiceIframe() {
         if (!cancelled) setState({ phase: 'error', msg: 'Network error reaching EQ Service. Check your connection.' });
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  // Timeout if the iframe never fires onLoad (DNS failure, Netlify down,
-  // etc.). Resets whenever onLoad fires so slow-but-alive instances
-  // don't trip it.
+  // Timeout — fires if iframe never becomes ready.
   useEffect(() => {
     if (state.phase !== 'loading') return;
     const timer = setTimeout(() => {
@@ -90,9 +89,7 @@ export default function ServiceIframe() {
     return () => clearTimeout(timer);
   }, [state.phase]);
 
-  // Prefer postMessage over the onLoad count — Service signals readiness
-  // explicitly once the session and app layout are established.
-  // Falls back to the onLoad count (below) if the message never fires.
+  // Prefer postMessage readiness signal from Service.
   useEffect(() => {
     if (state.phase !== 'loading') return;
     function onMessage(ev: MessageEvent) {
@@ -115,19 +112,14 @@ export default function ServiceIframe() {
     return () => window.removeEventListener('message', onMessage);
   }, [state.phase]);
 
-  // Respond to token refresh requests from the Service iframe.
+  // TOKEN MODE: token refresh requests from Service.
   useEffect(() => {
+    if (COOKIE_AUTH) return;
     const expectedOrigin = import.meta.env.VITE_SERVICE_URL as string | undefined;
     async function onMessage(ev: MessageEvent) {
       if (!ev.data || typeof ev.data !== 'object') return;
       if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
-      if (expectedOrigin) {
-        if (ev.origin !== expectedOrigin) return;
-      } else {
-        if (import.meta.env.DEV) {
-          console.warn('[ServiceIframe] VITE_SERVICE_URL not set — accepting REQUEST_SHELL_TOKEN from any origin');
-        }
-      }
+      if (expectedOrigin && ev.origin !== expectedOrigin) return;
       const origin = expectedOrigin ?? ev.origin;
       try {
         const res = await fetch('/.netlify/functions/mint-service-iframe-token', {
@@ -160,17 +152,24 @@ export default function ServiceIframe() {
 
   function onIframeLoad() {
     loadCount.current += 1;
-    // Fallback: reveal after the FIRST onLoad once the auth round-trip has had
-    // time to complete. The first onLoad is the /shell page itself. Next.js's
-    // router.replace('/') is a soft nav that does NOT fire a second onLoad, so
-    // the old ">= 2" threshold never triggered. We use a 12s delay after the
-    // first onLoad — enough for OTP verification + server render — before
-    // revealing the iframe. EQ_SERVICE_READY (the primary signal) fires much
-    // faster when it works; this is a last-resort fallback.
-    if (loadCount.current === 1) {
-      setTimeout(() => {
-        setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
-      }, 12_000);
+    if (COOKIE_AUTH) {
+      // Cookie mode: first onLoad = Service rendered with auth established.
+      // EQ_SERVICE_READY postMessage is still the primary signal; this is
+      // a fallback for cases where Service can't postMessage (e.g., previews).
+      if (loadCount.current === 1) {
+        setTimeout(() => {
+          setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
+        }, 3_000);
+      }
+    } else {
+      // Token mode: first onLoad is /shell (processing token + redirect).
+      // Next.js router.replace('/') is a soft nav — no second onLoad.
+      // Fall back to revealing after 12s to cover the OTP round-trip.
+      if (loadCount.current === 1) {
+        setTimeout(() => {
+          setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
+        }, 12_000);
+      }
     }
   }
 
@@ -195,10 +194,6 @@ export default function ServiceIframe() {
             title="EQ Service"
             src={src}
             onLoad={onIframeLoad}
-            // allow-same-origin so Service's cookies + localStorage work.
-            // allow-scripts required for the Next.js app to run.
-            // allow-forms for any onsite input forms.
-            // allow-downloads for run-sheet + report docx exports.
             sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
             referrerPolicy="no-referrer"
             allow=""

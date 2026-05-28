@@ -241,6 +241,18 @@ function TenantTree() {
   const evermounted = useRef(new Set<'field' | 'cards' | 'service' | 'quotes'>());
   if (activeIframe) evermounted.current.add(activeIframe);
 
+  // Eager pre-warm: mount all enabled iframe apps in the background 2.5s
+  // after the session is confirmed. By the time the user clicks into any
+  // app, the auth handshake is already complete and the iframe is live.
+  // Only triggers once per session (boolean state, not the session object).
+  const [eagerTriggered, setEagerTriggered] = useState(false);
+  const sessionExists = !!session;
+  useEffect(() => {
+    if (!sessionExists) return;
+    const t = setTimeout(() => setEagerTriggered(true), 2500);
+    return () => clearTimeout(t);
+  }, [sessionExists]);
+
   const fieldEnabled = moduleEnabled(session, 'field');
   const cardsEnabled = moduleEnabled(session, 'cards');
   const serviceEnabled = moduleEnabled(session, 'service');
@@ -248,26 +260,26 @@ function TenantTree() {
 
   return (
     <BrandProvider tenant={session?.tenant ?? null}>
-      {/* Persistent iframe keepers — mounted on first visit, then toggled
-          display:none so the iframe process keeps running between navigations.
-          All iframe children use position:fixed so display:none on the wrapper
-          is sufficient to hide them without unmounting. */}
-      {fieldEnabled && evermounted.current.has('field') && (
+      {/* Persistent iframe keepers — mounted on first visit OR after the 2.5s
+          eager pre-warm fires, then toggled display:none so the iframe process
+          keeps running between navigations. Pre-warming means Service/Field are
+          already auth'd and rendered by the time the user clicks the nav item. */}
+      {fieldEnabled && (evermounted.current.has('field') || eagerTriggered) && (
         <div style={activeIframe === 'field' ? undefined : { display: 'none' }}>
           <FieldIframe />
         </div>
       )}
-      {cardsEnabled && evermounted.current.has('cards') && (
+      {cardsEnabled && (evermounted.current.has('cards') || eagerTriggered) && (
         <div style={activeIframe === 'cards' ? undefined : { display: 'none' }}>
           <CardsIframe />
         </div>
       )}
-      {serviceEnabled && evermounted.current.has('service') && (
+      {serviceEnabled && (evermounted.current.has('service') || eagerTriggered) && (
         <div style={activeIframe === 'service' ? undefined : { display: 'none' }}>
           <ServiceIframe />
         </div>
       )}
-      {quotesEnabled && evermounted.current.has('quotes') && (
+      {quotesEnabled && (evermounted.current.has('quotes') || eagerTriggered) && (
         <div style={activeIframe === 'quotes' ? undefined : { display: 'none' }}>
           <QuotesIframe />
         </div>
