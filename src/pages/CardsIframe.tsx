@@ -1,17 +1,15 @@
 // Embeds the EQ Cards Flutter web build as an iframe.
 //
-// Auth flow: Shell mints a Supabase JWT via mint-cards-iframe-token and
-// injects it into the iframe src hash (#sh=<jwt>). The Flutter app reads
-// the hash, calls setSession(), and is authenticated against canonical.
+// Auth flow (Phase 2 — 2026-05-29):
+//   1. Shell loads the iframe with ?shell=1 — no JWT in URL.
+//   2. Flutter detects ?shell=1, sends REQUEST_SHELL_TOKEN via postMessage
+//      to core.eq.solutions (5s timeout).
+//   3. This handler calls mint-cards-iframe-token (which now runs
+//      ensureAuthUser), and posts SHELL_TOKEN_RESPONSE back.
+//   4. Flutter calls setSession(token) — auth complete.
+//   5. On 15-min expiry Flutter re-sends REQUEST_SHELL_TOKEN; same handler.
 //
-// Cookie-based auth (shell-verify on cards.eq.solutions) was attempted
-// 2026-05-28 but reverted — the shell-verify function hasn't been
-// deployed to cards.eq.solutions yet. Revert to hash approach until
-// the Flutter app is updated to send REQUEST_SHELL_TOKEN on initial load.
-//
-// JWT refresh: when the 15-min JWT expires, Flutter posts REQUEST_SHELL_TOKEN.
-// Shell mints a fresh JWT via mint-cards-iframe-token and responds with
-// SHELL_TOKEN_RESPONSE so Flutter can call setSession() again.
+// JWT never appears in the URL, browser history, or Referer headers.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
@@ -20,16 +18,10 @@ import { HubLayout } from '../components/HubLayout';
 const CARDS_URL = 'https://cards.eq.solutions/';
 const LOAD_TIMEOUT_MS = 30_000;
 
-type MintPhase =
-  | 'minting'       // fetching token
-  | 'loading'       // token OK, iframe injected, waiting for onLoad
-  | 'ready'         // iframe onLoad fired
-  | 'mint-error'    // token fetch failed (network or !res.ok)
-  | 'load-timeout'; // iframe injected but onLoad never fired
+type Phase = 'loading' | 'ready' | 'load-error';
 
 export default function CardsIframe() {
-  const [iframeSrc, setIframeSrc] = useState<string | null>(null);
-  const [phase, setPhase] = useState<MintPhase>('minting');
+  const [phase, setPhase] = useState<Phase>('loading');
   const [attempt, setAttempt] = useState(0);
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -43,71 +35,34 @@ export default function CardsIframe() {
 
   const retry = useCallback(() => {
     clearLoadTimer();
-    setIframeSrc(null);
-    setPhase('minting');
+    setPhase('loading');
     setAttempt((n) => n + 1);
   }, []);
 
-  // Mint the token and set the iframe src.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/.netlify/functions/mint-cards-iframe-token', {
-          method: 'POST',
-          credentials: 'include',
-        });
-        if (!res.ok) {
-          if (!cancelled) {
-            setPhase('mint-error');
-            Sentry.captureMessage(
-              `Cards iframe token mint failed — HTTP ${res.status}`,
-              { level: 'error' },
-            );
-          }
-          return;
-        }
-        const { token } = (await res.json()) as { token: string; exp: number };
-        if (cancelled) return;
-        setIframeSrc(`${CARDS_URL}auth/handoff#sh=${encodeURIComponent(token)}`);
-        setPhase('loading');
-      } catch (e) {
-        if (!cancelled) {
-          setPhase('mint-error');
-          Sentry.captureException(e, { tags: { surface: 'cards-iframe-mint' } });
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attempt]);
-
-  // Load timeout — start counting once the iframe src is injected.
+  // Load timeout — if Flutter never fires onLoad within 30s something is wrong.
   useEffect(() => {
     if (phase !== 'loading') return;
     loadTimerRef.current = setTimeout(() => {
-      setPhase('load-timeout');
+      setPhase('load-error');
       Sentry.captureMessage(
         `Cards iframe did not fire onLoad within ${LOAD_TIMEOUT_MS / 1000}s`,
         { level: 'error' },
       );
     }, LOAD_TIMEOUT_MS);
     return clearLoadTimer;
-  }, [phase]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, attempt]);
 
-  // JWT refresh — respond to REQUEST_SHELL_TOKEN from the Cards iframe.
+  // Handle REQUEST_SHELL_TOKEN from Cards — both initial load and 15-min refresh.
   useEffect(() => {
-    // Fail closed: use CARDS_URL origin as fallback so the handler
-    // never silently accepts messages from arbitrary origins.
     const cardsOrigin = new URL(CARDS_URL).origin;
     const expectedOrigin = (import.meta.env.VITE_CARDS_URL as string | undefined) ?? cardsOrigin;
+
     async function onMessage(ev: MessageEvent) {
       if (!ev.data || typeof ev.data !== 'object') return;
       if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
       if (ev.origin !== expectedOrigin) return;
-      const origin = expectedOrigin;
+
       try {
         const res = await fetch('/.netlify/functions/mint-cards-iframe-token', {
           method: 'POST',
@@ -115,23 +70,26 @@ export default function CardsIframe() {
         });
         if (!res.ok) {
           iframeRef.current?.contentWindow?.postMessage(
-            { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
-            origin,
+            { type: 'SHELL_TOKEN_RESPONSE', error: 'mint-failed' },
+            expectedOrigin,
           );
+          Sentry.captureMessage(`mint-cards-iframe-token returned ${res.status}`, { level: 'error' });
           return;
         }
-        const body = (await res.json()) as { token: string };
+        const { token } = (await res.json()) as { token: string };
         iframeRef.current?.contentWindow?.postMessage(
-          { type: 'SHELL_TOKEN_RESPONSE', token: body.token },
-          origin,
+          { type: 'SHELL_TOKEN_RESPONSE', token },
+          expectedOrigin,
         );
-      } catch {
+      } catch (e) {
         iframeRef.current?.contentWindow?.postMessage(
-          { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
-          origin,
+          { type: 'SHELL_TOKEN_RESPONSE', error: 'mint-failed' },
+          expectedOrigin,
         );
+        Sentry.captureException(e, { tags: { surface: 'cards-iframe-token' } });
       }
     }
+
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
@@ -141,11 +99,7 @@ export default function CardsIframe() {
     setPhase('ready');
   };
 
-  if (phase === 'mint-error' || phase === 'load-timeout') {
-    const msg =
-      phase === 'mint-error'
-        ? "Couldn't open EQ Cards. Check your connection and try again."
-        : 'EQ Cards took too long to load. Try again — if the problem persists, reload the page.';
+  if (phase === 'load-error') {
     return (
       <HubLayout iframe>
         <div
@@ -153,7 +107,9 @@ export default function CardsIframe() {
           role="alert"
           style={{ margin: 28, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 480 }}
         >
-          <p style={{ margin: 0, color: '#1A1A2E' }}>{msg}</p>
+          <p style={{ margin: 0, color: '#1A1A2E' }}>
+            EQ Cards took too long to load. Try again — if the problem persists, reload the page.
+          </p>
           <button
             type="button"
             className="eq-btn eq-btn--sm"
@@ -167,14 +123,6 @@ export default function CardsIframe() {
     );
   }
 
-  if (phase === 'minting') {
-    return (
-      <HubLayout iframe>
-        <div className="eq-loading">Opening EQ Cards…</div>
-      </HubLayout>
-    );
-  }
-
   return (
     <HubLayout iframe>
       {phase === 'loading' && (
@@ -182,19 +130,18 @@ export default function CardsIframe() {
           Opening EQ Cards…
         </div>
       )}
-      {iframeSrc && (
-        <iframe
-          ref={iframeRef}
-          className="eq-cards-frame"
-          style={{ flex: 1, minHeight: 0 }}
-          title="EQ Cards"
-          src={iframeSrc}
-          sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
-          referrerPolicy="no-referrer"
-          allow=""
-          onLoad={onIframeLoad}
-        />
-      )}
+      <iframe
+        ref={iframeRef}
+        key={attempt}
+        className="eq-cards-frame"
+        style={{ flex: 1, minHeight: 0 }}
+        title="EQ Cards"
+        src={`${CARDS_URL}auth/handoff?shell=1`}
+        sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
+        referrerPolicy="no-referrer"
+        allow=""
+        onLoad={onIframeLoad}
+      />
     </HubLayout>
   );
 }
