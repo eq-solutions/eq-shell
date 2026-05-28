@@ -106,6 +106,32 @@ export default function TenantHome() {
   const [feed, setFeed]     = useState<CanonicalEvent[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // undefined = still fetching, null = no briefing available, string = display it
+  const [briefing, setBriefing] = useState<string | null | undefined>(undefined);
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const silentRefreshFeed = async () => {
+    try {
+      const res = await fetch('/.netlify/functions/tenant-dashboard');
+      if (!res.ok) return;
+      const body = await res.json() as { ok: boolean; counts: DashboardCount[]; events: IntakeEvent[]; feed: CanonicalEvent[] };
+      setFeed(body.feed ?? []);
+    } catch {
+      // silent — polling failures don't surface to user
+    }
+  };
+
+  const loadBriefing = async () => {
+    try {
+      const res = await fetch('/.netlify/functions/ai-briefing');
+      if (!res.ok) { setBriefing(null); return; }
+      const body = await res.json() as { ok: boolean; briefing: string | null };
+      setBriefing(body.briefing ?? null);
+    } catch {
+      setBriefing(null);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -127,7 +153,14 @@ export default function TenantHome() {
     }
   };
 
-  useEffect(() => { void loadData(); }, []);
+  useEffect(() => {
+    void loadData();
+    void loadBriefing();
+    pollRef.current = setInterval(() => { void silentRefreshFeed(); }, 60_000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   if (!session) return null;
 
