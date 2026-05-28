@@ -160,11 +160,17 @@ export default function ServiceIframe() {
 
   function onIframeLoad() {
     loadCount.current += 1;
-    // Fallback: reveal after 2 onLoad events (initial /shell load + redirect
-    // to /). The postMessage listener above should fire first for new Service
-    // deploys; this catches preview URLs and any case where the signal is missed.
-    if (loadCount.current >= 2) {
-      setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
+    // Fallback: reveal after the FIRST onLoad once the auth round-trip has had
+    // time to complete. The first onLoad is the /shell page itself. Next.js's
+    // router.replace('/') is a soft nav that does NOT fire a second onLoad, so
+    // the old ">= 2" threshold never triggered. We use a 12s delay after the
+    // first onLoad — enough for OTP verification + server render — before
+    // revealing the iframe. EQ_SERVICE_READY (the primary signal) fires much
+    // faster when it works; this is a last-resort fallback.
+    if (loadCount.current === 1) {
+      setTimeout(() => {
+        setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
+      }, 12_000);
     }
   }
 
