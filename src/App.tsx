@@ -26,6 +26,7 @@ import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
 import EntityBrowserPage from './pages/EntityBrowserPage';
 import ServiceIframe from './pages/ServiceIframe';
+import QuotesIframe from './pages/QuotesIframe';
 import StorageBrowser from './pages/StorageBrowser';
 import NotFound from './pages/NotFound';
 import { RouteProgressBar } from './components/RouteProgressBar';
@@ -53,7 +54,7 @@ const IntakeCardsLanding = lazy(() =>
 const IntakeServiceLanding = lazy(() =>
   import('./modules/intake/DomainLanding').then((m) => ({ default: m.ServiceIntakeLanding })),
 );
-const QuotesModule = lazy(() => import('./modules/quotes'));
+// QuotesModule (link-out stub) replaced by QuotesIframe — persistent keeper below.
 
 // Session cache — stores last good session in sessionStorage so returning
 // users see content immediately while verify-shell-session runs in background.
@@ -230,18 +231,20 @@ function TenantTree() {
     if (rest === 'field' || rest.startsWith('field/')) return 'field' as const;
     if (rest === 'cards' || rest.startsWith('cards/')) return 'cards' as const;
     if (rest === 'service' || rest.startsWith('service/')) return 'service' as const;
+    if (rest === 'quotes' || rest.startsWith('quotes/')) return 'quotes' as const;
     return null;
   })();
 
   // Tracks iframes that have ever been activated. Ref (not state) so the
   // mutation doesn't trigger extra renders. Mutated during render — safe
   // because Set.add is idempotent and refs are not tracked by React.
-  const evermounted = useRef(new Set<'field' | 'cards' | 'service'>());
+  const evermounted = useRef(new Set<'field' | 'cards' | 'service' | 'quotes'>());
   if (activeIframe) evermounted.current.add(activeIframe);
 
   const fieldEnabled = moduleEnabled(session, 'field');
   const cardsEnabled = moduleEnabled(session, 'cards');
   const serviceEnabled = moduleEnabled(session, 'service');
+  const quotesEnabled = moduleEnabled(session, 'quotes');
 
   return (
     <BrandProvider tenant={session?.tenant ?? null}>
@@ -262,6 +265,11 @@ function TenantTree() {
       {serviceEnabled && evermounted.current.has('service') && (
         <div style={activeIframe === 'service' ? undefined : { display: 'none' }}>
           <ServiceIframe />
+        </div>
+      )}
+      {quotesEnabled && evermounted.current.has('quotes') && (
+        <div style={activeIframe === 'quotes' ? undefined : { display: 'none' }}>
+          <QuotesIframe />
         </div>
       )}
       <Routes>
@@ -342,15 +350,12 @@ function TenantTree() {
           path="service"
           element={<ModuleGate module="service">{null}</ModuleGate>}
         />
+        {/* Quotes is a persistent iframe keeper (see above) — the route just
+            needs to exist so the active-iframe detection fires and the keeper
+            div becomes visible. No children required. */}
         <Route
           path="quotes"
-          element={
-            <ModuleGate module="quotes">
-              <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
-                <QuotesModule />
-              </Suspense>
-            </ModuleGate>
-          }
+          element={<ModuleGate module="quotes">{null}</ModuleGate>}
         />
         {/* Phase 1.F: admin user-management routes. Permission checks
             live in the page components via <Gate perm="..."> — the
