@@ -1879,6 +1879,17 @@
   margin: 0 0 28px;
 }
 
+.eq-hub-briefing {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: #4B5563;
+  margin: 0.25rem 0 1.5rem;
+  max-width: 640px;
+}
+.eq-hub-briefing-skeleton {
+  margin: 0.25rem 0 1.5rem;
+}
+
 /* KPI strip */
 
 .eq-hub-kpis {
