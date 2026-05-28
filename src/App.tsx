@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, lazy, Suspense, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, lazy, Suspense, type ReactNode, type CSSProperties } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -57,6 +57,22 @@ const IntakeServiceLanding = lazy(() =>
   import('./modules/intake/DomainLanding').then((m) => ({ default: m.ServiceIntakeLanding })),
 );
 // QuotesModule (link-out stub) replaced by QuotesIframe — persistent keeper below.
+
+// Inactive iframe keepers stay mounted but hidden. We must NOT use
+// `display: none`: an iframe laid out under display:none collapses to 0×0,
+// so height-measuring apps inside (EQ Field's virtual tables / dashboard,
+// Flutter canvas, etc.) render into zero height and never recompute when
+// later revealed — the frame shows blank. `visibility: hidden` at full
+// viewport size keeps real dimensions so the content renders correctly
+// while pre-warmed in the background; `pointer-events: none` stops the
+// invisible layer from swallowing clicks meant for the active frame.
+// (Same approach ServiceIframe uses internally for its own loading state.)
+const HIDDEN_IFRAME_KEEPER_STYLE: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  visibility: 'hidden',
+  pointerEvents: 'none',
+};
 
 // Session cache — stores last good session in sessionStorage so returning
 // users see content immediately while verify-shell-session runs in background.
@@ -267,22 +283,22 @@ function TenantTree() {
           keeps running between navigations. Pre-warming means Service/Field are
           already auth'd and rendered by the time the user clicks the nav item. */}
       {fieldEnabled && (evermounted.current.has('field') || eagerTriggered) && (
-        <div style={activeIframe === 'field' ? undefined : { display: 'none' }}>
+        <div style={activeIframe === 'field' ? undefined : HIDDEN_IFRAME_KEEPER_STYLE}>
           <FieldIframe />
         </div>
       )}
       {cardsEnabled && (evermounted.current.has('cards') || eagerTriggered) && (
-        <div style={activeIframe === 'cards' ? undefined : { display: 'none' }}>
+        <div style={activeIframe === 'cards' ? undefined : HIDDEN_IFRAME_KEEPER_STYLE}>
           <CardsIframe />
         </div>
       )}
       {serviceEnabled && (evermounted.current.has('service') || eagerTriggered) && (
-        <div style={activeIframe === 'service' ? undefined : { display: 'none' }}>
+        <div style={activeIframe === 'service' ? undefined : HIDDEN_IFRAME_KEEPER_STYLE}>
           <ServiceIframe />
         </div>
       )}
       {quotesEnabled && (evermounted.current.has('quotes') || eagerTriggered) && (
-        <div style={activeIframe === 'quotes' ? undefined : { display: 'none' }}>
+        <div style={activeIframe === 'quotes' ? undefined : HIDDEN_IFRAME_KEEPER_STYLE}>
           <QuotesIframe />
         </div>
       )}
