@@ -104,7 +104,7 @@ export default function FieldIframe() {
   // they skip the picker on return visits. Non-admins always auto-route.
   const storedDefaultSlug: TenantSlug | null = (() => {
     if (!session?.user.is_platform_admin) return null;
-    const stored = sessionStorage.getItem('eq-field-default-tenant');
+    const stored = localStorage.getItem('eq-field-default-tenant');
     return stored && TENANT_OPTIONS.some((t) => t.slug === stored) ? (stored as TenantSlug) : null;
   })();
 
@@ -119,7 +119,7 @@ export default function FieldIframe() {
 
   const pickTenant = (slug: TenantSlug) => {
     if (session?.user.is_platform_admin) {
-      sessionStorage.setItem('eq-field-default-tenant', slug);
+      localStorage.setItem('eq-field-default-tenant', slug);
     }
     setSrc(null);
     setState({ phase: 'minting' });
