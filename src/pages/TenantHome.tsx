@@ -37,7 +37,9 @@ const EVENT_META: Record<string, { label: string; dot: 'ok' | 'warn' | 'err' | '
   'quote.sent':                    { label: 'Quote sent to client',      dot: 'warn'    },
   'quote.accepted':                { label: 'Quote accepted',            dot: 'ok'      },
   'defect.created':                { label: 'Defect raised',             dot: 'err'     },
+  'defect.resolved':               { label: 'Defect resolved',           dot: 'ok'      },
   'maintenance_check.completed':   { label: 'Maintenance check complete', dot: 'ok'     },
+  'maintenance_check.overdue':     { label: 'Maintenance check overdue', dot: 'err'     },
 };
 
 const APP_LABELS: Record<string, string> = {
@@ -255,6 +257,15 @@ export default function TenantHome() {
           <h1 className="eq-hub-content__greeting">
             {greeting()}, {greetName}.
           </h1>
+
+          {briefing === undefined && loading && (
+            <div className="eq-hub-briefing-skeleton">
+              <Skeleton variant="text" width={480} />
+            </div>
+          )}
+          {briefing && (
+            <p className="eq-hub-briefing">{briefing}</p>
+          )}
 
           {/* KPI strip — values stubbed until cross-app RPCs are wired */}
           <div className="eq-hub-kpis">
