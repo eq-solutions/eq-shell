@@ -1650,6 +1650,9 @@
   align-items: center;
   gap: 8px;
   padding: 0 20px 20px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
 }
 
 .eq-hub-sidebar__brand-sep {

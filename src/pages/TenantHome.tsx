@@ -209,17 +209,28 @@ export default function TenantHome() {
               )}
               <p className="eq-hub-kpi__sub">active staff</p>
             </div>
-            <div className="eq-hub-kpi">
-              <p className="eq-hub-kpi__label">Activity</p>
+            <Link to={`/${tenantSlug}/data/customer`} className="eq-hub-kpi eq-hub-kpi--link">
+              <p className="eq-hub-kpi__label">Customers</p>
               {loading ? (
                 <Skeleton variant="text" width={60} />
               ) : (
                 <p className="eq-hub-kpi__value">
-                  {events !== null ? events.length : '—'}
+                  {customerCount ?? '—'}
                 </p>
               )}
-              <p className="eq-hub-kpi__sub">recent imports</p>
-            </div>
+              <p className="eq-hub-kpi__sub">all customers →</p>
+            </Link>
+            <Link to={`/${tenantSlug}/data/contact`} className="eq-hub-kpi eq-hub-kpi--link">
+              <p className="eq-hub-kpi__label">Contacts</p>
+              {loading ? (
+                <Skeleton variant="text" width={60} />
+              ) : (
+                <p className="eq-hub-kpi__value">
+                  {contactCount ?? '—'}
+                </p>
+              )}
+              <p className="eq-hub-kpi__sub">all contacts →</p>
+            </Link>
             <Link to={`/${tenantSlug}/data/site`} className="eq-hub-kpi eq-hub-kpi--link">
               <p className="eq-hub-kpi__label">Sites</p>
               {loading ? (
@@ -229,7 +240,7 @@ export default function TenantHome() {
                   {siteCount ?? '—'}
                 </p>
               )}
-              <p className="eq-hub-kpi__sub">active sites →</p>
+              <p className="eq-hub-kpi__sub">all sites →</p>
             </Link>
           </div>
 

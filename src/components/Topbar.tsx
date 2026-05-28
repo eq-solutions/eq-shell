@@ -47,7 +47,7 @@ export function Topbar() {
       <header className="eq-topbar">
         <div className="eq-topbar__left">
           <Link to={`/${tenantSlug}`} className="eq-topbar__brand" onClick={closeMenu}>
-            <EqLogo size={24} className="eq-topbar__brand-mark" />
+            <EqLogo size={32} className="eq-topbar__brand-mark" />
             <span>{brand.name}</span>
           </Link>
           <nav className="eq-topbar__nav" aria-label="Main navigation">

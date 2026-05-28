@@ -1,4 +1,4 @@
-import { NavLink, useParams } from 'react-router-dom';
+import { Link, NavLink, useParams } from 'react-router-dom';
 import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut } from 'lucide-react';
 import { useSession } from '../session';
 import { EqLogo } from './EqLogo';
@@ -56,11 +56,11 @@ export function HubSidebar({ apps, records }: Props) {
 
   return (
     <aside className="eq-hub__sidebar">
-      <div className="eq-hub-sidebar__brand">
+      <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand">
         <EqLogo size={22} />
         <span className="eq-hub-sidebar__brand-sep">·</span>
         <span className="eq-hub-sidebar__brand-label">SHELL</span>
-      </div>
+      </Link>
 
       <div className="eq-hub-sidebar__live">
         <span className="eq-hub-sidebar__live-dot" aria-hidden="true" />
