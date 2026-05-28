@@ -180,6 +180,16 @@ export function HubSidebar({ apps, records }: Props) {
         </>
       )}
 
+      {/* Phase 1.G: 2FA enrollment — accessible to all logged-in users */}
+      <NavLink
+        to={`/${tenantSlug}/settings/2fa`}
+        className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+        style={{ marginTop: 8 }}
+      >
+        <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Settings size={16} aria-hidden="true" /></span>
+        <span className="eq-hub-sidebar__nav-label">Security</span>
+      </NavLink>
+
       <div className="eq-hub-sidebar__user">
         <div className="eq-hub-sidebar__user-avatar" aria-hidden="true">
           {userInitials}
