@@ -68,10 +68,12 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(400, { ok: false, error: 'invalid_filter', detail: 'offset must be >= 0' });
   }
 
-  const search   = url.searchParams.get('search')   ?? undefined;
-  const sortCol  = url.searchParams.get('sort_col')  ?? undefined;
+  const search     = url.searchParams.get('search')    ?? undefined;
+  const sortCol    = url.searchParams.get('sort_col')   ?? undefined;
   const sortDirRaw = (url.searchParams.get('sort_dir') ?? '').toUpperCase();
-  const sortDir  = sortDirRaw === 'ASC' ? 'ASC' : sortDirRaw === 'DESC' ? 'DESC' : undefined;
+  const sortDir    = sortDirRaw === 'ASC' ? 'ASC' : sortDirRaw === 'DESC' ? 'DESC' : undefined;
+  const activeRaw  = url.searchParams.get('active');
+  const active     = activeRaw === 'true' ? true : activeRaw === 'false' ? false : undefined;
 
   let tenantDb;
   try {
@@ -91,6 +93,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   if (search  !== undefined) rpcParams.p_search   = search;
   if (sortCol !== undefined) rpcParams.p_sort_col  = sortCol;
   if (sortDir !== undefined) rpcParams.p_sort_dir  = sortDir;
+  if (active  !== undefined) rpcParams.p_active    = active;
 
   const { data, error } = await tenantAny
     .schema('public')
@@ -115,6 +118,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     search:   search   ?? null,
     sort_col: sortCol  ?? 'created_at',
     sort_dir: sortDir  ?? 'DESC',
+    active:   active   ?? null,
   });
 });
 

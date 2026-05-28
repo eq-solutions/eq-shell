@@ -176,6 +176,12 @@ function formatCell(value: unknown, key: string): string {
 
 const PAGE_SIZE = 50;
 
+// Entities where the DB table has an `active` boolean column.
+// Determines whether the Active / All / Inactive filter strip is shown.
+const ACTIVE_FILTER_ENTITIES = new Set([
+  'customer', 'contact', 'site', 'staff', 'licence', 'asset',
+]);
+
 // Debounce helper — delays firing fn until ms of silence.
 function useDebounce<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -207,20 +213,28 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   const [sortCol, setSortCol] = useState('created_at');
   const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('DESC');
 
+  // Active filter — null = All, true = Active only, false = Inactive only.
+  // Only shown for entities that have an `active` boolean column.
+  const supportsActiveFilter = ACTIVE_FILTER_ENTITIES.has(entity);
+  const [activeFilter, setActiveFilter] = useState<boolean | null>(null);
+
   const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
 
-  // Reset to page 0 whenever search or sort changes.
+  // Reset to page 0 whenever search, sort, or active filter changes.
   const prevSearch = useRef(search);
   const prevSort   = useRef({ sortCol, sortDir });
+  const prevActive = useRef(activeFilter);
   useEffect(() => {
     if (prevSearch.current !== search ||
         prevSort.current.sortCol !== sortCol ||
-        prevSort.current.sortDir !== sortDir) {
+        prevSort.current.sortDir !== sortDir ||
+        prevActive.current !== activeFilter) {
       prevSearch.current = search;
       prevSort.current   = { sortCol, sortDir };
+      prevActive.current = activeFilter;
       setPage(0);
     }
-  }, [search, sortCol, sortDir]);
+  }, [search, sortCol, sortDir, activeFilter]);
 
   const load = useMemo(
     () => async () => {
@@ -239,6 +253,9 @@ function EntityBrowserInner({ entity }: { entity: string }) {
           sort_dir: sortDir,
         });
         if (search) qs.set('search', search);
+        if (supportsActiveFilter && activeFilter !== null) {
+          qs.set('active', String(activeFilter));
+        }
         const res = await fetch(`/.netlify/functions/entity-rows?${qs}`, {
           credentials: 'include',
         });
@@ -254,7 +271,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
         setLoading(false);
       }
     },
-    [view, page, entity, search, sortCol, sortDir],
+    [view, page, entity, search, sortCol, sortDir, activeFilter, supportsActiveFilter],
   );
 
   useEffect(() => { void load(); }, [load]);
@@ -289,7 +306,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
         <h1 className="eq-page__title">{view.label}</h1>
         <p className="eq-page__lede">
           {count != null
-            ? search
+            ? search || activeFilter !== null
               ? `${count.toLocaleString()} matching`
               : `${count.toLocaleString()} total`
             : '…'}
@@ -321,6 +338,41 @@ function EntityBrowserInner({ entity }: { entity: string }) {
             Clear
           </button>
         )}
+
+        {/* Active / All / Inactive filter — only for entities with an active column */}
+        {supportsActiveFilter && (
+          <div style={{ display: 'flex', border: '1px solid var(--eq-border)', borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}>
+            {([
+              { label: 'Active',   value: true  as boolean | null },
+              { label: 'All',      value: null  as boolean | null },
+              { label: 'Inactive', value: false as boolean | null },
+            ] as { label: string; value: boolean | null }[]).map(({ label, value }) => {
+              const isSelected = activeFilter === value;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setActiveFilter(value)}
+                  style={{
+                    padding: '0 12px',
+                    height: 34,
+                    fontSize: 12,
+                    fontWeight: isSelected ? 600 : 400,
+                    border: 'none',
+                    borderRight: label !== 'Inactive' ? '1px solid var(--eq-border)' : 'none',
+                    background: isSelected ? 'var(--eq-brand, #3DA8D8)' : 'var(--eq-bg)',
+                    color: isSelected ? '#fff' : 'var(--eq-ink)',
+                    cursor: 'pointer',
+                    transition: 'background 120ms, color 120ms',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {totalPages != null && totalPages > 1 && (
           <span style={{ color: 'var(--eq-mute)', fontSize: 13, marginLeft: 'auto' }}>
             Page {page + 1} of {totalPages}

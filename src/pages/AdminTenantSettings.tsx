@@ -40,7 +40,6 @@ const HUB_APPS = [
 
 function AdminTenantSettingsInner() {
   const { session } = useSession();
-  const fileRef = useRef<HTMLInputElement>(null);
   const logoUploadRef = useRef<HTMLInputElement>(null);
 
   const [settings, setSettings] = useState<TenantSettings | null>(null);
@@ -51,7 +50,6 @@ function AdminTenantSettingsInner() {
   const [err, setErr] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [logoUploadStatus, setLogoUploadStatus] = useState<
     | { kind: 'idle' }
@@ -87,28 +85,6 @@ function AdminTenantSettingsInner() {
   };
 
   useEffect(() => { void load(); }, []);
-
-  async function onUpload(file: File) {
-    if (!session) return;
-    setUploading(true);
-    try {
-      const sb = await createSupabaseClient();
-      const ext = file.name.split('.').pop() ?? 'png';
-      const path = `${session.tenant.id}/logo.${ext}`;
-      const { error: upErr } = await sb.storage
-        .from('tenant-logos')
-        .upload(path, file, { upsert: true, contentType: file.type });
-      if (upErr) throw new Error(upErr.message);
-      const { data } = sb.storage.from('tenant-logos').getPublicUrl(path);
-      setBrandLogoUrl(data.publicUrl);
-      const detected = await extractLogoColor(file);
-      if (detected) { setBrandColor(detected); setColorDetected(true); }
-    } catch (e) {
-      setSaveErr((e as Error).message);
-    } finally {
-      setUploading(false);
-    }
-  }
 
   const ALLOWED_LOGO_TYPES = new Set([
     'image/png',
