@@ -107,11 +107,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (countsRes.error) {
     console.error('[tenant-dashboard] counts query failed', { tenantId, error: countsRes.error.message });
-    return json(500, { ok: false, error: 'counts_failed', detail: countsRes.error.message });
+    return json(500, { ok: false, error: 'counts_failed' });
   }
   if (eventsRes.error) {
     console.error('[tenant-dashboard] events query failed', { tenantId, error: eventsRes.error.message });
-    return json(500, { ok: false, error: 'events_failed', detail: eventsRes.error.message });
+    return json(500, { ok: false, error: 'events_failed' });
   }
   // Canonical events failing is non-fatal — feed falls back to empty
   if (feedRes.error) {

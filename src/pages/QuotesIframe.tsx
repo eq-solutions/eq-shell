@@ -35,12 +35,14 @@ export default function QuotesIframe() {
   // Legacy token refresh — keep the handler in case Flask sessions expire
   // and Quotes falls back to requesting a fresh HMAC token.
   useEffect(() => {
-    const expectedOrigin = import.meta.env.VITE_QUOTES_URL as string | undefined;
+    // Fail closed: use hardcoded QUOTES_URL as fallback so the handler
+    // never silently accepts messages from arbitrary origins.
+    const expectedOrigin = (import.meta.env.VITE_QUOTES_URL as string | undefined) ?? QUOTES_URL;
     async function onMessage(ev: MessageEvent) {
       if (!ev.data || typeof ev.data !== 'object') return;
       if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
-      if (expectedOrigin && ev.origin !== expectedOrigin) return;
-      const origin = expectedOrigin ?? ev.origin;
+      if (ev.origin !== expectedOrigin) return;
+      const origin = expectedOrigin;
       try {
         const res = await fetch('/.netlify/functions/mint-quotes-iframe-token', {
           method: 'POST',

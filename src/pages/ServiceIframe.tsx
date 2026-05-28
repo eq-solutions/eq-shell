@@ -115,12 +115,14 @@ export default function ServiceIframe() {
   // TOKEN MODE: token refresh requests from Service.
   useEffect(() => {
     if (COOKIE_AUTH) return;
-    const expectedOrigin = import.meta.env.VITE_SERVICE_URL as string | undefined;
+    // Fail closed: SERVICE_URL is always set (has a hardcoded fallback),
+    // so this check never accidentally accepts messages from arbitrary origins.
+    const expectedOrigin = new URL(SERVICE_URL).origin;
     async function onMessage(ev: MessageEvent) {
       if (!ev.data || typeof ev.data !== 'object') return;
       if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
-      if (expectedOrigin && ev.origin !== expectedOrigin) return;
-      const origin = expectedOrigin ?? ev.origin;
+      if (ev.origin !== expectedOrigin) return;
+      const origin = expectedOrigin;
       try {
         const res = await fetch('/.netlify/functions/mint-service-iframe-token', {
           method: 'POST',

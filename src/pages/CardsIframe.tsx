@@ -53,12 +53,15 @@ export default function CardsIframe() {
 
   // JWT refresh — respond to REQUEST_SHELL_TOKEN from the Cards iframe.
   useEffect(() => {
-    const expectedOrigin = import.meta.env.VITE_CARDS_URL as string | undefined;
+    // Fail closed: use CARDS_URL origin as fallback so the handler
+    // never silently accepts messages from arbitrary origins.
+    const cardsOrigin = new URL(CARDS_URL).origin;
+    const expectedOrigin = (import.meta.env.VITE_CARDS_URL as string | undefined) ?? cardsOrigin;
     async function onMessage(ev: MessageEvent) {
       if (!ev.data || typeof ev.data !== 'object') return;
       if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
-      if (expectedOrigin && ev.origin !== expectedOrigin) return;
-      const origin = expectedOrigin ?? ev.origin;
+      if (ev.origin !== expectedOrigin) return;
+      const origin = expectedOrigin;
       try {
         const res = await fetch('/.netlify/functions/mint-cards-iframe-token', {
           method: 'POST',

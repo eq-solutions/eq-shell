@@ -29,6 +29,7 @@ const HANDOFF_TIMEOUT_MS = 30_000;
 
 import {
   TENANT_OPTIONS,
+  FIELD_TENANT_URLS,
   buildFieldSrc,
   buildFieldCookieSrc,
   tenantUsesCookieAuth,
@@ -171,7 +172,13 @@ export default function FieldIframe() {
 
   // Listen for handoff status postMessages from Field.
   useEffect(() => {
+    // Build the set of origins from which Field postMessages are accepted.
+    // Derived from FIELD_TENANT_URLS so it stays in sync automatically.
+    const allowedOrigins = new Set(
+      Object.values(FIELD_TENANT_URLS).map((u) => new URL(u).origin),
+    );
     function onMessage(ev: MessageEvent) {
+      if (!allowedOrigins.has(ev.origin)) return;
       if (!isHandoffMessage(ev.data)) return;
       const msg = ev.data;
       switch (msg.kind) {
