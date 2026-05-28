@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSession, moduleEnabled, type EqTier } from '../session';
-import { createSupabaseClient } from '../lib/supabaseJwt';
 import { HubSidebar, HUB_APP_ICONS, type HubApp, type RecordLink } from '../components/HubSidebar';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
@@ -86,15 +85,14 @@ export default function TenantHome() {
     setLoading(true);
     setErr(null);
     try {
-      const sb = await createSupabaseClient();
-      const [countsRes, eventsRes] = await Promise.all([
-        sb.rpc('eq_tenant_dashboard_counts'),
-        sb.rpc('eq_recent_intake_events', { p_limit: 5 }),
-      ]);
-      if (countsRes.error) throw new Error(countsRes.error.message);
-      if (eventsRes.error) throw new Error(eventsRes.error.message);
-      setCounts(countsRes.data as DashboardCount[]);
-      setEvents(eventsRes.data as IntakeEvent[]);
+      const res = await fetch('/.netlify/functions/tenant-dashboard');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      const body = await res.json() as { ok: boolean; counts: DashboardCount[]; events: IntakeEvent[] };
+      setCounts(body.counts);
+      setEvents(body.events);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
