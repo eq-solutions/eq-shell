@@ -13,8 +13,9 @@
 import type { Context } from '@netlify/functions';
 import { getServiceClient, getUserMemberships, getEnrichedMemberships } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
-import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
+import { verifySessionToken, signSessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
+import { buildSessionCookie } from './_shared/cookie.js';
 import { withSentry } from './_shared/sentry.js';
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -106,12 +107,36 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const userForResponse = { ...user, tenant_id: tenant.id, role: activeMembership.role };
 
-  return jsonResponse(200, {
+  const body = {
     valid: true,
     user: userForResponse,
     tenant,
     entitlements: entitlements ?? [],
     memberships: await getEnrichedMemberships(user.id).catch(() => memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role }))),
     supabase_jwt: supabaseJwt,
-  });
+  };
+
+  // Transparently upgrade pre-2026-05-28 cookies that lack email/name.
+  // Those fields are needed for cookie-based cross-app SSO (Service, Field).
+  // We already fetched user.email and user.name above, so re-issuing is free.
+  if (!session.email) {
+    const upgraded = signSessionToken({
+      ...session,
+      email: user.email,
+      name: user.name ?? null,
+    });
+    const upgradedCookie = buildSessionCookie(req, upgraded, {
+      maxAgeSeconds: Math.max(0, Math.floor((session.exp - Date.now()) / 1000)),
+    });
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'Set-Cookie': upgradedCookie,
+      },
+    });
+  }
+
+  return jsonResponse(200, body);
 });

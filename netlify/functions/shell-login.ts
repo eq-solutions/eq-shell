@@ -262,6 +262,8 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     role: activeRole,
     is_platform_admin: user.is_platform_admin,
     memberships: memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
+    email: user.email,
+    name: user.name ?? null,
     exp,
   });
   // Domain scoping handled by buildSessionCookie — set to .eq.solutions

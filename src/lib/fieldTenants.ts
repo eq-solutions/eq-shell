@@ -3,11 +3,21 @@
 // The Netlify function (netlify/functions/mint-iframe-token.ts) maintains
 // its own ALLOWED_FIELD_TENANT_SLUGS allow-list. When adding a new Field
 // org, update BOTH that constant AND this file in the same PR.
+//
+// COOKIE AUTH MODE
+// When VITE_FIELD_URL=https://field.eq.solutions, the eq_shell_session cookie
+// (Domain=.eq.solutions) is sent automatically to field.eq.solutions. Field's
+// verify-pin.js reads it directly — no token minting needed.
+// SKS always uses token-based auth via sks-nsw-labour.netlify.app regardless
+// of VITE_FIELD_URL (different domain, cookie won't reach it).
+
+const FIELD_BASE_URL = (import.meta.env.VITE_FIELD_URL as string | undefined)
+  ?? 'https://eq-solves-field.netlify.app/';
 
 export const FIELD_TENANT_URLS: Record<string, string> = {
-  eq: 'https://eq-solves-field.netlify.app/',
-  'demo-trades': 'https://eq-solves-field.netlify.app/',
-  melbourne: 'https://eq-solves-field.netlify.app/',
+  eq: FIELD_BASE_URL,
+  'demo-trades': FIELD_BASE_URL,
+  melbourne: FIELD_BASE_URL,
   sks: 'https://sks-nsw-labour.netlify.app/',
 };
 
@@ -41,7 +51,20 @@ export const TENANT_OPTIONS = [
 export type TenantOption = (typeof TENANT_OPTIONS)[number];
 export type TenantSlug = TenantOption['slug'];
 
+/** True when the tenant's Field deploy is on eq.solutions and can use cookie auth. */
+export function tenantUsesCookieAuth(tenantSlug: string): boolean {
+  const base = FIELD_TENANT_URLS[tenantSlug] ?? FIELD_BASE_URL;
+  return base.includes('.eq.solutions');
+}
+
+/** Build the iframe src for token-based auth (legacy / SKS). */
 export function buildFieldSrc(tenantSlug: string, token: string): string {
-  const base = FIELD_TENANT_URLS[tenantSlug] ?? 'https://eq-solves-field.netlify.app/';
+  const base = FIELD_TENANT_URLS[tenantSlug] ?? FIELD_BASE_URL;
   return `${base}?tenant=${encodeURIComponent(tenantSlug)}#sh=${encodeURIComponent(token)}`;
+}
+
+/** Build the iframe src for cookie-based auth (eq.solutions tenants). */
+export function buildFieldCookieSrc(tenantSlug: string): string {
+  const base = FIELD_TENANT_URLS[tenantSlug] ?? FIELD_BASE_URL;
+  return `${base}?tenant=${encodeURIComponent(tenantSlug)}&shell=1`;
 }

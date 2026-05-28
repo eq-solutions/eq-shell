@@ -3,60 +3,40 @@ import * as Sentry from '@sentry/react';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
 
-// Embeds the existing EQ Field deploy as an iframe. The shell mints
-// a 60s HMAC handoff token, passes it via URL hash (NOT query —
-// Field clears the hash on consume so the token doesn't end up in
-// history/screenshots). See Phase 1.C, PR #106 on eq-field-app/demo
-// for the Field-side consumer.
+// Embeds the existing EQ Field deploy as an iframe.
 //
-// 2026-05-20 — handoff status overlay. Cross-origin sandboxed iframes
-// don't expose console output to the parent shell, so when the
-// `#sh=` handoff fails inside Field the shell previously just
-// rendered a blank iframe with no signal. eq-field v3.5.12 ships a
-// postMessage telemetry channel that broadcasts every handoff step;
-// we listen here, render a user-facing error on failure, and capture
-// the failure mode in Sentry.
+// Two auth modes, selected by VITE_FIELD_URL:
 //
-// 2026-05-21 — wrapped in <Topbar /> so users aren't trapped on the
-// iframe surface; matches the audit fix that landed earlier today.
+// COOKIE MODE (VITE_FIELD_URL=https://field.eq.solutions)
+//   eq_shell_session is Domain=.eq.solutions — the browser sends it
+//   automatically to field.eq.solutions. Field's verify-pin.js reads
+//   it server-side via the 'verify-shell-cookie' action, no token
+//   minting needed. Shell embeds Field at:
+//     field.eq.solutions/?tenant=<slug>&shell=1
+//   Field detects ?shell=1 with no #sh= and tries cookie auth.
+//   SKS always uses token mode (sks-nsw-labour.netlify.app ≠ eq.solutions).
 //
-// 2026-05-22 — Wave 5: tenant picker on this surface. The shell user
-// (always on shell tenant 'core' today) picks which Field organisation
-// to load. The mint endpoint accepts the chosen slug in its body and
-// stamps it into the signed token; Field's v3.5.17 _consumeShellToken
-// cross-checks the slug against the iframe URL's `?tenant=` param and
-// rejects mismatches with a 'tenant-mismatch' postMessage. Auto-routing
-// from the user's shell tenant_id was tried twice (PR #10, #12) and
-// reverted both times — see SHELL-TENANT-PICKER-PROMPT.md §2 for why.
+// TOKEN MODE (fallback, any other VITE_FIELD_URL or SKS tenant)
+//   Legacy HMAC handshake: Shell mints a 60s token → embeds Field at
+//   /?tenant=<slug>#sh=<token> → Field's verify-pin validates → session.
 //
-// 2026-05-27 — sidebar-alongside layout. Topbar removed; HubLayout
-// stays visible alongside the iframe via `iframe` prop on HubLayout.
+// Activation (cookie mode):
+//   1. Add field.eq.solutions as Netlify custom domain on eq-solves-field.
+//   2. Set VITE_FIELD_URL=https://field.eq.solutions in eq-shell Netlify env.
+//   3. Update eq-solves-field verify-pin.js with verify-shell-cookie action.
 
-// Field tenant configuration lives in src/lib/fieldTenants.ts — single
-// source of truth for TENANT_OPTIONS, FIELD_TENANT_URLS, and buildFieldSrc.
-// When adding a new Field org, update that file AND mint-iframe-token.ts
-// ALLOWED_FIELD_TENANT_SLUGS in the same PR.
-
-// Field has cold-start latency in iframe context: SW install, two
-// sequential Supabase round-trips inside loadTenantConfig(), then the
-// verify-pin call inside _consumeShellToken(). On mobile this chain
-// easily hits 15-25s. The 'boot' signal now fires from auth.js before
-// those Supabase calls (see _earlyBootSignal), so in practice the
-// overlay resolves within a second or two — but we keep a generous
-// hard cap here so a genuinely dead iframe is still surfaced.
 const HANDOFF_TIMEOUT_MS = 30_000;
 
 import {
   TENANT_OPTIONS,
   buildFieldSrc,
+  buildFieldCookieSrc,
+  tenantUsesCookieAuth,
   type TenantOption,
   type TenantSlug,
 } from '../lib/fieldTenants';
 
 // Message shape contracted with eq-field-app `scripts/auth.js`
-// `_postHandoffStatus()` (added in v3.5.12, extended in v3.5.17 with
-// 'tenant-mismatch'). The shape is versioned; bump `version` on both
-// sides when the shape changes.
 interface HandoffMessage {
   source: 'eq-field-shell-handoff';
   version: 1;
@@ -80,7 +60,7 @@ interface HandoffMessage {
 type HandoffState =
   | { phase: 'minting' }
   | { phase: 'mint-failed' }
-  | { phase: 'waiting' } // iframe src set, waiting for first postMessage
+  | { phase: 'waiting' }
   | { phase: 'booted'; hasHash: boolean }
   | { phase: 'accepted'; name: string; role: string }
   | { phase: 'rejected' }
@@ -98,31 +78,22 @@ function isHandoffMessage(data: unknown): data is HandoffMessage {
 
 export default function FieldIframe() {
   const { session } = useSession();
-  // null = picker shown; once set, mint+embed runs.
   const [selectedTenant, setSelectedTenant] = useState<TenantSlug | null>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [state, setState] = useState<HandoffState>({ phase: 'minting' });
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Platform admins see every tenant in the picker; everyone else sees
-  // only the tenant that matches their shell session. SKS staff should
-  // never see EQ Demo / Demo Trades / Melbourne.
   const visibleOptions = (session?.user.is_platform_admin)
     ? TENANT_OPTIONS
     : TENANT_OPTIONS.filter((t) => t.slug === session?.tenant.slug);
 
-  // Auto-select the sole option for non-admin users. useEffect defers
-  // the state update out of render, replacing the prior setTimeout(0).
   const autoSlug = visibleOptions.length === 1 ? visibleOptions[0].slug : null;
   useEffect(() => {
     if (autoSlug && !selectedTenant) {
       pickTenant(autoSlug);
     }
-  }, [autoSlug]); // autoSlug is stable after session loads; selectedTenant check guards re-fire
+  }, [autoSlug]);
 
-  // Resetting src + state happens in the pick/switch event handlers
-  // below (not in the mint effect) — keeps the effect a pure
-  // "synchronise external system" call, no cascading renders.
   const pickTenant = (slug: TenantSlug) => {
     setSrc(null);
     setState({ phase: 'minting' });
@@ -135,11 +106,18 @@ export default function FieldIframe() {
     setSelectedTenant(null);
   };
 
-  // Mint token + set iframe src once a tenant is chosen. Re-runs if
-  // the user hits "Switch tenant" — selectedTenant returns to null,
-  // then they pick again and this fires fresh.
+  // Mint token + set iframe src once a tenant is chosen.
   useEffect(() => {
     if (!selectedTenant) return;
+
+    // Cookie auth — no token minting needed. Just set the src directly.
+    if (tenantUsesCookieAuth(selectedTenant)) {
+      setSrc(buildFieldCookieSrc(selectedTenant));
+      setState({ phase: 'waiting' });
+      return;
+    }
+
+    // Token auth (SKS and fallback).
     let cancelled = false;
     (async () => {
       try {
@@ -155,12 +133,6 @@ export default function FieldIframe() {
         }
         const body = (await res.json()) as { token: string; tenant_slug: string };
         if (!cancelled) {
-          // ?tenant=<slug> sets Field's TENANT.ORG_SLUG before the
-          // token is verified; the token's tenant_slug claim is then
-          // cross-checked against it. Both must agree or Field
-          // rejects with 'tenant-mismatch'. We use body.tenant_slug
-          // (what the server actually signed) rather than the local
-          // selectedTenant so the URL never disagrees with the token.
           setSrc(buildFieldSrc(body.tenant_slug, body.token));
           setState({ phase: 'waiting' });
         }
@@ -168,16 +140,10 @@ export default function FieldIframe() {
         if (!cancelled) setState({ phase: 'mint-failed' });
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [selectedTenant]);
 
-  // Listen for handoff status from the iframe. We deliberately don't
-  // pin the event.source to a specific window: capturing the iframe
-  // ref to assert against is awkward, the payload contains no
-  // actions, and the worst a spoofed message could do is render a
-  // misleading overlay (the iframe is still the real one).
+  // Listen for handoff status postMessages from Field.
   useEffect(() => {
     function onMessage(ev: MessageEvent) {
       if (!isHandoffMessage(ev.data)) return;
@@ -202,15 +168,13 @@ export default function FieldIframe() {
           Sentry.captureMessage(`EQ Field handoff network error: ${msg.detail ?? 'unknown'}`, { level: 'error' });
           break;
         case 'no-sh-param':
+          // In cookie mode, no #sh= is expected — Field will try cookie auth instead.
+          // Suppress this signal; the accepted/rejected message arrives next.
+          if (selectedTenant && tenantUsesCookieAuth(selectedTenant)) break;
           setState({ phase: 'no-sh-param' });
           Sentry.captureMessage('EQ Field handoff: no sh= param in hash', { level: 'warning' });
           break;
         case 'tenant-mismatch':
-          // Field booted under a tenant slug that doesn't match the
-          // one stamped on the token. With Wave 5 the URL is derived
-          // from the same server response that signed the token, so
-          // this should be near-impossible — if it fires, suspect a
-          // stale Field SW cache or a URL the user edited by hand.
           setState({
             phase: 'tenant-mismatch',
             expected: msg.expected ?? 'unknown',
@@ -225,10 +189,8 @@ export default function FieldIframe() {
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, []);
+  }, [selectedTenant]);
 
-  // Timeout — if no boot message arrives within HANDOFF_TIMEOUT_MS
-  // of the iframe being mounted, assume the iframe is wedged.
   useEffect(() => {
     if (state.phase !== 'waiting') return;
     const timer = setTimeout(() => {
@@ -238,21 +200,14 @@ export default function FieldIframe() {
     return () => clearTimeout(timer);
   }, [state.phase]);
 
-  // Respond to token refresh requests from the Field iframe. Field posts
-  // REQUEST_SHELL_TOKEN when its 60s handoff token is near expiry and it
-  // needs a fresh one without a full page reload.
+  // TOKEN MODE: token refresh requests from Field.
   useEffect(() => {
+    if (selectedTenant && tenantUsesCookieAuth(selectedTenant)) return;
     const expectedOrigin = import.meta.env.VITE_FIELD_URL as string | undefined;
     async function onMessage(ev: MessageEvent) {
       if (!ev.data || typeof ev.data !== 'object') return;
       if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
-      if (expectedOrigin) {
-        if (ev.origin !== expectedOrigin) return;
-      } else {
-        if (import.meta.env.DEV) {
-          console.warn('[FieldIframe] VITE_FIELD_URL not set — accepting REQUEST_SHELL_TOKEN from any origin');
-        }
-      }
+      if (expectedOrigin && ev.origin !== expectedOrigin) return;
       const origin = expectedOrigin ?? ev.origin;
       try {
         const res = await fetch('/.netlify/functions/mint-iframe-token', {
@@ -284,8 +239,6 @@ export default function FieldIframe() {
     return () => window.removeEventListener('message', onMessage);
   }, [selectedTenant]);
 
-  // Picker — no tenant chosen yet. Auto-select fires via useEffect above
-  // for single-option users; show loading state while that fires.
   if (!selectedTenant) {
     if (visibleOptions.length === 1) {
       return (
@@ -303,8 +256,6 @@ export default function FieldIframe() {
 
   const tenantMeta = TENANT_OPTIONS.find((t) => t.slug === selectedTenant);
 
-  // No iframe yet — show a pre-mount status (still under the sidebar
-  // + tenant bar so the user can bail out to the picker).
   if (state.phase === 'minting' || state.phase === 'mint-failed') {
     return (
       <HubLayout iframe>
@@ -321,9 +272,8 @@ export default function FieldIframe() {
     );
   }
 
-  // Once src is set, the iframe is always in the DOM — overlays
-  // sit on top for non-accepted states so we don't unmount Field
-  // halfway through its bootstrap.
+  const cookieMode = tenantUsesCookieAuth(selectedTenant);
+
   return (
     <HubLayout iframe>
       {tenantMeta && <FieldTenantBar tenant={tenantMeta} onSwitch={onSwitch} />}
@@ -334,21 +284,12 @@ export default function FieldIframe() {
           style={{ flex: 1, minHeight: 0 }}
           title="EQ Field"
           src={src}
-          // Allow same-origin so Field's existing IndexedDB / cookies
-          // continue to work; allow scripts; allow forms (PIN gate
-          // submit in the no-shell-token fallback path); allow downloads
-          // for CSV exports.
           sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
-          // Don't leak the parent (<tenant>.eq.solutions) URL via
-          // Referer header when Field makes outbound requests. The
-          // hash-based handoff token already isn't sent as Referer
-          // (hashes aren't sent), but this stops any path-based info
-          // from leaking.
           referrerPolicy="no-referrer"
           allow=""
         />
       )}
-      <HandoffOverlay state={state} />
+      <HandoffOverlay state={state} cookieMode={cookieMode} />
     </HubLayout>
   );
 }
@@ -401,15 +342,16 @@ function FieldTenantBar({ tenant, onSwitch }: { tenant: TenantOption; onSwitch: 
   );
 }
 
-function HandoffOverlay({ state }: { state: HandoffState }) {
-  // Accepted is the happy path — no overlay.
+function HandoffOverlay({ state, cookieMode }: { state: HandoffState; cookieMode: boolean }) {
   if (state.phase === 'accepted') return null;
 
-  // Booted-with-hash means Field's scripts loaded and the handoff is
-  // mid-flight. Keep showing the loading scrim — accepted/rejected
-  // will land next. (Booted-without-hash means we passed no token,
-  // which shouldn't happen on this route; surface it as a warning.)
-  if (state.phase === 'waiting' || (state.phase === 'booted' && state.hasHash)) {
+  // Loading states — keep scrim up while auth is in flight.
+  if (
+    state.phase === 'waiting' ||
+    (state.phase === 'booted' && state.hasHash) ||
+    // Cookie mode: booted-without-hash is expected (no #sh= in URL).
+    (state.phase === 'booted' && !state.hasHash && cookieMode)
+  ) {
     return (
       <div className="eq-field-frame-overlay eq-field-frame-overlay--with-tenantbar" aria-busy="true">
         <div className="eq-field-frame-overlay-card">Loading EQ Field…</div>
@@ -417,7 +359,8 @@ function HandoffOverlay({ state }: { state: HandoffState }) {
     );
   }
 
-  const msg = overlayMessage(state);
+  const msg = overlayMessage(state, cookieMode);
+  if (!msg) return null;
   return (
     <div className="eq-field-frame-overlay eq-field-frame-overlay--with-tenantbar" role="alert">
       <div className="eq-field-frame-overlay-card">{msg}</div>
@@ -425,10 +368,10 @@ function HandoffOverlay({ state }: { state: HandoffState }) {
   );
 }
 
-function overlayMessage(state: HandoffState): string {
+function overlayMessage(state: HandoffState, cookieMode: boolean): string {
   switch (state.phase) {
     case 'booted':
-      // hasHash false — the URL passed to the iframe had no #sh= for some reason.
+      if (!state.hasHash && cookieMode) return '';
       return 'EQ Field loaded without a sign-in token. Refresh to retry.';
     case 'rejected':
       return 'EQ Field rejected the sign-in handoff. Sign out and back in, then retry.';
