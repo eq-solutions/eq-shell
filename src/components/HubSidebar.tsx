@@ -56,10 +56,9 @@ export function HubSidebar({ apps, records }: Props) {
 
   return (
     <aside className="eq-hub__sidebar">
-      <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand">
-        <EqLogo size={22} />
-        <span className="eq-hub-sidebar__brand-sep">·</span>
-        <span className="eq-hub-sidebar__brand-label">SHELL</span>
+      <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand" aria-label="Go to dashboard">
+        <EqLogo size={32} />
+        <span className="eq-hub-sidebar__brand-label">EQ Solutions</span>
       </Link>
 
       <div className="eq-hub-sidebar__live">
