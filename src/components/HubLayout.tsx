@@ -56,6 +56,7 @@ export function HubLayout({
   const [liveCounts, setLiveCounts] = useState<DashboardCounts>({
     field: null,
     service: null,
+    quotes: null,
     cards: null,
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
