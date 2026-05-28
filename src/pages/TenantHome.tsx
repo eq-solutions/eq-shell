@@ -23,6 +23,31 @@ interface IntakeEvent {
   started_at: string;
 }
 
+interface CanonicalEvent {
+  id:          string;
+  app_source:  string;
+  event:       string;
+  payload:     Record<string, unknown>;
+  occurred_at: string;
+}
+
+// Human-readable labels and dot colours for known canonical events.
+const EVENT_META: Record<string, { label: string; dot: 'ok' | 'warn' | 'err' | 'default' }> = {
+  'quote.created':                 { label: 'Quote created',             dot: 'default' },
+  'quote.sent':                    { label: 'Quote sent to client',      dot: 'warn'    },
+  'quote.accepted':                { label: 'Quote accepted',            dot: 'ok'      },
+  'defect.created':                { label: 'Defect raised',             dot: 'err'     },
+  'maintenance_check.completed':   { label: 'Maintenance check complete', dot: 'ok'     },
+};
+
+const APP_LABELS: Record<string, string> = {
+  quotes:  'EQ Quotes',
+  service: 'EQ Service',
+  field:   'EQ Field',
+  cards:   'EQ Cards',
+  shell:   'EQ Shell',
+};
+
 // `hideForTier` lets us hide tiles for tiers where the module isn't trial-grade.
 // Today: trial users don't see Quotes (the in-shell Quotes module is just a
 // pointer to the standalone Flask pilot — confusing for new users) and don't
@@ -78,6 +103,7 @@ export default function TenantHome() {
 
   const [counts, setCounts] = useState<DashboardCount[] | null>(null);
   const [events, setEvents] = useState<IntakeEvent[] | null>(null);
+  const [feed, setFeed]     = useState<CanonicalEvent[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -90,9 +116,10 @@ export default function TenantHome() {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
       }
-      const body = await res.json() as { ok: boolean; counts: DashboardCount[]; events: IntakeEvent[] };
+      const body = await res.json() as { ok: boolean; counts: DashboardCount[]; events: IntakeEvent[]; feed: CanonicalEvent[] };
       setCounts(body.counts);
       setEvents(body.events);
+      setFeed(body.feed ?? []);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -259,7 +286,44 @@ export default function TenantHome() {
             ))}
           </div>
 
-          {/* Recent activity */}
+          {/* Cross-app briefing feed — canonical events from EQ Quotes, Service, etc. */}
+          {(feed === null || feed.length > 0) && (
+            <div>
+              <div className="eq-hub-activity__head">
+                <span className="eq-hub-activity__title">Live feed</span>
+              </div>
+
+              {loading && !feed ? (
+                <div className="eq-hub-activity__list">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="eq-hub-activity__item">
+                      <Skeleton variant="text" width={280} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="eq-hub-activity__list">
+                  {(feed ?? []).map((e) => {
+                    const meta = EVENT_META[e.event] ?? { label: e.event, dot: 'default' as const };
+                    return (
+                      <div key={e.id} className="eq-hub-activity__item">
+                        <span className={`eq-hub-activity__dot eq-hub-activity__dot--${meta.dot}`} aria-hidden="true" />
+                        <div className="eq-hub-activity__name">{meta.label}</div>
+                        <span className="eq-hub-activity__source">
+                          {APP_LABELS[e.app_source] ?? e.app_source}
+                        </span>
+                        <span className="eq-hub-activity__time">
+                          {relativeTime(e.occurred_at)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Recent activity — intake pipeline events */}
           <div>
             <div className="eq-hub-activity__head">
               <span className="eq-hub-activity__title">Recent activity</span>

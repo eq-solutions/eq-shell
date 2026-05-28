@@ -160,6 +160,21 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(500, { valid: false, error: 'server-error' });
   }
 
+  // Create a matching auth.users row with the same UUID so the Shell-minted
+  // JWT (sub = shell_control user id) passes Supabase's getUser() check when
+  // Cards calls setSession(). Without this, the handoff 401s because auth.users
+  // has no row for the sub claim — users end up stuck on Cards' own auth screen.
+  const { error: authCreateErr } = await sb.auth.admin.createUser({
+    id: created.id,
+    email: invite.email,
+    email_confirm: true,
+  });
+  if (authCreateErr && authCreateErr.message !== 'User already registered') {
+    // Non-fatal — log and continue. The session still works for Shell;
+    // Cards iframe will fail gracefully and show a retry prompt.
+    console.warn('[accept-invite] auth.users mirror failed:', authCreateErr.message);
+  }
+
   const { error: memErr } = await sb
     .schema('shell_control')
     .from('user_tenant_memberships')

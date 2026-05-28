@@ -42,6 +42,14 @@ interface IntakeEvent {
   started_at:       string;
 }
 
+interface CanonicalEvent {
+  id:          string;
+  app_source:  string;
+  event:       string;
+  payload:     Record<string, unknown>;
+  occurred_at: string;
+}
+
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -71,7 +79,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const tenantAny = tenantDb as any;
   const shared = getServiceClient();
 
-  const [countsRes, eventsRes] = await Promise.all([
+  const [countsRes, eventsRes, feedRes] = await Promise.all([
     // Counts come from the tenant data plane. Service-role calls don't
     // carry a JWT, so the RPC takes tenant_id as a parameter instead of
     // reading auth.jwt() (see supabase/tenant-migrations/0003_dashboard_rpcs.sql).
@@ -87,6 +95,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .eq('tenant_id', tenantId)
       .order('started_at', { ascending: false, nullsFirst: false })
       .limit(eventLimit),
+    // Canonical events from the tenant data plane — cross-app activity log
+    // written by EQ Quotes, EQ Service, etc. via canonical-api POST /events.
+    tenantAny
+      .schema('app_data')
+      .from('canonical_events')
+      .select('id, app_source, event, payload, occurred_at')
+      .order('occurred_at', { ascending: false })
+      .limit(10),
   ]);
 
   if (countsRes.error) {
@@ -97,11 +113,16 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     console.error('[tenant-dashboard] events query failed', { tenantId, error: eventsRes.error.message });
     return json(500, { ok: false, error: 'events_failed', detail: eventsRes.error.message });
   }
+  // Canonical events failing is non-fatal — feed falls back to empty
+  if (feedRes.error) {
+    console.warn('[tenant-dashboard] canonical events query failed', { tenantId, error: feedRes.error.message });
+  }
 
   return json(200, {
     ok:     true,
     counts: (countsRes.data ?? []) as DashboardCount[],
     events: (eventsRes.data ?? []) as IntakeEvent[],
+    feed:   (!feedRes.error ? (feedRes.data ?? []) : []) as CanonicalEvent[],
   });
 });
 
