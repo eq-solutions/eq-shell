@@ -28,7 +28,7 @@ import bcrypt from 'bcryptjs';
 import type { Context } from '@netlify/functions';
 import { getServiceClient, getUserMemberships, getEnrichedMemberships } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement, UserTenantMembership } from './_shared/supabase.js';
-import { signSessionToken, signTenantSelectionToken, hasSecretSalt } from './_shared/token.js';
+import { signSessionToken, signTenantSelectionToken, signTotpChallengeToken, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
 import { withSentry } from './_shared/sentry.js';
@@ -125,7 +125,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Supabase JWT both carry them.
   const { data: user, error: userErr } = await sb
     .from('users')
-    .select('id, email, tenant_id, role, is_platform_admin, active, pin_hash, last_login_at, last_active_tenant_id')
+    .select('id, email, name, tenant_id, role, is_platform_admin, active, pin_hash, last_login_at, last_active_tenant_id, totp_secret, totp_enrolled_at')
     .eq('email', email)
     .eq('active', true)
     .maybeSingle<CanonicalUser>();
@@ -165,6 +165,20 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   }
 
   void sb.schema('public').rpc('clear_rate_limit', { p_key: rlKey });
+
+  // Phase 1.G: if the user has TOTP enrolled, gate the session cookie
+  // behind a short-lived challenge token. The client navigates to
+  // /totp-challenge and posts back with the 6-digit code.
+  if (user.totp_enrolled_at && user.totp_secret) {
+    const challengeExp = Date.now() + 5 * 60 * 1000; // 5 minutes
+    const totpChallengeToken = signTotpChallengeToken({
+      kind: 'totp-challenge',
+      user_id: user.id,
+      exp: challengeExp,
+    });
+    logShellLogin(req, email, 'success', 'totp-challenge-issued');
+    return jsonResponse(200, { valid: true, requires_totp: true, totp_challenge_token: totpChallengeToken });
+  }
 
   if (memberships.length > 1) {
     const preferred = user.last_active_tenant_id && memberships.find((m) => m.tenant_id === user.last_active_tenant_id)

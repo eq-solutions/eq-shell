@@ -18,6 +18,8 @@ import CardsIframe from './pages/CardsIframe';
 import AcceptInvite from './pages/AcceptInvite';
 import ResetPin from './pages/ResetPin';
 import TenantPicker from './pages/TenantPicker';
+import TotpChallenge from './pages/TotpChallenge';
+import EnrollTotp from './pages/EnrollTotp';
 import AdminInviteUser from './pages/AdminInviteUser';
 import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
@@ -383,6 +385,8 @@ function TenantTree() {
         <Route path="admin/cards-feed" element={<AdminCardsFeed />} />
         {/* Polish 2026-05-21 — tenant settings */}
         <Route path="admin/settings" element={<AdminTenantSettings />} />
+        {/* Phase 1.G — TOTP 2FA enrollment (any logged-in user) */}
+        <Route path="settings/2fa" element={<EnrollTotp />} />
         <Route path="storage" element={<StorageBrowser />} />
         <Route path="data/:entity" element={<EntityBrowserPage />} />
         {/* Real 404 instead of silent redirect to home (caught users in a
@@ -407,6 +411,8 @@ function App() {
           <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/reset-pin" element={<ResetPin />} />
           <Route path="/select-tenant" element={<TenantPicker />} />
+          {/* Phase 1.G: TOTP challenge shown after PIN login when 2FA is enrolled */}
+          <Route path="/totp-challenge" element={<TotpChallenge />} />
           <Route
             path="/:tenantSlug/*"
             element={

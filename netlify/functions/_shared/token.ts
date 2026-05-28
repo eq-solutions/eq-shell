@@ -260,6 +260,45 @@ export function verifyQuotesToken(token: string | null | undefined): QuotesToken
   }
 }
 
+/**
+ * Short-lived token returned by shell-login when the user has TOTP enrolled.
+ * The client carries it to challenge-totp after the user enters their code.
+ * TTL is 5 minutes — enough for a user to find their authenticator app.
+ *
+ * Carries user_id only; challenge-totp re-fetches tenant/memberships after
+ * TOTP verify (same as shell-login does after PIN verify) rather than
+ * trusting a larger payload over the wire.
+ */
+export interface TotpChallengeTokenPayload {
+  kind: 'totp-challenge';
+  user_id: string;
+  exp: number;
+}
+
+export function signTotpChallengeToken(payload: TotpChallengeTokenPayload): string {
+  const json = JSON.stringify(payload);
+  const sig = sign(json);
+  return Buffer.from(json).toString('base64') + '.' + sig;
+}
+
+export function verifyTotpChallengeToken(token: string | null | undefined): TotpChallengeTokenPayload | null {
+  if (!token) return null;
+  try {
+    const [b64, sig] = token.split('.');
+    if (!b64 || !sig) return null;
+    const json = Buffer.from(b64, 'base64').toString();
+    const expected = sign(json);
+    if (!sigsEqual(expected, sig)) return null;
+    const data = JSON.parse(json) as TotpChallengeTokenPayload;
+    if (data.kind !== 'totp-challenge') return null;
+    if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
+    if (!data.user_id) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 // Parses the eq_shell_session cookie value out of a Cookie header.
 // Cookie header looks like: "foo=bar; eq_shell_session=<token>; baz=qux".
 export function readSessionCookie(req: Request): string | null {

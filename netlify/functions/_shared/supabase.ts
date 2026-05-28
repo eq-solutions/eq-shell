@@ -68,6 +68,8 @@ export interface CanonicalUser {
   pin_hash: string | null;
   last_login_at: string | null;
   last_active_tenant_id: string | null;
+  totp_secret: string | null;
+  totp_enrolled_at: string | null;
 }
 
 export interface UserTenantMembership {
