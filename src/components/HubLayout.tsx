@@ -6,13 +6,14 @@ const HUB_APPS = [
   { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
   { key: 'service', label: 'EQ Service', to: 'service', isBeta: false },
   { key: 'quotes',  label: 'EQ Quotes',  to: 'quotes',  isBeta: false },
-  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: true  },
+  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: false },
 ];
 
 interface DashboardCounts {
-  field: number | null;
+  field:   number | null;
   service: number | null;
-  cards: number | null;
+  quotes:  number | null;
+  cards:   number | null;
 }
 
 interface DashboardCount {
@@ -26,20 +27,19 @@ interface DashboardResponse {
 }
 
 function extractCounts(data: DashboardResponse): DashboardCounts {
-  const counts: DashboardCounts = { field: null, service: null, cards: null };
+  const counts: DashboardCounts = { field: null, service: null, quotes: null, cards: null };
   if (!data.ok || !data.counts) return counts;
   for (const row of data.counts) {
-    // 'staff' entity from the tenant DB → Field staff count badge
-    if (row.entity === 'staff' && typeof row.count_total === 'number') {
-      counts.field = row.count_total;
-    }
-    // 'work_orders' entity → Service WO count badge
-    if (row.entity === 'work_orders' && typeof row.count_total === 'number') {
-      counts.service = row.count_total;
-    }
-    // 'cards' entity → Cards issued count badge
-    if (row.entity === 'cards' && typeof row.count_total === 'number') {
-      counts.cards = row.count_total;
+    if (typeof row.count_total !== 'number') continue;
+    switch (row.entity) {
+      // Field — active staff total
+      case 'staff':       counts.field   = row.count_total; break;
+      // Service — open incidents in canonical (populated via Intake or Service writes)
+      case 'incident':    counts.service = row.count_total || null; break;
+      // Quotes — all quotes in canonical (populated via Intake sync or canonical-native)
+      case 'quote':       counts.quotes  = row.count_total || null; break;
+      // Cards — staff licences held (proxy until issued-card entity exists)
+      case 'licence':     counts.cards   = row.count_total || null; break;
     }
   }
   return counts;
@@ -96,6 +96,7 @@ export function HubLayout({
       hasAlert: false,
       icon: HUB_APP_ICONS[a.key],
     }));
+
 
   return (
     <div className="eq-hub">

@@ -114,6 +114,11 @@ export default function TenantHome() {
   const customerCount = counts?.find((c) => c.entity === 'customer')?.count_total ?? null;
   const siteCount     = counts?.find((c) => c.entity === 'site')?.count_total     ?? null;
   const contactCount  = counts?.find((c) => c.entity === 'contact')?.count_total  ?? null;
+  // Cross-app counts — populated when apps sync data into canonical via Intake or direct writes.
+  // Null (badge hidden) until data flows; never show 0 as that implies "empty" not "not wired".
+  const quoteCount    = counts?.find((c) => c.entity === 'quote')?.count_total    || null;
+  const incidentCount = counts?.find((c) => c.entity === 'incident')?.count_total || null;
+  const licenceCount  = counts?.find((c) => c.entity === 'licence')?.count_total  || null;
 
   const sidebarRecords: RecordLink[] = [
     { key: 'customer', label: 'Customers', entity: 'customer', count: customerCount },
@@ -127,21 +132,27 @@ export default function TenantHome() {
   const hasAlerts = !loading && events !== null && alertItems.length > 0;
   const allClear  = !loading && events !== null && alertItems.length === 0;
 
-  // Build sidebar apps — counts wired up as cross-app RPCs are added.
-  // Field shows staff total for now; operational counts (on shift, open defects) come later.
-  // Trial-tier users don't see modules that aren't trial-grade yet (Service in
-  // active dev, Quotes is just a pointer to the standalone pilot).
+  // Build sidebar apps — counts come from canonical app_data entities.
+  // 0 is treated as null (badge hidden) for cross-app counts so the badge
+  // only appears once data actually flows from that app into canonical.
   const tier: EqTier = session.tenant.tier;
   const visibleApps = HUB_APPS
     .filter((a) => moduleEnabled(session, a.key))
     .filter((a) => !a.hideForTier?.includes(tier));
+
+  const appCountMap: Record<string, number | null> = {
+    field:   staffCount,    // active staff — always available
+    service: incidentCount, // open incidents in canonical
+    quotes:  quoteCount,    // quotes in canonical
+    cards:   licenceCount,  // staff licences (proxy until issued-card entity)
+  };
 
   const sidebarApps: HubApp[] = visibleApps.map((a) => ({
     key: a.key,
     label: a.label,
     to: a.to,
     isBeta: a.isBeta,
-    count: a.key === 'field' ? staffCount : null,
+    count: appCountMap[a.key] ?? null,
     hasAlert: false,
     icon: HUB_APP_ICONS[a.key],
   }));
