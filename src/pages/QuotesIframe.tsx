@@ -4,84 +4,42 @@ import { HubLayout } from '../components/HubLayout';
 
 // Embeds EQ Quotes (Flask) as a Shell iframe.
 //
-// Auth flow:
-//   1. Shell mints a 60s HMAC token via mint-quotes-iframe-token.
-//   2. Shell embeds Quotes at https://quotes.eq.solutions/auth/shell-auth?token=<token>
-//   3. /auth/shell-auth validates the HMAC, sets the Flask session, redirects to /.
-//   4. The quotes list renders — iframe is live.
+// Cookie auth (2026-05-28): the browser sends eq_shell_session automatically
+// to quotes.eq.solutions (same eTLD+1 as core.eq.solutions). Flask verifies
+// the HMAC via a before_app_request hook and sets a Quotes session on the
+// fly. No token mint, no redirect — one onLoad = ready.
 //
-// Unlike Service (Next.js), Quotes is a server-rendered Flask app with no
-// postMessage readiness signal. We rely on onLoad count instead:
-//   - Load 1: /auth/shell-auth page (Flask processes token + redirects)
-//   - Load 2: / (quotes list — auth complete)
-// Two onLoad events = the auth round-trip finished.
+// The REQUEST_SHELL_TOKEN handler below is kept as a fallback for edge cases
+// where Flask needs a fresh token (e.g. server restart cleared sessions).
 
 const QUOTES_URL = 'https://quotes.eq.solutions';
+const LOAD_TIMEOUT_MS = 30_000;
 
-const QUOTES_TIMEOUT_MS = 30_000;
-
-type FrameState =
-  | { phase: 'minting' }
-  | { phase: 'loading'; src: string }
-  | { phase: 'ready'; src: string }
-  | { phase: 'error'; msg: string };
+type Phase = 'loading' | 'ready' | 'error' | 'timeout';
 
 export default function QuotesIframe() {
-  const [state, setState] = useState<FrameState>({ phase: 'minting' });
-  const loadCount = useRef(0);
+  const [phase, setPhase] = useState<Phase>('loading');
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/.netlify/functions/mint-quotes-iframe-token', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        if (!res.ok) {
-          if (!cancelled) setState({ phase: 'error', msg: 'Could not authorise EQ Quotes. Sign out and back in.' });
-          return;
-        }
-        const { token } = (await res.json()) as { token: string };
-        if (!cancelled) {
-          setState({
-            phase: 'loading',
-            src: `${QUOTES_URL}/auth/shell-auth?token=${encodeURIComponent(token)}`,
-          });
-        }
-      } catch {
-        if (!cancelled) setState({ phase: 'error', msg: 'Network error reaching EQ Quotes. Check your connection.' });
-      }
-    })();
+    timerRef.current = setTimeout(() => {
+      setPhase('timeout');
+      Sentry.captureMessage('EQ Quotes iframe did not load within timeout', { level: 'error' });
+    }, LOAD_TIMEOUT_MS);
     return () => {
-      cancelled = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
 
-  useEffect(() => {
-    if (state.phase !== 'loading') return;
-    const timer = setTimeout(() => {
-      Sentry.captureMessage('EQ Quotes iframe did not load within timeout', { level: 'error' });
-      setState((prev) =>
-        prev.phase === 'loading'
-          ? { phase: 'error', msg: 'EQ Quotes took too long to respond. Try refreshing.' }
-          : prev,
-      );
-    }, QUOTES_TIMEOUT_MS);
-    return () => clearTimeout(timer);
-  }, [state.phase]);
-
-  // Respond to token refresh requests from the Quotes iframe.
+  // Legacy token refresh — keep the handler in case Flask sessions expire
+  // and Quotes falls back to requesting a fresh HMAC token.
   useEffect(() => {
     const expectedOrigin = import.meta.env.VITE_QUOTES_URL as string | undefined;
     async function onMessage(ev: MessageEvent) {
       if (!ev.data || typeof ev.data !== 'object') return;
       if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
-      if (expectedOrigin) {
-        if (ev.origin !== expectedOrigin) return;
-      }
+      if (expectedOrigin && ev.origin !== expectedOrigin) return;
       const origin = expectedOrigin ?? ev.origin;
       try {
         const res = await fetch('/.netlify/functions/mint-quotes-iframe-token', {
@@ -113,40 +71,36 @@ export default function QuotesIframe() {
   }, []);
 
   function onIframeLoad() {
-    loadCount.current += 1;
-    // Load 1 = /auth/shell-auth (processing + redirect).
-    // Load 2 = / (quotes list rendered — auth complete).
-    if (loadCount.current >= 2) {
-      setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
-    }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setPhase('ready');
   }
 
-  const src = state.phase === 'loading' || state.phase === 'ready' ? state.src : null;
+  const src = `${QUOTES_URL}/?shell=1`;
 
   return (
     <HubLayout iframe>
       <div className="eq-service-frame-wrap">
-        {(state.phase === 'minting' || state.phase === 'loading') && (
-          <div className="eq-loading">
-            {state.phase === 'minting' ? 'Authorising EQ Quotes…' : 'Loading EQ Quotes…'}
+        {phase === 'loading' && (
+          <div className="eq-loading">Loading EQ Quotes…</div>
+        )}
+        {(phase === 'error' || phase === 'timeout') && (
+          <div className="eq-error" role="alert">
+            {phase === 'timeout'
+              ? 'EQ Quotes took too long to respond. Try refreshing.'
+              : 'EQ Quotes could not be loaded. Try refreshing.'}
           </div>
         )}
-        {state.phase === 'error' && (
-          <div className="eq-error" role="alert">{state.msg}</div>
-        )}
-        {src && (
-          <iframe
-            ref={iframeRef}
-            className="eq-service-frame"
-            style={state.phase !== 'ready' ? { visibility: 'hidden', position: 'absolute' } : undefined}
-            title="EQ Quotes"
-            src={src}
-            onLoad={onIframeLoad}
-            sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
-            referrerPolicy="no-referrer"
-            allow=""
-          />
-        )}
+        <iframe
+          ref={iframeRef}
+          className="eq-service-frame"
+          style={phase !== 'ready' ? { visibility: 'hidden', position: 'absolute' } : undefined}
+          title="EQ Quotes"
+          src={src}
+          onLoad={onIframeLoad}
+          sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
+          referrerPolicy="no-referrer"
+          allow=""
+        />
       </div>
     </HubLayout>
   );
