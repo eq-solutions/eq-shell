@@ -31,6 +31,60 @@ interface CanonicalEvent {
   occurred_at: string;
 }
 
+interface AiAction {
+  rank:      number;
+  title:     string;
+  source:    string;
+  app_link?: string;
+  deadline?: string;
+  urgency:   'critical' | 'high' | 'normal';
+}
+
+interface AiOnShift {
+  name:   string;
+  site?:  string;
+  since?: string;
+}
+
+interface AiUpcoming {
+  day?:   string;
+  time?:  string;
+  label:  string;
+  source: string;
+}
+
+interface PipelineSummary {
+  total_value_cents: number;
+  by_stage:          Record<string, { count: number; value_cents: number }>;
+  verbal_agreement:  Array<{ job_name: string; client: string | null; value_cents: number; due_date: string | null }>;
+  confirmed_jobs:    Array<{ job_name: string; peak_workers: number | null; duration_weeks: number | null }>;
+  headcount:         number;
+  peak_demand:       number;
+  bench:             number | null;
+}
+
+interface AiData {
+  brief:                string | null;
+  actions:              AiAction[];
+  on_shift:             AiOnShift[];
+  upcoming:             AiUpcoming[];
+  pipeline:             PipelineSummary | null;
+  contributing_sources: string[];
+  generated_at:         string;
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  field:    'EQ Field',
+  service:  'EQ Service',
+  quotes:   'EQ Quotes',
+  cards:    'EQ Cards',
+  pipeline: 'Pipeline',
+};
+
+function formatSource(source: string): string {
+  return source.replace('eq-', '').replace('sks-pipeline', 'pipeline');
+}
+
 // Human-readable labels and dot colours for known canonical events.
 const EVENT_META: Record<string, { label: string; dot: 'ok' | 'warn' | 'err' | 'default' }> = {
   'quote.created':                 { label: 'Quote created',             dot: 'default' },
@@ -108,8 +162,11 @@ export default function TenantHome() {
   const [feed, setFeed]     = useState<CanonicalEvent[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // undefined = still fetching, null = no briefing available, string = display it
-  const [briefing, setBriefing] = useState<string | null | undefined>(undefined);
+  // undefined = still fetching, null = no data, AiData = loaded
+  const [aiData, setAiData]             = useState<AiData | null | undefined>(undefined);
+  const [regenerating, setRegenerating] = useState(false);
+  // Optimistic local state for dismissed/actioned items
+  const [actionedTitles, setActionedTitles] = useState<Set<string>>(new Set());
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -124,14 +181,43 @@ export default function TenantHome() {
     }
   };
 
-  const loadBriefing = async () => {
+  const handleAction = async (action: AiAction, state: 'actioned' | 'dismissed') => {
+    setActionedTitles(prev => new Set([...prev, action.title]));
     try {
-      const res = await fetch('/.netlify/functions/ai-briefing');
-      if (!res.ok) { setBriefing(null); return; }
-      const body = await res.json() as { ok: boolean; briefing: string | null };
-      setBriefing(body.briefing ?? null);
+      await fetch('/.netlify/functions/briefing-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action_title: action.title, action_source: action.source, state }),
+      });
     } catch {
-      setBriefing(null);
+      // Optimistic update already applied — silent on network error
+    }
+  };
+
+  const loadAiData = async (isRegenerate = false) => {
+    if (isRegenerate) setRegenerating(true);
+    try {
+      const url = isRegenerate
+        ? '/.netlify/functions/ai-briefing?refresh=1'
+        : '/.netlify/functions/ai-briefing';
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) { setAiData(null); return; }
+      const body = await res.json() as { ok: boolean } & Partial<AiData>;
+      if (!body.ok) { setAiData(null); return; }
+      setActionedTitles(new Set()); // reset optimistic state on fresh load
+      setAiData({
+        brief:                body.brief                ?? null,
+        actions:              body.actions              ?? [],
+        on_shift:             body.on_shift             ?? [],
+        upcoming:             body.upcoming             ?? [],
+        pipeline:             body.pipeline             ?? null,
+        contributing_sources: body.contributing_sources ?? [],
+        generated_at:         body.generated_at         ?? new Date().toISOString(),
+      });
+    } catch {
+      setAiData(null);
+    } finally {
+      if (isRegenerate) setRegenerating(false);
     }
   };
 
@@ -157,7 +243,7 @@ export default function TenantHome() {
 
   useEffect(() => {
     void loadData();
-    void loadBriefing();
+    void loadAiData();
     pollRef.current = setInterval(() => { void silentRefreshFeed(); }, 60_000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -258,13 +344,179 @@ export default function TenantHome() {
             {greeting()}, {greetName}.
           </h1>
 
-          {briefing === undefined && loading && (
+          {/* AI Briefing */}
+          {aiData === undefined && loading && (
             <div className="eq-hub-briefing-skeleton">
               <Skeleton variant="text" width={480} />
+              <Skeleton variant="text" width={360} />
             </div>
           )}
-          {briefing && (
-            <p className="eq-hub-briefing">{briefing}</p>
+          {(aiData?.brief || (aiData?.actions ?? []).length > 0) && (
+            <div className="eq-hub-ai">
+              {/* Brief prose */}
+              {aiData?.brief && (
+                <>
+                  <div className="eq-hub-ai__header">
+                    <span className="eq-hub-ai__badge">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                        <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.5"/>
+                        <path d="M6 3v3l2 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                      AI Brief
+                    </span>
+                  </div>
+                  <p className="eq-hub-briefing">{aiData.brief}</p>
+                  <div className="eq-hub-ai__meta">
+                    <span>Generated {relativeTime(aiData.generated_at)}</span>
+                    <button
+                      className="eq-hub-ai__regen"
+                      onClick={() => void loadAiData(true)}
+                      disabled={regenerating}
+                      aria-label="Regenerate briefing"
+                    >
+                      {regenerating ? 'Refreshing…' : 'Tap to regenerate'}
+                    </button>
+                  </div>
+                  {(aiData.contributing_sources ?? []).length > 0 && (
+                    <p className="eq-hub-ai__coverage">
+                      Based on{' '}
+                      {aiData.contributing_sources
+                        .map(s => SOURCE_LABELS[s] ?? s)
+                        .join(', ')}
+                    </p>
+                  )}
+                </>
+              )}
+
+              {/* Ranked actions */}
+              {(aiData?.actions ?? []).length > 0 && (
+                <div className="eq-hub-actions">
+                  <div className="eq-hub-actions__head">
+                    <span className="eq-hub-actions__title">Today's actions</span>
+                    <span className="eq-hub-actions__count">{aiData!.actions.length} ranked</span>
+                  </div>
+                  <div className="eq-hub-actions__list">
+                    {aiData!.actions
+                      .filter(a => !actionedTitles.has(a.title))
+                      .map((action) => {
+                        const dest = action.app_link ? `/${tenantSlug}/${action.app_link}` : null;
+                        return (
+                          <div key={action.rank} className={`eq-hub-action eq-hub-action--${action.urgency}`}>
+                            <span className="eq-hub-action__rank">{action.rank}</span>
+                            <div className="eq-hub-action__body">
+                              {dest ? (
+                                <Link to={dest} className="eq-hub-action__title-link">
+                                  {action.title}
+                                </Link>
+                              ) : (
+                                <p className="eq-hub-action__title">{action.title}</p>
+                              )}
+                              <div className="eq-hub-action__meta">
+                                <span className="eq-hub-action__source">
+                                  {SOURCE_LABELS[formatSource(action.source)] ?? formatSource(action.source)}
+                                </span>
+                                {action.deadline && (
+                                  <span className="eq-hub-action__deadline">{action.deadline}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="eq-hub-action__feedback">
+                              <button
+                                className="eq-hub-action__btn eq-hub-action__btn--done"
+                                onClick={() => void handleAction(action, 'actioned')}
+                                title="Mark done"
+                                aria-label="Mark done"
+                              >✓</button>
+                              <button
+                                className="eq-hub-action__btn eq-hub-action__btn--dismiss"
+                                onClick={() => void handleAction(action, 'dismissed')}
+                                title="Dismiss"
+                                aria-label="Dismiss"
+                              >×</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* Side panels: On Shift / Upcoming / Pipeline */}
+              {((aiData?.on_shift ?? []).length > 0 || (aiData?.upcoming ?? []).length > 0 || aiData?.pipeline) && (
+                <div className="eq-hub-panels">
+                  {(aiData?.on_shift ?? []).length > 0 && (
+                    <div className="eq-hub-panel">
+                      <div className="eq-hub-panel__head">
+                        <span className="eq-hub-panel__title">On shift now</span>
+                        <span className="eq-hub-panel__count">{aiData!.on_shift.length}</span>
+                      </div>
+                      {aiData!.on_shift.map((s, i) => (
+                        <div key={i} className="eq-hub-panel__item">
+                          <span className="eq-hub-panel__avatar">{s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</span>
+                          <div className="eq-hub-panel__info">
+                            <p className="eq-hub-panel__name">{s.name}</p>
+                            {s.site && <p className="eq-hub-panel__sub">{s.site}{s.since ? ` · since ${s.since}` : ''}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {(aiData?.upcoming ?? []).length > 0 && (
+                    <div className="eq-hub-panel">
+                      <div className="eq-hub-panel__head">
+                        <span className="eq-hub-panel__title">Upcoming</span>
+                        <span className="eq-hub-panel__count">next 48h</span>
+                      </div>
+                      {aiData!.upcoming.map((u, i) => (
+                        <div key={i} className="eq-hub-panel__item eq-hub-panel__item--upcoming">
+                          {(u.day || u.time) && (
+                            <div className="eq-hub-panel__when">
+                              {u.day && <span className="eq-hub-panel__day">{u.day}</span>}
+                              {u.time && <span className="eq-hub-panel__time">{u.time}</span>}
+                            </div>
+                          )}
+                          <div className="eq-hub-panel__info">
+                            <p className="eq-hub-panel__name">{u.label}</p>
+                            <p className="eq-hub-panel__sub">{u.source.replace('eq-', 'EQ ').replace('sks-pipeline', 'Pipeline')}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {aiData?.pipeline && (
+                    <div className="eq-hub-panel">
+                      <div className="eq-hub-panel__head">
+                        <span className="eq-hub-panel__title">Pipeline</span>
+                        <span className="eq-hub-panel__count">
+                          {new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0, notation: 'compact' }).format(aiData.pipeline.total_value_cents / 100)}
+                        </span>
+                      </div>
+                      {Object.entries(aiData.pipeline.by_stage).map(([stage, data]) => (
+                        <div key={stage} className="eq-hub-panel__item">
+                          <span className={`eq-hub-panel__stage-dot eq-hub-panel__stage-dot--${stage}`} aria-hidden="true" />
+                          <div className="eq-hub-panel__info">
+                            <p className="eq-hub-panel__name" style={{ textTransform: 'capitalize' }}>{stage}</p>
+                            <p className="eq-hub-panel__sub">
+                              {data.count} tender{data.count !== 1 ? 's' : ''} ·{' '}
+                              {new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0, notation: 'compact' }).format(data.value_cents / 100)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                      {aiData.pipeline.bench !== null && (
+                        <div className="eq-hub-panel__capacity">
+                          <span>{aiData.pipeline.bench} on bench</span>
+                          <span className="eq-hub-panel__capacity-sep">·</span>
+                          <span>{aiData.pipeline.peak_demand} peak demand</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* KPI strip — values stubbed until cross-app RPCs are wired */}
