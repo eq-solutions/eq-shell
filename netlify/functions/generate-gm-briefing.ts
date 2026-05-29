@@ -1,14 +1,10 @@
 // POST /.netlify/functions/generate-gm-briefing
 //
-// Fetches jobs for a period, sends them to Claude, and stores the
-// structured briefing on gm_report_periods.briefing.
-//
 // Body: { period_id: string }
-//
 // Auth: manager or platform_admin only.
 
 import type { Context } from '@netlify/functions';
-import { getServiceClient } from './_shared/supabase.js';
+import { getTenantDataClientById, TenantNotFoundError, TenantNotActiveError } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
 
@@ -67,21 +63,25 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const { period_id } = body;
   if (!period_id) return json(400, { error: 'missing_period_id' });
 
-  const db = getServiceClient();
+  let db;
+  try {
+    db = await getTenantDataClientById(session.tenant_id);
+  } catch (e) {
+    if (e instanceof TenantNotFoundError || e instanceof TenantNotActiveError) {
+      return json(503, { error: 'tenant_unavailable' });
+    }
+    throw e;
+  }
 
-  // Verify period belongs to this tenant
   const { data: period, error: pErr } = await db
-    .schema('app_data')
     .from('gm_report_periods')
     .select('id, period_code, total_contract, net_cash_position, gp_at_completion, overall_gp_pct, cash_neg_count, forecast_loss_count')
     .eq('id', period_id)
-    .eq('tenant_id', session.tenant_id)
     .single();
 
   if (pErr || !period) return json(404, { error: 'period_not_found' });
 
   const { data: jobs, error: jErr } = await db
-    .schema('app_data')
     .from('gm_report_jobs')
     .select('job_manager, job_code, job_description, contract_valuation, jtd_invoicing, jtd_cost_val, gross_profit, gp_pct, outstanding_pos, cash_gap, is_cash_negative, is_forecast_loss, is_overhead')
     .eq('period_id', period_id);
@@ -91,17 +91,15 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return json(503, { error: 'ai_not_configured' });
 
+  // Summarise to keep prompt concise — only send jobs that matter to the briefing
+  const relevantJobs = jobs.filter(j => j.is_forecast_loss || j.is_cash_negative || (j.outstanding_pos ?? 0) > 10000);
+
   const userMessage = `Period: ${period.period_code}
 
-Portfolio summary:
-- Total contract: $${Math.round(period.total_contract ?? 0).toLocaleString()}
-- Net cash position: $${Math.round(period.net_cash_position ?? 0).toLocaleString()}
-- GP at completion: $${Math.round(period.gp_at_completion ?? 0).toLocaleString()} (${((period.overall_gp_pct ?? 0) * 100).toFixed(1)}%)
-- Cash-negative jobs: ${period.cash_neg_count}
-- Forecast losses: ${period.forecast_loss_count}
+Portfolio: $${Math.round(period.total_contract ?? 0).toLocaleString()} contract, net cash $${Math.round(period.net_cash_position ?? 0).toLocaleString()}, GP $${Math.round(period.gp_at_completion ?? 0).toLocaleString()} (${((period.overall_gp_pct ?? 0) * 100).toFixed(1)}%), ${period.cash_neg_count} cash-negative jobs, ${period.forecast_loss_count} forecast losses.
 
-Jobs (${jobs.length} total):
-${JSON.stringify(jobs)}`;
+Total jobs: ${jobs.length}. Jobs needing attention (${relevantJobs.length}):
+${JSON.stringify(relevantJobs)}`;
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -128,13 +126,10 @@ ${JSON.stringify(jobs)}`;
     const data = await resp.json() as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = (data.content ?? []).filter((b: any) => b.type === 'text').map((b: { text: string }) => b.text).join('');
-
-    // Strip markdown code fences if present
     const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
     const briefing = JSON.parse(cleaned);
 
     await db
-      .schema('app_data')
       .from('gm_report_periods')
       .update({ briefing, briefing_generated_at: new Date().toISOString() })
       .eq('id', period_id);

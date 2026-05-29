@@ -1,16 +1,10 @@
 // POST /.netlify/functions/gm-chat
 //
-// Live Q&A chat about a GM report period.
-//
-// Body: {
-//   period_id: string,
-//   messages: { role: 'user' | 'assistant', content: string }[]
-// }
-//
+// Body: { period_id: string, messages: { role: 'user' | 'assistant', content: string }[] }
 // Auth: manager or platform_admin only.
 
 import type { Context } from '@netlify/functions';
-import { getServiceClient } from './_shared/supabase.js';
+import { getTenantDataClientById, TenantNotFoundError, TenantNotActiveError } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
 
@@ -25,10 +19,7 @@ function json(status: number, body: unknown): Response {
   });
 }
 
-interface ChatMessage {
-  role:    'user' | 'assistant';
-  content: string;
-}
+interface ChatMessage { role: 'user' | 'assistant'; content: string }
 
 export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
@@ -51,14 +42,20 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(400, { error: 'missing_fields' });
   }
 
-  const db = getServiceClient();
+  let db;
+  try {
+    db = await getTenantDataClientById(session.tenant_id);
+  } catch (e) {
+    if (e instanceof TenantNotFoundError || e instanceof TenantNotActiveError) {
+      return json(503, { error: 'tenant_unavailable' });
+    }
+    throw e;
+  }
 
   const { data: period, error: pErr } = await db
-    .schema('app_data')
     .from('gm_report_periods')
     .select('period_code, total_contract, net_cash_position, gp_at_completion, overall_gp_pct, cash_neg_count, forecast_loss_count, outstanding_pos, briefing')
     .eq('id', period_id)
-    .eq('tenant_id', session.tenant_id)
     .single();
 
   if (pErr || !period) return json(404, { error: 'period_not_found' });
@@ -74,11 +71,11 @@ Portfolio: $${Math.round(period.total_contract ?? 0).toLocaleString()} contract 
 ${period.briefing ? `AI briefing summary:\n${JSON.stringify(period.briefing)}` : ''}
 
 Rules:
-- You are speaking directly to the General Manager. Be direct and specific.
+- Speak directly to the General Manager. Be direct and specific.
 - Focus on what they need to DO: which PM to call, what question to ask, what to chase.
 - Keep responses to 3-5 sentences unless asked for more detail.
 - Use dollar figures. Name specific jobs and PMs.
-- Many "cash-negative" entries are internal overhead codes (estimating hours, defects/liability) — no revenue against them by design. The real operational exposure is smaller than the headline count suggests.
+- Many "cash-negative" entries are internal overhead codes (estimating hours, defects/liability) — no revenue against them by design.
 - Plain English only. No jargon.`;
 
   try {
@@ -93,7 +90,7 @@ Rules:
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system: systemPrompt,
-        messages: messages.slice(-10), // cap context to last 10 turns
+        messages: messages.slice(-10),
       }),
     });
 

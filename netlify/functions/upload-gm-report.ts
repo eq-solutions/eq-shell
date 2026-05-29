@@ -11,7 +11,7 @@
 
 import type { Context } from '@netlify/functions';
 import * as XLSX from 'xlsx';
-import { getServiceClient } from './_shared/supabase.js';
+import { getTenantDataClientById, TenantNotFoundError, TenantNotActiveError } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
 
@@ -214,22 +214,29 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 
   const kpis = computeKpis(parsed.jobs);
-  const db = getServiceClient();
+
+  let db;
+  try {
+    db = await getTenantDataClientById(session.tenant_id);
+  } catch (e) {
+    if (e instanceof TenantNotFoundError || e instanceof TenantNotActiveError) {
+      return json(503, { error: 'tenant_unavailable' });
+    }
+    throw e;
+  }
 
   // Upsert period (allow re-upload for same period code)
   const { data: periodRow, error: periodErr } = await db
-    .schema('app_data')
     .from('gm_report_periods')
     .upsert(
       {
-        tenant_id:            session.tenant_id,
         period_code:          parsed.period_code,
         uploaded_by:          session.user_id ?? null,
         ...kpis,
         briefing:             null,
         briefing_generated_at: null,
       },
-      { onConflict: 'tenant_id,period_code' },
+      { onConflict: 'period_code' },
     )
     .select('id')
     .single();
@@ -242,13 +249,13 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const period_id: string = periodRow.id;
 
   // Delete existing jobs for this period (re-upload scenario)
-  await db.schema('app_data').from('gm_report_jobs').delete().eq('period_id', period_id);
+  await db.from('gm_report_jobs').delete().eq('period_id', period_id);
 
   // Batch-insert jobs in chunks of 200 to stay under Postgres limits
   const CHUNK = 200;
   for (let i = 0; i < parsed.jobs.length; i += CHUNK) {
     const chunk = parsed.jobs.slice(i, i + CHUNK).map((j) => ({ ...j, period_id }));
-    const { error: jobsErr } = await db.schema('app_data').from('gm_report_jobs').insert(chunk);
+    const { error: jobsErr } = await db.from('gm_report_jobs').insert(chunk);
     if (jobsErr) {
       captureServerError(jobsErr, { context: 'upload-gm-report:insert-jobs', tenant_id: session.tenant_id });
       return json(500, { error: 'db_error_jobs', detail: jobsErr.message });
