@@ -3,10 +3,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { X } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
+import { AssetDrawerExtras } from './AssetDrawerExtras';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
@@ -219,6 +220,11 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   const view = ENTITY_VIEW[entity];
   const canDelete = useCan('entity.delete');
   const canCreate = useCan('entity.create');
+  const { session } = useSession();
+  const { tenantSlug } = useParams<{ tenantSlug: string }>();
+  const [urlSearchParams] = useSearchParams();
+  const isManager =
+    session?.user.role === 'manager' || session?.user.is_platform_admin === true;
 
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [count, setCount] = useState<number | null>(null);
@@ -227,9 +233,15 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   const [loading, setLoading] = useState(true);
   const [, startTransition] = useTransition();
 
-  // Search — input is immediate, server fetch is debounced.
-  const [searchInput, setSearchInput] = useState('');
+  // Search — input is immediate, server fetch is debounced. Seeds from the
+  // ?search= query param so a scanned QR label (or a hierarchy link) lands
+  // pre-filtered to the target asset.
+  const [searchInput, setSearchInput] = useState(() => urlSearchParams.get('search') ?? '');
   const search = useDebounce(searchInput, 300);
+  const urlSearch = urlSearchParams.get('search') ?? '';
+  useEffect(() => {
+    setSearchInput(urlSearch);
+  }, [urlSearch]);
 
   // Sort — only allow columns declared in the view config.
   const [sortCol, setSortCol] = useState('created_at');
@@ -491,6 +503,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
         <EntityDetailDrawer
           entity={entity}
           row={selectedRow}
+          tenantSlug={tenantSlug ?? ''}
           onClose={() => setSelectedRow(null)}
           onMutated={() => { setSelectedRow(null); void load(); }}
           canDelete={canDelete}
@@ -517,12 +530,14 @@ const MANAGEABLE_ENTITIES = new Set(['customer', 'site', 'contact', 'asset']);
 function EntityDetailDrawer({
   entity,
   row,
+  tenantSlug,
   onClose,
   onMutated,
   canDelete,
 }: {
   entity: string;
   row: Record<string, unknown>;
+  tenantSlug: string;
   onClose: () => void;
   onMutated: () => void;
   canDelete: boolean;
@@ -840,6 +855,8 @@ function EntityDetailDrawer({
             </div>
           )}
         </div>
+
+        {entity === 'asset' && <AssetDrawerExtras tenantSlug={tenantSlug} row={row} />}
 
         {isEditing ? (
           <div style={{ padding: '0 24px 24px', flex: 1 }}>
