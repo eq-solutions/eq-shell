@@ -154,7 +154,7 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
   ] : [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#fff', borderLeft: '1px solid #E2EAF0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100svh - 100px)', position: 'sticky', top: 0, background: '#fff', borderLeft: '1px solid #E2EAF0' }}>
       {/* Header */}
       <div style={{ background: '#1A1A2E', padding: '14px 18px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
@@ -284,10 +284,13 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
   const critical = jobs.filter(j => j.is_forecast_loss && !j.is_overhead);
   const watch    = jobs.filter(j => j.is_cash_negative && !j.is_forecast_loss && !j.is_overhead && j.cash_gap > 20_000);
 
+  // 52px = module page header, 48px = period sub-header
+  const PANEL_HEIGHT = 'calc(100svh - 100px)';
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gridTemplateRows: '48px 1fr', height: '100%', overflow: 'hidden' }}>
-      {/* Sub-header */}
-      <div style={{ gridColumn: '1 / -1', background: '#F7FAFC', borderBottom: '1px solid #E2EAF0', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', height: PANEL_HEIGHT }}>
+      {/* Sub-header — spans both columns, fixed at top */}
+      <div style={{ gridColumn: '1 / -1', height: 48, flexShrink: 0, background: '#F7FAFC', borderBottom: '1px solid #E2EAF0', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12 }}>
         <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3DA8D8', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
           ← Reports
         </button>
@@ -306,8 +309,11 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
             <button
               onClick={generateBriefing}
               disabled={generatingBriefing}
-              style={{ background: '#3DA8D8', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: generatingBriefing ? 0.6 : 1 }}
+              style={{ background: '#3DA8D8', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: generatingBriefing ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
             >
+              {generatingBriefing && (
+                <span style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'gm-spin 0.7s linear infinite', flexShrink: 0 }} />
+              )}
               {generatingBriefing ? 'Generating…' : briefingError ? 'Retry' : 'Generate AI briefing'}
             </button>
           )}
@@ -317,8 +323,8 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         </div>
       </div>
 
-      {/* Main scroll area */}
-      <div style={{ overflowY: 'auto', padding: '20px 20px' }}>
+      {/* Main scroll area — left column, self-scrolling */}
+      <div style={{ overflowY: 'auto', padding: '20px 20px', height: `calc(${PANEL_HEIGHT} - 48px)` }}>
         {/* Briefing error — full-width, hard to miss */}
         {briefingError && (
           <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -463,6 +469,9 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         @keyframes bounce {
           0%, 60%, 100% { transform: translateY(0); }
           30% { transform: translateY(-4px); }
+        }
+        @keyframes gm-spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>
