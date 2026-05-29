@@ -284,6 +284,23 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         error:     auditErr.message,
       });
     }
+
+    // Surface equipment imports on the cross-app activity feed / AI briefing.
+    // Best-effort — the import already succeeded; a feed miss is not fatal.
+    if (body.table === 'assets') {
+      const { error: evtErr } = await tenantAny.rpc('eq_write_canonical_event', {
+        p_tenant_id:  tenantId,
+        p_app_source: 'shell',
+        p_event:      'asset.imported',
+        p_payload:    { count: committedCount, intake_id: body.intake_id, source: 'intake' },
+      });
+      if (evtErr) {
+        console.warn('[intake-commit] canonical event write failed (data already committed)', {
+          intake_id: body.intake_id,
+          error:     evtErr.message,
+        });
+      }
+    }
   }
 
   return json(200, {

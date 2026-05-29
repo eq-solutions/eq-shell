@@ -485,7 +485,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
 
 // Entities that support archive/delete from the shell.
 // Staff and operational entities are managed inside EQ Field.
-const MANAGEABLE_ENTITIES = new Set(['customer', 'site', 'contact']);
+const MANAGEABLE_ENTITIES = new Set(['customer', 'site', 'contact', 'asset']);
 
 // Slide-out drawer showing the full row. Floating UI (not static),
 // so per the design spec it CAN have a drop-shadow.
