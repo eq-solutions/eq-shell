@@ -19,31 +19,20 @@ function json(status: number, body: unknown): Response {
   });
 }
 
-const SYSTEM_PROMPT = `You are an AI analyst for a GM briefing dashboard at an electrical contracting company.
+const SYSTEM_PROMPT = `You are an AI analyst for a GM briefing dashboard at an electrical contracting company. Produce a JSON briefing from the job data provided.
 
-Given a list of jobs from a Workbench period report, produce a structured JSON briefing.
+Input fields: code=job code, pm=project manager, desc=description, cv=contract value, gap=cash gap (positive=deficit), gp=gross profit at completion, loss=forecast loss flag, pos=outstanding POs.
+PM rollup fields: jobs=job count, cash=net cash position (negative=deficit), gp=GP forecast.
 
 Rules:
-- "is_overhead" jobs (Estimating Hours, Defects/Liability internal codes) should be EXCLUDED from critical/watch lists and PM cash analysis, but acknowledged in the portfolio note.
-- "is_forecast_loss AND NOT is_overhead" = genuine operational losses needing a conversation.
-- "is_cash_negative AND gross_profit > 0 AND NOT is_overhead" = invoice catch-up needed (watch list).
-- PM cash positions should exclude overhead jobs.
-- Tone: direct plain English. No jargon. Focus on what the GM needs to DO.
+- loss=true jobs are genuine operational losses — list in critical_jobs.
+- Cash-negative with positive GP = invoice catch-up — list in watch_jobs.
+- Tone: direct plain English. What the GM needs to DO. Dollar figures.
 
-Return ONLY valid JSON in this exact structure:
-{
-  "top_concern": "one sentence on the single biggest issue",
-  "critical_jobs": [
-    { "job_code": "...", "job_description": "...", "job_manager": "...", "contract_value": 0, "cash_gap": 0, "gp_forecast": 0, "action": "one sentence on what to do" }
-  ],
-  "watch_jobs": [
-    { "job_code": "...", "job_description": "...", "job_manager": "...", "cash_gap": 0, "gp_forecast": 0, "action": "one sentence on what to do" }
-  ],
-  "pm_summary": [
-    { "name": "...", "job_count": 0, "cash_position": 0, "gp_forecast": 0, "status": "red|amber|green", "note": "one sentence" }
-  ],
-  "portfolio_note": "2-3 sentence plain-English note for the GM, covering the overhead code caveat and any other context"
-}`;
+Return ONLY a raw JSON object — no markdown, no code fences, no explanation before or after. Use this exact structure:
+{"top_concern":"string","critical_jobs":[{"job_code":"string","job_description":"string","job_manager":"string","contract_value":0,"cash_gap":0,"gp_forecast":0,"action":"string"}],"watch_jobs":[{"job_code":"string","job_description":"string","job_manager":"string","cash_gap":0,"gp_forecast":0,"action":"string"}],"pm_summary":[{"name":"string","job_count":0,"cash_position":0,"gp_forecast":0,"status":"red","note":"string"}],"portfolio_note":"string"}
+
+For status use exactly one of: "red", "amber", "green". No other values.`;
 
 export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
@@ -101,7 +90,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       return (b.cash_gap ?? 0) - (a.cash_gap ?? 0);
     })
     .slice(0, 15)
-    .map(j => `${j.job_code}|${j.job_manager}|${j.job_description.slice(0, 40)}|cv=${Math.round(j.contract_valuation ?? 0)}|gap=${Math.round(j.cash_gap ?? 0)}|gp=${Math.round(j.gross_profit ?? 0)}|loss=${j.is_forecast_loss}|pos=${Math.round(j.outstanding_pos ?? 0)}`);
+    .map(j => ({ code: j.job_code, pm: j.job_manager, desc: j.job_description.slice(0, 50), cv: Math.round(j.contract_valuation ?? 0), gap: Math.round(j.cash_gap ?? 0), gp: Math.round(j.gross_profit ?? 0), loss: j.is_forecast_loss, pos: Math.round(j.outstanding_pos ?? 0) }));
 
   // PM rollup (exclude overhead)
   const pmMap = new Map<string, { jobs: number; cash: number; gp: number }>();
@@ -114,17 +103,24 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
   const pmSummary = [...pmMap.entries()]
     .sort((a, b) => a[1].cash - b[1].cash)   // worst cash first
-    .map(([name, s]) => `${name}|jobs=${s.jobs}|cash=${Math.round(s.cash)}|gp=${Math.round(s.gp)}`);
+    .map(([name, s]) => ({ name, jobs: s.jobs, cash: Math.round(s.cash), gp: Math.round(s.gp) }));
 
   console.log(`[generate-gm-briefing] period=${period_id} total=${jobs.length} top_jobs=${topJobs.length} pms=${pmSummary.length}`);
 
-  const userMessage = `Period ${period.period_code} — ${jobs.length} jobs, $${Math.round(period.total_contract ?? 0).toLocaleString()} contract, net cash $${Math.round(period.net_cash_position ?? 0).toLocaleString()}, GP $${Math.round(period.gp_at_completion ?? 0).toLocaleString()} (${((period.overall_gp_pct ?? 0) * 100).toFixed(1)}%), ${period.cash_neg_count} cash-neg, ${period.forecast_loss_count} losses.
-
-Top jobs (code|pm|desc|cv|gap|gp|loss|pos):
-${topJobs.join('\n')}
-
-PM rollup (name|jobs|net_cash|gp):
-${pmSummary.join('\n')}`;
+  const userMessage = JSON.stringify({
+    period: period.period_code,
+    portfolio: {
+      total_jobs: jobs.length,
+      contract: Math.round(period.total_contract ?? 0),
+      net_cash: Math.round(period.net_cash_position ?? 0),
+      gp: Math.round(period.gp_at_completion ?? 0),
+      gp_pct: ((period.overall_gp_pct ?? 0) * 100).toFixed(1),
+      cash_neg_count: period.cash_neg_count,
+      loss_count: period.forecast_loss_count,
+    },
+    top_jobs: topJobs,
+    pm_rollup: pmSummary,
+  });
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -152,13 +148,15 @@ ${pmSummary.join('\n')}`;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = (data.content ?? []).filter((b: any) => b.type === 'text').map((b: { text: string }) => b.text).join('');
 
-    // Robust JSON extraction — find outermost {...} regardless of preamble/fences
+    // Extract outermost JSON object, strip trailing commas, then parse
     const jsonStart = raw.indexOf('{');
     const jsonEnd   = raw.lastIndexOf('}');
     if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
-      throw new Error(`No JSON object in Claude response: ${raw.slice(0, 200)}`);
+      throw new Error(`No JSON in Claude response: ${raw.slice(0, 300)}`);
     }
-    const briefing = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+    const jsonStr = raw.slice(jsonStart, jsonEnd + 1)
+      .replace(/,(\s*[}\]])/g, '$1');  // strip trailing commas before } or ]
+    const briefing = JSON.parse(jsonStr);
 
     await db
       .from('gm_report_periods')
