@@ -137,10 +137,11 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ period_id: periodId, messages: next }),
       });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json() as { ok: boolean; message?: string };
       setMessages(m => [...m, { role: 'assistant', content: data.message ?? 'Something went wrong.' }]);
-    } catch {
-      setMessages(m => [...m, { role: 'assistant', content: 'Could not reach the server.' }]);
+    } catch (err) {
+      setMessages(m => [...m, { role: 'assistant', content: `Could not reach the server. ${err instanceof Error ? err.message : ''}`.trim() }]);
     } finally {
       setSending(false);
     }
@@ -344,7 +345,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
                       <div style={{ fontWeight: 600 }}>{j.job_code} — {j.job_description}</div>
                       <div style={{ fontSize: 11, color: '#6B7A99' }}>{j.job_manager} · {fmt(j.contract_valuation, '$').replace(/^[+-]/, '')} contract</div>
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#C0392B', fontWeight: 600 }}>{fmt(j.cash_gap)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#C0392B', fontWeight: 600 }}>{fmt(-j.cash_gap)}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#C0392B', fontWeight: 600 }}>{fmt(j.gross_profit)}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}><Badge type="loss" /></td>
                   </tr>
@@ -376,7 +377,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
                       <div style={{ fontWeight: 600 }}>{j.job_code} — {j.job_description}</div>
                       <div style={{ fontSize: 11, color: '#6B7A99' }}>{j.job_manager} · {fmt(j.contract_valuation, '$').replace(/^[+-]/, '')} contract{j.outstanding_pos > 0 ? ` · ${fmt(j.outstanding_pos, '$').replace(/^[+-]/, '')} POs outstanding` : ''}</div>
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#B7770D', fontWeight: 600 }}>{fmt(j.cash_gap)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#B7770D', fontWeight: 600 }}>{fmt(-j.cash_gap)}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#1E7E4A' }}>{fmt(j.gross_profit)}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}><Badge type="watch" /></td>
                   </tr>

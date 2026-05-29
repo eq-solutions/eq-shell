@@ -115,6 +115,7 @@ ${JSON.stringify(relevantJobs)}`;
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
       }),
+      signal: AbortSignal.timeout(22_000),
     });
 
     if (!resp.ok) {
@@ -126,8 +127,14 @@ ${JSON.stringify(relevantJobs)}`;
     const data = await resp.json() as any;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = (data.content ?? []).filter((b: any) => b.type === 'text').map((b: { text: string }) => b.text).join('');
-    const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-    const briefing = JSON.parse(cleaned);
+
+    // Robust JSON extraction — find outermost {...} regardless of preamble/fences
+    const jsonStart = raw.indexOf('{');
+    const jsonEnd   = raw.lastIndexOf('}');
+    if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
+      throw new Error(`No JSON object in Claude response: ${raw.slice(0, 200)}`);
+    }
+    const briefing = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
 
     await db
       .from('gm_report_periods')
