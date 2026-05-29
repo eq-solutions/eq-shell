@@ -1,6 +1,8 @@
-/* EQ Shell — base styles + design tokens.
+/* EQ Shell — base styles. Design tokens now come from @eq-solutions/tokens
+ * (imported below); this file only bridges legacy names + Shell-only styles.
  *
- * Source of truth: eq-solutions-design.prompt.md
+ * Source of truth for token VALUES: the @eq-solutions/tokens package.
+ * The reference below documents the canonical names for humans.
  *
  * Brand tokens (the canonical 6 — never invent new ones):
  *   --eq-sky    #3DA8D8   primary: logo, headings, CTAs, icon fills
@@ -30,47 +32,49 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
+/* Canonical design tokens — the single source of truth for every value
+ * (brand, neutrals, status, shadows, type, spacing, radii, motion, focus).
+ * Defines --eq-* on :root (and [data-tier] deltas). The @theme block inside
+ * is inert outside Tailwind. Update the package, not this file. */
+@import "@eq-solutions/tokens/tokens.css";
+
 :root {
-  /* EQ canonical brand */
-  --eq-sky:   #3DA8D8;
-  --eq-deep:  #2986B4;
-  --eq-ice:   #EAF5FB;
-  --eq-ink:   #1A1A2E;
-  --eq-grey:  #666666;
-  --eq-white: #FFFFFF;
+  /* This block no longer holds literal values — it only BRIDGES Shell's
+   * legacy local names onto the canonical tokens above, plus a few Shell-only
+   * surface tokens the package doesn't define. Never re-add hex/px literals
+   * here; change the value in @eq-solutions/tokens instead. */
 
   /* Per-tenant accent (defaults to sky; BrandProvider overrides --eq-brand) */
   --eq-brand:      var(--eq-sky);
   --eq-brand-deep: var(--eq-deep);
 
-  /* Tailwind gray scale */
-  --gray-50:  #F9FAFB;
-  --gray-100: #F3F4F6;
-  --gray-200: #E5E7EB; /* default border */
-  --gray-300: #D1D5DB;
-  --gray-400: #9CA3AF;
-  --gray-500: #6B7280;
-  --gray-600: #4B5563;
+  /* Legacy neutral names → canonical --eq-gray-* */
+  --gray-50:  var(--eq-gray-50);
+  --gray-100: var(--eq-gray-100);
+  --gray-200: var(--eq-gray-200);
+  --gray-300: var(--eq-gray-300);
+  --gray-400: var(--eq-gray-400);
+  --gray-500: var(--eq-gray-500);
+  --gray-600: var(--eq-gray-600);
 
-  /* Status */
-  --status-success-bg: #F0FDF4; --status-success-fg: #15803D;
-  --status-warning-bg: #FFFBEB; --status-warning-fg: #B45309;
-  --status-error-bg:   #FEF2F2; --status-error-fg:   #B91C1C;
+  /* Legacy status names → canonical --eq-*-bg / --eq-*-text */
+  --status-success-bg: var(--eq-success-bg); --status-success-fg: var(--eq-success-text);
+  --status-warning-bg: var(--eq-warning-bg); --status-warning-fg: var(--eq-warning-text);
+  --status-error-bg:   var(--eq-error-bg);   --status-error-fg:   var(--eq-error-text);
 
-  /* Surfaces */
+  /* Shell-only surfaces (not defined by the token package) */
   --eq-bg:        var(--eq-white);
-  --eq-bg-subtle: var(--gray-50);
-  --eq-border:    var(--gray-200);
-  --eq-border-strong: var(--gray-300);
-
-  /* Aliases retained for any existing CSS using --eq-mute */
+  --eq-bg-subtle: var(--eq-gray-50);
+  --eq-border:    var(--eq-gray-200);
+  --eq-border-strong: var(--eq-gray-300);
   --eq-mute: var(--eq-grey);
 
-  /* Shadows — ONLY on floating UI (modals, popovers, drawers). Never on static cards. */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
-  --shadow-lg: 0 10px 40px rgba(0,0,0,0.15);
+  /* Legacy shadow names → canonical --eq-shadow-* */
+  --shadow-sm: var(--eq-shadow-sm);
+  --shadow-lg: var(--eq-shadow-lg);
 
-  --eq-font: 'Plus Jakarta Sans', 'Aptos Display', 'Aptos', Arial, sans-serif;
+  /* Legacy font name → canonical --eq-font-stack */
+  --eq-font: var(--eq-font-stack);
 
   font: 14px/1.5 var(--eq-font);
   color: var(--eq-ink);
