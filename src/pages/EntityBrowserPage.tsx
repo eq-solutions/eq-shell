@@ -155,6 +155,19 @@ const ENTITY_VIEW: Record<
       { key: 'active', label: 'Active' },
     ],
   },
+  asset: {
+    table: 'assets',
+    label: 'Equipment',
+    columns: [
+      { key: 'name', label: 'Name' },
+      { key: 'external_id', label: 'Tag' },
+      { key: 'asset_type', label: 'Type' },
+      { key: 'make', label: 'Make' },
+      { key: 'serial_number', label: 'Serial' },
+      { key: 'site_id', label: 'Site' },
+      { key: 'next_service_due', label: 'Next service' },
+    ],
+  },
 };
 
 function formatCell(value: unknown, key: string): string {
