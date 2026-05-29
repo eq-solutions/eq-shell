@@ -149,6 +149,10 @@ export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
   const table = ENTITY_TABLE_MAP[entity];
   const [schema, setSchema] = useState<Record<string, unknown> | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  // null = unknown / not-applicable; number = the tenant's site count. Used to
+  // warn before importing a site-scoped entity (e.g. assets) with no sites to
+  // link to, so the user fixes the order instead of hitting silent FK failures.
+  const [siteCount, setSiteCount] = useState<number | null>(null);
 
   // Lazy-load the schema only when the panel opens
   useEffect(() => {
@@ -169,6 +173,22 @@ export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
       cancelled = true;
     };
   }, [entity, table]);
+
+  // If this entity's schema requires a site link, check the tenant has sites.
+  const requiresSite = Array.isArray((schema as { required?: unknown })?.required)
+    && ((schema as { required: string[] }).required).includes('site_id');
+
+  useEffect(() => {
+    if (!requiresSite || entity === 'site') return;
+    let cancelled = false;
+    fetch('/.netlify/functions/entity-rows?entity=site&limit=1', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { total?: number } | null) => {
+        if (!cancelled && body && typeof body.total === 'number') setSiteCount(body.total);
+      })
+      .catch(() => { /* non-blocking — guard is advisory */ });
+    return () => { cancelled = true; };
+  }, [requiresSite, entity]);
 
   const config = useMemo(() => {
     if (!session || !schema || !table) return null;
@@ -220,6 +240,15 @@ export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
           </button>
         )}
       </header>
+      {requiresSite && siteCount === 0 && (
+        <div className="eq-hub-alert eq-hub-alert--action" role="alert" style={{ marginBottom: 12 }}>
+          <span className="eq-hub-alert__icon" aria-hidden="true">⚠</span>
+          <span className="eq-hub-alert__text">
+            No sites found yet. Each item links to a site, so import your sites first
+            (Core intake) — otherwise rows without a matching site won't be saved.
+          </span>
+        </div>
+      )}
       <Suspense fallback={<div className="eq-loading">Loading import surface…</div>}>
         <ParserDropZone config={config} canonicalFields={canonicalFields} />
       </Suspense>

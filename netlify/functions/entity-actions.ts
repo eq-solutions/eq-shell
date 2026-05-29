@@ -49,6 +49,7 @@ const ENTITY_META: Record<string, { table: string; pk: string }> = {
   customer: { table: 'customers', pk: 'customer_id' },
   site:     { table: 'sites',     pk: 'site_id'     },
   contact:  { table: 'contacts',  pk: 'contact_id'  },
+  asset:    { table: 'assets',    pk: 'asset_id'    },
 };
 
 type Action = 'archive' | 'unarchive' | 'delete';

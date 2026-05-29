@@ -40,6 +40,8 @@ const EVENT_META: Record<string, { label: string; dot: 'ok' | 'warn' | 'err' | '
   'defect.resolved':               { label: 'Defect resolved',           dot: 'ok'      },
   'maintenance_check.completed':   { label: 'Maintenance check complete', dot: 'ok'     },
   'maintenance_check.overdue':     { label: 'Maintenance check overdue', dot: 'err'     },
+  'asset.imported':                { label: 'Equipment imported',        dot: 'ok'      },
+  'asset.service_due':             { label: 'Equipment due for service', dot: 'warn'    },
 };
 
 const APP_LABELS: Record<string, string> = {
@@ -182,6 +184,9 @@ export default function TenantHome() {
   const incidentCount = counts?.find((c) => c.entity === 'incident')?.count_total || null;
   const licenceCount  = counts?.find((c) => c.entity === 'licence')?.count_total  || null;
   const assetCount    = counts?.find((c) => c.entity === 'asset')?.count_total    ?? null;
+  // asset_service_due: count_total = due within 30 days, count_recent = overdue now.
+  const assetDueSoon  = counts?.find((c) => c.entity === 'asset_service_due')?.count_total  ?? 0;
+  const assetOverdue  = counts?.find((c) => c.entity === 'asset_service_due')?.count_recent ?? 0;
 
   const sidebarRecords: RecordLink[] = [
     { key: 'customer', label: 'Customers', entity: 'customer', count: customerCount },
@@ -323,7 +328,13 @@ export default function TenantHome() {
                   {assetCount ?? '—'}
                 </p>
               )}
-              <p className="eq-hub-kpi__sub">all equipment →</p>
+              <p className="eq-hub-kpi__sub">
+                {assetOverdue > 0
+                  ? `${assetOverdue} overdue for service →`
+                  : assetDueSoon > 0
+                    ? `${assetDueSoon} due this month →`
+                    : 'all equipment →'}
+              </p>
             </Link>
           </div>
 
