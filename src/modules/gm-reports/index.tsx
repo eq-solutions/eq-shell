@@ -319,6 +319,16 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
 
       {/* Main scroll area */}
       <div style={{ overflowY: 'auto', padding: '20px 20px' }}>
+        {/* Briefing error — full-width, hard to miss */}
+        {briefingError && (
+          <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+            <div>
+              <div style={{ fontWeight: 600, color: '#7B1414', fontSize: 13, marginBottom: 2 }}>AI briefing failed</div>
+              <div style={{ fontSize: 12, color: '#7B1414', fontFamily: 'monospace', wordBreak: 'break-all' }}>{briefingError}</div>
+            </div>
+          </div>
+        )}
         {/* KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
           <KpiCard label="Total contract value" value={fmt(period.total_contract).replace(/^[+-]/, '')} sub="Active portfolio" />

@@ -10,7 +10,7 @@ import { withSentry, captureServerError } from './_shared/sentry.js';
 
 const ANTHROPIC_API_VERSION = '2023-06-01';
 // Sonnet for reliable structured JSON — Haiku occasionally truncates or adds preamble
-const MODEL = 'claude-sonnet-4-5';
+const MODEL = 'claude-haiku-4-5';
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -88,20 +88,38 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     .select('job_manager, job_code, job_description, contract_valuation, jtd_invoicing, jtd_cost_val, gross_profit, gp_pct, outstanding_pos, cash_gap, is_cash_negative, is_forecast_loss, is_overhead')
     .eq('period_id', period_id);
 
-  if (jErr || !jobs) return json(500, { error: 'db_error' });
+  if (jErr || !jobs) return json(500, { error: 'db_error', detail: jErr?.message });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return json(503, { error: 'ai_not_configured' });
 
-  // Summarise to keep prompt concise — only send jobs that matter to the briefing
-  const relevantJobs = jobs.filter(j => j.is_forecast_loss || j.is_cash_negative || (j.outstanding_pos ?? 0) > 10000);
+  // Top 40 jobs by severity — forecast losses first, then largest cash gaps
+  // Keeps the prompt under ~8k tokens for Haiku
+  const sortedJobs = [...jobs]
+    .filter(j => !j.is_overhead)
+    .sort((a, b) => {
+      if (a.is_forecast_loss !== b.is_forecast_loss) return a.is_forecast_loss ? -1 : 1;
+      return (b.cash_gap ?? 0) - (a.cash_gap ?? 0);
+    })
+    .slice(0, 40)
+    .map(j => ({
+      pm:   j.job_manager,
+      code: j.job_code,
+      desc: j.job_description.slice(0, 60),
+      cv:   Math.round(j.contract_valuation ?? 0),
+      gap:  Math.round(j.cash_gap ?? 0),
+      gp:   Math.round(j.gross_profit ?? 0),
+      loss: j.is_forecast_loss,
+      neg:  j.is_cash_negative,
+      pos:  Math.round(j.outstanding_pos ?? 0),
+    }));
+
+  console.log(`[generate-gm-briefing] period=${period_id} jobs_total=${jobs.length} jobs_sent=${sortedJobs.length}`);
 
   const userMessage = `Period: ${period.period_code}
+Portfolio: ${jobs.length} jobs, $${Math.round(period.total_contract ?? 0).toLocaleString()} total, net cash $${Math.round(period.net_cash_position ?? 0).toLocaleString()}, GP $${Math.round(period.gp_at_completion ?? 0).toLocaleString()} (${((period.overall_gp_pct ?? 0) * 100).toFixed(1)}%), ${period.cash_neg_count} cash-neg, ${period.forecast_loss_count} losses.
 
-Portfolio: $${Math.round(period.total_contract ?? 0).toLocaleString()} contract, net cash $${Math.round(period.net_cash_position ?? 0).toLocaleString()}, GP $${Math.round(period.gp_at_completion ?? 0).toLocaleString()} (${((period.overall_gp_pct ?? 0) * 100).toFixed(1)}%), ${period.cash_neg_count} cash-negative jobs, ${period.forecast_loss_count} forecast losses.
-
-Total jobs: ${jobs.length}. Jobs needing attention (${relevantJobs.length}):
-${JSON.stringify(relevantJobs)}`;
+Top 40 jobs by severity (non-overhead only): ${JSON.stringify(sortedJobs)}`;
 
   try {
     const controller = new AbortController();
