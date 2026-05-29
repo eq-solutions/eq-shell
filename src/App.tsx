@@ -56,6 +56,9 @@ const IntakeCardsLanding = lazy(() =>
 const IntakeServiceLanding = lazy(() =>
   import('./modules/intake/DomainLanding').then((m) => ({ default: m.ServiceIntakeLanding })),
 );
+// Plant & Equipment — internal calibration register. Permission-gated inside
+// the component (useCan), not an entitlement module, so no ModuleGate.
+const EquipmentModule = lazy(() => import('./modules/equipment/index'));
 // QuotesModule (link-out stub) replaced by QuotesIframe — persistent keeper below.
 
 // Session cache — stores last good session in sessionStorage so returning
@@ -388,6 +391,17 @@ function TenantTree() {
         {/* Phase 1.G — TOTP 2FA enrollment (any logged-in user) */}
         <Route path="settings/2fa" element={<EnrollTotp />} />
         <Route path="storage" element={<StorageBrowser />} />
+        {/* Plant & Equipment — calibration register. Gated by useCan inside
+            the component, like the admin/data routes (reachable to any
+            signed-in user; shows "Not allowed" without equipment.view). */}
+        <Route
+          path="equipment"
+          element={
+            <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
+              <EquipmentModule />
+            </Suspense>
+          }
+        />
         <Route path="data/:entity" element={<EntityBrowserPage />} />
         {/* Real 404 instead of silent redirect to home (caught users in a
             loop where stale links just bounced them home with no signal). */}
