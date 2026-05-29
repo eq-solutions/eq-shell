@@ -155,7 +155,7 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
   ] : [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: 300, flexShrink: 0, background: '#fff', borderLeft: '1px solid #E2EAF0', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ background: '#1A1A2E', padding: '14px 18px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
@@ -509,41 +509,6 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
             <div style={{ textAlign: 'center', color: '#6B7A99', padding: '24px 0', fontSize: 13 }}>No critical or watch jobs this period.</div>
           )}
 
-          {/* PM scorecard — clickable cards */}
-          {briefing?.pm_summary && briefing.pm_summary.length > 0 && (
-            <>
-              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                PM scorecard — click to filter
-                <span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
-                {selectedPM && <button style={{ fontSize: 11, color: '#6B7A99', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }} onClick={() => setSelectedPM(null)}>Clear ×</button>}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-                {briefing.pm_summary.map((pm, i) => {
-                  const isActive = selectedPM === pm.name;
-                  const borderColor = pm.status === 'red' ? '#C0392B' : pm.status === 'amber' ? '#E6A817' : '#1E7E4A';
-                  const cashColor   = pm.status === 'red' ? '#C0392B' : pm.status === 'amber' ? '#B7770D' : '#1E7E4A';
-                  const initials    = pm.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
-                  return (
-                    <div key={i} onClick={() => setSelectedPM(isActive ? null : pm.name)}
-                      style={{ background: isActive ? '#F0F7FF' : '#fff', border: `1px solid ${isActive ? '#3DA8D8' : '#E2EAF0'}`, borderLeft: `4px solid ${borderColor}`, borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', transition: 'all 0.15s' }}>
-                      <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0, background: pm.status === 'red' ? '#FDECEA' : pm.status === 'amber' ? '#FEF6E4' : '#EAF5EE', color: borderColor }}>
-                        {initials}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600 }}>{pm.name}</div>
-                        <div style={{ fontSize: 11, color: '#6B7A99', marginTop: 1 }}>{pm.job_count} jobs · {pm.note}</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 17, fontWeight: 700, color: cashColor }}>{fmt(pm.cash_position)}</div>
-                        <div style={{ fontSize: 11, color: pm.gp_forecast >= 0 ? '#1E7E4A' : '#C0392B', fontFamily: 'monospace' }}>GP {fmt(pm.gp_forecast)}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
           {/* Portfolio note */}
           {briefing?.portfolio_note && (
             <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: '4px solid #7C77B9', borderRadius: '0 10px 10px 0', padding: '11px 15px', fontSize: 12, color: '#6B7A99', lineHeight: 1.6, marginBottom: 8 }}>
@@ -554,8 +519,60 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           {loadingJobs && <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><span className="eq-skeleton eq-skeleton--text" style={{ width: 120 }} /></div>}
         </div>
 
-        {/* Right column — chat panel, fixed height, internal scroll */}
-        <ChatPanel periodId={period.id} briefing={briefing} />
+        {/* Right column — PM scorecard (top) + chat (fills rest) */}
+        <div style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #E2EAF0', background: '#fff', overflow: 'hidden' }}>
+
+          {/* PM scorecard — always visible, no scrolling required */}
+          {briefing?.pm_summary && briefing.pm_summary.length > 0 && (
+            <div style={{ flexShrink: 0, borderBottom: '1px solid #E2EAF0', overflowY: 'auto', maxHeight: '42%' }}>
+              {/* Sticky header */}
+              <div style={{ position: 'sticky', top: 0, zIndex: 1, background: '#F7FAFC', borderBottom: '1px solid #EEF2F7', padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99' }}>PM Scorecard</span>
+                {selectedPM && (
+                  <button onClick={() => setSelectedPM(null)} style={{ fontSize: 10, color: '#3DA8D8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Clear filter ×
+                  </button>
+                )}
+              </div>
+              {/* PM rows */}
+              {briefing.pm_summary.map((pm, i) => {
+                const isActive = selectedPM === pm.name;
+                const dotColor  = pm.status === 'red' ? '#C0392B' : pm.status === 'amber' ? '#E6A817' : '#1E7E4A';
+                const cashColor = pm.cash_position >= 0 ? '#1E7E4A' : '#C0392B';
+                const initials  = pm.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
+                return (
+                  <div key={i} onClick={() => setSelectedPM(isActive ? null : pm.name)} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px',
+                    cursor: 'pointer', borderBottom: '1px solid #EEF2F7',
+                    background: isActive ? '#EAF5FB' : 'transparent',
+                    transition: 'background 0.1s',
+                  }}>
+                    {/* Avatar with status colour */}
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700,
+                      background: pm.status === 'red' ? '#FDECEA' : pm.status === 'amber' ? '#FEF6E4' : '#EAF5EE',
+                      color: dotColor, border: isActive ? `2px solid #3DA8D8` : `2px solid transparent`,
+                    }}>
+                      {initials}
+                    </div>
+                    {/* Name + note */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: isActive ? 700 : 600, color: '#1A1A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pm.name}</div>
+                      <div style={{ fontSize: 10, color: '#6B7A99', marginTop: 1 }}>{pm.job_count} jobs</div>
+                    </div>
+                    {/* Cash + GP */}
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: cashColor, fontFamily: 'monospace', lineHeight: 1 }}>{fmt(pm.cash_position)}</div>
+                      <div style={{ fontSize: 10, color: (pm.gp_forecast ?? 0) >= 0 ? '#1E7E4A' : '#C0392B', fontFamily: 'monospace', marginTop: 2 }}>GP {fmt(pm.gp_forecast)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Chat fills remaining height */}
+          <ChatPanel periodId={period.id} briefing={briefing} />
+        </div>
       </div>
 
       <style>{`
