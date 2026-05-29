@@ -25,6 +25,7 @@ interface Job {
   job_manager:      string;
   job_code:         string;
   job_description:  string;
+  wip_code:         string | null;
   contract_valuation: number;
   jtd_invoicing:    number;
   jtd_cost_val:     number;
@@ -154,7 +155,7 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
   ] : [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100svh - 100px)', position: 'sticky', top: 0, background: '#fff', borderLeft: '1px solid #E2EAF0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: 340, flexShrink: 0, background: '#fff', borderLeft: '1px solid #E2EAF0', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ background: '#1A1A2E', padding: '14px 18px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
@@ -237,12 +238,47 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
 // Period detail view
 // ---------------------------------------------------------------------------
 
+function JobTable({ jobs, type }: { jobs: Job[]; type: 'loss' | 'watch' }) {
+  if (jobs.length === 0) return null;
+  const label = type === 'loss' ? 'Critical — needs a conversation' : 'Watch — large cash gap, GP positive';
+  return (
+    <>
+      <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+        {label}<span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 10, overflow: 'hidden', border: '1px solid #E2EAF0', fontSize: 13 }}>
+        <thead>
+          <tr>{['Job', 'WIP', 'Cash gap', 'GP forecast', 'Status'].map(h => (
+            <th key={h} style={{ background: '#1A1A2E', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.8px', padding: '9px 12px', textAlign: h === 'Job' ? 'left' : 'right' }}>{h}</th>
+          ))}</tr>
+        </thead>
+        <tbody>
+          {jobs.map(j => (
+            <tr key={j.id} style={{ background: type === 'loss' ? '#FDECEA' : '#FEF6E4' }}>
+              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${type === 'loss' ? '#F5E4E3' : '#F5EDD3'}` }}>
+                <div style={{ fontWeight: 600 }}>{j.job_code} — {j.job_description}</div>
+                <div style={{ fontSize: 11, color: '#6B7A99' }}>{j.job_manager} · {fmt(j.contract_valuation, '$').replace(/^[+-]/, '')} contract{j.outstanding_pos > 0 ? ` · ${fmt(j.outstanding_pos, '$').replace(/^[+-]/, '')} POs` : ''}</div>
+              </td>
+              <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, color: '#6B7A99', fontFamily: 'monospace' }}>{j.wip_code ?? '—'}</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: type === 'loss' ? '#C0392B' : '#B7770D', fontWeight: 600 }}>{fmt(-j.cash_gap)}</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: (j.gross_profit ?? 0) < 0 ? '#C0392B' : '#1E7E4A' }}>{fmt(j.gross_profit)}</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right' }}><Badge type={type === 'loss' ? 'loss' : 'watch'} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
 function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
   const [briefingError, setBriefingError] = useState<string | null>(null);
+  const [selectedPM, setSelectedPM] = useState<string | null>(null);
+  const [selectedWip, setSelectedWip] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -281,16 +317,32 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
     }
   }, [period.id]);
 
-  const critical = jobs.filter(j => j.is_forecast_loss && !j.is_overhead);
-  const watch    = jobs.filter(j => j.is_cash_negative && !j.is_forecast_loss && !j.is_overhead && j.cash_gap > 20_000);
+  // Derive filter options from jobs data
+  const allPMs  = [...new Set(jobs.filter(j => !j.is_overhead).map(j => j.job_manager))].sort();
+  const allWips = [...new Set(jobs.map(j => j.wip_code).filter((w): w is string => !!w))].sort();
 
-  // 52px = module page header, 48px = period sub-header
-  const PANEL_HEIGHT = 'calc(100svh - 100px)';
+  // Apply filters
+  const filtered = jobs.filter(j => {
+    if (selectedPM  && j.job_manager !== selectedPM) return false;
+    if (selectedWip && j.wip_code   !== selectedWip) return false;
+    return true;
+  });
+
+  const critical = filtered.filter(j => j.is_forecast_loss && !j.is_overhead);
+  const watch    = filtered.filter(j => j.is_cash_negative && !j.is_forecast_loss && !j.is_overhead && j.cash_gap > 20_000);
+  const isFiltered = !!(selectedPM || selectedWip);
+
+  // Chip style helpers
+  const chipBase: React.CSSProperties = { fontSize: 11, fontWeight: 500, padding: '4px 10px', borderRadius: 20, border: '1px solid #E2EAF0', cursor: 'pointer', fontFamily: 'inherit', background: '#fff', color: '#1A1A2E', transition: 'all 0.1s' };
+  const chipActive: React.CSSProperties = { ...chipBase, background: '#1A1A2E', color: '#fff', border: '1px solid #1A1A2E' };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', height: PANEL_HEIGHT }}>
-      {/* Sub-header — spans both columns, fixed at top */}
-      <div style={{ gridColumn: '1 / -1', height: 48, flexShrink: 0, background: '#F7FAFC', borderBottom: '1px solid #E2EAF0', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12 }}>
+    // Flex column: sub-header (fixed) + body row (fills rest)
+    // 52px = module page header in GmReportsModule
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100svh - 52px)' }}>
+
+      {/* Sub-header */}
+      <div style={{ height: 48, flexShrink: 0, background: '#F7FAFC', borderBottom: '1px solid #E2EAF0', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12 }}>
         <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3DA8D8', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
           ← Reports
         </button>
@@ -301,178 +353,154 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {briefingError && (
-            <span style={{ fontSize: 11, color: '#C0392B', background: '#FDECEA', padding: '4px 10px', borderRadius: 20, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={briefingError}>
+            <span style={{ fontSize: 11, color: '#C0392B', background: '#FDECEA', padding: '4px 10px', borderRadius: 20, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={briefingError}>
               ⚠ {briefingError}
             </span>
           )}
           {!briefing && (
-            <button
-              onClick={generateBriefing}
-              disabled={generatingBriefing}
-              style={{ background: '#3DA8D8', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: generatingBriefing ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              {generatingBriefing && (
-                <span style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'gm-spin 0.7s linear infinite', flexShrink: 0 }} />
-              )}
+            <button onClick={generateBriefing} disabled={generatingBriefing}
+              style={{ background: '#3DA8D8', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: generatingBriefing ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {generatingBriefing && <span style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'gm-spin 0.7s linear infinite', flexShrink: 0 }} />}
               {generatingBriefing ? 'Generating…' : briefingError ? 'Retry' : 'Generate AI briefing'}
             </button>
           )}
-          {briefing && (
-            <span style={{ fontSize: 11, color: '#1E7E4A', background: '#EAF5EE', padding: '4px 10px', borderRadius: 20 }}>✓ Briefing ready</span>
-          )}
+          {briefing && <span style={{ fontSize: 11, color: '#1E7E4A', background: '#EAF5EE', padding: '4px 10px', borderRadius: 20 }}>✓ Briefing ready</span>}
         </div>
       </div>
 
-      {/* Main scroll area — left column, self-scrolling */}
-      <div style={{ overflowY: 'auto', padding: '20px 20px', height: `calc(${PANEL_HEIGHT} - 48px)` }}>
-        {/* Briefing error — full-width, hard to miss */}
-        {briefingError && (
-          <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
-            <div>
-              <div style={{ fontWeight: 600, color: '#7B1414', fontSize: 13, marginBottom: 2 }}>AI briefing failed</div>
-              <div style={{ fontSize: 12, color: '#7B1414', fontFamily: 'monospace', wordBreak: 'break-all' }}>{briefingError}</div>
+      {/* Filter bar */}
+      {(allPMs.length > 1 || allWips.length > 1) && (
+        <div style={{ flexShrink: 0, borderBottom: '1px solid #E2EAF0', background: '#fff', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 16, overflowX: 'auto' }}>
+          {/* WIP filter */}
+          {allWips.length > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99' }}>WIP</span>
+              <button style={!selectedWip ? chipActive : chipBase} onClick={() => setSelectedWip(null)}>All</button>
+              {allWips.map(w => (
+                <button key={w} style={selectedWip === w ? chipActive : chipBase} onClick={() => setSelectedWip(selectedWip === w ? null : w)}>{w}</button>
+              ))}
             </div>
-          </div>
-        )}
-        {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
-          <KpiCard label="Total contract value" value={fmt(period.total_contract).replace(/^[+-]/, '')} sub="Active portfolio" />
-          <KpiCard label="Net cash position" value={fmt(period.net_cash_position)} sub="Invoiced vs spent" accent={period.net_cash_position >= 0 ? 'green' : 'red'} />
-          <KpiCard label="Overall GP%" value={fmtPct(period.overall_gp_pct)} sub={`${fmt(period.gp_at_completion)} at completion`} accent="blue" />
-          <KpiCard label="Jobs in cash deficit" value={String(period.cash_neg_count)} sub="Spent more than claimed" accent={period.cash_neg_count > 50 ? 'amber' : undefined} />
-          <KpiCard label="Forecast losses" value={String(period.forecast_loss_count)} sub="GP at completion < $0" accent={period.forecast_loss_count > 0 ? 'red' : 'green'} />
-          <KpiCard label="Outstanding POs" value={fmt(period.outstanding_pos).replace(/^[+-]/, '')} sub="Committed, not yet cost" accent="blue" />
-        </div>
-
-        {/* AI top concern */}
-        {briefing?.top_concern && (
-          <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: '4px solid #3DA8D8', borderRadius: '0 10px 10px 0', padding: '11px 15px', fontSize: 13, color: '#1A1A2E', lineHeight: 1.6, marginBottom: 20 }}>
-            <strong>AI:</strong> {briefing.top_concern}
-          </div>
-        )}
-
-        {/* Critical jobs */}
-        {critical.length > 0 && (
-          <>
-            <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-              Critical — needs a conversation
-              <span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 10, overflow: 'hidden', border: '1px solid #E2EAF0', fontSize: 13 }}>
-              <thead>
-                <tr>
-                  {['Job', 'Cash gap', 'GP forecast', 'Status'].map(h => (
-                    <th key={h} style={{ background: '#1A1A2E', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.8px', padding: '9px 12px', textAlign: h !== 'Job' ? 'right' : 'left' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {critical.map(j => (
-                  <tr key={j.id} style={{ background: '#FDECEA' }}>
-                    <td style={{ padding: '10px 12px', borderBottom: '1px solid #F5E4E3' }}>
-                      <div style={{ fontWeight: 600 }}>{j.job_code} — {j.job_description}</div>
-                      <div style={{ fontSize: 11, color: '#6B7A99' }}>{j.job_manager} · {fmt(j.contract_valuation, '$').replace(/^[+-]/, '')} contract</div>
-                    </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#C0392B', fontWeight: 600 }}>{fmt(-j.cash_gap)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#C0392B', fontWeight: 600 }}>{fmt(j.gross_profit)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}><Badge type="loss" /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-
-        {/* Watch jobs */}
-        {watch.length > 0 && (
-          <>
-            <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-              Watch — large cash gap, GP positive
-              <span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 10, overflow: 'hidden', border: '1px solid #E2EAF0', fontSize: 13 }}>
-              <thead>
-                <tr>
-                  {['Job', 'Cash gap', 'GP forecast', 'Status'].map(h => (
-                    <th key={h} style={{ background: '#1A1A2E', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.8px', padding: '9px 12px', textAlign: h !== 'Job' ? 'right' : 'left' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {watch.slice(0, 8).map(j => (
-                  <tr key={j.id} style={{ background: '#FEF6E4' }}>
-                    <td style={{ padding: '10px 12px', borderBottom: '1px solid #F5EDD3' }}>
-                      <div style={{ fontWeight: 600 }}>{j.job_code} — {j.job_description}</div>
-                      <div style={{ fontSize: 11, color: '#6B7A99' }}>{j.job_manager} · {fmt(j.contract_valuation, '$').replace(/^[+-]/, '')} contract{j.outstanding_pos > 0 ? ` · ${fmt(j.outstanding_pos, '$').replace(/^[+-]/, '')} POs outstanding` : ''}</div>
-                    </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#B7770D', fontWeight: 600 }}>{fmt(-j.cash_gap)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#1E7E4A' }}>{fmt(j.gross_profit)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}><Badge type="watch" /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-
-        {/* PM scorecard from briefing */}
-        {briefing?.pm_summary && briefing.pm_summary.length > 0 && (
-          <>
-            <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-              PM scorecard
-              <span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-              {briefing.pm_summary.map((pm, i) => {
-                const borderColor = pm.status === 'red' ? '#C0392B' : pm.status === 'amber' ? '#E6A817' : '#1E7E4A';
-                const cashColor   = pm.status === 'red' ? '#C0392B' : pm.status === 'amber' ? '#B7770D' : '#1E7E4A';
-                const initials    = pm.name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+          )}
+          {allWips.length > 1 && allPMs.length > 1 && <div style={{ width: 1, height: 20, background: '#E2EAF0', flexShrink: 0 }} />}
+          {/* PM filter */}
+          {allPMs.length > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflowX: 'auto' }}>
+              <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99', flexShrink: 0 }}>PM</span>
+              <button style={!selectedPM ? chipActive : chipBase} onClick={() => setSelectedPM(null)}>All</button>
+              {allPMs.map(pm => {
+                const initials = pm.split(' ').slice(0, 2).map((w: string) => w[0]).join('');
                 return (
-                  <div key={i} style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: `4px solid ${borderColor}`, borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0, background: pm.status === 'red' ? '#FDECEA' : pm.status === 'amber' ? '#FEF6E4' : '#EAF5EE', color: borderColor }}>
-                      {initials}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{pm.name}</div>
-                      <div style={{ fontSize: 11, color: '#6B7A99', marginTop: 1 }}>{pm.job_count} jobs · {pm.note}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: cashColor, letterSpacing: 0.3 }}>{fmt(pm.cash_position)}</div>
-                      <div style={{ fontSize: 11, color: pm.gp_forecast >= 0 ? '#1E7E4A' : '#C0392B', fontFamily: 'monospace' }}>GP {fmt(pm.gp_forecast)}</div>
-                    </div>
-                  </div>
+                  <button key={pm} style={selectedPM === pm ? chipActive : chipBase} title={pm} onClick={() => setSelectedPM(selectedPM === pm ? null : pm)}>
+                    {initials}
+                  </button>
                 );
               })}
+              {selectedPM && <span style={{ fontSize: 12, color: '#6B7A99', flexShrink: 0 }}>— {selectedPM}</span>}
             </div>
-          </>
-        )}
+          )}
+          {isFiltered && (
+            <button style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: '#6B7A99', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+              onClick={() => { setSelectedPM(null); setSelectedWip(null); }}>
+              Clear filters ×
+            </button>
+          )}
+        </div>
+      )}
 
-        {/* Portfolio note */}
-        {briefing?.portfolio_note && (
-          <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: '4px solid #7C77B9', borderRadius: '0 10px 10px 0', padding: '11px 15px', fontSize: 12, color: '#6B7A99', lineHeight: 1.6 }}>
-            <strong style={{ color: '#1A1A2E' }}>Note on the numbers:</strong> {briefing.portfolio_note}
-          </div>
-        )}
+      {/* Body: left scrolls, right chat is fixed */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
 
-        {loadingJobs && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
-            <span className="eq-skeleton eq-skeleton--text" style={{ width: 120 }} />
+        {/* Left column — scrolls */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', minWidth: 0 }}>
+          {briefingError && (
+            <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 10 }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+              <div>
+                <div style={{ fontWeight: 600, color: '#7B1414', fontSize: 13, marginBottom: 2 }}>AI briefing failed</div>
+                <div style={{ fontSize: 12, color: '#7B1414', fontFamily: 'monospace', wordBreak: 'break-all' }}>{briefingError}</div>
+              </div>
+            </div>
+          )}
+
+          {/* KPIs */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+            <KpiCard label="Total contract value" value={fmt(period.total_contract).replace(/^[+-]/, '')} sub="Active portfolio" />
+            <KpiCard label="Net cash position"    value={fmt(period.net_cash_position)} sub="Invoiced vs spent" accent={period.net_cash_position >= 0 ? 'green' : 'red'} />
+            <KpiCard label="Overall GP%"          value={fmtPct(period.overall_gp_pct)} sub={`${fmt(period.gp_at_completion)} at completion`} accent="blue" />
+            <KpiCard label="Jobs in cash deficit" value={String(period.cash_neg_count)} sub="Spent more than claimed" accent={period.cash_neg_count > 50 ? 'amber' : undefined} />
+            <KpiCard label="Forecast losses"      value={String(period.forecast_loss_count)} sub="GP at completion < $0" accent={period.forecast_loss_count > 0 ? 'red' : 'green'} />
+            <KpiCard label="Outstanding POs"      value={fmt(period.outstanding_pos).replace(/^[+-]/, '')} sub="Committed, not yet cost" accent="blue" />
           </div>
-        )}
+
+          {/* AI top concern */}
+          {briefing?.top_concern && (
+            <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: '4px solid #3DA8D8', borderRadius: '0 10px 10px 0', padding: '11px 15px', fontSize: 13, color: '#1A1A2E', lineHeight: 1.6, marginBottom: 16 }}>
+              <strong>AI:</strong> {briefing.top_concern}
+            </div>
+          )}
+
+          {/* Tables — filtered */}
+          <JobTable jobs={critical} type="loss" />
+          <JobTable jobs={watch}    type="watch" />
+
+          {isFiltered && critical.length === 0 && watch.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#6B7A99', padding: '24px 0', fontSize: 13 }}>
+              No critical or watch jobs for the current filter.
+            </div>
+          )}
+
+          {/* PM scorecard — clickable cards */}
+          {briefing?.pm_summary && briefing.pm_summary.length > 0 && (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                PM scorecard — click to filter
+                <span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
+                {selectedPM && <button style={{ fontSize: 11, color: '#6B7A99', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }} onClick={() => setSelectedPM(null)}>Clear ×</button>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+                {briefing.pm_summary.map((pm, i) => {
+                  const isActive = selectedPM === pm.name;
+                  const borderColor = pm.status === 'red' ? '#C0392B' : pm.status === 'amber' ? '#E6A817' : '#1E7E4A';
+                  const cashColor   = pm.status === 'red' ? '#C0392B' : pm.status === 'amber' ? '#B7770D' : '#1E7E4A';
+                  const initials    = pm.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
+                  return (
+                    <div key={i} onClick={() => setSelectedPM(isActive ? null : pm.name)}
+                      style={{ background: isActive ? '#F0F7FF' : '#fff', border: `1px solid ${isActive ? '#3DA8D8' : '#E2EAF0'}`, borderLeft: `4px solid ${borderColor}`, borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', transition: 'all 0.15s' }}>
+                      <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0, background: pm.status === 'red' ? '#FDECEA' : pm.status === 'amber' ? '#FEF6E4' : '#EAF5EE', color: borderColor }}>
+                        {initials}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{pm.name}</div>
+                        <div style={{ fontSize: 11, color: '#6B7A99', marginTop: 1 }}>{pm.job_count} jobs · {pm.note}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 17, fontWeight: 700, color: cashColor }}>{fmt(pm.cash_position)}</div>
+                        <div style={{ fontSize: 11, color: pm.gp_forecast >= 0 ? '#1E7E4A' : '#C0392B', fontFamily: 'monospace' }}>GP {fmt(pm.gp_forecast)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* Portfolio note */}
+          {briefing?.portfolio_note && (
+            <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: '4px solid #7C77B9', borderRadius: '0 10px 10px 0', padding: '11px 15px', fontSize: 12, color: '#6B7A99', lineHeight: 1.6, marginBottom: 8 }}>
+              <strong style={{ color: '#1A1A2E' }}>Note:</strong> {briefing.portfolio_note}
+            </div>
+          )}
+
+          {loadingJobs && <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><span className="eq-skeleton eq-skeleton--text" style={{ width: 120 }} /></div>}
+        </div>
+
+        {/* Right column — chat panel, fixed height, internal scroll */}
+        <ChatPanel periodId={period.id} briefing={briefing} />
       </div>
 
-      {/* Chat panel */}
-      <ChatPanel periodId={period.id} briefing={briefing} />
-
       <style>{`
-        @keyframes bounce {
-          0%, 60%, 100% { transform: translateY(0); }
-          30% { transform: translateY(-4px); }
-        }
-        @keyframes gm-spin {
-          to { transform: rotate(360deg); }
-        }
+        @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-4px)} }
+        @keyframes gm-spin { to{transform:rotate(360deg)} }
       `}</style>
     </div>
   );
