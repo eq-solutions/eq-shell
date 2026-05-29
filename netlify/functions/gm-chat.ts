@@ -10,7 +10,7 @@ import { withSentry, captureServerError } from './_shared/sentry.js';
 
 const ANTHROPIC_API_VERSION = '2023-06-01';
 const MODEL = 'claude-haiku-4-5';
-const MAX_TOKENS = 600;
+const MAX_TOKENS = 800;
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -60,6 +60,31 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (pErr || !period) return json(404, { error: 'period_not_found' });
 
+  // Fetch all jobs so the chat can answer questions about any job, including healthy ones.
+  const { data: jobs } = await db
+    .from('gm_report_jobs')
+    .select('job_code, job_manager, job_description, wip_code, contract_valuation, jtd_invoicing, jtd_cost_val, gross_profit, gp_pct, outstanding_pos, cash_gap, is_cash_negative, is_forecast_loss, is_overhead')
+    .eq('period_id', period_id)
+    .order('cash_gap', { ascending: false });
+
+  // Compact job rows — keep size down but include everything Claude needs to answer any question
+  const jobRows = (jobs ?? []).map(j => ({
+    code: j.job_code,
+    pm:   j.job_manager,
+    desc: (j.job_description ?? '').slice(0, 50),
+    wip:  j.wip_code ?? '',
+    cv:   Math.round(j.contract_valuation ?? 0),
+    inv:  Math.round(j.jtd_invoicing ?? 0),
+    cost: Math.round(j.jtd_cost_val ?? 0),
+    gp:   Math.round(j.gross_profit ?? 0),
+    gp_pct: Math.round((j.gp_pct ?? 0) * 100),
+    gap:  Math.round(j.cash_gap ?? 0),   // positive = cash deficit
+    pos:  Math.round(j.outstanding_pos ?? 0),
+    loss: j.is_forecast_loss ? 1 : 0,
+    neg:  j.is_cash_negative ? 1 : 0,
+    oh:   j.is_overhead ? 1 : 0,
+  }));
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return json(503, { error: 'ai_not_configured' });
 
@@ -68,14 +93,20 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 Period: ${period.period_code}
 Portfolio: $${Math.round(period.total_contract ?? 0).toLocaleString()} contract value, net cash $${Math.round(period.net_cash_position ?? 0).toLocaleString()}, GP $${Math.round(period.gp_at_completion ?? 0).toLocaleString()} (${((period.overall_gp_pct ?? 0) * 100).toFixed(1)}%), ${period.cash_neg_count} cash-negative jobs, ${period.forecast_loss_count} forecast losses, $${Math.round(period.outstanding_pos ?? 0).toLocaleString()} outstanding POs.
 
-${period.briefing ? `AI briefing summary:\n${JSON.stringify(period.briefing)}` : ''}
+All jobs (${jobRows.length} rows — includes overhead codes):
+Fields: code=job code, pm=project manager, desc=description (truncated), wip=WIP code, cv=contract value, inv=JTD invoicing, cost=JTD cost, gp=gross profit, gp_pct=GP%, gap=cash gap (positive=deficit), pos=outstanding POs, loss=forecast loss flag, neg=cash-negative flag, oh=overhead flag
+${JSON.stringify(jobRows)}
+
+${period.briefing ? `AI briefing highlights (top concerns):\n${JSON.stringify(period.briefing)}` : ''}
 
 Rules:
+- You have the COMPLETE job list above. Use it to answer any question — including healthy/positive jobs.
 - Speak directly to the General Manager. Be direct and specific.
 - Focus on what they need to DO: which PM to call, what question to ask, what to chase.
 - Keep responses to 3-5 sentences unless asked for more detail.
 - Use dollar figures. Name specific jobs and PMs.
-- Many "cash-negative" entries are internal overhead codes (estimating hours, defects/liability) — no revenue against them by design.
+- oh=1 jobs are internal overhead codes (estimating hours, defects/liability) — no revenue against them by design, not billing problems.
+- gap > 0 = cash deficit (spent more than claimed). gap < 0 = cash-positive.
 - Plain English only. No jargon.`;
 
   try {
