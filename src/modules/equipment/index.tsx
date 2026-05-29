@@ -203,6 +203,8 @@ function EquipmentFormDrawer({
   const [form, setForm] = useState<FormState>(() => rowToForm(row));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const rafRef = useRef<number | null>(null);
 
@@ -269,6 +271,33 @@ function EquipmentFormDrawer({
       const next = addInterval(today, f.ppm_frequency);
       return { ...f, last_service_date: today, next_service_due: next ?? f.next_service_due };
     });
+  };
+
+  const onCertFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so re-selecting the same file fires onChange
+    if (!file) return;
+    setUploading(true);
+    setUploadErr(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/.netlify/functions/upload-asset-cert', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
+      const body = (await res.json()) as { ok: boolean; url?: string; error?: string; detail?: string };
+      if (!res.ok || !body.ok || !body.url) {
+        throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
+      }
+      const url = body.url;
+      setForm((f) => ({ ...f, cert_url: url }));
+    } catch (e2) {
+      setUploadErr((e2 as Error).message);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const field = (label: string, key: keyof FormState, type = 'text', placeholder = '') => (
@@ -355,7 +384,45 @@ function EquipmentFormDrawer({
 
           {field('Last calibrated', 'last_service_date', 'date')}
           {field('Next due', 'next_service_due', 'date')}
-          {field('Certificate link', 'cert_url', 'url', 'https://…')}
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={LABEL_STYLE} htmlFor="eq-cert_url">Certificate</label>
+            <input
+              id="eq-cert_url"
+              type="url"
+              value={form.cert_url}
+              placeholder="Paste a link, or upload a file below"
+              onChange={set('cert_url')}
+              style={INPUT_STYLE}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+              <label
+                className="eq-btn-ghost"
+                style={{ fontSize: 13, cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}
+              >
+                {uploading ? 'Uploading…' : 'Upload file'}
+                <input
+                  type="file"
+                  accept="application/pdf,image/png,image/jpeg,image/webp"
+                  disabled={uploading}
+                  onChange={onCertFile}
+                  style={{ display: 'none' }}
+                />
+              </label>
+              {form.cert_url && (
+                <a
+                  href={form.cert_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 13, color: '#2986b4', fontWeight: 500 }}
+                >
+                  View current
+                </a>
+              )}
+            </div>
+            {uploadErr && <p style={{ fontSize: 12, color: '#c0392b', margin: '6px 0 0' }}>{uploadErr}</p>}
+            <p style={{ fontSize: 12, color: '#64748b', margin: '6px 0 0' }}>PDF or image, up to 10 MB.</p>
+          </div>
 
           {err && (
             <div style={{
