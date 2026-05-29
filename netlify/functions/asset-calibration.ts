@@ -33,6 +33,10 @@ import { withSentry } from './_shared/sentry.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// The asset_type that marks an item as our internal plant & equipment. Both
+// the create path (stamp) and the update path (scope guard) use it so this
+// endpoint can never mutate a customer asset maintained in EQ Service.
+const INTERNAL_ASSET_TYPE = 'plant_equipment';
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -126,7 +130,7 @@ export default withSentry(async (req: Request): Promise<Response> => {
       .insert({
         ...fields,
         tenant_id:  session.tenant_id,
-        asset_type: 'plant_equipment',
+        asset_type: INTERNAL_ASSET_TYPE,
         created_by: session.user_id,
         updated_by: session.user_id,
         created_at: now,
@@ -149,16 +153,24 @@ export default withSentry(async (req: Request): Promise<Response> => {
     return json(400, { ok: false, error: 'no_fields', detail: 'no fields to update' });
   }
 
-  const { error: dbErr } = await db
+  const { data: updated, error: dbErr } = await db
     .schema('app_data')
     .from('assets')
     .update({ ...fields, updated_by: session.user_id, updated_at: now })
     .eq('asset_id', id)
-    .eq('tenant_id', session.tenant_id);
+    .eq('tenant_id', session.tenant_id)
+    // Scope guard: only OUR plant & equipment. Without this, a valid asset_id
+    // for a customer asset (EQ Service — a different asset_type) in the same
+    // tenant would be editable here, crossing the our-gear / customer-gear line.
+    .eq('asset_type', INTERNAL_ASSET_TYPE)
+    .select('asset_id');
 
   if (dbErr) {
     console.error('[asset-calibration] update failed', { id, tenant: session.tenant_id, error: dbErr.message });
     return json(500, { ok: false, error: 'db_error', detail: dbErr.message });
+  }
+  if (!Array.isArray(updated) || updated.length === 0) {
+    return json(404, { ok: false, error: 'not_found', detail: 'No plant & equipment item with that id.' });
   }
   return json(200, { ok: true, action, id });
 });
