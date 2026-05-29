@@ -4,12 +4,13 @@
 // Auth: manager or platform_admin only.
 
 import type { Context } from '@netlify/functions';
-import { getTenantDataClientById, TenantNotFoundError, TenantNotActiveError } from './_shared/tenant-routing.js';
+import { getTenantDataClientById, TenantNotFoundError, TenantNotActiveError, TenantRoutingMisconfiguredError } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
 
 const ANTHROPIC_API_VERSION = '2023-06-01';
-const MODEL = 'claude-haiku-4-5';
+// Sonnet for reliable structured JSON — Haiku occasionally truncates or adds preamble
+const MODEL = 'claude-sonnet-4-5';
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -67,8 +68,9 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   try {
     db = await getTenantDataClientById(session.tenant_id);
   } catch (e) {
-    if (e instanceof TenantNotFoundError || e instanceof TenantNotActiveError) {
-      return json(503, { error: 'tenant_unavailable' });
+    if (e instanceof TenantNotFoundError || e instanceof TenantNotActiveError || e instanceof TenantRoutingMisconfiguredError) {
+      captureServerError(e, { context: 'generate-gm-briefing:routing', tenant_id: session.tenant_id });
+      return json(503, { error: 'tenant_unavailable', detail: String(e) });
     }
     throw e;
   }
@@ -102,21 +104,29 @@ Total jobs: ${jobs.length}. Jobs needing attention (${relevantJobs.length}):
 ${JSON.stringify(relevantJobs)}`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': ANTHROPIC_API_VERSION,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 2000,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userMessage }],
-      }),
-      signal: AbortSignal.timeout(22_000),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 22_000);
+
+    let resp: Response;
+    try {
+      resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': ANTHROPIC_API_VERSION,
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 2000,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: userMessage }],
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!resp.ok) {
       const text = await resp.text();

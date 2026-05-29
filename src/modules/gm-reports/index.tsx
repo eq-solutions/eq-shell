@@ -239,9 +239,10 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
 
 function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [briefing, setBriefing] = useState<Briefing | null>(period.briefing_generated_at ? null : null);
+  const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
+  const [briefingError, setBriefingError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -259,6 +260,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
 
   const generateBriefing = useCallback(async () => {
     setGeneratingBriefing(true);
+    setBriefingError(null);
     try {
       const res = await fetch('/.netlify/functions/generate-gm-briefing', {
         method: 'POST',
@@ -266,8 +268,14 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ period_id: period.id }),
       });
-      const data = await res.json() as { ok: boolean; briefing?: Briefing };
-      if (data.briefing) setBriefing(data.briefing);
+      const data = await res.json() as { ok: boolean; briefing?: Briefing; error?: string; detail?: string };
+      if (!res.ok || !data.briefing) {
+        setBriefingError(data.detail ?? data.error ?? `Server error ${res.status}`);
+        return;
+      }
+      setBriefing(data.briefing);
+    } catch (e) {
+      setBriefingError(e instanceof Error ? e.message : 'Network error');
     } finally {
       setGeneratingBriefing(false);
     }
@@ -288,14 +296,19 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         <span style={{ fontSize: 12, color: '#6B7A99' }}>
           {new Date(period.uploaded_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
         </span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {briefingError && (
+            <span style={{ fontSize: 11, color: '#C0392B', background: '#FDECEA', padding: '4px 10px', borderRadius: 20, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={briefingError}>
+              ⚠ {briefingError}
+            </span>
+          )}
           {!briefing && (
             <button
               onClick={generateBriefing}
               disabled={generatingBriefing}
               style={{ background: '#3DA8D8', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: generatingBriefing ? 0.6 : 1 }}
             >
-              {generatingBriefing ? 'Generating…' : 'Generate AI briefing'}
+              {generatingBriefing ? 'Generating…' : briefingError ? 'Retry' : 'Generate AI briefing'}
             </button>
           )}
           {briefing && (
