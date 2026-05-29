@@ -1,5 +1,5 @@
 import { Link, NavLink, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2 } from 'lucide-react';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
 import { EqLogo } from './EqLogo';
@@ -162,6 +162,23 @@ export function HubSidebar({ apps, records }: Props) {
             >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Download size={16} aria-hidden="true" /></span>
               <span className="eq-hub-sidebar__nav-label">Import</span>
+              <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+            </NavLink>
+          </nav>
+        </>
+      )}
+
+      {/* ── REPORTS ── */}
+      {isManager && (
+        <>
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>REPORTS</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Reports navigation">
+            <NavLink
+              to={`/${tenantSlug}/reports`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><BarChart2 size={16} aria-hidden="true" /></span>
+              <span className="eq-hub-sidebar__nav-label">GM Reports</span>
               <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
             </NavLink>
           </nav>

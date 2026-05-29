@@ -40,6 +40,7 @@ import './App.css';
 // chunk), so CardsIframe is imported eagerly above with the other
 // page components. The lazy CardsModule is dropped.
 const IntakeModule = lazy(() => import('./modules/intake/index'));
+const GmReportsModule = lazy(() => import('./modules/gm-reports/index'));
 // Unit 7 — per-domain landing pages.
 const IntakeCoreLanding = lazy(() =>
   import('./modules/intake/DomainLanding').then((m) => ({ default: m.CoreIntakeLanding })),
@@ -406,6 +407,14 @@ function TenantTree() {
         <Route path="admin/settings" element={<AdminTenantSettings />} />
         {/* Phase 1.G — TOTP 2FA enrollment (any logged-in user) */}
         <Route path="settings/2fa" element={<EnrollTotp />} />
+        <Route
+          path="reports/*"
+          element={
+            <Suspense fallback={<div className="eq-page-loading" aria-label="Loading…"><span className="eq-skeleton eq-skeleton--row" style={{ width: '60%', margin: '48px auto', display: 'block' }} /></div>}>
+              <GmReportsModule />
+            </Suspense>
+          }
+        />
         <Route path="storage" element={<StorageBrowser />} />
         {/* Plant & Equipment — calibration register. Gated by useCan inside
             the component, like the admin/data routes (reachable to any

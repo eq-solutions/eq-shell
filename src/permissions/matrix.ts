@@ -33,6 +33,7 @@
 import type { EqRole } from '../session';
 import { INTAKE_PERMS, INTAKE_MATRIX, type IntakePermKey } from '../modules/intake/permissions';
 import { EQUIPMENT_PERMS, EQUIPMENT_MATRIX, type EquipmentPermKey } from '../modules/equipment/permissions';
+import { GM_REPORTS_PERMS, GM_REPORTS_MATRIX, type GmReportsPermKey } from '../modules/gm-reports/permissions';
 
 // ============================================================================
 // ADMIN permission keys (Phase 1.F seeds — user management)
@@ -89,9 +90,9 @@ const AUDIT_MATRIX: Record<EqRole, AuditPermKey[]> = {
 // per-role Set lookup (MATRIX). Adding a module is one import + one
 // concat per role.
 
-export const ALL_PERMS = [...ADMIN_PERMS, ...AUDIT_PERMS, ...INTAKE_PERMS, ...EQUIPMENT_PERMS] as const;
+export const ALL_PERMS = [...ADMIN_PERMS, ...AUDIT_PERMS, ...INTAKE_PERMS, ...EQUIPMENT_PERMS, ...GM_REPORTS_PERMS] as const;
 
-export type PermKey = AdminPermKey | AuditPermKey | IntakePermKey | EquipmentPermKey;
+export type PermKey = AdminPermKey | AuditPermKey | IntakePermKey | EquipmentPermKey | GmReportsPermKey;
 
 // ============================================================================
 // PER-ROLE GRANTS — composed from module-local matrices
@@ -108,6 +109,7 @@ function compose(role: EqRole): Set<PermKey> {
     ...AUDIT_MATRIX[role],
     ...INTAKE_MATRIX[role],
     ...EQUIPMENT_MATRIX[role],
+    ...GM_REPORTS_MATRIX[role],
   ]);
 }
 
