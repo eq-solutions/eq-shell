@@ -155,7 +155,7 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
   ] : [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: 340, flexShrink: 0, background: '#fff', borderLeft: '1px solid #E2EAF0', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: 300, flexShrink: 0, background: '#fff', borderLeft: '1px solid #E2EAF0', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{ background: '#1A1A2E', padding: '14px 18px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
@@ -165,17 +165,17 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', paddingLeft: 16 }}>AI analyst for this report</div>
       </div>
 
-      {/* Messages */}
+      {/* Messages + chips inline so there's no dead space */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {!briefing && messages.length === 0 && (
-          <div style={{ fontSize: 13, color: '#6B7A99', textAlign: 'center', padding: '24px 0' }}>
-            Generate the AI briefing to enable chat.
+          <div style={{ fontSize: 13, color: '#6B7A99', textAlign: 'center', padding: '24px 8px', lineHeight: 1.6 }}>
+            Generate the AI briefing above to start the conversation.
           </div>
         )}
         {messages.map((m, i) => (
           <div key={i} style={{
             alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-            maxWidth: '88%',
+            maxWidth: '90%',
             background: m.role === 'user' ? '#1A1A2E' : '#F7FAFC',
             color: m.role === 'user' ? '#fff' : '#1A1A2E',
             border: m.role === 'assistant' ? '1px solid #E2EAF0' : 'none',
@@ -190,6 +190,16 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
             {m.content}
           </div>
         ))}
+        {/* Chips appear inline right after the first message — no empty gap */}
+        {chips.length > 0 && messages.length <= 1 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
+            {chips.map((c, i) => (
+              <button key={i} onClick={() => send(c)} style={{ background: '#fff', border: '1px solid #E2EAF0', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#1A1A2E', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', lineHeight: 1.4 }}>
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
         {sending && (
           <div style={{ alignSelf: 'flex-start', background: '#F7FAFC', border: '1px solid #E2EAF0', borderRadius: 12, borderBottomLeftRadius: 3, padding: '12px 14px', display: 'flex', gap: 4 }}>
             {[0, 0.2, 0.4].map((d, i) => (
@@ -199,17 +209,6 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
         )}
         <div ref={bottomRef} />
       </div>
-
-      {/* Chips */}
-      {chips.length > 0 && messages.length <= 1 && (
-        <div style={{ padding: '0 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {chips.map((c, i) => (
-            <button key={i} onClick={() => send(c)} style={{ background: '#F7FAFC', border: '1px solid #E2EAF0', borderRadius: 20, padding: '7px 13px', fontSize: 12, color: '#1A1A2E', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
-              {c}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Input */}
       <div style={{ padding: '10px 12px', borderTop: '1px solid #E2EAF0', display: 'flex', gap: 8 }}>
@@ -473,7 +472,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 10, overflow: 'hidden', border: '1px solid #E2EAF0', fontSize: 13 }}>
                 <thead>
-                  <tr>{['Job', 'WIP', 'Contract', 'Cash gap', 'GP', 'Status'].map(h => (
+                  <tr>{['Job', 'WIP', 'Cash gap', 'GP', 'Status'].map(h => (
                     <th key={h} style={{ background: '#1A1A2E', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.8px', padding: '9px 12px', textAlign: h === 'Job' ? 'left' : 'right' }}>{h}</th>
                   ))}</tr>
                 </thead>
@@ -490,9 +489,9 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
                         <tr key={j.id} style={{ background: rowBg }}>
                           <td style={{ padding: '9px 12px', borderBottom: '1px solid #EEF2F7' }}>
                             <div style={{ fontWeight: 500 }}>{j.job_code} — {j.job_description}</div>
+                            <div style={{ fontSize: 11, color: '#6B7A99', marginTop: 1 }}>{fmt(j.contract_valuation, '$').replace(/^[+-]/, '')} contract{j.outstanding_pos > 0 ? ` · ${fmt(j.outstanding_pos, '$').replace(/^[+-]/, '')} POs` : ''}</div>
                           </td>
                           <td style={{ padding: '9px 12px', textAlign: 'right', fontSize: 11, color: '#6B7A99', fontFamily: 'monospace' }}>{j.wip_code ?? '—'}</td>
-                          <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{fmt(j.contract_valuation, '$').replace(/^[+-]/, '')}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: j.is_cash_negative ? '#C0392B' : '#1E7E4A', fontWeight: j.is_cash_negative ? 600 : 400 }}>{fmt(-j.cash_gap)}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: (j.gross_profit ?? 0) < 0 ? '#C0392B' : '#1E7E4A' }}>{fmt(j.gross_profit)}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'right' }}>
