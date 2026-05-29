@@ -2,8 +2,9 @@
 // URL: /:tenant/data/:entity (entity is the singular registry name)
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useSession } from '../session';
+import { AssetDrawerExtras } from './AssetDrawerExtras';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
@@ -208,6 +209,8 @@ function useDebounce<T>(value: T, ms: number): T {
 function EntityBrowserInner({ entity }: { entity: string }) {
   const view = ENTITY_VIEW[entity];
   const { session } = useSession();
+  const { tenantSlug } = useParams<{ tenantSlug: string }>();
+  const [urlSearchParams] = useSearchParams();
   const isManager =
     session?.user.role === 'manager' || session?.user.is_platform_admin === true;
 
@@ -218,9 +221,15 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   const [loading, setLoading] = useState(true);
   const [, startTransition] = useTransition();
 
-  // Search — input is immediate, server fetch is debounced.
-  const [searchInput, setSearchInput] = useState('');
+  // Search — input is immediate, server fetch is debounced. Seeds from the
+  // ?search= query param so a scanned QR label (or a hierarchy link) lands
+  // pre-filtered to the target asset.
+  const [searchInput, setSearchInput] = useState(() => urlSearchParams.get('search') ?? '');
   const search = useDebounce(searchInput, 300);
+  const urlSearch = urlSearchParams.get('search') ?? '';
+  useEffect(() => {
+    setSearchInput(urlSearch);
+  }, [urlSearch]);
 
   // Sort — only allow columns declared in the view config.
   const [sortCol, setSortCol] = useState('created_at');
@@ -474,6 +483,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
         <EntityDetailDrawer
           entity={entity}
           row={selectedRow}
+          tenantSlug={tenantSlug ?? ''}
           onClose={() => setSelectedRow(null)}
           onMutated={() => { setSelectedRow(null); void load(); }}
           isManager={isManager}
@@ -492,12 +502,14 @@ const MANAGEABLE_ENTITIES = new Set(['customer', 'site', 'contact', 'asset']);
 function EntityDetailDrawer({
   entity,
   row,
+  tenantSlug,
   onClose,
   onMutated,
   isManager,
 }: {
   entity: string;
   row: Record<string, unknown>;
+  tenantSlug: string;
   onClose: () => void;
   onMutated: () => void;
   isManager: boolean;
@@ -738,6 +750,8 @@ function EntityDetailDrawer({
             </div>
           )}
         </div>
+
+        {entity === 'asset' && <AssetDrawerExtras tenantSlug={tenantSlug} row={row} />}
 
         <dl style={{ margin: 0, padding: '0 24px 24px', flex: 1 }}>
           {sortedEntries.map(([key, value]) => (
