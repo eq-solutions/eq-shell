@@ -2,8 +2,8 @@
 //
 // Lists the tenant's plant & equipment (meters, test gear, etc.) with their
 // calibration due status, computed client-side from next_service_due. Reads
-// assets via the existing entity-rows function (entity=asset); the certificate
-// link comes from the cert_url column (migration 0017).
+// assets via the equipment-list function (asset_type='plant_equipment'); the
+// certificate link comes from the cert_url column (migration 0017).
 //
 // Managers + supervisors (equipment.edit) can add an item and edit its
 // calibration fields via the slide-out form; writes go to the asset-calibration
@@ -154,7 +154,7 @@ const INPUT_STYLE: React.CSSProperties = {
 const LABEL_STYLE: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
-  color: '#64748b',
+  color: 'var(--eq-mute)',
   textTransform: 'uppercase',
   letterSpacing: '0.06em',
   display: 'block',
@@ -207,11 +207,18 @@ function EquipmentFormDrawer({
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const rafRef = useRef<number | null>(null);
+  const asideRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    rafRef.current = requestAnimationFrame(() => setOpen(true));
+    const prevFocus = document.activeElement as HTMLElement | null;
+    rafRef.current = requestAnimationFrame(() => {
+      setOpen(true);
+      // Move focus into the drawer (first field) for keyboard + screen readers.
+      asideRef.current?.querySelector<HTMLElement>('input, select')?.focus();
+    });
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      prevFocus?.focus?.(); // restore focus to whatever opened the drawer
     };
   }, []);
 
@@ -318,6 +325,7 @@ function EquipmentFormDrawer({
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 40 }} />
       <aside
+        ref={asideRef}
         role="dialog"
         aria-label={mode === 'create' ? 'Add equipment' : 'Edit equipment'}
         style={{
@@ -338,14 +346,14 @@ function EquipmentFormDrawer({
       >
         <div style={{ padding: '20px 24px' }}>
           <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#1A1A2E' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--eq-ink)' }}>
               {mode === 'create' ? 'Add item' : 'Edit item'}
             </div>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close"
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 18, color: '#64748b' }}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--eq-mute)' }}
             >
               ✕
             </button>
@@ -365,8 +373,8 @@ function EquipmentFormDrawer({
               ))}
             </select>
             {sites.length === 0 && (
-              <p style={{ fontSize: 12, color: '#64748b', margin: '6px 0 0' }}>
-                No locations yet — add one via Intake first.
+              <p style={{ fontSize: 12, color: 'var(--eq-mute)', margin: '6px 0 0' }}>
+                No locations yet — add one via Import first.
               </p>
             )}
           </div>
@@ -377,7 +385,7 @@ function EquipmentFormDrawer({
             <button type="button" className="eq-btn-ghost" onClick={markCalibratedToday} style={{ fontSize: 13 }}>
               Mark calibrated today
             </button>
-            <span style={{ fontSize: 12, color: '#64748b', marginLeft: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--eq-mute)', marginLeft: 8 }}>
               sets last done + rolls next due by the interval
             </span>
           </div>
@@ -421,7 +429,7 @@ function EquipmentFormDrawer({
               )}
             </div>
             {uploadErr && <p style={{ fontSize: 12, color: '#c0392b', margin: '6px 0 0' }}>{uploadErr}</p>}
-            <p style={{ fontSize: 12, color: '#64748b', margin: '6px 0 0' }}>PDF or image, up to 10 MB.</p>
+            <p style={{ fontSize: 12, color: 'var(--eq-mute)', margin: '6px 0 0' }}>PDF or image, up to 10 MB.</p>
           </div>
 
           {err && (
@@ -494,8 +502,10 @@ export default function EquipmentModule() {
   }, [canView, load]);
 
   useEffect(() => {
-    if (canEdit) void loadSites();
-  }, [canEdit, loadSites]);
+    // Sites load for every viewer (not just editors) so the Location column
+    // resolves names for read-only users too — not just the edit dropdown.
+    if (canView) void loadSites();
+  }, [canView, loadSites]);
 
   const summary = useMemo(() => {
     if (!rows) return null;
@@ -508,6 +518,12 @@ export default function EquipmentModule() {
     }
     return { overdue, soon, total: rows.length };
   }, [rows]);
+
+  // Resolve a site_id to its display name for the Location column.
+  const siteName = useMemo(() => {
+    const m = new Map(sites.map((s) => [s.site_id, s.name]));
+    return (id: string | null | undefined): string => (id ? m.get(id) ?? '—' : '—');
+  }, [sites]);
 
   if (!canView) {
     return (
@@ -555,6 +571,7 @@ export default function EquipmentModule() {
               <th>Item</th>
               <th>Make / model</th>
               <th>Serial</th>
+              <th>Location</th>
               <th>Last calibrated</th>
               <th>Next due</th>
               <th>Status</th>
@@ -564,13 +581,13 @@ export default function EquipmentModule() {
           <tbody>
             {loading && !rows ? (
               <tr>
-                <td colSpan={7}>
+                <td colSpan={8}>
                   <Skeleton variant="row" count={8} />
                 </td>
               </tr>
             ) : (rows ?? []).length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--eq-mute)' }}>
+                <td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--eq-mute)' }}>
                   {canEdit
                     ? 'No equipment recorded yet — use “Add item” to start tracking calibration.'
                     : 'No equipment recorded yet.'}
@@ -586,9 +603,23 @@ export default function EquipmentModule() {
                     onClick={canEdit ? () => setForm({ mode: 'edit', row: r }) : undefined}
                     style={canEdit ? { cursor: 'pointer' } : undefined}
                   >
-                    <td>{r.name || '—'}</td>
+                    <td>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setForm({ mode: 'edit', row: r }); }}
+                          aria-label={`Edit ${r.name || 'item'}`}
+                          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}
+                        >
+                          {r.name || '—'}
+                        </button>
+                      ) : (
+                        r.name || '—'
+                      )}
+                    </td>
                     <td>{makeModel}</td>
                     <td>{r.serial_number || '—'}</td>
+                    <td>{siteName(r.site_id)}</td>
                     <td>{fmtDate(r.last_service_date)}</td>
                     <td>{fmtDate(r.next_service_due)}</td>
                     <td><StatusChip tone={status.tone} label={status.label} /></td>
