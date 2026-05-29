@@ -328,9 +328,25 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
     return true;
   });
 
+  const isFiltered = !!(selectedPM || selectedWip);
+  const nonOverhead = filtered.filter(j => !j.is_overhead);
   const critical = filtered.filter(j => j.is_forecast_loss && !j.is_overhead);
   const watch    = filtered.filter(j => j.is_cash_negative && !j.is_forecast_loss && !j.is_overhead && j.cash_gap > 20_000);
-  const isFiltered = !!(selectedPM || selectedWip);
+
+  // When a filter is active, compute KPIs from the filtered (non-overhead) jobs
+  const fKpis = isFiltered ? {
+    total_contract:   nonOverhead.reduce((s, j) => s + (j.contract_valuation ?? 0), 0),
+    net_cash:         nonOverhead.reduce((s, j) => s - (j.cash_gap ?? 0), 0),
+    gp:               nonOverhead.reduce((s, j) => s + (j.gross_profit ?? 0), 0),
+    gp_pct:           (() => {
+      const cv = nonOverhead.reduce((s, j) => s + (j.contract_valuation ?? 0), 0);
+      const gp = nonOverhead.reduce((s, j) => s + (j.gross_profit ?? 0), 0);
+      return cv > 0 ? gp / cv : 0;
+    })(),
+    cash_neg_count:   nonOverhead.filter(j => j.is_cash_negative).length,
+    loss_count:       nonOverhead.filter(j => j.is_forecast_loss).length,
+    outstanding_pos:  nonOverhead.reduce((s, j) => s + (j.outstanding_pos ?? 0), 0),
+  } : null;
 
   // Chip style helpers
   const chipBase: React.CSSProperties = { fontSize: 11, fontWeight: 500, padding: '4px 10px', borderRadius: 20, border: '1px solid #E2EAF0', cursor: 'pointer', fontFamily: 'inherit', background: '#fff', color: '#1A1A2E', transition: 'all 0.1s' };
@@ -422,14 +438,19 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
             </div>
           )}
 
-          {/* KPIs */}
+          {/* KPIs — update to filtered values when a filter is active */}
+          {isFiltered && (
+            <div style={{ fontSize: 11, color: '#3DA8D8', background: '#EAF5FB', borderRadius: 6, padding: '5px 12px', marginBottom: 10, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              ⚡ Showing figures for {[selectedPM, selectedWip ? `WIP: ${selectedWip}` : null].filter(Boolean).join(' · ')}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-            <KpiCard label="Total contract value" value={fmt(period.total_contract).replace(/^[+-]/, '')} sub="Active portfolio" />
-            <KpiCard label="Net cash position"    value={fmt(period.net_cash_position)} sub="Invoiced vs spent" accent={period.net_cash_position >= 0 ? 'green' : 'red'} />
-            <KpiCard label="Overall GP%"          value={fmtPct(period.overall_gp_pct)} sub={`${fmt(period.gp_at_completion)} at completion`} accent="blue" />
-            <KpiCard label="Jobs in cash deficit" value={String(period.cash_neg_count)} sub="Spent more than claimed" accent={period.cash_neg_count > 50 ? 'amber' : undefined} />
-            <KpiCard label="Forecast losses"      value={String(period.forecast_loss_count)} sub="GP at completion < $0" accent={period.forecast_loss_count > 0 ? 'red' : 'green'} />
-            <KpiCard label="Outstanding POs"      value={fmt(period.outstanding_pos).replace(/^[+-]/, '')} sub="Committed, not yet cost" accent="blue" />
+            <KpiCard label="Total contract value" value={fmt(fKpis?.total_contract ?? period.total_contract).replace(/^[+-]/, '')} sub={isFiltered ? `${nonOverhead.length} jobs` : 'Active portfolio'} />
+            <KpiCard label="Net cash position"    value={fmt(fKpis?.net_cash ?? period.net_cash_position)} sub="Invoiced vs spent" accent={(fKpis?.net_cash ?? period.net_cash_position) >= 0 ? 'green' : 'red'} />
+            <KpiCard label="Overall GP%"          value={fmtPct(fKpis?.gp_pct ?? period.overall_gp_pct)} sub={`${fmt(fKpis?.gp ?? period.gp_at_completion)} at completion`} accent="blue" />
+            <KpiCard label="Jobs in cash deficit" value={String(fKpis?.cash_neg_count ?? period.cash_neg_count)} sub="Spent more than claimed" accent={(fKpis?.cash_neg_count ?? period.cash_neg_count) > 0 ? 'amber' : undefined} />
+            <KpiCard label="Forecast losses"      value={String(fKpis?.loss_count ?? period.forecast_loss_count)} sub="GP at completion < $0" accent={(fKpis?.loss_count ?? period.forecast_loss_count) > 0 ? 'red' : 'green'} />
+            <KpiCard label="Outstanding POs"      value={fmt(fKpis?.outstanding_pos ?? period.outstanding_pos).replace(/^[+-]/, '')} sub="Committed, not yet cost" accent="blue" />
           </div>
 
           {/* AI top concern */}
@@ -439,14 +460,54 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
             </div>
           )}
 
-          {/* Tables — filtered */}
+          {/* Tables — critical/watch filtered */}
           <JobTable jobs={critical} type="loss" />
           <JobTable jobs={watch}    type="watch" />
 
-          {isFiltered && critical.length === 0 && watch.length === 0 && (
-            <div style={{ textAlign: 'center', color: '#6B7A99', padding: '24px 0', fontSize: 13 }}>
-              No critical or watch jobs for the current filter.
-            </div>
+          {/* When a PM is selected, show ALL their jobs (sorted by severity) */}
+          {selectedPM && nonOverhead.length > 0 && (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                All jobs — {selectedPM}
+                <span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 10, overflow: 'hidden', border: '1px solid #E2EAF0', fontSize: 13 }}>
+                <thead>
+                  <tr>{['Job', 'WIP', 'Contract', 'Cash gap', 'GP', 'Status'].map(h => (
+                    <th key={h} style={{ background: '#1A1A2E', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.8px', padding: '9px 12px', textAlign: h === 'Job' ? 'left' : 'right' }}>{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody>
+                  {[...nonOverhead]
+                    .sort((a, b) => {
+                      if (a.is_forecast_loss !== b.is_forecast_loss) return a.is_forecast_loss ? -1 : 1;
+                      if (a.is_cash_negative !== b.is_cash_negative) return a.is_cash_negative ? -1 : 1;
+                      return (b.cash_gap ?? 0) - (a.cash_gap ?? 0);
+                    })
+                    .map(j => {
+                      const rowBg = j.is_forecast_loss ? '#FDECEA' : j.is_cash_negative ? '#FEF6E4' : '#fff';
+                      return (
+                        <tr key={j.id} style={{ background: rowBg }}>
+                          <td style={{ padding: '9px 12px', borderBottom: '1px solid #EEF2F7' }}>
+                            <div style={{ fontWeight: 500 }}>{j.job_code} — {j.job_description}</div>
+                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'right', fontSize: 11, color: '#6B7A99', fontFamily: 'monospace' }}>{j.wip_code ?? '—'}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{fmt(j.contract_valuation, '$').replace(/^[+-]/, '')}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: j.is_cash_negative ? '#C0392B' : '#1E7E4A', fontWeight: j.is_cash_negative ? 600 : 400 }}>{fmt(-j.cash_gap)}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: (j.gross_profit ?? 0) < 0 ? '#C0392B' : '#1E7E4A' }}>{fmt(j.gross_profit)}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'right' }}>
+                            {j.is_forecast_loss ? <Badge type="loss" /> : j.is_cash_negative ? <Badge type="watch" /> : <Badge type="ok" />}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {!selectedPM && !selectedWip && critical.length === 0 && watch.length === 0 && !loadingJobs && (
+            <div style={{ textAlign: 'center', color: '#6B7A99', padding: '24px 0', fontSize: 13 }}>No critical or watch jobs this period.</div>
           )}
 
           {/* PM scorecard — clickable cards */}
