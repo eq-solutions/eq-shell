@@ -227,23 +227,40 @@ export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
   );
 }
 
+// Schema version stamped on the intake event and passed to the commit RPC.
+// Matches x-eq-version on the authored JSON schemas.
+const SCHEMA_VERSION = '1.0.0';
+
+interface IntakeCommitResponse {
+  ok: boolean;
+  committed_count?: number;
+  committed_ids?: string[];
+  error?: string;
+  detail?: string;
+}
+
 function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn {
   return async (rows: CommittableRow[]) => {
     const sb = await createSupabaseClient();
+
+    const sourceSig = `shell-${entity}-${new Date().toISOString().slice(0, 19)}.csv`;
 
     const intakePayload = {
       tenant_id: tenantId,
       entity,
       source_kind: 'manual',
       source_subkind: 'shell-dropzone',
-      source_filename: `shell-${entity}-${new Date().toISOString().slice(0, 19)}.csv`,
-      schema_version: '1.0.0',
+      source_filename: sourceSig,
+      schema_version: SCHEMA_VERSION,
       status: 'committing',
       import_mode: 'insert',
       source_app: 'shell',
       intake_mode: 'strict',
     };
 
+    // Intake events live on the control plane (the DB the browser client
+    // reaches). Create one first to get the intake_id the orchestrator
+    // increments and that every committed row carries.
     const { data: intakeRow, error: intakeErr } = await sb
       .schema('shell_control')
       .from('eq_intake_events')
@@ -258,22 +275,35 @@ function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn
     const intakeId = (intakeRow as { intake_id: string }).intake_id;
     const rowsJsonb = rows.map((r) => r.canonical);
 
-    const { data: commitResult, error: commitErr } = await sb.rpc('eq_intake_commit_batch', {
-      p_intake_id: intakeId,
-      p_tenant_id: tenantId,
-      p_table: table,
-      p_rows: rowsJsonb,
-      p_confirm_replace: false,
-      p_intake_mode: 'strict',
-    });
-
-    if (commitErr) {
-      await sb.schema('shell_control').from('eq_intake_events').update({ status: 'failed', error_message: commitErr.message }).eq('intake_id', intakeId);
-      throw new Error(`Commit failed: ${commitErr.message}`);
+    // The tenant data plane is server-only — route the commit through the
+    // intake-commit orchestrator (it resolves the tenant DB and calls the
+    // right per-module RPC). The browser can't reach the tenant DB directly.
+    let result: IntakeCommitResponse;
+    try {
+      const res = await fetch('/.netlify/functions/intake-commit', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          intake_id: intakeId,
+          table,
+          rows: rowsJsonb,
+          source_sig: sourceSig,
+          schema_version: SCHEMA_VERSION,
+          import_mode: 'append',
+        }),
+      });
+      result = (await res.json()) as IntakeCommitResponse;
+      if (!res.ok || !result.ok) {
+        throw new Error(result.detail || result.error || `commit failed (${res.status})`);
+      }
+    } catch (e) {
+      const message = (e as Error).message;
+      await sb.schema('shell_control').from('eq_intake_events').update({ status: 'failed', error_message: message }).eq('intake_id', intakeId);
+      throw new Error(`Commit failed: ${message}`);
     }
 
-    const result = Array.isArray(commitResult) ? commitResult[0] : commitResult;
-    const committed = result?.committed_count ?? 0;
+    const committed = result.committed_count ?? 0;
     const failed = rows.length - committed;
 
     await sb.schema('shell_control').from('eq_intake_events').update({

@@ -181,6 +181,7 @@ export default function TenantHome() {
   const quoteCount    = counts?.find((c) => c.entity === 'quote')?.count_total    || null;
   const incidentCount = counts?.find((c) => c.entity === 'incident')?.count_total || null;
   const licenceCount  = counts?.find((c) => c.entity === 'licence')?.count_total  || null;
+  const assetCount    = counts?.find((c) => c.entity === 'asset')?.count_total    ?? null;
 
   const sidebarRecords: RecordLink[] = [
     { key: 'customer', label: 'Customers', entity: 'customer', count: customerCount },
@@ -312,6 +313,17 @@ export default function TenantHome() {
                 </p>
               )}
               <p className="eq-hub-kpi__sub">all sites →</p>
+            </Link>
+            <Link to={`/${tenantSlug}/data/asset`} className="eq-hub-kpi eq-hub-kpi--link">
+              <p className="eq-hub-kpi__label">Equipment</p>
+              {loading ? (
+                <Skeleton variant="text" width={60} />
+              ) : (
+                <p className="eq-hub-kpi__value">
+                  {assetCount ?? '—'}
+                </p>
+              )}
+              <p className="eq-hub-kpi__sub">all equipment →</p>
             </Link>
           </div>
 
