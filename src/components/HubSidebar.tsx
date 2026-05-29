@@ -1,6 +1,7 @@
 import { Link, NavLink, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge } from 'lucide-react';
 import { useSession } from '../session';
+import { useCan } from '../permissions';
 import { EqLogo } from './EqLogo';
 import { TenantSwitcher } from './TenantSwitcher';
 
@@ -46,6 +47,7 @@ interface Props {
 export function HubSidebar({ apps, records }: Props) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const { session, logout } = useSession();
+  const canEquipment = useCan('equipment.view');
 
   if (!session) return null;
 
@@ -101,8 +103,25 @@ export function HubSidebar({ apps, records }: Props) {
         </>
       )}
 
+      {/* ── EQUIPMENT ── */}
+      {canEquipment && (
+        <>
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: records?.length ? 16 : 0 }}>EQUIPMENT</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Equipment navigation">
+            <NavLink
+              to={`/${tenantSlug}/equipment`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Gauge size={16} aria-hidden="true" /></span>
+              <span className="eq-hub-sidebar__nav-label">Plant &amp; equipment</span>
+              <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+            </NavLink>
+          </nav>
+        </>
+      )}
+
       {/* ── APPS ── */}
-      <p className="eq-hub-sidebar__section-label" style={{ marginTop: records?.length ? 16 : 0 }}>
+      <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>
         APPS
       </p>
       <nav className="eq-hub-sidebar__nav" aria-label="App navigation">
