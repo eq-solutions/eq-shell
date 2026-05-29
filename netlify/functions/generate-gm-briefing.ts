@@ -93,58 +93,54 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return json(503, { error: 'ai_not_configured' });
 
-  // Top 40 jobs by severity — forecast losses first, then largest cash gaps
-  // Keeps the prompt under ~8k tokens for Haiku
-  const sortedJobs = [...jobs]
-    .filter(j => !j.is_overhead)
+  // Losses first, then largest cash gaps. Top 15 only — keeps Haiku prompt tiny (~2k tokens)
+  const topJobs = [...jobs]
+    .filter(j => !j.is_overhead && (j.is_forecast_loss || j.is_cash_negative))
     .sort((a, b) => {
       if (a.is_forecast_loss !== b.is_forecast_loss) return a.is_forecast_loss ? -1 : 1;
       return (b.cash_gap ?? 0) - (a.cash_gap ?? 0);
     })
-    .slice(0, 40)
-    .map(j => ({
-      pm:   j.job_manager,
-      code: j.job_code,
-      desc: j.job_description.slice(0, 60),
-      cv:   Math.round(j.contract_valuation ?? 0),
-      gap:  Math.round(j.cash_gap ?? 0),
-      gp:   Math.round(j.gross_profit ?? 0),
-      loss: j.is_forecast_loss,
-      neg:  j.is_cash_negative,
-      pos:  Math.round(j.outstanding_pos ?? 0),
-    }));
+    .slice(0, 15)
+    .map(j => `${j.job_code}|${j.job_manager}|${j.job_description.slice(0, 40)}|cv=${Math.round(j.contract_valuation ?? 0)}|gap=${Math.round(j.cash_gap ?? 0)}|gp=${Math.round(j.gross_profit ?? 0)}|loss=${j.is_forecast_loss}|pos=${Math.round(j.outstanding_pos ?? 0)}`);
 
-  console.log(`[generate-gm-briefing] period=${period_id} jobs_total=${jobs.length} jobs_sent=${sortedJobs.length}`);
+  // PM rollup (exclude overhead)
+  const pmMap = new Map<string, { jobs: number; cash: number; gp: number }>();
+  for (const j of jobs.filter(x => !x.is_overhead)) {
+    const e = pmMap.get(j.job_manager) ?? { jobs: 0, cash: 0, gp: 0 };
+    e.jobs++;
+    e.cash -= (j.cash_gap ?? 0);   // negate: positive gap = deficit = negative for PM
+    e.gp   += (j.gross_profit ?? 0);
+    pmMap.set(j.job_manager, e);
+  }
+  const pmSummary = [...pmMap.entries()]
+    .sort((a, b) => a[1].cash - b[1].cash)   // worst cash first
+    .map(([name, s]) => `${name}|jobs=${s.jobs}|cash=${Math.round(s.cash)}|gp=${Math.round(s.gp)}`);
 
-  const userMessage = `Period: ${period.period_code}
-Portfolio: ${jobs.length} jobs, $${Math.round(period.total_contract ?? 0).toLocaleString()} total, net cash $${Math.round(period.net_cash_position ?? 0).toLocaleString()}, GP $${Math.round(period.gp_at_completion ?? 0).toLocaleString()} (${((period.overall_gp_pct ?? 0) * 100).toFixed(1)}%), ${period.cash_neg_count} cash-neg, ${period.forecast_loss_count} losses.
+  console.log(`[generate-gm-briefing] period=${period_id} total=${jobs.length} top_jobs=${topJobs.length} pms=${pmSummary.length}`);
 
-Top 40 jobs by severity (non-overhead only): ${JSON.stringify(sortedJobs)}`;
+  const userMessage = `Period ${period.period_code} — ${jobs.length} jobs, $${Math.round(period.total_contract ?? 0).toLocaleString()} contract, net cash $${Math.round(period.net_cash_position ?? 0).toLocaleString()}, GP $${Math.round(period.gp_at_completion ?? 0).toLocaleString()} (${((period.overall_gp_pct ?? 0) * 100).toFixed(1)}%), ${period.cash_neg_count} cash-neg, ${period.forecast_loss_count} losses.
+
+Top jobs (code|pm|desc|cv|gap|gp|loss|pos):
+${topJobs.join('\n')}
+
+PM rollup (name|jobs|net_cash|gp):
+${pmSummary.join('\n')}`;
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 22_000);
-
-    let resp: Response;
-    try {
-      resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': ANTHROPIC_API_VERSION,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          max_tokens: 2000,
-          system: SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: userMessage }],
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': ANTHROPIC_API_VERSION,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 2000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
 
     if (!resp.ok) {
       const text = await resp.text();
