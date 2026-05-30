@@ -14,7 +14,7 @@ Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Qu
 - **React Router v6** — client-side routing.
 - **@supabase/supabase-js** — canonical Supabase client (service-role on Netlify functions).
 - **bcryptjs** — PIN hashing for shell-login.
-- **Netlify Functions (v2 / Request-Response API)** — `shell-login`, `verify-shell-session`, `mint-iframe-token`.
+- **Netlify Functions (v2 / Request-Response API)** — ~50 endpoints spanning auth/session, MFA, user admin, iframe-token minting, tenant routing, the canonical data plane, Cards, GM Reports, and equipment. Grouped in [Repository layout](#repository-layout).
 
 ## Companion infrastructure
 
@@ -172,47 +172,92 @@ EQ Field validates the minted iframe token via its existing `/.netlify/functions
 ```
 .
 ├── netlify/
-│   └── functions/
-│       ├── _shared/
-│       │   ├── email.ts              # outbound email helper (log-only until EQ_EMAIL_PROVIDER set)
-│       │   ├── sentry.ts             # withSentry() wrapper
-│       │   ├── cookie.ts             # session cookie builder; scopes Domain per request host (Phase 1.G)
-│       │   ├── supabase.ts           # service-role client + CanonicalUser/Tenant types + EqRole
-│       │   ├── supabase-jwt.ts       # mints Supabase-format JWTs with app_metadata
-│       │   └── token.ts              # session cookie + iframe HMAC helpers (ShellTokenPayload now carries tenant_slug)
-│       ├── shell-login.ts
-│       ├── verify-shell-session.ts
-│       ├── mint-iframe-token.ts
-│       ├── mint-supabase-jwt.ts      # Phase 1.F — on-demand JWT minter
-│       ├── invite-user.ts            # Phase 1.F — admin invite
-│       ├── accept-invite.ts          # Phase 1.F — public PIN-set + first login
-│       └── edit-user.ts              # Phase 1.F — admin edit/deactivate
+│   └── functions/                          # Netlify Functions v2 (Request-Response API)
+│       ├── _shared/                        # shared libs (imported by endpoints, not endpoints themselves)
+│       │   ├── token.ts                    # session-cookie + iframe HMAC helpers (ShellTokenPayload carries tenant_slug)
+│       │   ├── cookie.ts                   # session-cookie builder; scopes Domain per request host (Phase 1.G)
+│       │   ├── supabase.ts                 # service-role client for eq-canonical + CanonicalUser/Tenant types + EqRole
+│       │   ├── supabase-jwt.ts             # mints Supabase-format JWTs with app_metadata claims
+│       │   ├── tenant-routing.ts           # resolves tenant slug/id → per-tenant Supabase client (decrypts routing row)
+│       │   ├── encryption.ts               # AES-256-GCM for the service-role keys in shell_control.tenant_routing
+│       │   ├── field-supabase.ts           # service-role client for the legacy EQ Field project
+│       │   ├── email.ts + email/resend.ts  # outbound email (log-only until EQ_EMAIL_PROVIDER; Resend dynamically imported)
+│       │   ├── sentry.ts                   # withSentry() wrapper
+│       │   └── totp.ts                     # pure-Node TOTP (RFC 6238)
+│       │
+│       ├── shell-login.ts · shell-login-phone-otp.ts · shell-logout.ts   # auth: email+PIN / phone-OTP (env-gated) / logout
+│       ├── verify-shell-session.ts         # hydrate session from cookie; re-mints supabase_jwt
+│       ├── mint-supabase-jwt.ts            # on-demand short-lived Supabase JWT
+│       ├── enroll-totp.ts · confirm-totp.ts · challenge-totp.ts          # MFA (TOTP)
+│       ├── invite-user.ts · accept-invite.ts · edit-user.ts             # user admin: invite / public PIN-set / edit
+│       ├── reset-user-pin.ts · accept-pin-reset.ts                      # admin-triggered + public PIN reset
+│       ├── backfill-auth-users.ts          # one-off backfill helper
+│       ├── mint-iframe-token.ts            # 60s HMAC handoff — EQ Field      ┐
+│       ├── mint-cards-iframe-token.ts      #   "       "      — EQ Cards      │ see CLAUDE.md
+│       ├── mint-service-iframe-token.ts    #   "       "      — EQ Service    │ "downstream" table
+│       ├── mint-quotes-iframe-token.ts     #   "       "      — EQ Quotes     ┘
+│       ├── select-tenant.ts · switch-tenant.ts                          # platform-admin tenant selection / switching
+│       ├── tenant-dashboard.ts             # live entity counts for the hub sidebar
+│       ├── tenant-routing-health.ts        # probe tenant_routing decryption
+│       ├── upload-tenant-logo.ts           # tenant logo → storage
+│       ├── canonical-api.ts                # service-to-service surface (per-app bearer keys, Phase 2.B.3)
+│       ├── intake-commit.ts                # intake-commit orchestrator → per-tenant RPCs
+│       ├── entity-rows.ts · entity-actions.ts                           # entity-browser reads / actions
+│       ├── cards-api.ts · cards-pending-staff.ts · cards-approve-staff.ts   # Cards review queue
+│       ├── upload-gm-report.ts · gm-reports.ts · manage-gm-report.ts    # GM Reports: xlsx upload / list / patch
+│       ├── generate-gm-briefing.ts · ai-briefing.ts · gm-chat.ts        # GM Reports: AI briefing (tool_use) + chat
+│       └── equipment-list.ts · asset-calibration.ts · upload-asset-cert.ts   # Plant & equipment + calibration certs
 ├── src/
-│   ├── modules/                      # lazy chunks: cards, intake/, quotes, service, tender-pipeline
-│   │   └── intake/
-│   │       ├── index.tsx             # IntakeModule wrapper (Gate + createSupabaseClient)
-│   │       └── permissions.ts        # per-module perm keys (intake.view/.import/.commit)
-│   ├── pages/                        # LoginPage, TenantHome, FieldIframe (Phase 1.G picker),
-│   │                                 # ComingSoon, AcceptInvite, AdminInviteUser, AdminUserList, AdminEditUser
-│   ├── permissions.ts                # useCan() hook (Phase 1.F)
+│   ├── main.tsx                            # entry
+│   ├── App.tsx                             # router + RequireSession + ModuleGate
+│   ├── App.css · index.css                 # global styles
+│   ├── session.ts                          # SessionContext + EqRole + useSession + moduleEnabled
+│   ├── brand.tsx                           # BrandProvider + useBrand (per-tenant branding)
+│   ├── observability.ts                    # Sentry + PostHog + Clarity bootstrap
+│   ├── permissions.ts                      # useCan() hook (Phase 1.F)
 │   ├── permissions/
-│   │   ├── Gate.tsx                  # <Gate perm="..."> component
-│   │   └── matrix.ts                 # closed-union PermKey + per-role MATRIX
+│   │   ├── Gate.tsx                        # <Gate perm="..."> component
+│   │   └── matrix.ts                       # closed-union PermKey + per-role MATRIX
 │   ├── lib/
-│   │   └── supabaseJwt.ts            # client cache + createSupabaseClient()
-│   ├── App.tsx                       # router + RequireSession + ModuleGate
-│   ├── brand.tsx                     # BrandProvider + useBrand
-│   ├── session.ts                    # SessionContext + EqRole + useSession + moduleEnabled
-│   └── main.tsx
+│   │   ├── supabaseJwt.ts                  # client cache + createSupabaseClient() + getSupabaseJwt()
+│   │   └── fieldTenants.ts                 # Shell-side Field tenant config (slugs)
+│   ├── components/                         # EqError · EqLogo · HubLayout · HubSidebar · TenantSwitcher ·
+│   │                                       #   RouteProgressBar · EqTable + Skeleton (shims over @eq-solutions/ui)
+│   ├── modules/                            # per-module lazy chunks + permission keys
+│   │   ├── intake/                         #   index + DomainLanding + EntityImportPanel + permissions
+│   │   ├── equipment/ · gm-reports/        #   Plant & Equipment (calibration) · GM Reports (SKS)
+│   │   └── cards.tsx · service.tsx · quotes.tsx   # module entry stubs (iframe mounts live in pages/*Iframe)
+│   ├── pages/
+│   │   ├── LoginPage · AcceptInvite · ResetPin · NotFound       # public / unauthed
+│   │   ├── TotpChallenge · EnrollTotp                           # MFA
+│   │   ├── TenantHome · TenantPicker · ComingSoon              # tenant shell
+│   │   ├── EntityBrowserPage · StorageBrowser                  # canonical browsers
+│   │   ├── FieldIframe · CardsIframe · ServiceIframe · QuotesIframe   # iframe mounts (mint token on mount)
+│   │   └── Admin{UserList,InviteUser,EditUser,AuditPage,CardsFeed,TenantSettings}
+│   └── types/eq-solutions-ui.d.ts          # ambient shim so tsc doesn't type-check @eq-solutions/ui source
+├── eq-intake/eq-platform/packages/         # VENDORED @eq/* workspace (not a submodule — see "Development"):
+│                                           #   eq-ai · eq-confirm-ui · eq-format-ui · eq-intake ·
+│                                           #   eq-intake-demo · eq-schemas · eq-validation
 ├── docs/
-│   └── runbooks/
-│       ├── deploy-preview-env.md     # which env vars must be scoped to Deploy Previews + how to verify (Phase 1.G)
-│       ├── sentry-setup.md
-│       ├── posthog-setup.md
-│       └── clarity-setup.md
+│   ├── ARCHITECTURE-V2.md                  # canonical architecture target
+│   ├── FIELD-UNIFICATION-PLAN.md           # Phase 3+ arc
+│   ├── sprint-equipment-intake.md
+│   └── runbooks/                           # add-field-trial-tenant · cards-mobile-tenant-cutover ·
+│                                           #   onboard-trial-tenant · deploy-preview-env ·
+│                                           #   sentry-setup · sentry-alert-rules · posthog-setup · clarity-setup
 ├── scripts/
-│   └── smoke-preview.sh              # black-box smoke for /shell-login + /verify-shell-session + /mint-iframe-token
-├── netlify.toml
+│   ├── provision-tenant.mjs · onboard-trial-tenant.mjs · migrate-tenants.mjs · regen-tenant-baseline.mjs
+│   ├── sync-tenant-data.mjs · sync-{field,quotes,service}-to-canonical.mjs   # data sync into canonical
+│   ├── setup-sentry-alerts.mjs
+│   └── smoke-preview.sh · smoke-asset-intake.sh                 # black-box function smokes
+├── supabase/
+│   ├── migrations/                         # shell_control control-plane migrations (eq-canonical)
+│   └── tenant-migrations/                  # per-tenant data-plane schema 0001–0019 (applied by migrate-tenants.mjs)
+├── public/                                 # eq-logo-blue/white.svg · favicon.svg · icons.svg · eq-tokens.css
+├── netlify.toml · vite.config.ts · eslint.config.js · tsconfig*.json
+├── package.json · pnpm-lock.yaml · pnpm-workspace.yaml
+├── .env.example · .mcp.json
+├── CLAUDE.md · SECURITY-PATTERNS.md · TASKS.md
 └── README.md
 ```
 
