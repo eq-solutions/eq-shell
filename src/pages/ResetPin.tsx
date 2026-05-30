@@ -4,6 +4,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { EqLogo } from '../components/EqLogo';
 
@@ -105,13 +106,14 @@ export default function ResetPin() {
           value={pinConfirm}
           onChange={(e) => setPinConfirm(e.target.value)}
         />
-        <button
+        <Button
           type="submit"
-          className="eq-btn-primary"
+          variant="primary"
           disabled={busy || !pin || !pinConfirm}
+          style={{ width: '100%' }}
         >
           {busy ? 'Saving…' : 'Set PIN and sign in →'}
-        </button>
+        </Button>
         {err && (
           <div className="eq-err" role="alert">
             {err}

@@ -10,6 +10,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { Button } from '@eq-solutions/ui';
 import { HubLayout } from '../components/HubLayout';
 
 type Step = 'idle' | 'scanning' | 'confirming' | 'done' | 'error';
@@ -114,15 +115,15 @@ export default function EnrollTotp() {
               Google Authenticator, Microsoft Authenticator, Authenticator Pro,
               or any TOTP-compatible app.
             </p>
-            <button
+            <Button
               type="button"
-              className="eq-btn-primary"
+              variant="primary"
               disabled={busy}
               onClick={startEnrollment}
-              style={{ width: 'auto', padding: '0 24px' }}
+              style={{ padding: '0 24px' }}
             >
               {busy ? 'Starting…' : 'Set up authenticator →'}
-            </button>
+            </Button>
             {err && <div className="eq-err" role="alert" style={{ marginTop: 16 }}>{err}</div>}
           </div>
         )}
@@ -162,14 +163,14 @@ export default function EnrollTotp() {
                 In your app, choose "Time-based" / "TOTP" and paste this key.
               </p>
             </details>
-            <button
+            <Button
               type="button"
-              className="eq-btn-primary"
-              style={{ width: 'auto', padding: '0 24px' }}
+              variant="primary"
+              style={{ padding: '0 24px' }}
               onClick={() => setStep('confirming')}
             >
               I've scanned it →
-            </button>
+            </Button>
           </div>
         )}
 
@@ -217,23 +218,23 @@ export default function EnrollTotp() {
               />
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
-              <button
+              <Button
                 type="button"
-                className="eq-btn-ghost"
+                variant="ghost"
                 disabled={busy}
                 style={{ padding: '0 16px' }}
                 onClick={() => { setStep('scanning'); setCode(''); setErr(null); }}
               >
                 ← Back
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
-                className="eq-btn-primary"
+                variant="primary"
                 disabled={busy || code.length !== 6}
-                style={{ width: 'auto', padding: '0 24px' }}
+                style={{ padding: '0 24px' }}
               >
                 {busy ? 'Verifying…' : 'Confirm →'}
-              </button>
+              </Button>
             </div>
             {err && <div className="eq-err" role="alert" style={{ marginTop: 16 }}>{err}</div>}
           </form>

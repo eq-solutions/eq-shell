@@ -13,6 +13,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
@@ -221,14 +222,14 @@ function AdminEditUserInner() {
         </label>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <button
+          <Button
             type="submit"
-            className="eq-btn-primary"
+            variant="primary"
             disabled={busy}
-            style={{ width: 'auto', padding: '0 20px' }}
+            style={{ padding: '0 20px' }}
           >
             {busy ? 'Saving…' : 'Save changes'}
-          </button>
+          </Button>
           <Link to={`/${tenantSlug}/admin/users`} className="eq-btn-ghost" style={{ textDecoration: 'none' }}>
             Cancel
           </Link>
@@ -252,11 +253,11 @@ function AdminEditUserInner() {
           Generates a one-time reset link valid for 24 hours. Share it with
           the user — they'll set a new PIN and be signed straight in.
         </p>
-        <button
+        <Button
           type="button"
-          className="eq-btn-ghost"
+          variant="ghost"
           disabled={resetBusy}
-          style={{ width: 'auto', padding: '0 20px' }}
+          style={{ padding: '0 20px' }}
           onClick={async () => {
             if (!target) return;
             setResetErr(null);
@@ -285,7 +286,7 @@ function AdminEditUserInner() {
           }}
         >
           {resetBusy ? 'Generating…' : 'Generate reset link'}
-        </button>
+        </Button>
 
         {resetErr && (
           <div className="eq-err" role="alert" style={{ marginTop: 12 }}>
@@ -305,14 +306,15 @@ function AdminEditUserInner() {
                 style={{ flex: 1, fontSize: 12, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', padding: '6px 10px', border: '1px solid var(--eq-border)', borderRadius: 4, background: 'var(--eq-bg)' }}
                 onFocus={(e) => e.target.select()}
               />
-              <button
+              <Button
                 type="button"
-                className="eq-btn-ghost"
-                style={{ padding: '0 12px', height: 32, fontSize: 12, whiteSpace: 'nowrap' }}
+                variant="ghost"
+                size="sm"
+                style={{ whiteSpace: 'nowrap' }}
                 onClick={() => void navigator.clipboard.writeText(resetUrl)}
               >
                 Copy
-              </button>
+              </Button>
             </div>
             <p style={{ fontSize: 11, color: 'var(--eq-grey)', marginTop: 8 }}>
               Expires in 24 hours. One use only.

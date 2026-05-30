@@ -13,6 +13,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { EqLogo } from '../components/EqLogo';
 
@@ -116,13 +117,14 @@ export default function AcceptInvite() {
           value={pinConfirm}
           onChange={(e) => setPinConfirm(e.target.value)}
         />
-        <button
+        <Button
           type="submit"
-          className="eq-btn-primary"
+          variant="primary"
           disabled={busy || !pin || !pinConfirm}
+          style={{ width: '100%' }}
         >
           {busy ? 'Setting up…' : 'Set PIN and continue →'}
-        </button>
+        </Button>
         {err && (
           <div className="eq-err" role="alert">
             {err}

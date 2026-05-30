@@ -2,6 +2,7 @@
 // Two tabs. Click an intake to drill into per-row audit.
 
 import { useEffect, useState } from 'react';
+import { Button } from '@eq-solutions/ui';
 import { createSupabaseClient } from '../lib/supabaseJwt';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
@@ -287,9 +288,9 @@ function AdminAuditInner() {
                       <td style={{ textAlign: 'right' }}>{e.rows_rejected.toLocaleString()}</td>
                       <td className="eq-table__mute">{relTime(e.started_at)}</td>
                       <td>
-                        <button className="eq-btn-ghost" onClick={() => openDrilldown(e)}>
+                        <Button variant="ghost" size="sm" onClick={() => openDrilldown(e)}>
                           View
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))
@@ -380,19 +381,19 @@ function AdminAuditInner() {
                     intake_id: {drilldown.intake.intake_id}
                   </p>
                 </div>
-                <button className="eq-btn-ghost" onClick={() => setDrilldown(null)}>
+                <Button variant="ghost" size="sm" onClick={() => setDrilldown(null)}>
                   Close
-                </button>
+                </Button>
               </div>
               <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
                 {drilldown.intake.status !== 'rolled_back' && (
-                  <button
-                    className="eq-btn-ghost"
-                    style={{ borderColor: 'var(--status-error-fg)', color: 'var(--status-error-fg)' }}
+                  <Button
+                    variant="danger"
+                    size="sm"
                     onClick={() => openRollback(drilldown.intake.intake_id)}
                   >
                     Roll back this intake
-                  </button>
+                  </Button>
                 )}
               </div>
               <h3 style={{ marginTop: 24, fontSize: 13, textTransform: 'uppercase', color: 'var(--eq-mute)' }}>
@@ -491,23 +492,22 @@ function AdminAuditInner() {
                 </div>
               )}
               <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                <button
+                <Button
                   type="button"
-                  className="eq-btn-ghost"
+                  variant="ghost"
                   onClick={() => setRollbackState(null)}
                   disabled={rollbackState.busy}
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="eq-btn-ghost"
-                  style={{ borderColor: 'var(--status-error-fg)', color: 'var(--status-error-fg)' }}
+                  variant="danger"
                   onClick={submitRollback}
                   disabled={rollbackState.busy || !rollbackState.reason.trim()}
                 >
                   {rollbackState.busy ? 'Rolling back…' : 'Confirm rollback'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>

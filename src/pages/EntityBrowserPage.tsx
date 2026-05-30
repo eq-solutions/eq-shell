@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useParams } from 'react-router-dom';
+import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
@@ -343,13 +344,13 @@ function EntityBrowserInner({ entity }: { entity: string }) {
           }}
         />
         {search && (
-          <button
-            className="eq-btn-ghost"
-            style={{ fontSize: 12, padding: '0 10px', height: 36 }}
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setSearchInput('')}
           >
             Clear
-          </button>
+          </Button>
         )}
 
         {/* Active / All / Inactive filter — only for entities with an active column */}
@@ -453,20 +454,20 @@ function EntityBrowserInner({ entity }: { entity: string }) {
 
       {totalPages != null && totalPages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 16 }}>
-          <button
-            className="eq-btn-ghost"
+          <Button
+            variant="ghost"
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0 || loading}
           >
             Previous
-          </button>
-          <button
-            className="eq-btn-ghost"
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => setPage((p) => p + 1)}
             disabled={(page + 1) * PAGE_SIZE >= (count ?? 0) || loading}
           >
             Next
-          </button>
+          </Button>
         </div>
       )}
 
@@ -667,58 +668,59 @@ function EntityDetailDrawer({
               flexWrap: 'wrap',
             }}>
               {isActive ? (
-                <button
+                <Button
                   type="button"
-                  className="eq-btn-ghost"
+                  variant="ghost"
+                  size="sm"
                   disabled={actionLoading !== null}
                   onClick={() => void handleAction('archive')}
-                  style={{ fontSize: 12 }}
                 >
                   {actionLoading === 'archive' ? 'Archiving…' : 'Archive'}
-                </button>
+                </Button>
               ) : (
-                <button
+                <Button
                   type="button"
-                  className="eq-btn-ghost"
+                  variant="ghost"
+                  size="sm"
                   disabled={actionLoading !== null}
                   onClick={() => void handleAction('unarchive')}
-                  style={{ fontSize: 12 }}
                 >
                   {actionLoading === 'unarchive' ? 'Restoring…' : 'Restore'}
-                </button>
+                </Button>
               )}
 
               {isManager && (
                 confirmDelete ? (
                   <>
-                    <button
+                    <Button
                       type="button"
-                      className="eq-btn-ghost"
+                      variant="danger"
+                      size="sm"
                       disabled={actionLoading !== null}
                       onClick={() => void handleAction('delete')}
-                      style={{ fontSize: 12, color: '#c0392b' }}
                     >
                       {actionLoading === 'delete' ? 'Deleting…' : 'Confirm delete'}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
-                      className="eq-btn-ghost"
+                      variant="ghost"
+                      size="sm"
                       disabled={actionLoading !== null}
                       onClick={() => setConfirmDelete(false)}
-                      style={{ fontSize: 12 }}
                     >
                       Cancel
-                    </button>
+                    </Button>
                   </>
                 ) : (
-                  <button
+                  <Button
                     type="button"
-                    className="eq-btn-ghost"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setConfirmDelete(true)}
-                    style={{ fontSize: 12, color: '#c0392b' }}
+                    style={{ color: '#c0392b' }}
                   >
                     Delete
-                  </button>
+                  </Button>
                 )
               )}
             </div>
