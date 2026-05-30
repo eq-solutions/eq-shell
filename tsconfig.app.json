@@ -15,6 +15,14 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Redirect @eq-solutions/ui to a local type shim so tsc never reads the
+     * package's .tsx source (which uses a more permissive tsconfig). Vite's
+     * resolver is independent and still finds the real node_modules package
+     * at runtime/build time. */
+    "paths": {
+      "@eq-solutions/ui": ["./src/types/eq-solutions-ui.d.ts"]
+    },
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
