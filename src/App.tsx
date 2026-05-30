@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, lazy, Suspense, type ReactNode, type CSSProperties } from 'react';
+﻿import { useCallback, useEffect, useRef, useState, lazy, Suspense, type ReactNode, type CSSProperties } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -61,6 +61,10 @@ const IntakeServiceLanding = lazy(() =>
 // the component (useCan), not an entitlement module, so no ModuleGate.
 const EquipmentModule = lazy(() => import('./modules/equipment/index'));
 // QuotesModule (link-out stub) replaced by QuotesIframe — persistent keeper below.
+
+// SPIKE: Auth re-platform PoC. Isolated surface — never reached by the normal
+// login flow. Delete this import + the /auth-spike route to fully remove the spike.
+const AuthSpikePage = lazy(() => import('./spike/AuthSpikePage'));
 
 // Inactive iframe keepers stay mounted but hidden. We must NOT use
 // `display: none`: an iframe laid out under display:none collapses to 0×0,
@@ -452,6 +456,15 @@ function App() {
           <Route path="/select-tenant" element={<TenantPicker />} />
           {/* Phase 1.G: TOTP challenge shown after PIN login when 2FA is enrolled */}
           <Route path="/totp-challenge" element={<TotpChallenge />} />
+          {/* SPIKE: Auth re-platform PoC — isolated, public, no session required. */}
+          <Route
+            path="/auth-spike"
+            element={
+              <Suspense fallback={null}>
+                <AuthSpikePage />
+              </Suspense>
+            }
+          />
           <Route
             path="/:tenantSlug/*"
             element={
