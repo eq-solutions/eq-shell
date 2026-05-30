@@ -8,13 +8,14 @@ SQL editor) once its gate clears.
 
 Source review: [`docs/FINAL-SPRINT.md`](../../docs/FINAL-SPRINT.md) — Phases 2–3.
 
-| File | Target | Gate | What / why |
-|---|---|---|---|
-| `jvkn_auth_rpc_hardening.sql` | **jvkn** (control plane) | 🔒 auth — Royce sign-off | Revoke `anon`/`authenticated` EXECUTE on 3 admin PIN primitives that take an arbitrary `user_id` with no caller check. Only `cards-api.ts` (service-role) calls them. Closes a latent account-takeover / PIN-brute-force / user-enumeration surface. |
-| `sks_overlay_fn_revoke.sql` | **ehowg** (live SKS) | 🔒 Track-B-adjacent | Revoke `anon`/`authenticated` EXECUTE on the 5 `_sks_*` overlay trigger fns. They're `RETURNS trigger` (error if RPC-called) and fire as triggers regardless of grant, so this is safe + does not affect Quotes (service-role). |
-| `sks_safety_rpc_hardening.sql` | **ehowg** (live SKS) | 🔒🔒 needs Field-caller check | `approve_safety_record`/`submit_safety_record` trust a caller-supplied `p_tenant_id` and are `authenticated`-executable → latent cross-tenant write. Two fix options inside; pick based on how EQ Field calls them. |
+| File | Target | Gate | Status | What / why |
+|---|---|---|---|---|
+| `jvkn_auth_rpc_hardening.sql` | jvkn | 🔒 auth | ✅ **APPLIED** 2026-05-30 (`harden_auth_pin_rpcs_revoke_anon`) | Revoked `anon`/`authenticated` on the 3 admin PIN primitives; service_role retained (verified). Kept here as the change record. |
+| `sks_overlay_fn_revoke.sql` | ehowg | 🔒 | ✅ **APPLIED** 2026-05-30 (`revoke_sks_overlay_fn_grants`) | Revoked `anon`/`authenticated` on the 5 `_sks_*` trigger fns. |
+| `sks_safety_rpc_hardening.sql` | ehowg | 🔒🔒 | 🟡 staged — **no current exposure** (SKS single-tenant; no caller found by name) | `approve/submit_safety_record` trust a caller-supplied `p_tenant_id`. Apply the right option when SKS goes multi-tenant or EQ gains the Field safety surface — confirm the caller first. |
+| `sks_gm_briefing_reshape_expand.sql` | ehowg | 🔒🔒 | 🟡 staged (parity, safe) | PHASE 1: add `tenant_id` (nullable) + backfill + per-tenant index. Additive, invisible to the app. |
+| `sks_gm_briefing_reshape_contract.sql` | ehowg | 🔒🔒 | 🟡 staged — **deploy-coupled** | PHASE 2: enforce NOT NULL + swap the period unique key. Ship the `upload-gm-report.ts` change first (documented in the file). |
 
-## Not yet authored here (specced in FINAL-SPRINT Phase 3, need design + smoke)
+## Not authored here (specced in FINAL-SPRINT Phase 3, need the drift work-list + smoke)
 
-- **gm/briefing `tenant_id` reshape** (SKS) — ADD `tenant_id` + backfill `7dee117c` + swap UNIQUE; must ship **with** `upload-gm-report.ts` (`onConflict: 'tenant_id,period_code'`). Deploy-coupled.
-- **SKS Service CMMS reconcile** — converge the older `ppm_*` path onto the branch `0020`/`0021` shape; drive off `check-tenant-drift.mjs`.
+- **SKS Service CMMS reconcile** — converge the older `ppm_*` path onto the branch `0020`/`0021` shape; drive off `check-tenant-drift.mjs` once the runner has produced the diff.
