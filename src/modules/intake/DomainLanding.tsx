@@ -13,6 +13,7 @@ import { createSupabaseClient } from '../../lib/supabaseJwt';
 import { Gate } from '../../permissions/Gate';
 import { HubLayout } from '../../components/HubLayout';
 import { EntityImportPanel, WIRED_ENTITY_NAMES } from './EntityImportPanel';
+import { friendlyError } from '../../lib/friendlyError';
 
 type ModuleSlug = 'core' | 'field' | 'cards' | 'quotes' | 'service';
 
@@ -49,12 +50,12 @@ function DomainLanding({ module, title, description }: DomainLandingProps) {
         const { data, error } = await sb.rpc('eq_list_module_entities', { p_module: module });
         if (cancelled) return;
         if (error) {
-          setErr(error.message);
+          setErr(friendlyError(error, "We couldn't load your import options. Please try refreshing."));
         } else {
           setEntities((data as RegistryEntity[]) || []);
         }
       } catch (e) {
-        if (!cancelled) setErr((e as Error).message);
+        if (!cancelled) setErr(friendlyError(e, "We couldn't load your import options. Please try refreshing."));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -77,7 +78,7 @@ function DomainLanding({ module, title, description }: DomainLandingProps) {
       {loading && <div className="eq-loading">Loading entities…</div>}
       {err && (
         <div className="eq-error" role="alert">
-          Could not load entities: {err}
+          {err}
         </div>
       )}
 
