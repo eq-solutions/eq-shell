@@ -276,7 +276,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
   const [briefingError, setBriefingError] = useState<string | null>(null);
-  const [selectedPM, setSelectedPM] = useState<string | null>(null);
+  const [selectedPMs, setSelectedPMs] = useState<string[]>([]);
   const [selectedWip, setSelectedWip] = useState<string | null>(null);
 
   useEffect(() => {
@@ -317,17 +317,16 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
   }, [period.id]);
 
   // Derive filter options from jobs data
-  const allPMs  = [...new Set(jobs.filter(j => !j.is_overhead).map(j => j.job_manager))].sort();
   const allWips = [...new Set(jobs.map(j => j.wip_code).filter((w): w is string => !!w))].sort();
 
-  // Apply filters
+  // Apply filters — PMs is multi-select, WIP is single
   const filtered = jobs.filter(j => {
-    if (selectedPM  && j.job_manager !== selectedPM) return false;
-    if (selectedWip && j.wip_code   !== selectedWip) return false;
+    if (selectedPMs.length > 0 && !selectedPMs.includes(j.job_manager)) return false;
+    if (selectedWip && j.wip_code !== selectedWip) return false;
     return true;
   });
 
-  const isFiltered = !!(selectedPM || selectedWip);
+  const isFiltered = !!(selectedPMs.length > 0 || selectedWip);
   const nonOverhead = filtered.filter(j => !j.is_overhead);
   const critical = filtered.filter(j => j.is_forecast_loss && !j.is_overhead);
   const watch    = filtered.filter(j => j.is_cash_negative && !j.is_forecast_loss && !j.is_overhead && j.cash_gap > 20_000);
@@ -383,10 +382,9 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         </div>
       </div>
 
-      {/* Filter bar */}
-      {(allPMs.length > 1 || allWips.length > 1) && (
-        <div style={{ flexShrink: 0, borderBottom: '1px solid #E2EAF0', background: '#fff', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 16, overflowX: 'auto' }}>
-          {/* WIP filter */}
+      {/* Filter bar — WIP only; PM is now handled via the right-rail scorecard */}
+      {(allWips.length > 1 || isFiltered) && (
+        <div style={{ flexShrink: 0, borderBottom: '1px solid #E2EAF0', background: '#fff', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 12, overflowX: 'auto' }}>
           {allWips.length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99' }}>WIP</span>
@@ -396,26 +394,18 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
               ))}
             </div>
           )}
-          {allWips.length > 1 && allPMs.length > 1 && <div style={{ width: 1, height: 20, background: '#E2EAF0', flexShrink: 0 }} />}
-          {/* PM filter */}
-          {allPMs.length > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflowX: 'auto' }}>
-              <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99', flexShrink: 0 }}>PM</span>
-              <button style={!selectedPM ? chipActive : chipBase} onClick={() => setSelectedPM(null)}>All</button>
-              {allPMs.map(pm => {
-                const initials = pm.split(' ').slice(0, 2).map((w: string) => w[0]).join('');
-                return (
-                  <button key={pm} style={selectedPM === pm ? chipActive : chipBase} title={pm} onClick={() => setSelectedPM(selectedPM === pm ? null : pm)}>
-                    {initials}
-                  </button>
-                );
-              })}
-              {selectedPM && <span style={{ fontSize: 12, color: '#6B7A99', flexShrink: 0 }}>— {selectedPM}</span>}
-            </div>
+          {/* PM active filter summary — driven by scorecard clicks */}
+          {selectedPMs.length > 0 && (
+            <>
+              <div style={{ width: 1, height: 20, background: '#E2EAF0', flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: '#3DA8D8', background: '#EAF5FB', padding: '3px 10px', borderRadius: 20, fontWeight: 500, flexShrink: 0 }}>
+                {selectedPMs.length === 1 ? selectedPMs[0] : `${selectedPMs.length} PMs selected`}
+              </span>
+            </>
           )}
           {isFiltered && (
             <button style={{ marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: '#6B7A99', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
-              onClick={() => { setSelectedPM(null); setSelectedWip(null); }}>
+              onClick={() => { setSelectedPMs([]); setSelectedWip(null); }}>
               Clear filters ×
             </button>
           )}
@@ -440,7 +430,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           {/* KPIs — update to filtered values when a filter is active */}
           {isFiltered && (
             <div style={{ fontSize: 11, color: '#3DA8D8', background: '#EAF5FB', borderRadius: 6, padding: '5px 12px', marginBottom: 10, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              ⚡ Showing figures for {[selectedPM, selectedWip ? `WIP: ${selectedWip}` : null].filter(Boolean).join(' · ')}
+              ⚡ Showing figures for {[selectedPMs.length === 1 ? selectedPMs[0] : selectedPMs.length > 1 ? `${selectedPMs.length} PMs` : null, selectedWip ? `WIP: ${selectedWip}` : null].filter(Boolean).join(' · ')}
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
@@ -463,11 +453,11 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           <JobTable jobs={critical} type="loss" />
           <JobTable jobs={watch}    type="watch" />
 
-          {/* When a PM is selected, show ALL their jobs (sorted by severity) */}
-          {selectedPM && nonOverhead.length > 0 && (
+          {/* When PMs are selected, show ALL their jobs (sorted by severity) */}
+          {selectedPMs.length > 0 && nonOverhead.length > 0 && (
             <>
               <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                All jobs — {selectedPM}
+                All jobs — {selectedPMs.length === 1 ? selectedPMs[0] : `${selectedPMs.length} PMs`}
                 <span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 10, overflow: 'hidden', border: '1px solid #E2EAF0', fontSize: 13 }}>
@@ -505,7 +495,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
             </>
           )}
 
-          {!selectedPM && !selectedWip && critical.length === 0 && watch.length === 0 && !loadingJobs && (
+          {selectedPMs.length === 0 && !selectedWip && critical.length === 0 && watch.length === 0 && !loadingJobs && (
             <div style={{ textAlign: 'center', color: '#6B7A99', padding: '24px 0', fontSize: 13 }}>No critical or watch jobs this period.</div>
           )}
 
@@ -527,32 +517,37 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
             <div style={{ flexShrink: 0, borderBottom: '1px solid #E2EAF0', overflowY: 'auto', maxHeight: '42%' }}>
               {/* Sticky header */}
               <div style={{ position: 'sticky', top: 0, zIndex: 1, background: '#F7FAFC', borderBottom: '1px solid #EEF2F7', padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99' }}>PM Scorecard</span>
-                {selectedPM && (
-                  <button onClick={() => setSelectedPM(null)} style={{ fontSize: 10, color: '#3DA8D8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Clear filter ×
+                <div>
+                  <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99' }}>PM Scorecard</span>
+                  <span style={{ fontSize: 10, color: '#9AA5BC', marginLeft: 6 }}>click to filter</span>
+                </div>
+                {selectedPMs.length > 0 && (
+                  <button onClick={() => setSelectedPMs([])} style={{ fontSize: 10, color: '#3DA8D8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Clear ×
                   </button>
                 )}
               </div>
-              {/* PM rows */}
+              {/* PM rows — click toggles, multi-select supported */}
               {briefing.pm_summary.map((pm, i) => {
-                const isActive = selectedPM === pm.name;
+                const isActive = selectedPMs.includes(pm.name);
                 const dotColor  = pm.status === 'red' ? '#C0392B' : pm.status === 'amber' ? '#E6A817' : '#1E7E4A';
                 const cashColor = pm.cash_position >= 0 ? '#1E7E4A' : '#C0392B';
                 const initials  = pm.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
                 return (
-                  <div key={i} onClick={() => setSelectedPM(isActive ? null : pm.name)} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px',
-                    cursor: 'pointer', borderBottom: '1px solid #EEF2F7',
-                    background: isActive ? '#EAF5FB' : 'transparent',
-                    transition: 'background 0.1s',
-                  }}>
-                    {/* Avatar with status colour */}
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700,
-                      background: pm.status === 'red' ? '#FDECEA' : pm.status === 'amber' ? '#FEF6E4' : '#EAF5EE',
-                      color: dotColor, border: isActive ? `2px solid #3DA8D8` : `2px solid transparent`,
+                  <div key={i}
+                    onClick={() => setSelectedPMs(prev => isActive ? prev.filter(p => p !== pm.name) : [...prev, pm.name])}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px',
+                      cursor: 'pointer', borderBottom: '1px solid #EEF2F7',
+                      background: isActive ? '#EAF5FB' : 'transparent',
+                      transition: 'background 0.1s',
                     }}>
-                      {initials}
+                    {/* Avatar — check icon when active */}
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700,
+                      background: isActive ? '#3DA8D8' : pm.status === 'red' ? '#FDECEA' : pm.status === 'amber' ? '#FEF6E4' : '#EAF5EE',
+                      color: isActive ? '#fff' : dotColor, border: `2px solid ${isActive ? '#3DA8D8' : 'transparent'}`,
+                    }}>
+                      {isActive ? '✓' : initials}
                     </div>
                     {/* Name + note */}
                     <div style={{ flex: 1, minWidth: 0 }}>
