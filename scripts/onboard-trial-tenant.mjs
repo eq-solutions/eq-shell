@@ -96,7 +96,8 @@ if (badMod) fail(1, `--modules contains unknown '${badMod}'. Allowed: ${ALLOWED_
 if (modules.length === 0) fail(1, '--modules cannot be empty');
 
 const env = requireEnvs([
-  'CONTROL_SUPABASE_URL',
+  'SUPABASE_ACCESS_TOKEN',         // the migrate step (migrate-tenants.mjs) needs it for the Management API
+  'CONTROL_SUPABASE_URL',          // migrate-tenants.mjs derives CONTROL_PROJECT_REF from this
   'CONTROL_SUPABASE_SERVICE_KEY',
 ]);
 

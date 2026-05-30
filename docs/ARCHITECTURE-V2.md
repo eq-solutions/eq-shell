@@ -19,6 +19,64 @@ Product quality drives adoption. The architecture is the product moat. The canon
 
 ---
 
+## Source of truth model (locked 2026-05-30)
+
+> Decided with Royce 2026-05-30, sharpening principle 3. The per-tenant canonical
+> database is the **system of record** for all tenant business data. Apps are
+> independent consumers over a stable API — they do not keep parallel authoritative
+> stores, and they never touch another app's schema or the data plane's internals.
+
+**One tenant database, schemas federated by ownership.** "Single source of truth"
+does *not* mean one shared schema everyone migrates into — that would bottleneck app
+iteration behind a central contract. It means one physical tenant DB is the
+authoritative home for all the tenant's data, partitioned by ownership:
+
+- `app_data` — **shared** cross-app entities (customers, contacts, sites, staff,
+  `canonical_events`). The cross-app contract; changed carefully.
+- `quotes`, `service`, … (future) — **per-app** schemas for each app's own records,
+  in the *same* tenant DB (one backup / region / export — no external parallel store),
+  but each owned by that app's own migration track so the app iterates without
+  touching the shared contract.
+- JSONB columns for the app-specific long tail, so adding a field is not a migration.
+
+All schemas — shared and per-app — are applied **identically to every tenant** by the
+migration runner. Federation is about *which team owns a migration track*, not
+per-tenant variation; drift between tenants is still not tolerated (principle 4).
+
+**Apps reach canonical only through `canonical-api`.** No direct Supabase client
+against another app's schema; no poking the tenant DB's `public` schema. Cross-app
+reads go through published `canonical-api` resources + the `canonical_events` log.
+
+**App conformance status (2026-05-30):**
+
+| App | Today | Target |
+|---|---|---|
+| Service | Write-through to `canonical-api` (mirror, fire-and-forget) — ✅ conforming boundary | Promote mirror → primary write (records become canonical) |
+| Quotes | ❌ pokes the SKS tenant's `public.sks_*` overlay directly | Migrate onto `canonical-api`; retire the overlay |
+| Cards | ⚠ direct `eq_cards_*` RPCs against the **control-plane** project | Move onto `canonical-api` + the tenant data plane |
+| Field | iframe (legacy data model) | Onto the tenant plane per FIELD-UNIFICATION-PLAN |
+
+**Phasing (working-before-refactoring).** Shared entities first — each app moves its
+customer/contact/site/staff reads+writes onto `canonical-api` (Quotes drops `sks_*`,
+Cards leaves the control plane). Then lift each app's native records into its per-app
+canonical schema as the live store. No live app migrates in one jump.
+
+**Operational commitment, eyes open.** As the system of record, canonical is a
+**synchronous** runtime dependency — app writes must be durable, and `canonical-api`
++ the tenant DB reliably available. This replaces Service's current best-effort
+"skip on failure" mirror semantics for any data that becomes canonical-owned.
+
+**Migration mechanism (settled 2026-05-30).** Tenant-plane schema is applied through
+Supabase's **Management API** (`apply_migration`) — the official transactional path —
+not the legacy `migrate-tenants.mjs` + `exec_sql` runner, which can't run transactional
+DDL and left an arbitrary-SQL `SECURITY DEFINER` function on every tenant (the real
+reason historical migrations were applied by hand, and drifted). The git
+`supabase/tenant-migrations/` files stay the source of truth; `scripts/check-tenant-drift.mjs`
+(actual cross-tenant schema comparison) is the enforced no-drift gate; per-tenant
+`exec_sql` is dropped once the runner is rewritten thin over the Management API.
+
+---
+
 ## Current state (pre-migration)
 
 ```
