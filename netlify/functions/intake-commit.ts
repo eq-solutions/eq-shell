@@ -43,6 +43,7 @@ import {
 } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { verifySupabaseJwt, readBearerJwt } from './_shared/supabase-jwt.js';
+import { can, type Principal } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 // Table → module mapping. Mirrors the dispatcher in shared
@@ -157,16 +158,28 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   // Either method gives us a tenant_id we trust to scope the commit.
   let tenantId: string;
   let callerKind: 'session' | 'jwt';
+  let principal: Principal;
 
   const session = verifySessionToken(readSessionCookie(req));
   if (session) {
     tenantId   = session.tenant_id;
     callerKind = 'session';
+    principal  = { role: session.role, is_platform_admin: session.is_platform_admin };
   } else {
     const jwt = verifySupabaseJwt(readBearerJwt(req));
     if (!jwt) return json(401, { ok: false, error: 'not_signed_in' });
     tenantId   = jwt.app_metadata.tenant_id;
     callerKind = 'jwt';
+    principal  = { role: jwt.app_metadata.eq_role, is_platform_admin: jwt.app_metadata.is_platform_admin };
+  }
+
+  // Authorization. Committing a batch is the destructive intake step
+  // (intake.commit = supervisor + manager). The browser hides the button for
+  // lesser roles, but that's UX only — a direct POST bypasses it, so the same
+  // rule is enforced here. A JWT without eq_role (Supabase-native, pre-hook) is
+  // denied: no role → no commit.
+  if (!can(principal, 'intake.commit')) {
+    return json(403, { ok: false, error: 'forbidden' });
   }
 
   // ─── body validation ────────────────────────────────────────────────
