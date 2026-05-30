@@ -13,6 +13,7 @@
 // "overdue" event in the canonical feed yet (that would need an emitter).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '@eq-solutions/ui';
 import { useCan } from '../../permissions';
 import { HubLayout } from '../../components/HubLayout';
 import { Skeleton } from '../../components/Skeleton';
@@ -382,9 +383,9 @@ function EquipmentFormDrawer({
           {field('Interval', 'ppm_frequency', 'text', 'e.g. 12 months')}
 
           <div style={{ margin: '-4px 0 14px' }}>
-            <button type="button" className="eq-btn-ghost" onClick={markCalibratedToday} style={{ fontSize: 13 }}>
+            <Button type="button" variant="ghost" size="sm" onClick={markCalibratedToday}>
               Mark calibrated today
-            </button>
+            </Button>
             <span style={{ fontSize: 12, color: 'var(--eq-mute)', marginLeft: 8 }}>
               sets last done + rolls next due by the interval
             </span>
@@ -445,9 +446,9 @@ function EquipmentFormDrawer({
             <button type="button" className="eq-btn" disabled={!canSave} onClick={() => void save()}>
               {saving ? 'Saving…' : 'Save'}
             </button>
-            <button type="button" className="eq-btn-ghost" disabled={saving} onClick={onClose}>
+            <Button type="button" variant="ghost" disabled={saving} onClick={onClose}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       </aside>

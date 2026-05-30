@@ -7,6 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
@@ -216,24 +217,24 @@ export default function StorageBrowser() {
           className="eq-tabs"
           style={{ marginBottom: 16, padding: '8px 0', gap: 4, fontSize: 13 }}
         >
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setSearchParams({})}
-            className="eq-btn-ghost"
-            style={{ padding: '4px 10px', textDecoration: 'none' }}
           >
             / (root)
-          </button>
+          </Button>
           {crumbs.map((c, i) => (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               key={i}
               onClick={() => setSearchParams({ p: crumbs.slice(0, i + 1).join('/') })}
-              className="eq-btn-ghost"
-              style={{ padding: '4px 10px', textDecoration: 'none' }}
             >
               {c}
-            </button>
+            </Button>
           ))}
         </nav>
 

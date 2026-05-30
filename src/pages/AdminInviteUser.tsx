@@ -11,6 +11,7 @@
 
 import React, { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Button } from '@eq-solutions/ui';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
 import type { EqRole } from '../session';
@@ -179,14 +180,14 @@ function AdminInviteUserForm() {
         </div>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <button
+          <Button
             type="submit"
-            className="eq-btn-primary"
+            variant="primary"
             disabled={busy || !email}
-            style={{ width: 'auto', padding: '0 20px' }}
+            style={{ padding: '0 20px' }}
           >
             {busy ? 'Sending…' : 'Send invite'}
-          </button>
+          </Button>
         </div>
 
         {err && (
@@ -223,14 +224,15 @@ function AdminInviteUserForm() {
                 }}
                 onFocus={(e) => e.target.select()}
               />
-              <button
+              <Button
                 type="button"
-                className="eq-btn-ghost"
-                style={{ padding: '0 14px', height: 32, fontSize: 13, whiteSpace: 'nowrap' }}
+                variant="ghost"
+                size="sm"
+                style={{ whiteSpace: 'nowrap' }}
                 onClick={() => copyInviteUrl(success.invite_url)}
               >
                 Copy
-              </button>
+              </Button>
             </div>
           </div>
         )}

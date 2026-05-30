@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { Gate } from '../permissions/Gate';
 import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
@@ -319,15 +320,16 @@ function AdminTenantSettingsInner() {
                         style={{ display: 'none' }}
                         onChange={(e) => void handleLogoUpload(e)}
                       />
-                      <button
+                      <Button
                         type="button"
+                        variant="primary"
+                        size="sm"
                         onClick={() => { setLogoUploadStatus({ kind: 'idle' }); logoUploadRef.current?.click(); }}
                         disabled={logoUploadStatus.kind === 'uploading' || busy}
-                        className="eq-btn-primary"
-                        style={{ fontSize: 13, padding: '0 16px', height: 36, flexShrink: 0 }}
+                        style={{ flexShrink: 0 }}
                       >
                         {logoUploadStatus.kind === 'uploading' ? 'Uploading…' : 'Upload logo'}
-                      </button>
+                      </Button>
                       <input
                         type="url" value={brandLogoUrl}
                         onChange={(e) => setBrandLogoUrl(e.target.value)}
@@ -407,9 +409,9 @@ function AdminTenantSettingsInner() {
 
               <section className="eq-section">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <button type="submit" className="eq-btn-primary" disabled={busy} style={{ width: 'auto', padding: '0 20px' }}>
+                  <Button type="submit" variant="primary" disabled={busy} style={{ padding: '0 20px' }}>
                     {busy ? 'Saving…' : 'Save changes'}
-                  </button>
+                  </Button>
                   {savedAt && !saveErr && <span className="eq-pill eq-pill--ok">Saved</span>}
                 </div>
                 {saveErr && <div className="eq-err" role="alert" style={{ marginTop: 16 }}>{saveErr}</div>}

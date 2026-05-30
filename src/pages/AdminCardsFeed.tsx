@@ -4,6 +4,7 @@
 // Table layout + name/email search matches the AdminUserList pattern.
 
 import { useEffect, useMemo, useState } from 'react';
+import { Button } from '@eq-solutions/ui';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
@@ -186,22 +187,22 @@ function AdminCardsFeedInner() {
                     <td className="eq-table__mute">{formatDate(p.created_at)}</td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                        <button
-                          className="eq-btn-primary"
-                          style={{ padding: '4px 12px', fontSize: 13 }}
+                        <Button
+                          variant="primary"
+                          size="sm"
                           disabled={busy === p.staff_id}
                           onClick={() => void decide(p.staff_id, 'approve')}
                         >
                           {busy === p.staff_id ? '…' : 'Add to Field'}
-                        </button>
-                        <button
-                          className="eq-btn-ghost"
-                          style={{ padding: '4px 12px', fontSize: 13 }}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           disabled={busy === p.staff_id}
                           onClick={() => void decide(p.staff_id, 'reject')}
                         >
                           Dismiss
-                        </button>
+                        </Button>
                       </div>
                     </td>
                   </tr>

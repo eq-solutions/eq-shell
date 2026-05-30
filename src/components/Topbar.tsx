@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Link, NavLink, useParams } from 'react-router-dom';
+import { Button } from '@eq-solutions/ui';
 import { useSession, moduleEnabled } from '../session';
 import { useCan } from '../permissions';
 import { useBrand } from '../brand';
@@ -73,9 +74,9 @@ export function Topbar() {
               </span>
             )}
           </div>
-          <button className="eq-btn-ghost eq-topbar__signout" onClick={logout}>
+          <Button variant="ghost" className="eq-topbar__signout" onClick={logout}>
             Sign out
-          </button>
+          </Button>
           <button
             className="eq-topbar__menu-toggle"
             aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
@@ -126,13 +127,13 @@ export function Topbar() {
                   )}
                 </div>
               </div>
-              <button
-                className="eq-btn-ghost"
+              <Button
+                variant="ghost"
                 style={{ width: '100%' }}
                 onClick={() => { closeMenu(); void logout(); }}
               >
                 Sign out
-              </button>
+              </Button>
             </div>
           </div>
         </>

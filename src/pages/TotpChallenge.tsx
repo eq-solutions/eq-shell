@@ -10,6 +10,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { EqLogo } from '../components/EqLogo';
 
@@ -34,13 +35,13 @@ export default function TotpChallenge() {
         <p className="lede">
           Open this page directly from the sign-in form. Go back and sign in again.
         </p>
-        <button
+        <Button
           type="button"
-          className="eq-btn-primary"
+          variant="primary"
           onClick={() => navigate('/login', { replace: true })}
         >
           Back to sign in
-        </button>
+        </Button>
       </TotpShell>
     );
   }
@@ -104,13 +105,14 @@ export default function TotpChallenge() {
           placeholder="000000"
           style={{ letterSpacing: '0.2em', fontSize: 22, textAlign: 'center' }}
         />
-        <button
+        <Button
           type="submit"
-          className="eq-btn-primary"
+          variant="primary"
           disabled={busy || code.length !== 6}
+          style={{ width: '100%' }}
         >
           {busy ? 'Verifying…' : 'Verify →'}
-        </button>
+        </Button>
         {err && (
           <div className="eq-err" role="alert">
             {err}
