@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { HubLayout } from '../../components/HubLayout';
 import { Gate } from '../../permissions/Gate';
+import { EqTable, type ColDef } from '../../components/EqTable';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,6 +102,69 @@ function Badge({ type }: { type: 'loss' | 'watch' | 'ok' }) {
     </span>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Shared section label
+// ---------------------------------------------------------------------------
+
+function SectionLabel({ text }: { text: string }) {
+  return (
+    <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+      {text}<span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Job table column definitions (module-level — no recreation on render)
+// ---------------------------------------------------------------------------
+
+const JOB_COLS: ColDef<Job>[] = [
+  {
+    key: 'job',
+    header: 'Job',
+    sortValue: j => j.job_code,
+    render: j => (
+      <div>
+        <div style={{ fontWeight: 600 }}>{j.job_code} — {j.job_description}</div>
+        <div style={{ fontSize: 11, color: '#6B7A99', marginTop: 1 }}>
+          {j.job_manager} · {fmt(j.contract_valuation, '$').replace(/^[+-]/, '')} contract
+          {j.outstanding_pos > 0 ? ` · ${fmt(j.outstanding_pos, '$').replace(/^[+-]/, '')} POs` : ''}
+        </div>
+      </div>
+    ),
+  },
+  {
+    key: 'wip', header: 'WIP', align: 'right', width: 60,
+    sortValue: j => j.wip_code ?? '',
+    render: j => <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#6B7A99' }}>{j.wip_code ?? '—'}</span>,
+  },
+  {
+    key: 'cash_gap', header: 'Cash Gap', align: 'right', width: 90,
+    // positive cash_gap = deficit; sort desc → worst deficit first
+    sortValue: j => j.cash_gap,
+    render: j => (
+      <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: j.is_cash_negative ? 600 : 400, color: j.is_cash_negative ? '#C0392B' : '#1E7E4A' }}>
+        {fmt(-j.cash_gap)}
+      </span>
+    ),
+  },
+  {
+    key: 'gp', header: 'GP', align: 'right', width: 80,
+    sortValue: j => j.gross_profit ?? 0,
+    render: j => (
+      <span style={{ fontFamily: 'monospace', fontSize: 12, color: (j.gross_profit ?? 0) < 0 ? '#C0392B' : '#1E7E4A' }}>
+        {fmt(j.gross_profit)}
+      </span>
+    ),
+  },
+  {
+    key: 'status', header: 'Status', align: 'right', width: 110,
+    // Severity: 2=loss, 1=cash-neg, 0=ok → desc puts worst first
+    sortValue: j => j.is_forecast_loss ? 2 : j.is_cash_negative ? 1 : 0,
+    render: j => <Badge type={j.is_forecast_loss ? 'loss' : j.is_cash_negative ? 'watch' : 'ok'} />,
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Chat panel
@@ -236,39 +300,6 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
 // ---------------------------------------------------------------------------
 // Period detail view
 // ---------------------------------------------------------------------------
-
-function JobTable({ jobs, type }: { jobs: Job[]; type: 'loss' | 'watch' }) {
-  if (jobs.length === 0) return null;
-  const label = type === 'loss' ? 'Critical — needs a conversation' : 'Watch — large cash gap, GP positive';
-  return (
-    <>
-      <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-        {label}<span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
-      </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 10, overflow: 'hidden', border: '1px solid #E2EAF0', fontSize: 13 }}>
-        <thead>
-          <tr>{['Job', 'WIP', 'Cash gap', 'GP forecast', 'Status'].map(h => (
-            <th key={h} style={{ background: '#1A1A2E', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.8px', padding: '9px 12px', textAlign: h === 'Job' ? 'left' : 'right' }}>{h}</th>
-          ))}</tr>
-        </thead>
-        <tbody>
-          {jobs.map(j => (
-            <tr key={j.id} style={{ background: type === 'loss' ? '#FDECEA' : '#FEF6E4' }}>
-              <td style={{ padding: '10px 12px', borderBottom: `1px solid ${type === 'loss' ? '#F5E4E3' : '#F5EDD3'}` }}>
-                <div style={{ fontWeight: 600 }}>{j.job_code} — {j.job_description}</div>
-                <div style={{ fontSize: 11, color: '#6B7A99' }}>{j.job_manager} · {fmt(j.contract_valuation, '$').replace(/^[+-]/, '')} contract{j.outstanding_pos > 0 ? ` · ${fmt(j.outstanding_pos, '$').replace(/^[+-]/, '')} POs` : ''}</div>
-              </td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, color: '#6B7A99', fontFamily: 'monospace' }}>{j.wip_code ?? '—'}</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: type === 'loss' ? '#C0392B' : '#B7770D', fontWeight: 600 }}>{fmt(-j.cash_gap)}</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: (j.gross_profit ?? 0) < 0 ? '#C0392B' : '#1E7E4A' }}>{fmt(j.gross_profit)}</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right' }}><Badge type={type === 'loss' ? 'loss' : 'watch'} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </>
-  );
-}
 
 function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -449,49 +480,36 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
             </div>
           )}
 
-          {/* Tables — critical/watch filtered */}
-          <JobTable jobs={critical} type="loss" />
-          <JobTable jobs={watch}    type="watch" />
+          {/* Critical jobs */}
+          {critical.length > 0 && (
+            <>
+              <SectionLabel text="Critical — needs a conversation" />
+              <EqTable data={critical} columns={JOB_COLS} rowKey={j => j.id}
+                rowStyle={() => ({ background: '#FDECEA' })}
+                defaultSort={{ key: 'cash_gap', dir: 'desc' }}
+                style={{ marginBottom: 16 }} />
+            </>
+          )}
 
-          {/* When PMs are selected, show ALL their jobs (sorted by severity) */}
+          {/* Watch jobs */}
+          {watch.length > 0 && (
+            <>
+              <SectionLabel text="Watch — large cash gap, GP positive" />
+              <EqTable data={watch} columns={JOB_COLS} rowKey={j => j.id}
+                rowStyle={() => ({ background: '#FEF6E4' })}
+                defaultSort={{ key: 'cash_gap', dir: 'desc' }}
+                style={{ marginBottom: 16 }} />
+            </>
+          )}
+
+          {/* All jobs for selected PMs — sortable, defaults to severity (losses first) */}
           {selectedPMs.length > 0 && nonOverhead.length > 0 && (
             <>
-              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                All jobs — {selectedPMs.length === 1 ? selectedPMs[0] : `${selectedPMs.length} PMs`}
-                <span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, background: '#fff', borderRadius: 10, overflow: 'hidden', border: '1px solid #E2EAF0', fontSize: 13 }}>
-                <thead>
-                  <tr>{['Job', 'WIP', 'Cash gap', 'GP', 'Status'].map(h => (
-                    <th key={h} style={{ background: '#1A1A2E', color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.8px', padding: '9px 12px', textAlign: h === 'Job' ? 'left' : 'right' }}>{h}</th>
-                  ))}</tr>
-                </thead>
-                <tbody>
-                  {[...nonOverhead]
-                    .sort((a, b) => {
-                      if (a.is_forecast_loss !== b.is_forecast_loss) return a.is_forecast_loss ? -1 : 1;
-                      if (a.is_cash_negative !== b.is_cash_negative) return a.is_cash_negative ? -1 : 1;
-                      return (b.cash_gap ?? 0) - (a.cash_gap ?? 0);
-                    })
-                    .map(j => {
-                      const rowBg = j.is_forecast_loss ? '#FDECEA' : j.is_cash_negative ? '#FEF6E4' : '#fff';
-                      return (
-                        <tr key={j.id} style={{ background: rowBg }}>
-                          <td style={{ padding: '9px 12px', borderBottom: '1px solid #EEF2F7' }}>
-                            <div style={{ fontWeight: 500 }}>{j.job_code} — {j.job_description}</div>
-                            <div style={{ fontSize: 11, color: '#6B7A99', marginTop: 1 }}>{fmt(j.contract_valuation, '$').replace(/^[+-]/, '')} contract{j.outstanding_pos > 0 ? ` · ${fmt(j.outstanding_pos, '$').replace(/^[+-]/, '')} POs` : ''}</div>
-                          </td>
-                          <td style={{ padding: '9px 12px', textAlign: 'right', fontSize: 11, color: '#6B7A99', fontFamily: 'monospace' }}>{j.wip_code ?? '—'}</td>
-                          <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: j.is_cash_negative ? '#C0392B' : '#1E7E4A', fontWeight: j.is_cash_negative ? 600 : 400 }}>{fmt(-j.cash_gap)}</td>
-                          <td style={{ padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: (j.gross_profit ?? 0) < 0 ? '#C0392B' : '#1E7E4A' }}>{fmt(j.gross_profit)}</td>
-                          <td style={{ padding: '9px 12px', textAlign: 'right' }}>
-                            {j.is_forecast_loss ? <Badge type="loss" /> : j.is_cash_negative ? <Badge type="watch" /> : <Badge type="ok" />}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+              <SectionLabel text={`All jobs — ${selectedPMs.length === 1 ? selectedPMs[0] : `${selectedPMs.length} PMs`}`} />
+              <EqTable data={nonOverhead} columns={JOB_COLS} rowKey={j => j.id}
+                rowStyle={j => ({ background: j.is_forecast_loss ? '#FDECEA' : j.is_cash_negative ? '#FEF6E4' : '#fff' })}
+                defaultSort={{ key: 'status', dir: 'desc' }}
+                style={{ marginBottom: 16 }} />
             </>
           )}
 
