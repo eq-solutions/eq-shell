@@ -15,37 +15,29 @@
 // `qual`, this also catches the security regressions we found (anon-exec funcs,
 // `USING (true)` policies, `user_metadata` RLS) — not just structural drift.
 //
-// Apply path + reads both go through Supabase's Management API (see
-// ARCHITECTURE-V2 "Migration mechanism").
+// Both the tenant lookup and the per-tenant fingerprint go through the Supabase
+// Management API (scripts/_mgmt.mjs) — same env contract as migrate-tenants.mjs.
 //
 // Usage:
 //   node scripts/check-tenant-drift.mjs                  # compare all active tenants
 //   node scripts/check-tenant-drift.mjs --reference=core # pin the reference tenant
 //   node scripts/check-tenant-drift.mjs --json           # machine-readable diff
 //
-// Env:
-//   SUPABASE_ACCESS_TOKEN          Management API token (personal/org)
-//   CONTROL_SUPABASE_URL           control-plane project URL (holds tenant_routing)
-//   CONTROL_SUPABASE_SERVICE_KEY   control-plane service-role key
+// Required env:
+//   SUPABASE_ACCESS_TOKEN   Management API token (personal/org)
+//   CONTROL_PROJECT_REF     Control-plane project ref (falls back to CONTROL_SUPABASE_URL)
 //
 // Exit codes: 0 = no drift, 1 = config error, 2 = drift detected.
 
-import { createClient } from '@supabase/supabase-js';
 import { parseArgs } from 'node:util';
-
-const MGMT = 'https://api.supabase.com';
+import { mgmtRows, loadActiveTenants, requireAccessToken } from './_mgmt.mjs';
 
 const { values: args } = parseArgs({ options: {
   reference: { type: 'string' },
   json:      { type: 'boolean', default: false },
 }});
 
-const env = requireEnv(['SUPABASE_ACCESS_TOKEN', 'CONTROL_SUPABASE_URL', 'CONTROL_SUPABASE_SERVICE_KEY']);
-
-const control = createClient(env.CONTROL_SUPABASE_URL, env.CONTROL_SUPABASE_SERVICE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-  db:   { schema: 'shell_control' },
-});
+requireAccessToken();   // fail fast on missing token
 
 // One query returns this tenant's full schema fingerprint as sorted JSON arrays,
 // so cosmetic ordering never registers as drift. Public functions are scoped to
@@ -92,28 +84,18 @@ const FINGERPRINT_SQL = `
 `;
 
 async function fingerprint(ref) {
-  const res = await fetch(`${MGMT}/v1/projects/${ref}/database/query`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.SUPABASE_ACCESS_TOKEN}`,
-      'Content-Type':  'application/json',
-    },
-    body: JSON.stringify({ query: FINGERPRINT_SQL }),
-  });
-  if (!res.ok) throw new Error(`Management API query failed for ${ref} (${res.status}): ${await res.text()}`);
-  const rows = await res.json();
+  const rows = await mgmtRows(ref, FINGERPRINT_SQL);
   return rows?.[0]?.fp ?? { tables: [], columns: [], functions: [], policies: [] };
 }
 
 // ── load active tenants ──
-const { data: routings, error } = await control
-  .from('tenant_routing')
-  .select('supabase_project_ref, status, tenants!inner(slug)')
-  .in('status', ['active', 'provisioning']);
-if (error) fail(1, `tenant_routing query failed: ${error.message}`);
-if (!routings?.length) fail(1, 'no active tenants in tenant_routing');
-
-const tenants = routings.map(r => ({ slug: r.tenants.slug, ref: r.supabase_project_ref }));
+let tenants;
+try {
+  tenants = await loadActiveTenants();   // [{ slug, ref, status }]
+} catch (e) {
+  fail(1, `tenant lookup failed: ${e.message}`);
+}
+if (!tenants.length) fail(1, 'no active tenants in tenant_routing');
 
 // ── fingerprint every tenant ──
 const fps = {};
@@ -161,11 +143,5 @@ if (args.json) {
 process.exit(drift ? 2 : 0);
 
 // ── helpers ──
-function requireEnv(names) {
-  const out = {}; const missing = [];
-  for (const n of names) { const v = process.env[n]; if (!v) missing.push(n); else out[n] = v; }
-  if (missing.length) fail(1, `missing env vars: ${missing.join(', ')}`);
-  return out;
-}
 function log(m) { console.log(`[drift] ${m}`); }
 function fail(code, m) { console.error(`ERROR: ${m}`); process.exit(code); }

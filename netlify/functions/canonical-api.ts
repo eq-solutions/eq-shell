@@ -481,14 +481,18 @@ const WRITABLE_FIELDS: Record<string, Set<string>> = {
     'location_in_site', 'barcode', 'active', 'defects_summary',
     'client_classification', 'notes', 'cert_url',
   ]),
+  // For the asset child resources, asset_id is the canonical UUID FK — the caller
+  // threads it from the asset upsert response; *_by_id resolve via staff. visit_id
+  // is intentionally NOT writable: there is no visits resource to resolve it from
+  // an external id yet, so accepting it would only invite NULL / wrong values.
   asset_test_results: new Set([
-    'external_id', 'asset_id', 'visit_id',
+    'external_id', 'asset_id',
     'test_type', 'test_date', 'tested_by_id', 'tested_by_external',
     'licence_number', 'pass_fail', 'raw_values', 'action_taken_if_fail',
     'test_cert_reference', 'notes',
   ]),
   asset_defects: new Set([
-    'external_id', 'asset_id', 'visit_id',
+    'external_id', 'asset_id',
     'raised_date', 'raised_by_id', 'severity', 'description', 'status',
     'resolution_date', 'resolved_by_id', 'resolution_notes',
     'estimated_cost', 'actual_cost', 'photo_attachments',
@@ -504,6 +508,16 @@ const RESOURCE_PK: Record<string, string> = {
   asset_test_results:  'result_id',
   asset_defects:       'defect_id',
 };
+
+// Fail fast at module load if the three resource maps fall out of sync: every
+// writable resource MUST have a RESOURCES entry (table/select) and a RESOURCE_PK,
+// or handlePut would dereference `undefined` at runtime instead of 400-ing.
+for (const k of Object.keys(WRITABLE_FIELDS)) {
+  if (!RESOURCES[k] || !RESOURCE_PK[k]) {
+    throw new Error(
+      `canonical-api misconfig: writable resource '${k}' missing from ${!RESOURCES[k] ? 'RESOURCES' : 'RESOURCE_PK'}`);
+  }
+}
 
 interface UpsertBody {
   resource:    string;
@@ -636,15 +650,44 @@ async function handlePut(
       .single();
 
     if (insertErr) {
-      console.error('[canonical-api] PUT insert failed', {
-        app: caller.app, tenantSlug, resource: resourceName,
-        external_id: body.external_id, error: insertErr.message,
-      });
-      return err(500, 'internal_error', insertErr.message);
+      // Concurrent create with the same (tenant_id, external_id): the partial
+      // unique index rejects the loser with 23505. Re-resolve and UPDATE so the
+      // upsert stays idempotent under concurrency rather than 500-ing a create
+      // that actually succeeded.
+      if ((insertErr as { code?: string }).code === '23505') {
+        const { data: raced } = await cAny
+          .schema('app_data')
+          .from(def.table)
+          .select(pk)
+          .eq('tenant_id', routing.tenant_id)
+          .eq('external_id', body.external_id)
+          .maybeSingle();
+        if (raced) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { tenant_id: _tid, external_id: _eid, ...mutableFields } = row as Record<string, unknown>;
+          const { error: updateErr } = await cAny
+            .schema('app_data')
+            .from(def.table)
+            .update({ ...mutableFields, updated_at: new Date().toISOString() })
+            .eq('tenant_id', routing.tenant_id)
+            .eq(pk, raced[pk]);
+          if (updateErr) return err(500, 'internal_error', updateErr.message);
+          canonicalId = raced[pk] as string;
+          created = false;
+        } else {
+          return err(500, 'internal_error', insertErr.message);
+        }
+      } else {
+        console.error('[canonical-api] PUT insert failed', {
+          app: caller.app, tenantSlug, resource: resourceName,
+          external_id: body.external_id, error: insertErr.message,
+        });
+        return err(500, 'internal_error', insertErr.message);
+      }
+    } else {
+      canonicalId = inserted[pk] as string;
+      created = true;
     }
-
-    canonicalId = inserted[pk] as string;
-    created = true;
   }
 
   const responseBody: UpsertOkBody = {
