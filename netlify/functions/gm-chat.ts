@@ -130,12 +130,14 @@ Rules:
       throw new Error(`Anthropic ${resp.status}: ${text}`);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await resp.json() as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const reply = (data.content ?? []).filter((b: any) => b.type === 'text').map((b: { text: string }) => b.text).join('').trim();
+    const data = await resp.json() as { content?: { type: string; text?: string }[] };
+    const reply = (data.content ?? [])
+      .filter(b => b.type === 'text')
+      .map(b => b.text ?? '')
+      .join('')
+      .trim();
 
-    return json(200, { ok: true, message: reply });
+    return json(200, { ok: true, message: reply || 'No response.' });
   } catch (e) {
     captureServerError(e, { context: 'gm-chat', tenant_id: session.tenant_id });
     return json(500, { error: 'chat_failed' });

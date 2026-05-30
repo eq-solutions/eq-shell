@@ -236,12 +236,13 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       throw new Error(`Anthropic ${resp.status}: ${text.slice(0, 300)}`);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await resp.json() as any;
+    const data = await resp.json() as {
+      stop_reason?: string;
+      content?: { type: string; name?: string; input?: unknown }[];
+    };
 
     // tool_use response — input is already a validated JS object, no JSON.parse needed
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const toolBlock = (data.content ?? []).find((b: any) => b.type === 'tool_use' && b.name === 'create_briefing');
+    const toolBlock = (data.content ?? []).find(b => b.type === 'tool_use' && b.name === 'create_briefing');
     if (!toolBlock?.input) {
       throw new Error(`Claude did not call create_briefing. stop_reason=${data.stop_reason} content=${JSON.stringify(data.content).slice(0, 200)}`);
     }

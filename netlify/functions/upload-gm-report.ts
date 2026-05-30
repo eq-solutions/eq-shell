@@ -110,7 +110,7 @@ function parseWorkbenchXlsx(buffer: ArrayBuffer): ParseResult {
     const jobCode = toStr(row[4]);
     if (!jobCode) continue; // subtotal / total row
 
-    const jobManager = toStr(row[3]) ?? '';
+    const jobManager = toStr(row[3]);
     if (!jobManager) continue;
 
     jobs.push({
