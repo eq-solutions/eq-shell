@@ -11,6 +11,7 @@ interface Period {
   id:                    string;
   period_code:           string;
   uploaded_at:           string;
+  is_archived:           boolean;
   total_contract:        number;
   net_cash_position:     number;
   gp_at_completion:      number;
@@ -612,13 +613,17 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
   const [periods, setPeriods] = useState<Period[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (archived: boolean) => {
     setLoading(true);
     try {
-      const res = await fetch('/.netlify/functions/gm-reports', { credentials: 'include' });
+      const qs = archived ? '?archived=true' : '';
+      const res = await fetch(`/.netlify/functions/gm-reports${qs}`, { credentials: 'include' });
       const data = await res.json() as { ok: boolean; periods?: Period[] };
       setPeriods(data.periods ?? []);
     } finally {
@@ -626,11 +631,11 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(showArchived); }, [load, showArchived]);
 
   async function handleUpload(file: File) {
     setUploading(true);
-    setError(null);
+    setUploadError(null);
     try {
       const form = new FormData();
       form.append('file', file);
@@ -641,27 +646,66 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
       });
       const data = await res.json() as { ok?: boolean; error?: string; detail?: string };
       if (!data.ok) {
-        setError(data.detail ?? data.error ?? 'Upload failed');
+        setUploadError(data.detail ?? data.error ?? 'Upload failed');
       } else {
-        await load();
+        await load(showArchived);
       }
     } catch {
-      setError('Upload failed — check your connection');
+      setUploadError('Upload failed — check your connection');
     } finally {
       setUploading(false);
     }
   }
 
+  async function handleArchive(id: string, archive: boolean) {
+    setActionLoading(id);
+    try {
+      const res = await fetch(`/.netlify/functions/manage-gm-report?id=${id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: archive }),
+      });
+      if (res.ok) setPeriods(ps => ps.filter(p => p.id !== id));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setActionLoading(id);
+    try {
+      const res = await fetch(`/.netlify/functions/manage-gm-report?id=${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setPeriods(ps => ps.filter(p => p.id !== id));
+        setConfirmDelete(null);
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  const actionBtn: React.CSSProperties = {
+    background: 'none', border: '1px solid #E2EAF0', borderRadius: 6,
+    padding: '4px 10px', fontSize: 11, color: '#6B7A99', cursor: 'pointer',
+    fontFamily: 'inherit', whiteSpace: 'nowrap', transition: 'all 0.1s',
+  };
+
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '28px 20px' }}>
+    <div style={{ maxWidth: 820, margin: '0 auto', padding: '28px 20px' }}>
+
       {/* Upload zone */}
       <div
         onDragOver={e => e.preventDefault()}
         onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleUpload(f); }}
-        style={{ border: '2px dashed #C8D9E8', borderRadius: 12, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', marginBottom: 24, background: '#F7FAFC' }}
         onClick={() => fileRef.current?.click()}
+        style={{ border: '2px dashed #C8D9E8', borderRadius: 12, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', marginBottom: 24, background: '#F7FAFC' }}
       >
-        <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} />
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} />
         <div style={{ fontSize: 28, marginBottom: 8 }}>📊</div>
         <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1A2E', marginBottom: 4 }}>
           {uploading ? 'Uploading…' : 'Drop Workbench report here'}
@@ -669,54 +713,108 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
         <div style={{ fontSize: 12, color: '#6B7A99' }}>
           Project Manager Live Update Report (.xlsx) · or click to browse
         </div>
-        {error && <div style={{ marginTop: 8, fontSize: 12, color: '#C0392B' }}>{error}</div>}
+        {uploadError && <div style={{ marginTop: 8, fontSize: 12, color: '#C0392B' }}>{uploadError}</div>}
       </div>
 
-      {/* Period list */}
+      {/* List header */}
       <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-        Uploaded periods
+        {showArchived ? 'Archived periods' : 'Uploaded periods'}
         <span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
+        <button
+          onClick={() => setShowArchived(v => !v)}
+          style={{ ...actionBtn, color: showArchived ? '#3DA8D8' : '#6B7A99', borderColor: showArchived ? '#3DA8D8' : '#E2EAF0' }}
+        >
+          {showArchived ? '← Active' : 'Show archived'}
+        </button>
       </div>
 
       {loading && <div style={{ textAlign: 'center', color: '#6B7A99', padding: 24 }}>Loading…</div>}
 
       {!loading && periods.length === 0 && (
         <div style={{ textAlign: 'center', color: '#6B7A99', padding: 24, fontSize: 13 }}>
-          No reports uploaded yet. Drop a Workbench export above to get started.
+          {showArchived ? 'No archived reports.' : 'No reports uploaded yet. Drop a Workbench export above to get started.'}
         </div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {periods.map(p => {
-          const cashColor = p.net_cash_position >= 0 ? '#1E7E4A' : '#C0392B';
+          const cashColor  = p.net_cash_position >= 0 ? '#1E7E4A' : '#C0392B';
           const lossAccent = p.forecast_loss_count > 5 ? '#C0392B' : p.forecast_loss_count > 0 ? '#B7770D' : '#1E7E4A';
+          const isDeleting = confirmDelete === p.id;
+          const isBusy     = actionLoading === p.id;
+
           return (
-            <button
-              key={p.id}
-              onClick={() => onSelect(p)}
-              style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #E2EAF0', borderRadius: 10, padding: '14px 16px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'border-color 0.15s' }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#1A1A2E' }}>Period {p.period_code}</div>
-                <div style={{ fontSize: 11, color: '#6B7A99', marginTop: 2 }}>
-                  Uploaded {new Date(p.uploaded_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  {p.briefing_generated_at ? ' · AI briefing ready' : ''}
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #E2EAF0', borderRadius: 10, padding: '12px 14px' }}>
+
+              {/* Main clickable area — opens period detail */}
+              <button
+                onClick={() => !showArchived && onSelect(p)}
+                disabled={showArchived}
+                style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 14, background: 'none', border: 'none', cursor: showArchived ? 'default' : 'pointer', textAlign: 'left', fontFamily: 'inherit', padding: 0, minWidth: 0 }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1A1A2E', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    Period {p.period_code}
+                    {p.is_archived && <span style={{ fontSize: 9, fontWeight: 700, color: '#9AA5BC', background: '#F2F4F7', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.5px' }}>ARCHIVED</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#6B7A99', marginTop: 2 }}>
+                    Uploaded {new Date(p.uploaded_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {p.briefing_generated_at ? ' · AI briefing ready' : ''}
+                  </div>
                 </div>
+                <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: cashColor }}>{fmt(p.net_cash_position)}</div>
+                  <div style={{ fontSize: 9, color: '#6B7A99', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net cash</div>
+                </div>
+                <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: lossAccent }}>{p.forecast_loss_count}</div>
+                  <div style={{ fontSize: 9, color: '#6B7A99', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Losses</div>
+                </div>
+                <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#3DA8D8' }}>{fmtPct(p.overall_gp_pct)}</div>
+                  <div style={{ fontSize: 9, color: '#6B7A99', textTransform: 'uppercase', letterSpacing: '0.5px' }}>GP%</div>
+                </div>
+                {!showArchived && <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="#C8D4DF" strokeWidth={2} style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6"/></svg>}
+              </button>
+
+              {/* Separator */}
+              <div style={{ width: 1, height: 32, background: '#E2EAF0', flexShrink: 0 }} />
+
+              {/* Actions */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {/* Replace (active only) — re-upload same period code → upsert handles it */}
+                {!showArchived && (
+                  <>
+                    <input type="file" accept=".xlsx,.xls" id={`ru-${p.id}`} style={{ display: 'none' }}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} />
+                    <label htmlFor={`ru-${p.id}`} style={{ ...actionBtn, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                      ↻ Replace
+                    </label>
+                  </>
+                )}
+
+                {/* Archive / Restore */}
+                <button disabled={isBusy} onClick={() => handleArchive(p.id, !p.is_archived)}
+                  style={{ ...actionBtn, opacity: isBusy ? 0.5 : 1 }}>
+                  {p.is_archived ? '↩ Restore' : '🗄 Archive'}
+                </button>
+
+                {/* Delete — two-step inline confirm */}
+                {isDeleting ? (
+                  <>
+                    <button disabled={isBusy} onClick={() => handleDelete(p.id)}
+                      style={{ ...actionBtn, background: '#C0392B', color: '#fff', borderColor: '#C0392B', opacity: isBusy ? 0.5 : 1 }}>
+                      {isBusy ? 'Deleting…' : 'Confirm delete'}
+                    </button>
+                    <button onClick={() => setConfirmDelete(null)} style={actionBtn}>Cancel</button>
+                  </>
+                ) : (
+                  <button onClick={() => { setConfirmDelete(p.id); }} style={actionBtn}>
+                    🗑 Delete
+                  </button>
+                )}
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 18, fontWeight: 700, color: cashColor }}>{fmt(p.net_cash_position)}</div>
-                <div style={{ fontSize: 10, color: '#6B7A99', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net cash</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 18, fontWeight: 700, color: lossAccent }}>{p.forecast_loss_count}</div>
-                <div style={{ fontSize: 10, color: '#6B7A99', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Losses</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: '#3DA8D8' }}>{fmtPct(p.overall_gp_pct)}</div>
-                <div style={{ fontSize: 10, color: '#6B7A99', textTransform: 'uppercase', letterSpacing: '0.5px' }}>GP%</div>
-              </div>
-              <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="#C8D4DF" strokeWidth={2}><path d="M9 18l6-6-6-6"/></svg>
-            </button>
+            </div>
           );
         })}
       </div>

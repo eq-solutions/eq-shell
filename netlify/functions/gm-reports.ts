@@ -38,17 +38,21 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const periodId = url.searchParams.get('id');
 
   if (!periodId) {
+    // ?archived=true shows archived periods; default is active only
+    const showArchived = url.searchParams.get('archived') === 'true';
+
     const { data, error } = await db
       .from('gm_report_periods')
       .select(
-        'id, period_code, uploaded_at, total_contract, net_cash_position, ' +
+        'id, period_code, uploaded_at, is_archived, total_contract, net_cash_position, ' +
         'gp_at_completion, overall_gp_pct, cash_neg_count, forecast_loss_count, ' +
         'outstanding_pos, briefing_generated_at',
       )
+      .eq('is_archived', showArchived)
       .order('uploaded_at', { ascending: false });
 
     if (error) return json(500, { error: 'db_error', detail: error.message });
-    return json(200, { ok: true, periods: data ?? [] });
+    return json(200, { ok: true, periods: data ?? [], show_archived: showArchived });
   }
 
   const { data: period, error: pErr } = await db
