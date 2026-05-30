@@ -85,6 +85,18 @@
 
 * { box-sizing: border-box; }
 
+/* A11y: global focus-visible ring (WCAG 2.4.7).
+ * Catches buttons, links, and nav items that have no per-component ring.
+ * Existing per-input :focus styles (login boxes, PIN fields) are unaffected —
+ * :focus-visible only fires on keyboard focus and those selectors are more
+ * specific, so they continue to win. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--eq-focus-ring);
+  outline-offset: var(--eq-focus-offset, 2px);
+  border-radius: inherit;
+}
+
 body, #root {
   margin: 0;
   min-height: 100svh;

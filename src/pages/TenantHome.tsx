@@ -365,7 +365,7 @@ export default function TenantHome() {
           </div>
 
           {/* Cross-app briefing feed — canonical events from EQ Quotes, Service, etc. */}
-          {(feed === null || feed.length > 0) && (
+          {(feed !== null && feed.length > 0) && (
             <div>
               <div className="eq-hub-activity__head">
                 <span className="eq-hub-activity__title">Live feed</span>
