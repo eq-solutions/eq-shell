@@ -1,0 +1,94 @@
+# Cross-app audit — EQ suite (2026-05-31)
+
+Multi-agent audit of the five apps orbiting EQ Shell, against the four bars:
+consistent design · clear/simple/effective security · audited/correct code ·
+invisible technology. 11 agents; **every high/security finding was
+adversarially verified** (refute-tested). Repos read directly at `C:\Projects\*`.
+
+> **Refuted by verification — do NOT action:**
+> - eq-solves-field `salt info.txt` "committed secret" → the file is **untracked
+>   + gitignored**, never in git history (confirmed independently). Local dev
+>   notes only.
+> - eq-solves-field `send-email.js` timing-unsafe compare → real but narrow
+>   (guards an email-send token, not credential entry).
+
+## Conformance matrix
+
+| Repo | Design | Security | Correctness | Plain-English | Canonical |
+|---|---|---|---|---|---|
+| eq-solves-field | weak (2H) | weak (3H) | mixed | mixed (1H) | non-conformant |
+| eq-cards | mixed | mixed | mixed (1H) | mixed (1H) | partial (rolled back) |
+| eq-solves-service | weak (2H) | mixed | mixed | mixed | partial |
+| eq-quotes | mixed | weak (1H) | weak (2H) | mixed | non-conformant |
+| sks-nsw-labour | weak (2H) | weak (4H) | mixed | mixed | non-conformant |
+
+## Canonical conformance — the headline
+
+**Do the apps look at their tenant canonical? None fully.** Closest → furthest:
+
+- **eq-solves-service — partial.** customers/sites/assets/defects write-through
+  to `canonical-api`; the bulk of CMMS data (maintenance checks, tests,
+  notifications) writes local-only.
+- **eq-cards — partial, blocked.** The conformant proxy (`CardsApi`) was built
+  then **rolled back** because OTP sessions lack `app_metadata.tenant_id`. Repos
+  hit `eq-canonical` RPCs directly; dead `CardsApi` remains. Fix = provision
+  `tenant_id` for OTP sessions, then re-enable + delete the direct-RPC path.
+- **eq-solves-field — non-conformant.** Direct to per-tenant Supabase; Shell
+  integration is auth-only. Expected per the build principle (supplant
+  surface-by-surface), not a regression.
+- **eq-quotes — non-conformant.** The known `sks_*` overlay (RLS off,
+  service-role). Needs a quote schema in `canonical-api` first, then a
+  `quotes-api` proxy (Track B).
+- **sks-nsw-labour — non-conformant.** Direct Supabase; only the
+  `pipeline-summary` push to Shell. Legacy; Field-unification target.
+
+## Confirmed cross-cutting issues (suite-wide patterns)
+
+1. **Plaintext access codes in client JS** — Field + SKS Labour ship
+   `staffCode:'2026'` / `supervisorCode:'SKSNSW'` / `fallbackManagerPassword:'SKSNSW'`
+   in the browser bundle. DB override is optional; the hardcoded values are the
+   live fallback, readable in DevTools.
+2. **Client-side PIN/credential checks** — SKS Labour reads the raw `pin` column
+   to the browser + compares locally (no rate limit); Field's fallback grants
+   supervisor access on any verify-pin network failure.
+3. **Non-constant-time HMAC compares** — SKS Labour `eq-agent.js`, Field
+   `send-email.js` (their `verify-pin` already uses `timingSafeEqual` — apply
+   uniformly).
+4. **Permissive/disabled RLS** — SKS Labour `anon SELECT USING(true)` on 9
+   tables incl. tenders/pipeline; Quotes RLS off on all `sks_quotes_*`.
+5. **Raw backend errors to users** — all 5 repos pass `e.message` /
+   `error.message` to the UI. (The `friendlyError` helper built for Shell is the
+   suite-wide pattern to port.)
+6. **Gradients/shadows everywhere** — all 5 repos violate the flat rule; SKS
+   Labour also uses **DM Sans** not Plus Jakarta Sans. The design rule is
+   effectively unenforced suite-wide.
+7. **Architecture jargon on user surfaces** — "tenant shell" (Cards), "No tenant
+   assigned" (Service), "Entity" / "cross-tenant" (Quotes).
+8. **Broken in prod (Quotes)** — expiry cron throws `ImportError` on every call;
+   share-link is O(N) with a 1000-row cap → silent 404s.
+9. **Service** — unvalidated `next` open redirect after sign-in; cron
+   `?force_user_id` lets any `CRON_SECRET` holder target any user.
+
+## Confirmed high-severity, by repo (action list)
+
+- **eq-solves-field** — codes `2026`/`SKSNSW` in client JS (`app-state.js`);
+  supervisor fallback on network fail (`auth.js` 717/724); raw error in login UI
+  (`auth.js` 348).
+- **eq-cards** — `CardsApi` dead/rolled-back (OTP `tenant_id`); raw
+  `ServerFailure` to user (`auth_flow_notifier.dart` 52); wildcard CORS
+  (`ocr-licence`, `share-licence`).
+- **eq-solves-service** — gradients (auth layout, `RouteProgress`) + shadows
+  (Modal/SlidePanel/HelpWidget/BulkActionBar); open redirect; cron
+  `force_user_id`.
+- **eq-quotes** — cron `ImportError` (`cron/routes.py` 58); share-link O(N)+cap;
+  hardcoded `eq-dev-salt` fallback (`client/routes.py` 43); RLS off; no CSRF;
+  estimator name-matching misattribution.
+- **sks-nsw-labour** (highest risk) — codes in client JS; client-side timesheet
+  PIN (`auth.js` 888); non-timing-safe HMAC (`eq-agent.js`); anon SELECT on 9
+  tables; DM Sans; gradients/shadows; `?tenant=` override bypasses isolation.
+
+---
+
+*Generated by the `cross-app-audit` workflow. Full per-finding detail + fixes
+were in the run output; distil into per-repo issues as each app is scheduled.
+Fixes to satellite repos are out of scope for eq-shell and gated per repo.*
