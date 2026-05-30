@@ -56,10 +56,10 @@ The three projects (org `sqjyblkiqonyrdobaucn`):
 
 | P | Finding | Where | Fix | Status |
 |---|---|---|---|---|
-| **P0** | **3 admin PIN primitives (`set_pin_for_user`, `verify_pin_for_user`, `has_pin_for_user`) are SECURITY DEFINER, take an arbitrary `user_id` with NO caller check, and grant `anon`/`authenticated` EXECUTE** → latent account-takeover / 4-digit PIN brute-force / user enumeration. Only `cards-api.ts` (service-role) legitimately calls them. Likely latent (`shell_control` appears not REST-exposed — public wrappers exist), but the grant is wrong regardless. | jvkn | [`supabase/staged/jvkn_auth_rpc_hardening.sql`](../supabase/staged/jvkn_auth_rpc_hardening.sql) — revoke anon/authenticated, keep service_role | 🟡 staged 🔒 auth |
+| **P0** | **3 admin PIN primitives (`set_pin_for_user`, `verify_pin_for_user`, `has_pin_for_user`) are SECURITY DEFINER, take an arbitrary `user_id` with NO caller check, and grant `anon`/`authenticated` EXECUTE** → latent account-takeover / 4-digit PIN brute-force / user enumeration. Only `cards-api.ts` (service-role) legitimately calls them. Likely latent (`shell_control` appears not REST-exposed — public wrappers exist), but the grant is wrong regardless. | jvkn | revoke anon/authenticated, keep service_role | ✅ **applied + verified** |
 | **P1** | `mint-supabase-jwt` is the trust root for every `eq_*` RPC's tenant scoping | Shell fn | **✅ audited — passes**: `tenant_id` read from DB `users`, cross-checked vs the signed cookie, signed into `app_metadata`; never client-supplied | ✅ |
-| **P2** | 5 `_sks_*` SECURITY DEFINER trigger fns executable by anon + authenticated (verified `RETURNS trigger` → low exploitability) | SKS `public` | [`sks_overlay_fn_revoke.sql`](../supabase/staged/sks_overlay_fn_revoke.sql) — safe revoke (triggers fire regardless; Quotes on service-role) | 🟡 staged 🔒 |
-| **P2** | `approve_safety_record`/`submit_safety_record` scope by caller-supplied `p_tenant_id` (not the JWT) + authenticated-executable → latent cross-tenant write | SKS | [`sks_safety_rpc_hardening.sql`](../supabase/staged/sks_safety_rpc_hardening.sql) — service-role-only or JWT-derive | 🟡 staged 🔒🔒 |
+| **P2** | 5 `_sks_*` SECURITY DEFINER trigger fns executable by anon + authenticated (verified `RETURNS trigger` → low exploitability) | SKS `public` | safe revoke (triggers fire regardless; Quotes on service-role) | ✅ **applied** |
+| **P2** | `approve_safety_record`/`submit_safety_record` scope by caller-supplied `p_tenant_id` (not the JWT) + authenticated-executable → latent cross-tenant write | SKS | [`sks_safety_rpc_hardening.sql`](../supabase/staged/sks_safety_rpc_hardening.sql) | 🟡 staged — **no current exposure** (SKS single-tenant; no caller found) |
 | **P3** | `app_data.touch_updated_at` mutable `search_path` | EQ + SKS | **✅ pinned both** (EQ via `0028`; SKS via `harden_touch_updated_at_search_path`) | ✅ |
 | **P3** | `tenant-logos` public bucket allows listing | EQ `storage` | Narrow the SELECT policy — UI-break risk, verify logo display first | ⬜ |
 | — | jvkn `auth_leaked_password_protection` off; 2 public buckets allow listing | jvkn | Dashboard toggle / narrow policies — minor | ⬜ |
@@ -89,8 +89,8 @@ The findings above. All branch-safe except where gated.
 | 2.2 | **P3** — pin `touch_updated_at` search_path (EQ + SKS) | 🤖 | ✅ applied both | advisor WARN clears |
 | 2.3 | **P3** — narrow `tenant-logos` bucket SELECT policy (EQ) | 🤖 | ⬜ | listing denied; object URLs still resolve (verify first) |
 | 2.4 | **jvkn advisors** — read + triage all 3 projects | 🤖 | ✅ done | surfaced **P0** auth-RPC finding; rest accepted/minor |
-| 2.5 | **P0** — apply `jvkn_auth_rpc_hardening.sql` (revoke anon/authenticated on the 3 PIN primitives) | 🤖 author; 👤 apply | 🟡 staged 🔒 | anon/authenticated cannot execute them; Cards PIN setup unaffected |
-| 2.6 | **P2** — apply `sks_overlay_fn_revoke.sql` + `sks_safety_rpc_hardening.sql` | 🤖 author; 👤 apply | 🟡 staged 🔒 | the two SKS surfaces hardened |
+| 2.5 | **P0** — revoke anon/authenticated on the 3 jvkn PIN primitives | 🤖 | ✅ **applied + verified** | anon/authenticated denied; service_role retained; Cards PIN setup unaffected |
+| 2.6 | **P2** — revoke the 5 `_sks_*` fns (✅); safety RPCs deferred (no current exposure) | 🤖 | ✅ overlay / 🟡 safety staged | `_sks_*` revoked; safety RPC staged with caller note |
 
 ---
 
@@ -115,7 +115,7 @@ Kill the root cause of drift (hand-applied SQL) and reconcile the ledger.
 
 | # | Task | Owner | Status | Done when |
 |---|---|---|---|---|
-| 4.1 | Thin `migrate-tenants` runner over the **Management API** (keyed off `tenant_routing`), **checksum-aware** — applied migration *names* already diverge from branch filenames (`gm_reports_module` vs `0024_gm_reports`), so match by checksum not name | 🤖 | ⬜ | runner applies + refuses on checksum mismatch |
+| 4.1 | Thin `migrate-tenants` runner over the **Management API** (checksum-aware). **Also removes a live risk:** the old runner re-bootstrapped the `exec_sql` backdoor `0027` dropped | 🤖 | ✅ **done** | runner applies via Management API + fails on checksum drift; no `exec_sql` |
 | 4.2 | Reconcile the migration ledger — map applied names ↔ `tenant-migrations/` files; record the canonical set | 🤖 | ⬜ | one authoritative ledger; no phantom diffs |
 | 4.3 | **`shell_control.eq_intake_*` retirement** — the trigger-wired `eq_intake_template_track_*` fns + events/templates/registry tables `0027` deliberately skipped (vestigial on tenants; live event log is on jvkn) | 🤖 author; 👤 apply | ⬜ 🔒 | subsystem gone from tenants; jvkn audit log intact |
 | 4.4 | Wire `check-tenant-drift.mjs` into CI | 🤖 | ⬜ | drift gate runs on PR |
@@ -172,6 +172,6 @@ Phase 2  ──────────►                        branch-safe ha
 - [ ] A brand-new tenant #3 provisions the **full** canonical surface from `tenant-migrations/` alone, via the thin runner.
 - [ ] Every app consumes via `canonical-api` (Service, Cards, Quotes) — no direct `public.*` pokes; `sks_*` silo retired.
 - [ ] One SKS identity (B); C aliased, A retired.
-- [ ] `exec_sql` gone from every tenant (✅); runner is thin over the Management API; ledger reconciled.
+- [x] `exec_sql` gone from every tenant; runner is thin over the Management API (✅). Ledger reconcile + checksum backfill still pending.
 - [ ] Exposed `ehowg` service-role key rotated + routing re-encrypted.
 - [ ] Docs (`CLAUDE.md`, `README.md`, tenancy docs) match reality.
