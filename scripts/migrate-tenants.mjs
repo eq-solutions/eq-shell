@@ -2,35 +2,37 @@
 // scripts/migrate-tenants.mjs
 //
 // Apply every pending tenant-plane migration (supabase/tenant-migrations/*.sql)
-// to every tenant data plane.
+// to every tenant data plane — thin over the Supabase **Management API**.
 //
-// Reads shell_control.tenant_routing, decrypts each service-role key, opens
-// a Supabase client against the tenant DB, ensures app_data._eq_migrations
-// exists, and applies anything missing in order.
+// WHY THIS REWRITE (2026-05-30): the previous runner applied SQL through a
+// per-tenant `public.exec_sql(text)` SECURITY DEFINER function, and bootstrapped
+// (RE-CREATED) it on first run if missing. That function is an arbitrary-SQL
+// backdoor — it was the root cause of hand-applied drift and was DROPPED from
+// every tenant in migration 0027. A runner that recreates it would silently
+// undo that security fix. This version uses ONLY the Management API
+// (POST /v1/projects/{ref}/database/query), which runs DDL as `postgres`
+// authenticated by your personal/org access token — no exec_sql, no service-key
+// decryption, no secrets in the runner beyond the access token.
 //
-// Idempotent — safe to re-run any time. Migrations that have already been
-// applied (by filename) are skipped. To re-apply, delete the row from
-// app_data._eq_migrations in the target tenant DB by hand.
+// It is also CHECKSUM-AWARE: a migration whose name is already recorded but
+// whose file content has since changed is treated as DRIFT and the tenant is
+// failed (not silently skipped or re-applied) unless --allow-checksum-drift.
 //
 // Usage:
-//   node scripts/migrate-tenants.mjs                # all tenants (provisioning + active)
-//   node scripts/migrate-tenants.mjs --slug=core    # just one tenant
-//   node scripts/migrate-tenants.mjs --dry-run      # show what would run, do nothing
-//   node scripts/migrate-tenants.mjs --include-suspended   # include suspended tenants (rare)
+//   node scripts/migrate-tenants.mjs                     # all provisioning+active tenants
+//   node scripts/migrate-tenants.mjs --slug=core         # one tenant
+//   node scripts/migrate-tenants.mjs --dry-run           # show plan, change nothing
+//   node scripts/migrate-tenants.mjs --include-suspended # include suspended tenants (rare)
+//   node scripts/migrate-tenants.mjs --allow-checksum-drift  # re-apply changed files (careful)
 //
-// Required env vars:
-//   CONTROL_SUPABASE_URL           URL of the control-plane Supabase
-//   CONTROL_SUPABASE_SERVICE_KEY   Service-role key for control plane
-//   TENANT_ROUTING_MASTER_KEY      Same value set in eq-shell Netlify env
+// Required env:
+//   SUPABASE_ACCESS_TOKEN   A Supabase personal or org access token (Management API).
+//   CONTROL_PROJECT_REF     Project ref of the control plane (jvkn…) that holds
+//                           shell_control.tenant_routing + tenants.
 //
-// Exit codes: 0 = all migrations applied, 1 = config error, 2 = at least one tenant failed.
-//
-// Concurrency: migrations run sequentially per tenant; tenants run in parallel
-// with a small concurrency limit (CONCURRENCY=3) to avoid hammering the
-// Management API or Supabase rate limits.
+// Exit codes: 0 = all applied, 1 = config error, 2 = at least one tenant failed.
 
-import { createClient } from '@supabase/supabase-js';
-import { createDecipheriv, createHash } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -38,8 +40,7 @@ import { parseArgs } from 'node:util';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = resolve(__dirname, '..', 'supabase', 'tenant-migrations');
-
-const CONCURRENCY = 3;
+const MGMT = 'https://api.supabase.com/v1';
 
 // ─── args + env ────────────────────────────────────────────────────────
 
@@ -48,20 +49,11 @@ const { values: args } = parseArgs({
     slug:                  { type: 'string' },
     'dry-run':             { type: 'boolean', default: false },
     'include-suspended':   { type: 'boolean', default: false },
+    'allow-checksum-drift':{ type: 'boolean', default: false },
   },
 });
 
-const env = requireEnvs([
-  'CONTROL_SUPABASE_URL',
-  'CONTROL_SUPABASE_SERVICE_KEY',
-  'TENANT_ROUTING_MASTER_KEY',
-]);
-const masterKey = validateMasterKey(env.TENANT_ROUTING_MASTER_KEY);
-
-const control = createClient(env.CONTROL_SUPABASE_URL, env.CONTROL_SUPABASE_SERVICE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-  db:   { schema: 'shell_control' },
-});
+const env = requireEnvs(['SUPABASE_ACCESS_TOKEN', 'CONTROL_PROJECT_REF']);
 
 // ─── load migrations from disk ─────────────────────────────────────────
 
@@ -83,46 +75,40 @@ const migrations = await Promise.all(
 
 log(`Loaded ${migrations.length} migration(s): ${migrationFiles.join(', ')}`);
 
-// ─── load tenants ──────────────────────────────────────────────────────
+// ─── load tenants from the control plane (via Management API) ──────────
 
 const statuses = args['include-suspended']
-  ? ['provisioning', 'active', 'suspended']
-  : ['provisioning', 'active'];
+  ? `'provisioning','active','suspended'`
+  : `'provisioning','active'`;
 
-let routingQuery = control
-  .from('tenant_routing')
-  .select(`
-    tenant_id,
-    supabase_url,
-    supabase_project_ref,
-    service_role_key_ciphertext,
-    service_role_key_iv,
-    service_role_key_tag,
-    status,
-    tenants!inner ( slug, name )
-  `)
-  .in('status', statuses);
+const slugFilter = args.slug ? `AND t.slug = ${sqlLiteral(args.slug)}` : '';
 
-if (args.slug) routingQuery = routingQuery.eq('tenants.slug', args.slug);
+const routingRows = await mgmtQuery(env.CONTROL_PROJECT_REF, `
+  SELECT tr.supabase_project_ref AS ref, tr.status AS status, t.slug AS slug
+  FROM shell_control.tenant_routing tr
+  JOIN shell_control.tenants t ON t.tenant_id = tr.tenant_id
+  WHERE tr.status IN (${statuses}) ${slugFilter}
+  ORDER BY t.slug;
+`).catch(e => fail(1, `tenant_routing query failed: ${e.message}`));
 
-const { data: routings, error: routingErr } = await routingQuery;
-if (routingErr) fail(1, `tenant_routing query failed: ${routingErr.message}`);
-if (!routings || routings.length === 0) {
+if (!routingRows || routingRows.length === 0) {
   log(args.slug
-    ? `No tenant routing found for slug='${args.slug}' (status in ${statuses.join('|')})`
-    : `No tenants in tenant_routing with status in ${statuses.join('|')}`);
+    ? `No tenant routing for slug='${args.slug}' (status in ${statuses})`
+    : `No tenants in tenant_routing with status in ${statuses}`);
   process.exit(0);
 }
 
-log(`Targets: ${routings.map(r => `${r.tenants.slug} (${r.status})`).join(', ')}`);
+log(`Targets: ${routingRows.map(r => `${r.slug} (${r.status} → ${r.ref})`).join(', ')}`);
 if (args['dry-run']) log('DRY RUN — no migrations will be applied');
 
-// ─── apply per-tenant (with concurrency) ───────────────────────────────
+// ─── apply per-tenant ──────────────────────────────────────────────────
 
-const results = await runWithConcurrency(routings, CONCURRENCY, applyMigrationsToTenant);
+const results = [];
+for (const r of routingRows) {
+  results.push(await applyMigrationsToTenant(r));   // sequential — Management API is rate-limited
+}
 
-console.log('');
-console.log('━'.repeat(70));
+console.log('\n' + '━'.repeat(70));
 console.log(' MIGRATION SUMMARY');
 console.log('━'.repeat(70));
 let anyFailed = false;
@@ -132,7 +118,6 @@ for (const r of results) {
   if (!r.ok) anyFailed = true;
 }
 console.log('━'.repeat(70));
-
 process.exit(anyFailed ? 2 : 0);
 
 // ──────────────────────────────────────────────────────────────────────
@@ -140,23 +125,12 @@ process.exit(anyFailed ? 2 : 0);
 // ──────────────────────────────────────────────────────────────────────
 
 async function applyMigrationsToTenant(routing) {
-  const slug = routing.tenants.slug;
+  const { ref, slug } = routing;
   const result = { slug, ok: false, applied: [], skipped: [], error: null };
 
   try {
-    const serviceKey = decryptSecret({
-      ciphertext: routing.service_role_key_ciphertext,
-      iv:         routing.service_role_key_iv,
-      tag:        routing.service_role_key_tag,
-    });
-
-    const tenantClient = createClient(routing.supabase_url, serviceKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-
-    // Ensure tracking table exists.
     if (!args['dry-run']) {
-      await execSql(tenantClient, `
+      await mgmtQuery(ref, `
         CREATE SCHEMA IF NOT EXISTS app_data;
         CREATE TABLE IF NOT EXISTS app_data._eq_migrations (
           name text PRIMARY KEY,
@@ -167,164 +141,78 @@ async function applyMigrationsToTenant(routing) {
     }
 
     const applied = args['dry-run']
-      ? new Set()
-      : await loadApplied(tenantClient);
+      ? new Map()
+      : await loadApplied(ref);
 
     for (const m of migrations) {
       if (applied.has(m.name)) {
+        const recorded = applied.get(m.name);
+        if (recorded && recorded !== m.checksum && !args['allow-checksum-drift']) {
+          throw new Error(
+            `checksum drift on ${m.name} (recorded ${recorded.slice(0, 12)}…, ` +
+            `disk ${m.checksum.slice(0, 12)}…). The file changed after it was applied. ` +
+            `Author a new forward migration instead, or re-run with --allow-checksum-drift.`);
+        }
         result.skipped.push(m.name);
         continue;
       }
-      log(`  [${slug}] applying ${m.name}...`);
-      if (args['dry-run']) {
-        result.applied.push(m.name);
-        continue;
-      }
-      await execSql(tenantClient, m.sql);
-      await execSql(tenantClient, `
+      log(`  [${slug}] applying ${m.name}…`);
+      if (args['dry-run']) { result.applied.push(m.name); continue; }
+
+      await mgmtQuery(ref, m.sql);
+      await mgmtQuery(ref, `
         INSERT INTO app_data._eq_migrations(name, checksum)
-        VALUES ($name$${m.name}$name$, $cs$${m.checksum}$cs$)
-        ON CONFLICT (name) DO UPDATE SET checksum = EXCLUDED.checksum;
+        VALUES (${sqlLiteral(m.name)}, ${sqlLiteral(m.checksum)})
+        ON CONFLICT (name) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now();
       `);
       result.applied.push(m.name);
       log(`  [${slug}] ✓ ${m.name}`);
     }
-
     result.ok = true;
   } catch (err) {
     result.error = err?.message ?? String(err);
     log(`  [${slug}] ✗ ${result.error}`);
   }
-
   return result;
 }
 
-async function loadApplied(client) {
-  // Use RPC if available; fall back to a raw SELECT via the REST layer.
-  const { data, error } = await client
-    .schema('app_data')
-    .from('_eq_migrations')
-    .select('name');
-  if (error) throw new Error(`load _eq_migrations: ${error.message}`);
-  return new Set((data ?? []).map(r => r.name));
+async function loadApplied(ref) {
+  const rows = await mgmtQuery(ref, `SELECT name, checksum FROM app_data._eq_migrations;`);
+  return new Map((rows ?? []).map(r => [r.name, r.checksum]));
 }
 
-// Execute a multi-statement SQL block via Postgres-meta-style RPC if the
-// project has one; else fall back to splitting (best-effort).
-//
-// Supabase projects don't expose raw EXEC by default. We rely on the
-// platform's pg_meta extension being available — every project has it.
-// Calls to /pg-meta/<ref>/query require the service-role JWT.
-async function execSql(client, sql) {
-  // The supabase-js client doesn't expose pg_meta directly; use fetch.
-  const baseUrl = client.supabaseUrl;
-  const serviceKey = client.supabaseKey;
-  const url = `${baseUrl}/rest/v1/rpc/exec_sql`;
+// ──────────────────────────────────────────────────────────────────────
+// Management API
+// ──────────────────────────────────────────────────────────────────────
 
-  // Prefer a project-defined exec_sql RPC if present (cleanest).
-  let res = await fetch(url, {
+// Run SQL against a project via the Supabase Management API. Returns the row
+// array for SELECTs, [] for DDL. Authenticated by SUPABASE_ACCESS_TOKEN — runs
+// as `postgres`, so it can apply DDL without any per-tenant exec_sql function.
+async function mgmtQuery(ref, query) {
+  const res = await fetch(`${MGMT}/projects/${ref}/database/query`, {
     method: 'POST',
     headers: {
-      'apikey':         serviceKey,
-      'Authorization':  `Bearer ${serviceKey}`,
-      'Content-Type':   'application/json',
+      'Authorization': `Bearer ${env.SUPABASE_ACCESS_TOKEN}`,
+      'Content-Type':  'application/json',
     },
-    body: JSON.stringify({ sql }),
-  });
-
-  if (res.status === 404) {
-    // Fall back to creating exec_sql on first call (idempotent).
-    await bootstrapExecSql(client);
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'apikey':         serviceKey,
-        'Authorization':  `Bearer ${serviceKey}`,
-        'Content-Type':   'application/json',
-      },
-      body: JSON.stringify({ sql }),
-    });
-  }
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`exec_sql failed (${res.status}): ${text}`);
-  }
-}
-
-// Bootstrap a service-role-only exec_sql RPC on the tenant DB so the
-// runner can apply arbitrary DDL. This is created via the Supabase admin
-// SQL endpoint (pg_meta), which is gated by the service-role key.
-async function bootstrapExecSql(client) {
-  const ref = new URL(client.supabaseUrl).host.split('.')[0];
-  const url = `${client.supabaseUrl}/pg/query`;
-  const sql = `
-    CREATE OR REPLACE FUNCTION public.exec_sql(sql text)
-    RETURNS void
-    LANGUAGE plpgsql
-    SECURITY DEFINER
-    AS $$
-    BEGIN
-      EXECUTE sql;
-    END;
-    $$;
-    REVOKE ALL ON FUNCTION public.exec_sql(text) FROM PUBLIC, anon, authenticated;
-  `;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'apikey':         client.supabaseKey,
-      'Authorization':  `Bearer ${client.supabaseKey}`,
-      'Content-Type':   'application/json',
-    },
-    body: JSON.stringify({ query: sql }),
+    body: JSON.stringify({ query }),
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`bootstrap exec_sql failed (${res.status}): ${text}\n\n` +
-      `Tip: open Supabase dashboard → SQL editor for project '${ref}', paste the body of bootstrapExecSql, run once.`);
+    throw new Error(`Management API query failed (${res.status}): ${text.slice(0, 400)}`);
   }
+  const ct = res.headers.get('content-type') ?? '';
+  return ct.includes('application/json') ? res.json() : [];
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // helpers
 // ──────────────────────────────────────────────────────────────────────
 
-function decryptSecret({ ciphertext, iv, tag }) {
-  const decipher = createDecipheriv('aes-256-gcm', masterKey, Buffer.from(iv, 'hex'));
-  decipher.setAuthTag(Buffer.from(tag, 'hex'));
-  const plaintext = Buffer.concat([
-    decipher.update(Buffer.from(ciphertext, 'hex')),
-    decipher.final(),
-  ]);
-  return plaintext.toString('utf8');
-}
+function sha256(s) { return createHash('sha256').update(s, 'utf8').digest('hex'); }
 
-function sha256(s) {
-  return createHash('sha256').update(s, 'utf8').digest('hex');
-}
-
-async function runWithConcurrency(items, n, fn) {
-  const out = new Array(items.length);
-  let i = 0;
-  async function worker() {
-    while (true) {
-      const idx = i++;
-      if (idx >= items.length) return;
-      out[idx] = await fn(items[idx]);
-    }
-  }
-  await Promise.all(Array.from({ length: n }, worker));
-  return out;
-}
-
-function validateMasterKey(hex) {
-  const cleaned = hex.trim();
-  if (!/^[0-9a-fA-F]+$/.test(cleaned)) fail(1, 'TENANT_ROUTING_MASTER_KEY: not hex');
-  const buf = Buffer.from(cleaned, 'hex');
-  if (buf.length !== 32) fail(1, `TENANT_ROUTING_MASTER_KEY: must decode to 32 bytes, got ${buf.length}`);
-  return buf;
-}
+// Single-quote a string for inline SQL (names/checksums are alnum, but be safe).
+function sqlLiteral(s) { return `'${String(s).replace(/'/g, "''")}'`; }
 
 function requireEnvs(names) {
   const out = {};
@@ -339,7 +227,4 @@ function requireEnvs(names) {
 }
 
 function log(msg) { console.log(`[${new Date().toISOString()}] ${msg}`); }
-function fail(code, msg) {
-  console.error(`ERROR: ${msg}`);
-  process.exit(code);
-}
+function fail(code, msg) { console.error(`ERROR: ${msg}`); process.exit(code); }
