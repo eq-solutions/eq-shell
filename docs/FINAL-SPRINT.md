@@ -52,15 +52,17 @@ The three projects (org `sqjyblkiqonyrdobaucn`):
 - **`eq_*` canonical write/archive/delete RPCs (`0022`) are SECURITY DEFINER + `authenticated`-executable — and that is SAFE.** Every mutate path carries `AND tenant_id = ((auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid)`; upserts derive tenant from the JWT, never a parameter. A signed-in user from tenant A calling `eq_delete_customer('<tenant-B-uuid>')` matches zero rows. The advisor `authenticated_security_definer_function_executable` WARNs on this family are **expected**. ⚠️ *Invariant this rests on:* `mint-supabase-jwt` must always set a correct, server-controlled `app_metadata.tenant_id`. Guard it in Phase 2.
 - **gm/briefing + `sks_*` tables show `rls_enabled_no_policy` (INFO) — this is the intended deny-all.** RLS on + no policy = no anon/authenticated access; the only readers are Netlify service-role functions (which bypass RLS). Confirms B0 + the gm/briefing close are holding. *Reconcile:* `0024`/`0025` migration comments claim `app_metadata` policies that don't exist — correct the comments to "service-role-only / deny-all by design" so the next reviewer isn't misled.
 
-### Residual findings — real, prioritised
+### Residual findings — real, prioritised (all 3 projects now reviewed)
 
-| P | Finding | Where | Fix | Gate |
+| P | Finding | Where | Fix | Status |
 |---|---|---|---|---|
-| **P1** | `mint-supabase-jwt` is the single trust root for every `eq_*` RPC's tenant scoping — audit it sets `app_metadata.tenant_id` server-side with no client override path | Shell fn | Code audit + test; document the invariant | 🤖 |
-| **P2** | 5 `_sks_*` SECURITY DEFINER fns (`_sks_contacts_insert/update/delete_fn`, `_sks_contact_links_insert/delete_fn`) executable by anon + authenticated | SKS `public` | `REVOKE EXECUTE … FROM anon, authenticated` — they're the silo's INSTEAD-OF trigger fns (no-arg; error if RPC-called), so revoke is safe + doesn't touch Quotes (service-role + triggers fire regardless) | 🔒 (Track B-adjacent, but safe) |
-| **P3** | `app_data.touch_updated_at` has a mutable `search_path` | SKS | `ALTER FUNCTION … SET search_path = 'app_data','public'` | 🤖 |
-| **P3** | `tenant-logos` public bucket has a broad SELECT (listing) policy | EQ `storage` | Narrow the policy to object-read (drop list) | 🤖 |
-| **P?** | **`jvkn` (control plane) advisors NOT reviewed** — output too large to read this session | `jvkn` | Run `get_advisors` + page the saved file; triage | 🤖 |
+| **P0** | **3 admin PIN primitives (`set_pin_for_user`, `verify_pin_for_user`, `has_pin_for_user`) are SECURITY DEFINER, take an arbitrary `user_id` with NO caller check, and grant `anon`/`authenticated` EXECUTE** → latent account-takeover / 4-digit PIN brute-force / user enumeration. Only `cards-api.ts` (service-role) legitimately calls them. Likely latent (`shell_control` appears not REST-exposed — public wrappers exist), but the grant is wrong regardless. | jvkn | [`supabase/staged/jvkn_auth_rpc_hardening.sql`](../supabase/staged/jvkn_auth_rpc_hardening.sql) — revoke anon/authenticated, keep service_role | 🟡 staged 🔒 auth |
+| **P1** | `mint-supabase-jwt` is the trust root for every `eq_*` RPC's tenant scoping | Shell fn | **✅ audited — passes**: `tenant_id` read from DB `users`, cross-checked vs the signed cookie, signed into `app_metadata`; never client-supplied | ✅ |
+| **P2** | 5 `_sks_*` SECURITY DEFINER trigger fns executable by anon + authenticated (verified `RETURNS trigger` → low exploitability) | SKS `public` | [`sks_overlay_fn_revoke.sql`](../supabase/staged/sks_overlay_fn_revoke.sql) — safe revoke (triggers fire regardless; Quotes on service-role) | 🟡 staged 🔒 |
+| **P2** | `approve_safety_record`/`submit_safety_record` scope by caller-supplied `p_tenant_id` (not the JWT) + authenticated-executable → latent cross-tenant write | SKS | [`sks_safety_rpc_hardening.sql`](../supabase/staged/sks_safety_rpc_hardening.sql) — service-role-only or JWT-derive | 🟡 staged 🔒🔒 |
+| **P3** | `app_data.touch_updated_at` mutable `search_path` | EQ + SKS | **✅ pinned both** (EQ via `0028`; SKS via `harden_touch_updated_at_search_path`) | ✅ |
+| **P3** | `tenant-logos` public bucket allows listing | EQ `storage` | Narrow the SELECT policy — UI-break risk, verify logo display first | ⬜ |
+| — | jvkn `auth_leaked_password_protection` off; 2 public buckets allow listing | jvkn | Dashboard toggle / narrow policies — minor | ⬜ |
 
 ---
 
@@ -83,11 +85,12 @@ The findings above. All branch-safe except where gated.
 
 | # | Task | Owner | Status | Done when |
 |---|---|---|---|---|
-| 2.1 | **P1** — audit `mint-supabase-jwt`: `app_metadata.tenant_id` is server-set, no client override; add a test | 🤖 | ⬜ | invariant proven + documented in code |
-| 2.2 | **P3** — pin `touch_updated_at` search_path (SKS) | 🤖 | ⬜ 🔒 (live, additive) | advisor WARN clears |
-| 2.3 | **P3** — narrow `tenant-logos` bucket SELECT policy (EQ) | 🤖 | ⬜ | listing denied; object URLs still resolve |
-| 2.4 | **jvkn advisors** — read the saved sweep, triage, fix branch-safe | 🤖 | ⬜ | jvkn findings recorded + actioned/accepted |
-| 2.5 | **P2** — author `REVOKE EXECUTE` on the 5 `_sks_*` fns (stage; ships with Track B or as a standalone safe revoke) | 🤖 author; 👤 apply | ⬜ 🔒 | anon/authenticated cannot execute them |
+| 2.1 | **P1** — audit `mint-supabase-jwt`: `app_metadata.tenant_id` server-set, no client override | 🤖 | ✅ **passes** | invariant verified (DB-sourced + cookie-cross-checked) |
+| 2.2 | **P3** — pin `touch_updated_at` search_path (EQ + SKS) | 🤖 | ✅ applied both | advisor WARN clears |
+| 2.3 | **P3** — narrow `tenant-logos` bucket SELECT policy (EQ) | 🤖 | ⬜ | listing denied; object URLs still resolve (verify first) |
+| 2.4 | **jvkn advisors** — read + triage all 3 projects | 🤖 | ✅ done | surfaced **P0** auth-RPC finding; rest accepted/minor |
+| 2.5 | **P0** — apply `jvkn_auth_rpc_hardening.sql` (revoke anon/authenticated on the 3 PIN primitives) | 🤖 author; 👤 apply | 🟡 staged 🔒 | anon/authenticated cannot execute them; Cards PIN setup unaffected |
+| 2.6 | **P2** — apply `sks_overlay_fn_revoke.sql` + `sks_safety_rpc_hardening.sql` | 🤖 author; 👤 apply | 🟡 staged 🔒 | the two SKS surfaces hardened |
 
 ---
 
@@ -100,7 +103,7 @@ Make the two `app_data` schemas identical + reproducible. EQ is the reference; S
 | 3.1 | Run `check-tenant-drift.mjs` EQ↔SKS → the exact machine delta (esp. Service CMMS: EQ `0020`/`0021` vs SKS `ppm_*`) | 🤖 | ⬜ | diff captured as the SKS work-list |
 | 3.2 | Reconcile SKS Service CMMS to the `0020`/`0021` canonical shape (additive; converge the older `ppm_*` path) | 🤖 author; 👤 apply | ⬜ 🔒🔒 | SKS Service objects ≡ EQ |
 | 3.3 | **gm/briefing `tenant_id` reshape** on SKS — ADD `tenant_id` + backfill `7dee117c` + swap UNIQUE to `(tenant_id, period_code)`; **ship with** `upload-gm-report.ts` (`onConflict: 'tenant_id,period_code'`, set `tenant_id`) | 🤖 author; 👤 deploy | ⬜ 🔒🔒 | gm rows carry tenant_id; uploads still work; RLS scoped |
-| 3.4 | **EQ gap-fills** — `contact_customer_links` table + `approve_safety_record`/`submit_safety_record` (JWT-scoped like `0022`) + helpers (`_set_updated_at`, `eq_set_imported_at`). Exclude control-coupled `eq_schema_registry_one_current` | 🤖 | ⬜ | EQ has the surfaces SKS has; advisors clean |
+| 3.4 | **EQ gap-fills** — `contact_customer_links` ✅ applied (`0028`). Safety RPCs staged for the param-tenant fix + deferred until EQ gains the Field safety tables (`prestart_checks`/`toolbox_talks`). `_set_updated_at`/`eq_set_imported_at` = NOT real gaps (EQ has `touch_updated_at`; the latter exists on neither tenant). | 🤖 | 🟡 table done; safety staged | EQ reproduces the canonical surface |
 | 3.5 | Smoke SKS (GM reports, Service, intake) | 👤+🤖 | ⬜ | no regressions |
 | 3.6 | `check-tenant-drift.mjs` green | 🤖 | ⬜ | **EQ ≡ SKS** |
 
