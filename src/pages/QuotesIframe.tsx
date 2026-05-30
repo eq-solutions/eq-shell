@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
 import { HubLayout } from '../components/HubLayout';
+import { EqError } from '../components/EqError';
 
 // Embeds EQ Quotes (Flask) as a Shell iframe.
 //
@@ -19,8 +20,15 @@ type Phase = 'loading' | 'ready' | 'error' | 'timeout';
 
 export default function QuotesIframe() {
   const [phase, setPhase] = useState<Phase>('loading');
+  const [attempt, setAttempt] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const retry = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setPhase('loading');
+    setAttempt((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     timerRef.current = setTimeout(() => {
@@ -30,7 +38,7 @@ export default function QuotesIframe() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [attempt]);
 
   // Legacy token refresh — keep the handler in case Flask sessions expire
   // and Quotes falls back to requesting a fresh HMAC token.
@@ -79,30 +87,41 @@ export default function QuotesIframe() {
 
   const src = `${QUOTES_URL}/?shell=1`;
 
+  const failed = phase === 'error' || phase === 'timeout';
+
   return (
     <HubLayout iframe>
       <div className="eq-service-frame-wrap">
         {phase === 'loading' && (
           <div className="eq-loading">Loading EQ Quotes…</div>
         )}
-        {(phase === 'error' || phase === 'timeout') && (
-          <div className="eq-error" role="alert">
-            {phase === 'timeout'
-              ? 'EQ Quotes took too long to respond. Try refreshing.'
-              : 'EQ Quotes could not be loaded. Try refreshing.'}
+        {failed && (
+          <div className="eq-iframe-error-wrap">
+            <EqError
+              title="EQ Quotes didn't load"
+              message={
+                phase === 'timeout'
+                  ? 'It took too long to respond. Try again — if it keeps happening, reload the page.'
+                  : "It couldn't be opened. Try again — if it keeps happening, reload the page."
+              }
+              onRetry={retry}
+            />
           </div>
         )}
-        <iframe
-          ref={iframeRef}
-          className="eq-service-frame"
-          style={phase !== 'ready' ? { visibility: 'hidden', position: 'absolute' } : undefined}
-          title="EQ Quotes"
-          src={src}
-          onLoad={onIframeLoad}
-          sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
-          referrerPolicy="no-referrer"
-          allow=""
-        />
+        {!failed && (
+          <iframe
+            ref={iframeRef}
+            key={attempt}
+            className="eq-service-frame"
+            style={phase !== 'ready' ? { visibility: 'hidden', position: 'absolute' } : undefined}
+            title="EQ Quotes"
+            src={src}
+            onLoad={onIframeLoad}
+            sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
+            referrerPolicy="no-referrer"
+            allow=""
+          />
+        )}
       </div>
     </HubLayout>
   );

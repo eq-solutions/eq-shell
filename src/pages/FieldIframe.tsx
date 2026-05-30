@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
+import { EqError } from '../components/EqError';
 
 // Embeds the existing EQ Field deploy as an iframe.
 //
@@ -306,14 +307,20 @@ export default function FieldIframe() {
     return (
       <HubLayout iframe>
         {tenantMeta && <FieldTenantBar tenant={tenantMeta} onSwitch={onSwitch} />}
-        <div
-          className="eq-field-frame-loading eq-field-frame-loading--with-tenantbar"
-          role={state.phase === 'mint-failed' ? 'alert' : undefined}
-        >
-          {state.phase === 'minting'
-            ? 'Authorising EQ Field handoff…'
-            : 'Could not authorise EQ Field. Sign out and back in, then retry.'}
-        </div>
+        {state.phase === 'minting' ? (
+          <div className="eq-field-frame-loading eq-field-frame-loading--with-tenantbar">
+            Connecting to EQ Field…
+          </div>
+        ) : (
+          <div className="eq-iframe-error-wrap">
+            <EqError
+              title="EQ Field didn't connect"
+              message="We couldn't sign you in to EQ Field. Sign out and back in, then try again."
+              retryLabel="Refresh page"
+              onRetry={() => window.location.reload()}
+            />
+          </div>
+        )}
       </HubLayout>
     );
   }
@@ -408,8 +415,15 @@ function HandoffOverlay({ state, cookieMode }: { state: HandoffState; cookieMode
   const msg = overlayMessage(state, cookieMode);
   if (!msg) return null;
   return (
-    <div className="eq-field-frame-overlay eq-field-frame-overlay--with-tenantbar" role="alert">
-      <div className="eq-field-frame-overlay-card">{msg}</div>
+    <div className="eq-field-frame-overlay eq-field-frame-overlay--with-tenantbar">
+      <div className="eq-field-frame-overlay-card eq-field-frame-overlay-card--error">
+        <EqError
+          title="EQ Field didn't load"
+          message={msg}
+          retryLabel="Refresh page"
+          onRetry={() => window.location.reload()}
+        />
+      </div>
     </div>
   );
 }
@@ -418,19 +432,19 @@ function overlayMessage(state: HandoffState, cookieMode: boolean): string {
   switch (state.phase) {
     case 'booted':
       if (!state.hasHash && cookieMode) return '';
-      return 'EQ Field loaded without a sign-in token. Refresh to retry.';
+      return 'EQ Field opened without a sign-in token.';
     case 'rejected':
-      return 'EQ Field rejected the sign-in handoff. Sign out and back in, then retry.';
+      return "EQ Field couldn't sign you in. Sign out and back in, then try again.";
     case 'http-error':
-      return `EQ Field returned HTTP ${state.status} when verifying your session. Try again in a moment.`;
+      return `EQ Field hit an error (HTTP ${state.status}) while checking your sign-in. Try again in a moment.`;
     case 'network-error':
-      return 'Network error reaching EQ Field. Check your connection and refresh.';
+      return "We couldn't reach EQ Field. Check your connection.";
     case 'no-sh-param':
-      return 'EQ Field handoff URL was malformed. Refresh to retry.';
+      return "EQ Field's sign-in link was incomplete.";
     case 'tenant-mismatch':
-      return `EQ Field expected tenant "${state.expected}" but the sign-in token was for "${state.got}". Switch tenant and try again.`;
+      return `EQ Field opened the wrong workspace ("${state.got}" instead of "${state.expected}"). Switch workspace and try again.`;
     case 'timeout':
-      return "EQ Field didn't respond within 30 seconds. Refresh to retry.";
+      return "EQ Field didn't respond within 30 seconds.";
     default:
       return '';
   }

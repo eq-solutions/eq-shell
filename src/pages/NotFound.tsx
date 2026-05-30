@@ -30,7 +30,7 @@ export default function NotFound() {
             >
               {loc.pathname}
             </code>
-            . It may have moved, or the link you followed was malformed.
+            . It may have moved, or the link you followed was broken.
           </p>
         </div>
 
@@ -47,13 +47,13 @@ export default function NotFound() {
               <div className="eq-module-card__head">
                 <h3>Intake</h3>
               </div>
-              <p>Drag-drop CSV importers for all 42 canonical entities.</p>
+              <p>Import your rosters, staff and customers from a spreadsheet.</p>
             </Link>
             <Link to={`/${tenantSlug}/admin/audit`} className="eq-module-card">
               <div className="eq-module-card__head">
-                <h3>Audit log</h3>
+                <h3>Activity log</h3>
               </div>
-              <p>Every data write + every sign-in token for your tenant.</p>
+              <p>A record of changes and sign-ins across your account.</p>
             </Link>
           </div>
         </section>

@@ -1117,6 +1117,15 @@
   text-align: center;
 }
 
+/* Error variant: EqError supplies its own surface (border, fill, role), so the
+   overlay card drops its own chrome and just constrains the width. */
+.eq-field-frame-overlay-card--error {
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
 /* ──────────────────────────────────────────────────────────────────
  * Field tenant picker + tenant bar  (Wave 5, 2026-05-22)
  *
@@ -1275,6 +1284,13 @@
  * Placeholder / loading / error / empty
  * ────────────────────────────────────────────────────────────────── */
 
+/* Wrapper for an EqError shown in place of an app iframe (Cards / Quotes /
+   Service). Gives the error card breathing room inside the frame area. */
+.eq-iframe-error-wrap {
+  padding: 24px 28px;
+  max-width: 520px;
+}
+
 .eq-coming-soon {
   padding: 64px 24px;
   text-align: center;
@@ -1319,6 +1335,9 @@
 .eq-error__body { margin: 0; color: var(--status-error-fg); opacity: 0.85; }
 
 .eq-error__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   margin-top: 12px;
   padding: 6px 12px;
   border: 1px solid var(--status-error-fg);
@@ -1327,6 +1346,30 @@
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
+  cursor: pointer;
+}
+
+.eq-error__retry:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.eq-error__spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: eq-error-spin 0.7s linear infinite;
+}
+
+@keyframes eq-error-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eq-error__spinner { animation-duration: 1.6s; }
 }
 
 .eq-skeleton {
