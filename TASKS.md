@@ -94,7 +94,7 @@ Core goal: surface cross-app events to users without requiring them to poll indi
 - **Deps:** S3-01
 
 ### S3-03 — Bell icon + notification drawer
-- **Description:** Add a bell icon to `Topbar.tsx` with an unread count badge. Clicking opens a drawer (slide-in panel) showing the 20 most recent notifications for the user. Each row: title, body, timestamp, "Mark as read" action. "Mark all read" button at the top. Fetch from a new `notifications-list` Netlify function. Poll every 60 seconds (no websocket needed at this scale).
+- **Description:** Add a bell icon to `HubSidebar.tsx` with an unread count badge. Clicking opens a drawer (slide-in panel) showing the 20 most recent notifications for the user. Each row: title, body, timestamp, "Mark as read" action. "Mark all read" button at the top. Fetch from a new `notifications-list` Netlify function. Poll every 60 seconds (no websocket needed at this scale).
 - **Effort:** L
 - **Deps:** S3-01, S3-02
 
@@ -110,7 +110,7 @@ Core goal: surface cross-app events to users without requiring them to poll indi
 Core goal: shell is usable on an iPad/phone for field staff checking rosters and their cards.
 
 ### S4-01 — HubSidebar mobile collapse
-- **Description:** On viewports < 768px, the sidebar should be hidden by default and toggled via a hamburger in `Topbar.tsx`. Currently it overlaps content on mobile. Implement as a CSS-driven slide drawer using a `data-open` attribute — no JS animation library. Ensure focus is trapped when open and the overlay dismisses it.
+- **Description:** On viewports < 768px, the sidebar should be hidden by default and toggled via a hamburger in `HubLayout.tsx`. Currently it overlaps content on mobile. Implement as a CSS-driven slide drawer using a `data-open` attribute — no JS animation library. Ensure focus is trapped when open and the overlay dismisses it.
 - **Effort:** M
 - **Deps:** none
 

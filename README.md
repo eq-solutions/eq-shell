@@ -25,7 +25,7 @@ Multi-module React shell for `*.eq.solutions` tenants. Hosts Cards / Intake / Qu
 | Supabase project | `sks-canonical` (id: `ehowgjardagevnrluult`, region `ap-southeast-2`) | **SKS tenant data plane** — active, holds all SKS operational entities under `app_data` schema. Routing row `active`. |
 | GitHub repo | `eq-solutions/eq-shell` (this) | Shell source. |
 | Netlify project | `eq-shell` (id: `a3473f83-7c82-4f1e-872d-aa96eaa55172`) | Builds + hosts the shell. |
-| Custom domains | `core.eq.solutions` (primary) | Each tenant gets a specific domain alias registered on the Netlify project. `*.eq.solutions` wildcard isn't accepted by Netlify on external DNS — Cloudflare wildcard CNAME resolves, but Netlify only serves explicitly-registered subdomains. See `HANDOFF-PHASE-1-A-B.md` for the rationale and per-tenant onboarding pattern. |
+| Custom domains | `core.eq.solutions` (primary) | Each tenant gets a specific domain alias registered on the Netlify project. `*.eq.solutions` wildcard isn't accepted by Netlify on external DNS — Cloudflare wildcard CNAME resolves, but Netlify only serves explicitly-registered subdomains. See `docs/runbooks/onboard-trial-tenant.md` for the per-tenant onboarding pattern. |
 
 ## Phase plan
 
@@ -203,7 +203,6 @@ EQ Field validates the minted iframe token via its existing `/.netlify/functions
 │   ├── App.tsx                       # router + RequireSession + ModuleGate
 │   ├── brand.tsx                     # BrandProvider + useBrand
 │   ├── session.ts                    # SessionContext + EqRole + useSession + moduleEnabled
-│   ├── supabase.ts                   # legacy useSupabaseClient (kept for back-compat; new code uses lib/supabaseJwt.ts)
 │   └── main.tsx
 ├── docs/
 │   └── runbooks/
