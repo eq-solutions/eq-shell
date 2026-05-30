@@ -28,6 +28,9 @@
 //   GET  ?resource=staff
 //   GET  ?resource=licences
 //   GET  ?resource=jobs
+//   GET  ?resource=assets
+//   GET  ?resource=asset_test_results
+//   GET  ?resource=asset_defects
 //   GET  ?resource=events            (poll canonical_events)
 //   POST resource=events             (emit a canonical_event)
 //
@@ -217,6 +220,46 @@ const RESOURCES: Record<string, ResourceDef> = {
     filterableActive: false,
     sinceColumn: 'updated_at',
   },
+  assets: {
+    table: 'assets',
+    pk:    'asset_id',
+    select: [
+      'asset_id', 'tenant_id', 'external_id', 'site_id', 'parent_asset_id',
+      'asset_type', 'name', 'make', 'model', 'serial_number', 'rating',
+      'install_date', 'warranty_expires', 'criticality', 'condition',
+      'service_schedule_id', 'ppm_frequency', 'last_service_date', 'next_service_due',
+      'location_in_site', 'barcode', 'active', 'defects_summary',
+      'client_classification', 'notes', 'cert_url', 'intake_id',
+      'created_at', 'updated_at',
+    ].join(','),
+    filterableActive: true,
+    sinceColumn: 'updated_at',
+  },
+  asset_test_results: {
+    table: 'asset_test_results',
+    pk:    'result_id',
+    select: [
+      'result_id', 'tenant_id', 'external_id', 'asset_id', 'visit_id',
+      'test_type', 'test_date', 'tested_by_id', 'tested_by_external',
+      'licence_number', 'pass_fail', 'raw_values', 'action_taken_if_fail',
+      'test_cert_reference', 'notes', 'created_at', 'updated_at',
+    ].join(','),
+    filterableActive: false,
+    sinceColumn: 'updated_at',
+  },
+  asset_defects: {
+    table: 'asset_defects',
+    pk:    'defect_id',
+    select: [
+      'defect_id', 'tenant_id', 'external_id', 'asset_id', 'visit_id',
+      'raised_date', 'raised_by_id', 'severity', 'description', 'status',
+      'resolution_date', 'resolved_by_id', 'resolution_notes',
+      'estimated_cost', 'actual_cost', 'photo_attachments',
+      'created_at', 'updated_at',
+    ].join(','),
+    filterableActive: false,
+    sinceColumn: 'updated_at',
+  },
   events: {
     table: 'canonical_events',
     pk:    'id',
@@ -379,7 +422,8 @@ async function handleGet(
 //
 // Body shape:
 //   {
-//     resource:    'customers' | 'sites' | 'contacts',
+//     resource:    'customers' | 'sites' | 'contacts' |
+//                  'assets' | 'asset_test_results' | 'asset_defects',
 //     external_id: string,          // upsert key (required)
 //     ...fields                     // any writable columns for that resource
 //   }
@@ -429,13 +473,36 @@ const WRITABLE_FIELDS: Record<string, Set<string>> = {
     'is_default_invoice_contact', 'is_default_statement_contact',
     'active',
   ]),
+  assets: new Set([
+    'external_id', 'site_id', 'parent_asset_id',
+    'asset_type', 'name', 'make', 'model', 'serial_number', 'rating',
+    'install_date', 'warranty_expires', 'criticality', 'condition',
+    'service_schedule_id', 'ppm_frequency', 'last_service_date', 'next_service_due',
+    'location_in_site', 'barcode', 'active', 'defects_summary',
+    'client_classification', 'notes', 'cert_url',
+  ]),
+  asset_test_results: new Set([
+    'external_id', 'asset_id', 'visit_id',
+    'test_type', 'test_date', 'tested_by_id', 'tested_by_external',
+    'licence_number', 'pass_fail', 'raw_values', 'action_taken_if_fail',
+    'test_cert_reference', 'notes',
+  ]),
+  asset_defects: new Set([
+    'external_id', 'asset_id', 'visit_id',
+    'raised_date', 'raised_by_id', 'severity', 'description', 'status',
+    'resolution_date', 'resolved_by_id', 'resolution_notes',
+    'estimated_cost', 'actual_cost', 'photo_attachments',
+  ]),
 };
 
 // Resource → primary key column name (returned as canonical_id in response).
 const RESOURCE_PK: Record<string, string> = {
-  customers: 'customer_id',
-  sites:     'site_id',
-  contacts:  'contact_id',
+  customers:           'customer_id',
+  sites:               'site_id',
+  contacts:            'contact_id',
+  assets:              'asset_id',
+  asset_test_results:  'result_id',
+  asset_defects:       'defect_id',
 };
 
 interface UpsertBody {
