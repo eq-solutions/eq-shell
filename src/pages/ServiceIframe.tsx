@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
 import { HubLayout } from '../components/HubLayout';
+import { EqError } from '../components/EqError';
 
 // Embeds EQ Service (Next.js) as a Shell iframe.
 //
@@ -186,7 +187,14 @@ export default function ServiceIframe() {
           </div>
         )}
         {state.phase === 'error' && (
-          <div className="eq-error" role="alert">{state.msg}</div>
+          <div className="eq-iframe-error-wrap">
+            <EqError
+              title="EQ Service didn't load"
+              message={state.msg}
+              retryLabel="Refresh page"
+              onRetry={() => window.location.reload()}
+            />
+          </div>
         )}
         {src && (
           <iframe

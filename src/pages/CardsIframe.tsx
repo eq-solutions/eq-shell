@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
 import { HubLayout } from '../components/HubLayout';
+import { EqError } from '../components/EqError';
 
 const CARDS_URL = 'https://cards.eq.solutions/';
 const LOAD_TIMEOUT_MS = 30_000;
@@ -102,22 +103,12 @@ export default function CardsIframe() {
   if (phase === 'load-error') {
     return (
       <HubLayout iframe>
-        <div
-          className="eq-iframe-error"
-          role="alert"
-          style={{ margin: 28, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 480 }}
-        >
-          <p style={{ margin: 0, color: '#1A1A2E' }}>
-            EQ Cards took too long to load. Try again — if the problem persists, reload the page.
-          </p>
-          <button
-            type="button"
-            className="eq-btn eq-btn--sm"
-            onClick={retry}
-            style={{ alignSelf: 'flex-start' }}
-          >
-            Try again
-          </button>
+        <div className="eq-iframe-error-wrap">
+          <EqError
+            title="EQ Cards didn't load"
+            message="It took too long to open. Try again — if it keeps happening, reload the page."
+            onRetry={retry}
+          />
         </div>
       </HubLayout>
     );

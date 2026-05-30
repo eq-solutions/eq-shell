@@ -4,6 +4,7 @@ import { useSession, moduleEnabled, type EqTier } from '../session';
 import { HubSidebar, HUB_APP_ICONS, type HubApp, type RecordLink } from '../components/HubSidebar';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
+import { HubLayout } from '../components/HubLayout';
 
 interface DashboardCount {
   entity: string;
@@ -167,6 +168,33 @@ export default function TenantHome() {
   }, []);
 
   if (!session) return null;
+
+  // Workspace not ready: the session exists but has no usable workspace — a
+  // membership that's missing or deactivated. Show a clear notice instead of a
+  // dashboard full of dashes and dead links. Platform admins skip this; they
+  // can operate across workspaces and shouldn't be blocked.
+  const workspaceReady = !!session.tenant && session.tenant.active !== false;
+  if (!workspaceReady && !session.user.is_platform_admin) {
+    return (
+      <HubLayout>
+        <div className="eq-page__header">
+          <span
+            className="eq-pill eq-pill--warn"
+            style={{ display: 'inline-block', marginBottom: 12 }}
+          >
+            Not ready
+          </span>
+          <h1 className="eq-page__title">Your workspace isn't ready yet</h1>
+          <p className="eq-page__lede">
+            Your account is signed in, but it isn't linked to an active workspace
+            yet — so there's nothing to show here. This usually means your setup
+            isn't finished. Ask your administrator to finish setting up your access,
+            then sign in again.
+          </p>
+        </div>
+      </HubLayout>
+    );
+  }
 
   const greetName = (() => {
     if (session.user.name) return session.user.name.split(' ')[0];
@@ -451,24 +479,16 @@ export default function TenantHome() {
             )}
           </div>
 
-          {/* Sync bar */}
-          <div className="eq-hub-syncbar">
-            <span>
-              <span className="eq-hub-syncbar__dot" aria-hidden="true" />
-              EQ FIELD
-            </span>
-            <span>
-              <span className="eq-hub-syncbar__dot" aria-hidden="true" />
-              EQ SERVICE
-            </span>
-            <span>
-              <span className="eq-hub-syncbar__dot" aria-hidden="true" />
-              EQ QUOTES
-            </span>
-            <span>
-              <span className="eq-hub-syncbar__dot" aria-hidden="true" />
-              EQ CARDS
-            </span>
+          {/* Sync bar — the green dot conveys "connected"; the visually-hidden
+              text carries that meaning for screen readers since colour can't. */}
+          <div className="eq-hub-syncbar" role="group" aria-label="App connection status">
+            {['EQ Field', 'EQ Service', 'EQ Quotes', 'EQ Cards'].map((app) => (
+              <span key={app}>
+                <span className="eq-hub-syncbar__dot" aria-hidden="true" />
+                {app.toUpperCase()}
+                <span className="eq-sr-only">: connected</span>
+              </span>
+            ))}
           </div>
 
         </div>
