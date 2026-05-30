@@ -509,61 +509,69 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           {loadingJobs && <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><span className="eq-skeleton eq-skeleton--text" style={{ width: 120 }} /></div>}
         </div>
 
-        {/* Right column — PM scorecard (top) + chat (fills rest) */}
-        <div style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #E2EAF0', background: '#fff', overflow: 'hidden' }}>
+        {/* Right column — PM filter (top, from jobs data) + chat (fills rest) */}
+        <div style={{ width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #E2EAF0', background: '#fff', overflow: 'hidden' }}>
 
-          {/* PM scorecard — always visible, no scrolling required */}
-          {briefing?.pm_summary && briefing.pm_summary.length > 0 && (
-            <div style={{ flexShrink: 0, borderBottom: '1px solid #E2EAF0', overflowY: 'auto', maxHeight: '42%' }}>
-              {/* Sticky header */}
-              <div style={{ position: 'sticky', top: 0, zIndex: 1, background: '#F7FAFC', borderBottom: '1px solid #EEF2F7', padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99' }}>PM Scorecard</span>
-                  <span style={{ fontSize: 10, color: '#9AA5BC', marginLeft: 6 }}>click to filter</span>
-                </div>
-                {selectedPMs.length > 0 && (
-                  <button onClick={() => setSelectedPMs([])} style={{ fontSize: 10, color: '#3DA8D8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Clear ×
-                  </button>
-                )}
-              </div>
-              {/* PM rows — click toggles, multi-select supported */}
-              {briefing.pm_summary.map((pm, i) => {
-                const isActive = selectedPMs.includes(pm.name);
-                const dotColor  = pm.status === 'red' ? '#C0392B' : pm.status === 'amber' ? '#E6A817' : '#1E7E4A';
-                const cashColor = pm.cash_position >= 0 ? '#1E7E4A' : '#C0392B';
-                const initials  = pm.name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
-                return (
-                  <div key={i}
-                    onClick={() => setSelectedPMs(prev => isActive ? prev.filter(p => p !== pm.name) : [...prev, pm.name])}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px',
-                      cursor: 'pointer', borderBottom: '1px solid #EEF2F7',
-                      background: isActive ? '#EAF5FB' : 'transparent',
-                      transition: 'background 0.1s',
-                    }}>
-                    {/* Avatar — check icon when active */}
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700,
-                      background: isActive ? '#3DA8D8' : pm.status === 'red' ? '#FDECEA' : pm.status === 'amber' ? '#FEF6E4' : '#EAF5EE',
-                      color: isActive ? '#fff' : dotColor, border: `2px solid ${isActive ? '#3DA8D8' : 'transparent'}`,
-                    }}>
-                      {isActive ? '✓' : initials}
-                    </div>
-                    {/* Name + note */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: isActive ? 700 : 600, color: '#1A1A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pm.name}</div>
-                      <div style={{ fontSize: 10, color: '#6B7A99', marginTop: 1 }}>{pm.job_count} jobs</div>
-                    </div>
-                    {/* Cash + GP */}
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: cashColor, fontFamily: 'monospace', lineHeight: 1 }}>{fmt(pm.cash_position)}</div>
-                      <div style={{ fontSize: 10, color: (pm.gp_forecast ?? 0) >= 0 ? '#1E7E4A' : '#C0392B', fontFamily: 'monospace', marginTop: 2 }}>GP {fmt(pm.gp_forecast)}</div>
-                    </div>
+          {/* PM filter — built from jobs, always visible once loaded.
+              Augmented with briefing status colours when available. */}
+          {jobs.length > 0 && (() => {
+            const pmNames = [...new Set(jobs.filter(j => !j.is_overhead).map(j => j.job_manager))].sort();
+            const briefingMap = new Map(briefing?.pm_summary?.map(pm => [pm.name, pm]) ?? []);
+            return (
+              <div style={{ flexShrink: 0, borderBottom: '1px solid #E2EAF0', overflowY: 'auto', maxHeight: 280 }}>
+                {/* Sticky header */}
+                <div style={{ position: 'sticky', top: 0, zIndex: 1, background: '#F7FAFC', borderBottom: '1px solid #EEF2F7', padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99' }}>Project Managers</span>
+                    <span style={{ fontSize: 10, color: '#C8D4DF' }}>multi-select</span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  {selectedPMs.length > 0 && (
+                    <button onClick={() => setSelectedPMs([])} style={{ fontSize: 10, color: '#3DA8D8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>
+                      Clear ×
+                    </button>
+                  )}
+                </div>
+                {/* PM rows — click to toggle, multi-select */}
+                {pmNames.map(name => {
+                  const isActive   = selectedPMs.includes(name);
+                  const bpm        = briefingMap.get(name);
+                  const pmJobs     = jobs.filter(j => !j.is_overhead && j.job_manager === name);
+                  const cash       = -pmJobs.reduce((s, j) => s + (j.cash_gap ?? 0), 0);
+                  const gp         = pmJobs.reduce((s, j) => s + (j.gross_profit ?? 0), 0);
+                  const losses     = pmJobs.filter(j => j.is_forecast_loss).length;
+                  const initials   = name.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase();
+                  // Status from briefing if available, else derive from jobs
+                  const status     = bpm?.status ?? (losses > 0 ? 'red' : cash < 0 ? 'amber' : 'green');
+                  const statusDot  = status === 'red' ? '#C0392B' : status === 'amber' ? '#E6A817' : '#1E7E4A';
+                  const statusBg   = status === 'red' ? '#FDECEA' : status === 'amber' ? '#FEF6E4' : '#EAF5EE';
+                  return (
+                    <div key={name}
+                      onClick={() => setSelectedPMs(prev => isActive ? prev.filter(p => p !== name) : [...prev, name])}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', cursor: 'pointer', borderBottom: '1px solid #EEF2F7', background: isActive ? '#EAF5FB' : 'transparent', transition: 'background 0.1s' }}>
+                      {/* Avatar — filled blue with ✓ when active */}
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700,
+                        background: isActive ? '#3DA8D8' : statusBg,
+                        color: isActive ? '#fff' : statusDot,
+                        border: `2px solid ${isActive ? '#3DA8D8' : 'transparent'}`,
+                      }}>
+                        {isActive ? '✓' : initials}
+                      </div>
+                      {/* Name + job count */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, color: '#1A1A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                        <div style={{ fontSize: 10, color: '#9AA5BC', marginTop: 1 }}>{pmJobs.length} jobs{losses > 0 ? ` · ${losses} loss${losses > 1 ? 'es' : ''}` : ''}</div>
+                      </div>
+                      {/* Cash position */}
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: cash >= 0 ? '#1E7E4A' : '#C0392B', fontFamily: 'monospace' }}>{fmt(cash)}</div>
+                        <div style={{ fontSize: 10, color: gp >= 0 ? '#1E7E4A' : '#C0392B', fontFamily: 'monospace' }}>GP {fmt(gp)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Chat fills remaining height */}
           <ChatPanel periodId={period.id} briefing={briefing} />
@@ -707,7 +715,7 @@ export default function GmReportsModule() {
 
   return (
     <Gate perm="reports.view">
-      <HubLayout>
+      <HubLayout fullWidth>
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Page header */}
           <div style={{ background: '#fff', borderBottom: '1px solid #E2EAF0', padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>

@@ -48,9 +48,12 @@ function extractCounts(data: DashboardResponse): DashboardCounts {
 export function HubLayout({
   children,
   iframe = false,
+  fullWidth = false,
 }: {
   children: React.ReactNode;
   iframe?: boolean;
+  /** Skip the eq-hub-content max-width wrapper. Use for full-bleed dashboard modules. */
+  fullWidth?: boolean;
 }) {
   const { session } = useSession();
   const [liveCounts, setLiveCounts] = useState<DashboardCounts>({
@@ -131,10 +134,12 @@ export function HubLayout({
           {children}
         </div>
       ) : (
-        <div className="eq-hub__content">
-          <main className="eq-hub-content">
-            {children}
-          </main>
+        <div className="eq-hub__content" style={fullWidth ? { overflow: 'hidden' } : undefined}>
+          {fullWidth ? children : (
+            <main className="eq-hub-content">
+              {children}
+            </main>
+          )}
         </div>
       )}
     </div>
