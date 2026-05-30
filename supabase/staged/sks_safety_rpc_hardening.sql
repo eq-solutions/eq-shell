@@ -1,0 +1,50 @@
+-- sks_safety_rpc_hardening.sql   TARGET: ehowgjardagevnrluult (LIVE SKS)   GATE: 🔒🔒 needs Field-caller check
+--
+-- FINDING (2026-05-30): app_data.approve_safety_record / submit_safety_record are
+-- SECURITY DEFINER, `authenticated`-executable, and scope their UPDATE by a
+-- CALLER-SUPPLIED p_tenant_id — not the JWT:
+--
+--   ...WHERE prestart_id = p_record_id AND tenant_id = p_tenant_id AND status = '...'
+--
+-- Unlike the 0022 eq_* RPCs (which derive tenant from auth.jwt()->app_metadata),
+-- these trust whatever tenant_id the caller passes. A signed-in user could
+-- approve/submit ANOTHER tenant's prestart_checks / toolbox_talks by passing a
+-- different p_tenant_id + a known record_id. Practical risk on SKS today is low
+-- (single live tenant), but it is a latent multi-tenant write hole — and these
+-- are the objects we were about to port to EQ, so fix the pattern before parity.
+--
+-- PICK ONE based on how EQ Field actually calls them (check the eq-solves-field repo):
+--
+-- ── OPTION A — Field calls via a Netlify service-role function (preferred) ──
+-- Make them service_role-only; the Netlify fn already knows the right tenant_id.
+--
+--   REVOKE EXECUTE ON FUNCTION app_data.approve_safety_record(uuid, uuid, text) FROM anon, authenticated, PUBLIC;
+--   REVOKE EXECUTE ON FUNCTION app_data.submit_safety_record(uuid, uuid, text)  FROM anon, authenticated, PUBLIC;
+--   GRANT  EXECUTE ON FUNCTION app_data.approve_safety_record(uuid, uuid, text) TO service_role;
+--   GRANT  EXECUTE ON FUNCTION app_data.submit_safety_record(uuid, uuid, text)  TO service_role;
+--
+-- ── OPTION B — Field calls directly from the browser (authenticated JWT) ──
+-- Keep the signature for compatibility but DERIVE tenant from the JWT and reject
+-- any mismatched p_tenant_id, so a caller can only act within its own tenant.
+--
+--   CREATE OR REPLACE FUNCTION app_data.approve_safety_record(p_tenant_id uuid, p_record_id uuid, p_table_name text)
+--   RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'app_data' AS $fn$
+--   DECLARE v_tenant uuid := ((auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid);
+--   BEGIN
+--     IF v_tenant IS NULL OR (p_tenant_id IS NOT NULL AND p_tenant_id <> v_tenant) THEN
+--       RAISE EXCEPTION 'tenant mismatch';
+--     END IF;
+--     IF p_table_name = 'prestart_checks' THEN
+--       UPDATE app_data.prestart_checks SET status='approved'
+--        WHERE prestart_id = p_record_id AND tenant_id = v_tenant AND status='submitted';
+--     ELSIF p_table_name = 'toolbox_talks' THEN
+--       UPDATE app_data.toolbox_talks SET status='approved'
+--        WHERE talk_id = p_record_id AND tenant_id = v_tenant AND status='submitted';
+--     ELSE RAISE EXCEPTION 'Unknown table: %', p_table_name;
+--     END IF;
+--     IF NOT FOUND THEN RAISE EXCEPTION 'Record not found or not in submitted state: % %', p_table_name, p_record_id; END IF;
+--   END; $fn$;
+--   -- (and the mirror for submit_safety_record: status 'draft' -> 'submitted')
+--
+-- When EQ gains the Field safety surface (prestart_checks / toolbox_talks), port
+-- the CHOSEN variant into a tenant-migration so every tenant gets the safe one.
