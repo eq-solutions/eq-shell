@@ -406,93 +406,6 @@
   to   { width: 100%; opacity: 0; }
 }
 
-/* ──────────────────────────────────────────────────────────────────
- * Topbar
- * ────────────────────────────────────────────────────────────────── */
-
-.eq-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 48px;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--gray-200);
-  background: var(--eq-bg);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.eq-topbar__left {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-.eq-topbar__brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--eq-ink);
-  letter-spacing: -0.01em;
-}
-
-.eq-topbar__nav { display: flex; gap: 4px; }
-
-.eq-topbar__nav a {
-  padding: 6px 12px;
-  border-radius: 4px;
-  color: var(--eq-grey);
-  font-size: 13px;
-  font-weight: 500;
-  transition: color 150ms ease, background 150ms ease;
-}
-
-.eq-topbar__nav a:hover {
-  color: var(--eq-ink);
-  background: var(--gray-50);
-  text-decoration: none;
-}
-
-.eq-topbar__nav a.active {
-  color: var(--eq-deep);
-  background: var(--eq-ice);
-}
-
-.eq-topbar__right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-size: 13px;
-  color: var(--eq-grey);
-}
-
-.eq-topbar__user { display: flex; align-items: center; gap: 8px; }
-
-.eq-topbar__role {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 9999px;
-  background: var(--eq-ice);
-  color: var(--eq-deep);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.eq-topbar__admin-chip {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 9999px;
-  background: var(--status-warning-bg);
-  color: var(--status-warning-fg);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
 .eq-btn-ghost {
   background: transparent;
   border: 1px solid var(--gray-200);
@@ -504,94 +417,6 @@
 }
 
 .eq-btn-ghost:hover { background: var(--gray-50); border-color: var(--gray-300); }
-
-/* ──────────────────────────────────────────────────────────────────
- * Topbar — hamburger + mobile drawer
- * Hidden on desktop; shown on ≤768px via the media query below.
- * ────────────────────────────────────────────────────────────────── */
-
-.eq-topbar__menu-toggle {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  padding: 10px;
-  color: var(--eq-ink);
-  border-radius: 6px;
-  transition: background 150ms ease;
-}
-.eq-topbar__menu-toggle:hover { background: var(--gray-50); }
-
-.eq-topbar__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 8;
-  background: rgba(26, 26, 46, 0.25);
-}
-
-.eq-topbar__drawer {
-  position: fixed;
-  top: 48px;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 9;
-  background: var(--eq-bg);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-.eq-topbar__drawer-nav {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.eq-topbar__drawer-link {
-  padding: 14px 24px;
-  color: var(--eq-ink);
-  font-size: 15px;
-  font-weight: 500;
-  border-bottom: 1px solid var(--gray-100);
-  text-decoration: none !important;
-  transition: background 150ms ease, color 150ms ease;
-}
-.eq-topbar__drawer-link:hover { background: var(--gray-50); }
-.eq-topbar__drawer-link.active {
-  color: var(--eq-deep);
-  background: var(--eq-ice);
-  font-weight: 600;
-}
-
-.eq-topbar__drawer-footer {
-  padding: 20px 24px;
-  border-top: 1px solid var(--gray-200);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.eq-topbar__drawer-user-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--eq-ink);
-  margin: 0 0 6px;
-}
-
-.eq-topbar__drawer-user-meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 768px) {
-  .eq-topbar__nav     { display: none; }
-  .eq-topbar__user    { display: none; }
-  .eq-topbar__signout { display: none; }
-  .eq-topbar__menu-toggle { display: flex; }
-}
 
 /* ──────────────────────────────────────────────────────────────────
  * Page layout
@@ -1129,10 +954,10 @@
 /* ──────────────────────────────────────────────────────────────────
  * Field tenant picker + tenant bar  (Wave 5, 2026-05-22)
  *
- * The picker fills the area under the Topbar when the user hasn't
+ * The picker fills the Field content area when the user hasn't
  * chosen a Field tenant yet. Once chosen, the picker is replaced by
- * the iframe and a 36px strip ("tenant bar") sits between Topbar
- * and iframe showing the active tenant + a "Switch tenant" button.
+ * the iframe and a 36px strip ("tenant bar") sits above the iframe
+ * showing the active tenant + a "Switch tenant" button.
  * The --with-tenantbar variants below adjust the iframe / overlay /
  * loading layouts to make room for that strip.
  * ────────────────────────────────────────────────────────────────── */

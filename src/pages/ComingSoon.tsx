@@ -1,6 +1,6 @@
 // Placeholder for modules that are entitled but not yet built. Honest
 // about what's coming + when so users don't feel like the link was a
-// dead end. Wrapped in Topbar so the user isn't trapped.
+// dead end. Wrapped in HubLayout so the user isn't trapped.
 
 import { Link, useParams } from 'react-router-dom';
 import { HubLayout } from '../components/HubLayout';
