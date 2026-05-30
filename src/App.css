@@ -954,10 +954,10 @@
 /* ──────────────────────────────────────────────────────────────────
  * Field tenant picker + tenant bar  (Wave 5, 2026-05-22)
  *
- * The picker fills the area under the Topbar when the user hasn't
+ * The picker fills the Field content area when the user hasn't
  * chosen a Field tenant yet. Once chosen, the picker is replaced by
- * the iframe and a 36px strip ("tenant bar") sits between Topbar
- * and iframe showing the active tenant + a "Switch tenant" button.
+ * the iframe and a 36px strip ("tenant bar") sits above the iframe
+ * showing the active tenant + a "Switch tenant" button.
  * The --with-tenantbar variants below adjust the iframe / overlay /
  * loading layouts to make room for that strip.
  * ────────────────────────────────────────────────────────────────── */
