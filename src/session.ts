@@ -6,6 +6,10 @@
 // out-of-band (Set-Cookie header), so the same hydrator runs after login.
 
 import { createContext, useContext } from 'react';
+import type { EqRole } from '@eq-solutions/roles';
+
+// Re-export so every module that imports EqRole from './session' keeps working.
+export type { EqRole };
 
 export type EqTier = 'trial' | 'standard' | 'advanced' | 'enterprise';
 
@@ -19,20 +23,6 @@ export interface Tenant {
   tier: EqTier;
   active: boolean;
 }
-
-/**
- * Five-tier role enum (Phase 1.F unified identity).
- *
- * Source of truth: `eq-context/eq/identity/IDENTITY-MODEL.md §3`.
- * Server-side mirror in `netlify/functions/_shared/supabase.ts`.
- * Keep them in sync — adding a tier is a spec-level change.
- */
-export type EqRole =
-  | 'manager'
-  | 'supervisor'
-  | 'employee'
-  | 'apprentice'
-  | 'labour_hire';
 
 export interface User {
   id: string;

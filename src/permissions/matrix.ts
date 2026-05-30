@@ -1,18 +1,18 @@
 /**
- * Master permission matrix — Phase 1.F (unified identity).
+ * Master permission matrix â€” Phase 1.F (unified identity).
  *
  * This file is the SINGLE place that knows what every role can do
  * across every module. Per-module `permissions.ts` files (added in
  * each module's first PR) contribute their keys + tier-mapping here.
  *
- * Convention (per IDENTITY-MODEL.md §4.2):
+ * Convention (per IDENTITY-MODEL.md Â§4.2):
  *   <module>.<verb>[_<scope>]
  *
- *   - module    — lowercase singular (admin, field, intake, cards,
+ *   - module    â€” lowercase singular (admin, field, intake, cards,
  *                 quotes, service, tender)
- *   - verb      — present tense lowercase (view, create, edit, delete,
+ *   - verb      â€” present tense lowercase (view, create, edit, delete,
  *                 approve, import, export, issue, assign, invite, etc.)
- *   - scope     — optional qualifier (_self, _team, _tenant, _all)
+ *   - scope     â€” optional qualifier (_self, _team, _tenant, _all)
  *
  * Same verb across modules means the same kind of operation.
  *
@@ -30,22 +30,20 @@
  * here. The shape established below is the template for that.
  */
 
-import type { EqRole } from '../session';
+import type { EqRole } from '@eq-solutions/roles';
+import { MATRIX as ROLES_MATRIX } from '@eq-solutions/roles';
 import { INTAKE_PERMS, INTAKE_MATRIX, type IntakePermKey } from '../modules/intake/permissions';
 import { EQUIPMENT_PERMS, EQUIPMENT_MATRIX, type EquipmentPermKey } from '../modules/equipment/permissions';
 import { GM_REPORTS_PERMS, GM_REPORTS_MATRIX, type GmReportsPermKey } from '../modules/gm-reports/permissions';
 
 // ============================================================================
-// ADMIN permission keys (Phase 1.F seeds — user management)
+// ADMIN + AUDIT permission keys â€” sourced from @eq-solutions/roles
 // ============================================================================
 //
-// Admin keys live here rather than in a `src/modules/admin/` directory
-// because there's no admin "module" surface — admin UI is part of the
-// shell itself (TenantHome / AdminUserList / AdminInviteUser /
-// AdminEditUser). When the admin surface grows enough to warrant its
-// own module, this block moves to `src/admin/permissions.ts`.
-//
-// Manager + platform_admin only — see IDENTITY-MODEL.md §5.
+// The canonical admin and audit perm keys + grants live in the roles package.
+// We pull them directly from ROLES_MATRIX so there is exactly one definition.
+// The local INTAKE/EQUIPMENT/GM_REPORTS module matrices are Shell-specific and
+// stay local until they are promoted into the package.
 
 const ADMIN_PERMS = [
   'admin.list_users',
@@ -57,56 +55,40 @@ const ADMIN_PERMS = [
 
 type AdminPermKey = (typeof ADMIN_PERMS)[number];
 
-const ADMIN_MATRIX: Record<EqRole, AdminPermKey[]> = {
-  manager:     ['admin.list_users', 'admin.invite_user', 'admin.edit_user', 'admin.deactivate_user', 'admin.review_cards'],
-  supervisor:  [],
-  employee:    [],
-  apprentice:  [],
-  labour_hire: [],
-};
-
-// ============================================================================
-// AUDIT permission keys (S2.D + S3 — audit log viewer + rollback)
-// ============================================================================
-
 const AUDIT_PERMS = ['audit.view', 'audit.rollback'] as const;
 
 type AuditPermKey = (typeof AUDIT_PERMS)[number];
 
-const AUDIT_MATRIX: Record<EqRole, AuditPermKey[]> = {
-  manager:     ['audit.view', 'audit.rollback'],
-  supervisor:  ['audit.view'],
-  employee:    [],
-  apprentice:  [],
-  labour_hire: [],
-};
-
 // ============================================================================
 // MASTER LIST + TYPE
 // ============================================================================
-//
-// New modules contribute their PERMS array + MATRIX record. The master
-// composes them into a single closed union (PermKey) and a single
-// per-role Set lookup (MATRIX). Adding a module is one import + one
-// concat per role.
 
 export const ALL_PERMS = [...ADMIN_PERMS, ...AUDIT_PERMS, ...INTAKE_PERMS, ...EQUIPMENT_PERMS, ...GM_REPORTS_PERMS] as const;
 
 export type PermKey = AdminPermKey | AuditPermKey | IntakePermKey | EquipmentPermKey | GmReportsPermKey;
 
 // ============================================================================
-// PER-ROLE GRANTS — composed from module-local matrices
+// PER-ROLE GRANTS â€” composed from module-local matrices
 // ============================================================================
 //
-// Every role's grants are explicit. No inheritance — a manager doesn't
+// Every role's grants are explicit. No inheritance â€” a manager doesn't
 // "automatically" have supervisor perms because the implementation says
 // so; they have them because the matrix lists them. Keeps every
 // permission decision explicit + auditable in PR review.
+//
+// Admin + audit perms are pulled from the canonical roles package matrix
+// (ROLES_MATRIX) so Shell and the package always agree. The filter keeps
+// only the keys that belong to those two modules, typed as PermKey.
+
+function rolesAdminAudit(role: EqRole): PermKey[] {
+  return (ROLES_MATRIX[role] as readonly string[]).filter(
+    (p): p is PermKey => p.startsWith('admin.') || p.startsWith('audit.'),
+  );
+}
 
 function compose(role: EqRole): Set<PermKey> {
   return new Set<PermKey>([
-    ...ADMIN_MATRIX[role],
-    ...AUDIT_MATRIX[role],
+    ...rolesAdminAudit(role),
     ...INTAKE_MATRIX[role],
     ...EQUIPMENT_MATRIX[role],
     ...GM_REPORTS_MATRIX[role],
