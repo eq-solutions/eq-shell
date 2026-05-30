@@ -20,6 +20,9 @@ importers:
       '@eq-solutions/tokens':
         specifier: github:eq-solutions/eq-design-tokens#v1.0.0
         version: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/6340e468686cb1fbdb10d50cdb73801e4c2d997f
+      '@eq-solutions/ui':
+        specifier: github:eq-solutions/eq-ui#main
+        version: https://codeload.github.com/eq-solutions/eq-ui/tar.gz/dd27abde45140003c92e72490d4b13081f661fba(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@eq/ai':
         specifier: workspace:*
         version: link:eq-intake/eq-platform/packages/eq-ai
@@ -466,6 +469,14 @@ packages:
     resolution: {tarball: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/6340e468686cb1fbdb10d50cdb73801e4c2d997f}
     version: 1.0.0
     engines: {node: '>=18'}
+
+  '@eq-solutions/ui@https://codeload.github.com/eq-solutions/eq-ui/tar.gz/dd27abde45140003c92e72490d4b13081f661fba':
+    resolution: {tarball: https://codeload.github.com/eq-solutions/eq-ui/tar.gz/dd27abde45140003c92e72490d4b13081f661fba}
+    version: 1.0.0
+    engines: {node: '>=18'}
+    peerDependencies:
+      react: '>=18'
+      react-dom: '>=18'
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -3193,6 +3204,12 @@ snapshots:
   '@eq-solutions/roles@https://codeload.github.com/eq-solutions/eq-roles/tar.gz/2bc5573b2f7d20bb0e8a1ab8d2033b2ef9c572f8': {}
 
   '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/6340e468686cb1fbdb10d50cdb73801e4c2d997f': {}
+
+  '@eq-solutions/ui@https://codeload.github.com/eq-solutions/eq-ui/tar.gz/dd27abde45140003c92e72490d4b13081f661fba(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@eq-solutions/tokens': https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/6340e468686cb1fbdb10d50cdb73801e4c2d997f
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true
