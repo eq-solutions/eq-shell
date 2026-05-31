@@ -181,7 +181,7 @@ export default function StorageBrowser() {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadStatus.kind === 'uploading'}
                 style={{
-                  background: uploadStatus.kind === 'uploading' ? '#2986B4' : '#3DA8D8',
+                  background: uploadStatus.kind === 'uploading' ? 'var(--eq-deep, #2986B4)' : 'var(--eq-sky, #3DA8D8)',
                   color: 'white',
                   borderRadius: 6,
                   padding: '8px 16px',
@@ -193,12 +193,12 @@ export default function StorageBrowser() {
                 }}
                 onMouseEnter={(e) => {
                   if (uploadStatus.kind !== 'uploading') {
-                    (e.currentTarget as HTMLButtonElement).style.background = '#2986B4';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--eq-deep, #2986B4)';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (uploadStatus.kind !== 'uploading') {
-                    (e.currentTarget as HTMLButtonElement).style.background = '#3DA8D8';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--eq-sky, #3DA8D8)';
                   }
                 }}
               >

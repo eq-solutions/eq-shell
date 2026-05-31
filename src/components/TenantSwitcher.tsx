@@ -94,7 +94,7 @@ export function TenantSwitcher() {
                   <div style={menuItemNameStyle}>{label}</div>
                   <div style={menuItemRoleStyle}>{ROLE_LABELS[m.role] ?? m.role}</div>
                 </div>
-                <span style={{ fontSize: 13, color: '#2986B4' }}>{busy ? '…' : 'Enter →'}</span>
+                <span style={{ fontSize: 13, color: 'var(--eq-deep, #2986B4)' }}>{busy ? '…' : 'Enter →'}</span>
               </button>
             );
           })}
@@ -122,7 +122,7 @@ const triggerStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   fontSize: 13,
   fontWeight: 600,
-  color: '#1A1A2E',
+  color: 'var(--eq-ink, #1A1A2E)',
 };
 
 const menuStyle: React.CSSProperties = {
@@ -160,7 +160,7 @@ const menuItemStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontFamily: 'inherit',
   textAlign: 'left',
-  color: '#1A1A2E',
+  color: 'var(--eq-ink, #1A1A2E)',
 };
 
 const menuItemBusyStyle: React.CSSProperties = {
