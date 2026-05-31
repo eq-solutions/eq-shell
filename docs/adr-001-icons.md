@@ -34,3 +34,12 @@ spend real effort (and add a third-party Flutter dep) for ~identical pixels.
 - New React/Field icons default to Lucide.
 - Cards stays on Material; do not schedule a Lucide retrofit.
 - No "Lucide everywhere" sweep across all four stacks.
+
+## Deviation from the handoff (consciously owned)
+The Direction D handoff **LOCKS** "Lucide line icons across every app, stroke 2 —
+one icon system suite-wide." Keeping Cards on Material is a **deliberate exception**
+to that locked rule, confirmed by Royce (2026-05-31): native Material Icons are
+zero-dependency, internally consistent, and render ~identically to Lucide in
+Flutter, so a retrofit is cost without benefit. Cross-app icon cohesion is carried
+by the Shell chrome (already Lucide). If a future Cards screen is rebuilt net-new,
+prefer Lucide there.
