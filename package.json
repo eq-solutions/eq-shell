@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build:packages": "pnpm -r --filter \"./eq-intake/eq-platform/packages/**\" run build",
-    "build": "pnpm run build:packages && tsc -b && vite build",
+    "build:tokens": "node scripts/build-public-tokens.mjs",
+    "build": "pnpm run build:packages && pnpm run build:tokens && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
