@@ -4,4 +4,4 @@
  * the template engine, and tests to key role-indexed maps.
  */
 
-export type RoleName = "customer" | "contact" | "site";
+export type RoleName = "customer" | "contact" | "site" | "staff";

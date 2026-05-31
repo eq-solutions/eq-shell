@@ -29,6 +29,9 @@ import {
   siteAddress,
   linkedCustomerIds,
   linkedCustomerNames,
+  contactField,
+  contactFirstSiteAddress,
+  contactFirstSiteField,
 } from "./template.js";
 
 // ============================================================================
@@ -464,12 +467,63 @@ const SIMPRO_QUOTES_BY_SITE: DestinationTemplate = {
 };
 
 // ============================================================================
+// SimPRO contacts → site contact directory (row per contact + site address)
+//
+// "I need a list of every site contact with their site's address." Classic
+// Equinix / Schneider ask: pre-populate a visitor management system, a
+// contractor portal, or a permit form with the correct site address for
+// each contact's company. Drops cleanly from three SimPRO files.
+//
+// iteration mode: 'contact' — one row per contact. The engine joins the
+// contact's simPRO Customer ID to the customer file, then pulls that
+// customer's first site for the address columns. Contacts whose customer
+// ID doesn't appear in the customer file are dropped (orphans).
+// ============================================================================
+
+const SITE_CONTACT_DIRECTORY: DestinationTemplate = {
+  id: "site-contact-directory",
+  name: "SimPRO contacts → site contact directory",
+  description:
+    "One row per contact, with their company's site address joined in. Useful for visitor management, contractor portals, and permit pre-fill. Drop all three SimPRO files.",
+  destinationLabel: "Site contact directory",
+  requiredRoles: ["customer", "contact", "site"],
+  origin: "builtin",
+  iterationMode: "contact",
+  columns: [
+    // Contact identity
+    { name: "First Name",        value: contactField("Contact First Name") },
+    { name: "Last Name",         value: contactField("Contact Last Name") },
+    { name: "Email",             value: contactField("Contact Email") },
+    { name: "Mobile",            value: contactField("Contact Mobile Phone") },
+    { name: "Work Phone",        value: contactField("Contact Work Phone") },
+    { name: "Position",          value: contactField("Contact Position") },
+    // Company (from parent customer)
+    { name: "Company",           value: field("Company Name"),
+      description: "The parent customer's company name." },
+    { name: "Customer ID",       value: ({ customer }) => str(customer["simPRO Customer ID"]),
+      description: "Source-system customer ID for the contact's company." },
+    // Site (first site belonging to the parent customer)
+    { name: "Site Name",         value: contactFirstSiteField("Site Name"),
+      description: "Name of the first site linked to this contact's company." },
+    { name: "Site Address",      value: contactFirstSiteAddress(),
+      description: "Physical address of the first site — Street, Suburb, State, Postcode." },
+    { name: "Site Street",       value: contactFirstSiteField("Street Address") },
+    { name: "Site Suburb",       value: contactFirstSiteField("Suburb") },
+    { name: "Site State",        value: contactFirstSiteField("State") },
+    { name: "Site Postcode",     value: contactFirstSiteField("Postcode") },
+    { name: "Site Count",        value: siteCount(),
+      description: "Total number of sites for this contact's company." },
+  ],
+};
+
+// ============================================================================
 // REGISTRY
 // ============================================================================
 
 export const BUILTIN_TEMPLATES: DestinationTemplate[] = [
   SIMPRO_CUSTOMER_ROLLUP,
   SIMPRO_QUOTES_BY_SITE,
+  SITE_CONTACT_DIRECTORY,
   XERO_CONTACTS_IMPORT,
   MYOB_CARD_FILE,
   OUTLOOK_CONTACTS,

@@ -15,8 +15,9 @@ import type { CommitFn, CommittableRow } from "@eq/confirm-ui";
 import { pickAi } from "./ai-picker.js";
 import { CUSTOMER_SCHEMA, CONTACT_SCHEMA, SITE_SCHEMA } from "./simpro-schemas.js";
 import { RollupDropZone } from "./rollup/RollupDropZone.js";
+import { IntakeModule } from "./module/IntakeModule.js";
 
-type Mode = "single" | "bundle";
+type Mode = "single" | "bundle" | "intake";
 
 const STAFF_SCHEMA = {
   $id: "https://schemas.eq.solutions/demo/staff.json",
@@ -268,6 +269,15 @@ export function App() {
           >
             SimPRO bundle → SharePoint paste
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "intake"}
+            className={"eq-mode-tab" + (mode === "intake" ? " eq-mode-tab--active" : "")}
+            onClick={() => setMode("intake")}
+          >
+            One-screen Intake
+          </button>
         </section>
 
         {mode === "single" ? (
@@ -293,6 +303,7 @@ export function App() {
           </section>
         ) : null}
 
+        {mode !== "intake" && (
         <section className="eq-info-panel">
           <strong>What you're looking at:</strong>
           {mode === "single" ? (
@@ -361,6 +372,7 @@ export function App() {
             </div>
           ) : null}
         </section>
+        )}
 
         {mode === "single" ? (
           <ParserDropZone
@@ -369,8 +381,10 @@ export function App() {
             canonicalFields={canonicalFields}
             onDestinationChange={onDestinationChange}
           />
-        ) : (
+        ) : mode === "bundle" ? (
           <RollupDropZone />
+        ) : (
+          <IntakeModule onDestinationChange={onDestinationChange} />
         )}
 
         {log.length > 0 && (

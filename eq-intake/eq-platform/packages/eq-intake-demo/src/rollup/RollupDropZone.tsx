@@ -24,6 +24,7 @@ import {
   CUSTOMER_SCHEMA,
   CONTACT_SCHEMA,
   SITE_SCHEMA,
+  STAFF_SCHEMA,
 } from "../simpro-schemas.js";
 import type { RoleName } from "./roles.js";
 import {
@@ -47,6 +48,7 @@ const ROLE_REGISTRY: Record<RoleName, Record<string, unknown>> = {
   customer: CUSTOMER_SCHEMA,
   contact: CONTACT_SCHEMA,
   site: SITE_SCHEMA,
+  staff: STAFF_SCHEMA,
 };
 
 /** Canonical-field options offered for user-template column mapping. */
@@ -96,7 +98,7 @@ export function RollupDropZone(): JSX.Element {
 
   const [skipEmpty, setSkipEmpty] = useState(false);
   const [normaliseCase, setNormaliseCase] = useState(false);
-  const [orphanStrategy, setOrphanStrategy] = useState<"drop" | "include-as-pseudo-customer">("drop");
+  const [orphanStrategy, setOrphanStrategy] = useState<"drop" | "include-as-pseudo-customer">("include-as-pseudo-customer");
   const [customiseOpen, setCustomiseOpen] = useState(false);
 
   // Inputs for "user-supplied template" wizard
@@ -118,7 +120,7 @@ export function RollupDropZone(): JSX.Element {
     setError(null);
     setSkipEmpty(false);
     setNormaliseCase(false);
-    setOrphanStrategy("drop");
+    setOrphanStrategy("include-as-pseudo-customer");
   };
 
   const ingestFiles = async (files: File[]) => {
@@ -131,27 +133,29 @@ export function RollupDropZone(): JSX.Element {
         const bytes = new Uint8Array(buf);
         try {
           const parsed = await parseFile({ bytes, fileName: file.name });
-          const sheet = parsed.sheets[0];
-          if (!sheet) {
+          if (!parsed.sheets.length) {
             next.push({ file, role: "unknown", error: "Parser returned no sheets" });
             continue;
           }
-          const classification = await classifySheet({
-            schemas: ROLE_REGISTRY,
-            sheet,
-          });
-          const role =
-            classification.entity === "customer" ||
-            classification.entity === "contact" ||
-            classification.entity === "site"
-              ? (classification.entity as RoleName)
-              : "unknown";
-          next.push({
-            file,
-            role,
-            sheet,
-            confidence: classification.confidence,
-          });
+          // One slot per sheet so multi-tab workbooks work end-to-end.
+          for (const sheet of parsed.sheets) {
+            const classification = await classifySheet({
+              schemas: ROLE_REGISTRY,
+              sheet,
+            });
+            const role =
+              classification.entity === "customer" ||
+              classification.entity === "contact" ||
+              classification.entity === "site"
+                ? (classification.entity as RoleName)
+                : "unknown";
+            next.push({
+              file,
+              role,
+              sheet,
+              confidence: classification.confidence,
+            });
+          }
         } catch (e) {
           next.push({
             file,
@@ -303,7 +307,15 @@ export function RollupDropZone(): JSX.Element {
         />
       </div>
 
-      {busy ? <p className="eq-rollup__busy">Parsing + classifying…</p> : null}
+      {busy ? (
+        <div className="eq-spinner" style={{ padding: "12px 0", border: "none", background: "transparent" }}>
+          <span className="eq-spinner__dot" />
+          <span className="eq-spinner__text">
+            <span>Classifying files…</span>
+            <span className="eq-spinner__hint">This uses AI — usually takes a few seconds per file.</span>
+          </span>
+        </div>
+      ) : null}
 
       {slots.length > 0 ? (
         <table className="eq-rollup__slots">
@@ -335,7 +347,14 @@ export function RollupDropZone(): JSX.Element {
                   </select>
                 </td>
                 <td>{s.sheet ? s.sheet.rows.length : "—"}</td>
-                <td>{s.confidence != null ? `${Math.round(s.confidence * 100)}%` : "—"}</td>
+                <td>
+                  {s.confidence != null ? `${Math.round(s.confidence * 100)}%` : "—"}
+                  {s.confidence != null && s.confidence < 0.7 && s.role !== "unknown" && (
+                    <span style={{ display: "block", color: "#d97706", fontSize: 11, fontWeight: 500, marginTop: 2 }}>
+                      Low — check the role
+                    </span>
+                  )}
+                </td>
                 <td>
                   <button type="button" onClick={() => removeSlot(i)} aria-label="Remove file">
                     Remove
@@ -393,12 +412,57 @@ export function RollupDropZone(): JSX.Element {
       ) : null}
 
       {hasAnyData ? (
+        <div
+          style={{
+            padding: "10px 14px",
+            margin: "8px 0",
+            background: "#fef3c7",
+            border: "1px solid #fcd34d",
+            borderLeft: "4px solid #d97706",
+            borderRadius: 6,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            fontSize: 13,
+          }}
+        >
+          <span style={{ fontWeight: 500, color: "#78350f" }}>
+            Orphan sites/contacts
+          </span>
+          <span style={{ color: "#92400e", flex: 1, minWidth: 220 }}>
+            Sites or contacts whose Customer ID doesn't match anything in the customers file.
+          </span>
+          <select
+            value={orphanStrategy}
+            onChange={(e) =>
+              setOrphanStrategy(e.target.value as "drop" | "include-as-pseudo-customer")
+            }
+            style={{
+              fontFamily: "inherit",
+              fontSize: 13,
+              padding: "5px 8px",
+              border: "1px solid #fcd34d",
+              borderRadius: 4,
+              background: "white",
+              color: "#1A1A2E",
+            }}
+          >
+            <option value="include-as-pseudo-customer">
+              Include as pseudo-customer rows (recommended)
+            </option>
+            <option value="drop">Drop them — lose those rows</option>
+          </select>
+        </div>
+      ) : null}
+
+      {hasAnyData ? (
         <details
           className="eq-rollup__customise"
           open={customiseOpen}
           onToggle={(e) => setCustomiseOpen((e.currentTarget as HTMLDetailsElement).open)}
         >
-          <summary>Customise output</summary>
+          <summary>More options</summary>
           <div className="eq-rollup__customise-body">
             <label>
               <input
@@ -419,22 +483,6 @@ export function RollupDropZone(): JSX.Element {
                 {allCapsCount} rows look ALL-CAPS in this bundle)
               </label>
             ) : null}
-            <label className="eq-rollup__customise-orphan">
-              <span>Orphan sites/contacts (Customer ID not in customers file):</span>
-              <select
-                value={orphanStrategy}
-                onChange={(e) =>
-                  setOrphanStrategy(
-                    e.target.value as "drop" | "include-as-pseudo-customer",
-                  )
-                }
-              >
-                <option value="drop">Drop them (default)</option>
-                <option value="include-as-pseudo-customer">
-                  Include as pseudo-customer rows
-                </option>
-              </select>
-            </label>
           </div>
         </details>
       ) : null}

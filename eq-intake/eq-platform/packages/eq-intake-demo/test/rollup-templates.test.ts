@@ -229,10 +229,11 @@ function bundle(): Partial<Record<RoleName, ParsedSheet>> {
 }
 
 describe("template engine — built-in templates", () => {
-  it("registers 5 built-in templates with stable ids", () => {
+  it("registers 6 built-in templates with stable ids", () => {
     expect(BUILTIN_TEMPLATES.map((t) => t.id)).toEqual([
       "simpro-customer-rollup",
       "simpro-quotes-by-site",
+      "site-contact-directory",
       "xero-contacts-import",
       "myob-card-file",
       "outlook-contacts",

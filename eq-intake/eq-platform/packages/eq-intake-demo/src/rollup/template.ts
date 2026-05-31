@@ -42,6 +42,10 @@ export interface ColumnContext {
   /** Only set in 'site' iteration mode. The current site for this output row. */
   site?: Row;
   /**
+   * Only set in 'contact' iteration mode. The current contact for this output row.
+   */
+  contact?: Row;
+  /**
    * Only set in 'site' iteration mode. Other customers (besides `customer`)
    * whose IDs appear in the site's `simPRO Customer ID` cell. SimPRO models
    * data-centre tenants etc. as a site belonging to multiple customers, e.g.
@@ -84,9 +88,11 @@ export interface DestinationTemplate {
    * the customer's sites + contacts available via context. 'site' iterates
    * once per site, with each site's parent customer + that customer's
    * contacts in context (orphan sites whose customer ID isn't in the
-   * customer file are dropped).
+   * customer file are dropped). 'contact' iterates once per contact, with
+   * the contact's parent customer + that customer's sites in context
+   * (orphan contacts whose customer ID isn't in the customer file are dropped).
    */
-  iterationMode?: "customer" | "site";
+  iterationMode?: "customer" | "site" | "contact";
 }
 
 export interface TemplateRenderOptions {
@@ -190,6 +196,29 @@ export function renderTemplate(
       };
       outputRows.push(buildRow(template, ctx));
     }
+  } else if (iterationMode === "contact") {
+    // 'contact' iteration: one row per contact. Each contact's simPRO Customer
+    // ID is resolved to find the parent customer and that customer's sites.
+    // Orphan contacts (no matching customer ID) are dropped — same semantics as
+    // 'site' iteration dropping orphan sites.
+    for (const cc of contacts) {
+      const id = stringOf(cc["simPRO Customer ID"]);
+      const parent = id ? customerById.get(id) : undefined;
+      if (!parent) continue; // orphan contact
+      const customerSites = sitesByCustomer.get(id) ?? [];
+      const ctx: ColumnContext = {
+        customer: opts.normaliseCase ? normaliseRowCase(parent) : parent,
+        sites: customerSites,
+        contacts: [cc],
+        contact: opts.normaliseCase ? normaliseRowCase(cc) : cc,
+      };
+      outputRows.push(buildRow(template, ctx));
+    }
+    for (const c of customers) {
+      const id = stringOf(c["simPRO Customer ID"]);
+      if ((sitesByCustomer.get(id) ?? []).length > 0) customersWithSite++;
+      if ((contactsByCustomer.get(id) ?? []).length > 0) customersWithContact++;
+    }
   } else {
     // 'site' iteration: one row per site. The site cell may list multiple
     // customer IDs (multi-tenant sites). We treat the FIRST id as primary —
@@ -228,11 +257,10 @@ export function renderTemplate(
     }
   }
 
-  // Optional orphan handling — append pseudo-customer rows for sites/contacts
-  // whose Customer ID isn't in the customers file. Site cells are parsed for
-  // multi-customer lists; a site is only an orphan if NONE of its listed IDs
-  // resolve to a customer.
-  if (opts.orphanStrategy === "include-as-pseudo-customer") {
+  // Orphan handling — append pseudo-customer rows for sites/contacts whose
+  // Customer ID isn't in the customers file. Default is 'drop'; callers must
+  // opt in to 'include-as-pseudo-customer' if they want orphans surfaced.
+  if ((opts.orphanStrategy ?? "drop") === "include-as-pseudo-customer") {
     const orphanCustomerIds = new Set<string>();
     for (const s of sites) {
       const ids = parseCustomerIds(s["simPRO Customer ID"]);
@@ -378,6 +406,38 @@ export function firstContactField(name: string): ColumnValueFn {
   return ({ contacts }) => stringOf(contacts[0]?.[name]);
 }
 
+/** Pull a value from the current contact row (contact-iteration mode only). */
+export function contactField(name: string): ColumnValueFn {
+  return ({ contact: c }) => stringOf(c?.[name]);
+}
+
+/**
+ * One-line address built from the first site belonging to the current
+ * contact's customer. Most useful in contact-iteration mode to give each
+ * contact their site's physical address (e.g. for visitor management or
+ * contractor portal pre-fill).
+ */
+export function contactFirstSiteAddress(): ColumnValueFn {
+  return ({ sites }) => {
+    const s = sites[0];
+    if (!s) return "";
+    const parts = [
+      stringOf(s["Street Address"]),
+      stringOf(s["Suburb"]),
+      stringOf(s["State"]),
+      stringOf(s["Postcode"]),
+    ]
+      .map((p) => p.trim())
+      .filter(Boolean);
+    return parts.join(", ");
+  };
+}
+
+/** Pull a named field from the first site belonging to the contact's customer. */
+export function contactFirstSiteField(name: string): ColumnValueFn {
+  return ({ sites }) => stringOf(sites[0]?.[name]);
+}
+
 /**
  * Comma-separated extra customer IDs for a multi-tenant site (site-iteration
  * mode only — empty otherwise). Excludes the primary customer ID, which is
@@ -445,8 +505,14 @@ function buildRow(
   for (const col of template.columns) {
     try {
       row[col.name] = col.value(ctx);
-    } catch {
-      row[col.name] = "";
+    } catch (e) {
+      // Surface the error — silent "" would produce a blank cell with no trace.
+      // eslint-disable-next-line no-console
+      console.error(
+        `buildRow: column "${col.name}" threw — check template definition.`,
+        e,
+      );
+      row[col.name] = `#ERROR:${col.name}`;
     }
   }
   return row;

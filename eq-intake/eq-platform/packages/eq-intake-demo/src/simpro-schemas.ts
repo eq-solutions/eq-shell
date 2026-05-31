@@ -306,6 +306,90 @@ export const CONTACT_SCHEMA = {
   },
 };
 
+export const STAFF_SCHEMA = {
+  $id: "https://schemas.eq.solutions/demo/staff.json",
+  title: "Staff (demo)",
+  "x-eq-entity": "staff",
+  type: "object",
+  required: ["first_name", "last_name"],
+  properties: {
+    external_id: {
+      type: ["string", "null"],
+      description: "Source-system staff ID (SimPRO employee ID, MYOB Card ID, etc.).",
+      "x-eq-source-aliases": ["staff_id", "employee_id", "id", "card_id", "payroll_id", "simpro_staff_id"],
+    },
+    first_name: {
+      type: "string",
+      description: "Given name. Required.",
+      "x-eq-source-aliases": ["first_name", "first", "given_name", "fname", "firstname"],
+      minLength: 1,
+      maxLength: 80,
+    },
+    last_name: {
+      type: "string",
+      description: "Family name. Required.",
+      "x-eq-source-aliases": ["last_name", "last", "surname", "lname", "lastname", "family_name"],
+      minLength: 1,
+      maxLength: 80,
+    },
+    preferred_name: {
+      type: ["string", "null"],
+      description: "Preferred name or nickname.",
+      "x-eq-source-aliases": ["preferred_name", "nickname", "known_as"],
+    },
+    email: {
+      type: ["string", "null"],
+      format: "email",
+      "x-eq-source-aliases": ["email", "work_email", "staff_email"],
+    },
+    mobile_phone: {
+      type: ["string", "null"],
+      "x-eq-coerce": "phone-au",
+      "x-eq-source-aliases": ["mobile_phone", "mobile", "cell", "phone"],
+    },
+    work_phone: {
+      type: ["string", "null"],
+      "x-eq-coerce": "phone-au",
+      "x-eq-source-aliases": ["work_phone", "office_phone", "direct_phone"],
+    },
+    trade: {
+      type: ["string", "null"],
+      description: "Primary trade (Electrician, Instrumentation, etc.).",
+      "x-eq-source-aliases": ["trade", "trade_type", "discipline", "skill"],
+    },
+    classification: {
+      type: ["string", "null"],
+      description: "Classification or pay level (e.g. EW3, EW5, Apprentice).",
+      "x-eq-source-aliases": ["classification", "level", "pay_level", "grade", "award_level"],
+    },
+    employment_type: {
+      type: ["string", "null"],
+      description: "Employee, Contractor, Labour Hire, etc.",
+      "x-eq-source-aliases": ["employment_type", "type", "worker_type", "engagement_type"],
+    },
+    company: {
+      type: ["string", "null"],
+      description: "Employer or labour hire firm name.",
+      "x-eq-source-aliases": ["company", "company_name", "employer", "agency"],
+    },
+    state: {
+      type: ["string", "null"],
+      "x-eq-coerce": "au-state",
+      "x-eq-source-aliases": ["state", "work_state", "base_state"],
+    },
+    active: {
+      type: ["boolean", "null"],
+      description: "Whether this staff member is currently active.",
+      "x-eq-coerce": "boolean",
+      "x-eq-source-aliases": ["active", "is_active", "status", "enabled"],
+    },
+    notes: {
+      type: ["string", "null"],
+      "x-eq-source-aliases": ["notes", "comments", "remarks"],
+    },
+  },
+};
+
 export const SITE_SCHEMA = {
   $id: "https://schemas.eq.solutions/demo/site.json",
   title: "Site (demo)",

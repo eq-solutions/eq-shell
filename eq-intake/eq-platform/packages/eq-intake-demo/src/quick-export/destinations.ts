@@ -77,6 +77,47 @@ const CUST_STATE = (r: Record<string, unknown>) => str(r["State"]);
 const CUST_POSTCODE = (r: Record<string, unknown>) => str(r["Postcode"]);
 const CUST_COUNTRY = (r: Record<string, unknown>) => str(r["Country"]) || "Australia";
 
+// SimPRO / EQ Field staff column names.
+const STAFF_FIRST = (r: Record<string, unknown>) =>
+  str(r["First Name"] ?? r["first_name"] ?? r["Given Name"]);
+const STAFF_LAST = (r: Record<string, unknown>) =>
+  str(r["Last Name"] ?? r["last_name"] ?? r["Surname"]);
+const STAFF_EMAIL = (r: Record<string, unknown>) =>
+  str(r["Email"] ?? r["email"] ?? r["Work Email"]);
+const STAFF_PHONE = (r: Record<string, unknown>) =>
+  str(r["Mobile Phone"] ?? r["mobile_phone"] ?? r["Phone"] ?? r["Mobile"]);
+const STAFF_TRADE = (r: Record<string, unknown>) =>
+  str(r["Trade"] ?? r["trade"] ?? r["Discipline"] ?? r["trade_type"]);
+const STAFF_LEVEL = (r: Record<string, unknown>) =>
+  str(r["Classification"] ?? r["classification"] ?? r["Level"] ?? r["Pay Level"] ?? r["Grade"]);
+const STAFF_EMP_TYPE = (r: Record<string, unknown>) =>
+  str(r["Employment Type"] ?? r["employment_type"] ?? r["Type"] ?? r["Worker Type"]) || "Contractor";
+const STAFF_COMPANY = (r: Record<string, unknown>) =>
+  str(r["Company"] ?? r["company_name"] ?? r["Employer"] ?? r["Agency"]) || "SKS Technologies";
+const STAFF_STATUS = (r: Record<string, unknown>) => {
+  const active = str(r["active"] ?? r["Active"] ?? r["Status"] ?? "").toLowerCase();
+  if (active === "false" || active === "0" || active === "inactive") return "Inactive";
+  return "Active";
+};
+const STAFF_NOTES = (r: Record<string, unknown>) =>
+  str(r["Notes"] ?? r["notes"] ?? r["Comments"]);
+
+// SimPRO site column names (from site_export_*.csv).
+const SITE_NAME = (r: Record<string, unknown>) =>
+  str(r["Site Name"] ?? r["Name"] ?? r["Location Name"] ?? r["site_name"]);
+const SITE_EXT_ID = (r: Record<string, unknown>) =>
+  str(r["simPRO Site ID"] ?? r["Site ID"] ?? r["External ID"] ?? r["ID"]);
+const SITE_CUST_ID = (r: Record<string, unknown>) =>
+  str(r["simPRO Customer ID"] ?? r["Customer ID"] ?? r["Account ID"]);
+const SITE_ADDR = (r: Record<string, unknown>) =>
+  str(r["Street Address"] ?? r["Address"]);
+const SITE_SUBURB = (r: Record<string, unknown>) =>
+  str(r["Suburb"] ?? r["City"] ?? r["Town"]);
+const SITE_STATE = (r: Record<string, unknown>) => str(r["State"]);
+const SITE_POSTCODE = (r: Record<string, unknown>) => str(r["Postcode"]);
+const SITE_NOTES = (r: Record<string, unknown>) =>
+  str(r["Public Notes"] ?? r["Notes"] ?? r["Site Notes"]);
+
 export const QUICK_DESTINATIONS: QuickDestination[] = [
   {
     id: "outlook-contacts",
@@ -127,6 +168,46 @@ export const QUICK_DESTINATIONS: QuickDestination[] = [
       { name: "PORegion", value: CUST_STATE },
       { name: "POPostalCode", value: CUST_POSTCODE },
       { name: "POCountry", value: CUST_COUNTRY },
+    ],
+  },
+
+  {
+    id: "site-sharepoint",
+    label: "Sites → SharePoint / CMDB",
+    description:
+      "Site register CSV for SharePoint or a CMDB. One row per site. Drop your SimPRO sites file.",
+    needsRole: "site",
+    filename: "site-register.csv",
+    columns: [
+      { name: "Site Name",         value: SITE_NAME },
+      { name: "SimPRO Site ID",    value: SITE_EXT_ID },
+      { name: "SimPRO Customer ID",value: SITE_CUST_ID },
+      { name: "Street Address",    value: SITE_ADDR },
+      { name: "Suburb",            value: SITE_SUBURB },
+      { name: "State",             value: SITE_STATE },
+      { name: "Postcode",          value: SITE_POSTCODE },
+      { name: "Notes",             value: SITE_NOTES },
+    ],
+  },
+
+  {
+    id: "equinix-contractor-portal",
+    label: "Equinix Contractor Portal",
+    description:
+      "Equinix contractor registration CSV. One row per staff member. Drop your EQ Field or SimPRO staff export.",
+    needsRole: "staff",
+    filename: "equinix-contractors.csv",
+    columns: [
+      { name: "First Name",       value: STAFF_FIRST },
+      { name: "Last Name",        value: STAFF_LAST },
+      { name: "Email",            value: STAFF_EMAIL },
+      { name: "Phone",            value: STAFF_PHONE },
+      { name: "Trade",            value: STAFF_TRADE },
+      { name: "Level",            value: STAFF_LEVEL },
+      { name: "Employment Type",  value: STAFF_EMP_TYPE },
+      { name: "Company",          value: STAFF_COMPANY },
+      { name: "Status",           value: STAFF_STATUS },
+      { name: "Notes",            value: STAFF_NOTES },
     ],
   },
 
