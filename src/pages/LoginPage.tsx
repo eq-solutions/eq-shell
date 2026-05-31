@@ -55,6 +55,19 @@ export default function LoginPage() {
     setErr(null);
   }
 
+  // Password managers autofill the whole PIN into a single field. The visible
+  // boxes are maxLength=1, which clips the fill to one digit — so we keep a
+  // hidden full-length password input as the autofill target and distribute
+  // its value across the four boxes here.
+  function setPinFromString(raw: string) {
+    const digits = raw.replace(/\D/g, '').slice(0, 4).split('');
+    const next = ['', '', '', ''];
+    digits.forEach((d, i) => { next[i] = d; });
+    setPinDigits(next);
+    const target = Math.min(digits.length, 3);
+    pinRefs[target].current?.focus();
+  }
+
   function onPinChange(index: number, value: string) {
     const digits = value.replace(/\D/g, '');
     // Autofill / paste dumps multiple chars into one box — distribute from here.
@@ -263,6 +276,20 @@ export default function LoginPage() {
                   />
                 </div>
 
+                {/* Hidden autofill target — password managers fill the full PIN
+                    here; setPinFromString distributes it into the visible boxes. */}
+                <input
+                  type="password"
+                  name="pin"
+                  autoComplete="current-password"
+                  inputMode="numeric"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  value={pin}
+                  onChange={(e) => setPinFromString(e.target.value)}
+                  style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+                />
+
                 <div className="eq-login-field">
                   <div className="eq-login-pin-header">
                     <span className="eq-login-label" style={{ margin: 0 }}>PIN</span>
@@ -286,7 +313,7 @@ export default function LoginPage() {
                         ref={ref}
                         type="password"
                         inputMode="numeric"
-                        autoComplete={i === 0 ? 'current-password' : 'off'}
+                        autoComplete="off"
                         maxLength={1}
                         value={pinDigits[i]}
                         onChange={(e) => onPinChange(i, e.target.value)}
