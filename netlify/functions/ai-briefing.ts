@@ -8,7 +8,8 @@
 //   - ANTHROPIC_API_KEY missing → { ok: true, briefing: null }
 //   - Anthropic call fails → log + { ok: true, briefing: null }
 //
-// Response is cached for 5 minutes at the CDN edge (max-age=300).
+// Response is cached privately in the browser for 5 minutes (private, max-age=300)
+// — per-user only, never shared/CDN-cached (it's tenant-scoped operational data).
 
 import type { Context } from '@netlify/functions';
 import {
@@ -40,7 +41,7 @@ function json(status: number, body: unknown, extraHeaders?: Record<string, strin
     status,
     headers: {
       'Content-Type': 'application/json',
-      'Cache-Control': 'max-age=300',
+      'Cache-Control': 'private, max-age=300',
       ...extraHeaders,
     },
   });
