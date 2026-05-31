@@ -119,6 +119,39 @@ function sign(payloadJson: string): string {
   return createHmac('sha256', SECRET_SALT).update(payloadJson).digest('hex');
 }
 
+/**
+ * Shared verifier for the short-lived, "kind"-tagged exchange tokens
+ * (tenant-selection, quotes-token, totp-challenge). Those three verifiers were
+ * byte-identical except for the kind tag, the payload type, and a final
+ * required-field check — so they now delegate here. The wire format and every
+ * check (split → constant-time sig compare → JSON.parse → kind → exp → field)
+ * are unchanged and run in the same order; this only removes the copy-paste.
+ *
+ * verifySessionToken is deliberately NOT routed through here: it has no kind
+ * tag and defaults active_tenant_id + memberships on the way out.
+ */
+function verifyKindToken<T extends { kind: string; exp: number }>(
+  token: string | null | undefined,
+  kind: T['kind'],
+  hasRequiredFields: (data: T) => boolean,
+): T | null {
+  if (!token) return null;
+  try {
+    const [b64, sig] = token.split('.');
+    if (!b64 || !sig) return null;
+    const json = Buffer.from(b64, 'base64').toString();
+    const expected = sign(json);
+    if (!sigsEqual(expected, sig)) return null;
+    const data = JSON.parse(json) as T;
+    if (data.kind !== kind) return null;
+    if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
+    if (!hasRequiredFields(data)) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export function signSessionToken(payload: SessionPayload): string {
   const json = JSON.stringify(payload);
   const sig = sign(json);
@@ -201,21 +234,7 @@ export function signTenantSelectionToken(payload: TenantSelectionTokenPayload): 
 }
 
 export function verifyTenantSelectionToken(token: string | null | undefined): TenantSelectionTokenPayload | null {
-  if (!token) return null;
-  try {
-    const [b64, sig] = token.split('.');
-    if (!b64 || !sig) return null;
-    const json = Buffer.from(b64, 'base64').toString();
-    const expected = sign(json);
-    if (!sigsEqual(expected, sig)) return null;
-    const data = JSON.parse(json) as TenantSelectionTokenPayload;
-    if (data.kind !== 'tenant-selection') return null;
-    if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
-    if (!data.user_id) return null;
-    return data;
-  } catch {
-    return null;
-  }
+  return verifyKindToken<TenantSelectionTokenPayload>(token, 'tenant-selection', (d) => !!d.user_id);
 }
 
 /**
@@ -243,21 +262,7 @@ export function signQuotesToken(payload: QuotesTokenPayload): string {
 }
 
 export function verifyQuotesToken(token: string | null | undefined): QuotesTokenPayload | null {
-  if (!token) return null;
-  try {
-    const [b64, sig] = token.split('.');
-    if (!b64 || !sig) return null;
-    const json = Buffer.from(b64, 'base64').toString();
-    const expected = sign(json);
-    if (!sigsEqual(expected, sig)) return null;
-    const data = JSON.parse(json) as QuotesTokenPayload;
-    if (data.kind !== 'quotes-token') return null;
-    if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
-    if (!data.user_id || !data.tenant_id) return null;
-    return data;
-  } catch {
-    return null;
-  }
+  return verifyKindToken<QuotesTokenPayload>(token, 'quotes-token', (d) => !!d.user_id && !!d.tenant_id);
 }
 
 /**
@@ -282,21 +287,7 @@ export function signTotpChallengeToken(payload: TotpChallengeTokenPayload): stri
 }
 
 export function verifyTotpChallengeToken(token: string | null | undefined): TotpChallengeTokenPayload | null {
-  if (!token) return null;
-  try {
-    const [b64, sig] = token.split('.');
-    if (!b64 || !sig) return null;
-    const json = Buffer.from(b64, 'base64').toString();
-    const expected = sign(json);
-    if (!sigsEqual(expected, sig)) return null;
-    const data = JSON.parse(json) as TotpChallengeTokenPayload;
-    if (data.kind !== 'totp-challenge') return null;
-    if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
-    if (!data.user_id) return null;
-    return data;
-  } catch {
-    return null;
-  }
+  return verifyKindToken<TotpChallengeTokenPayload>(token, 'totp-challenge', (d) => !!d.user_id);
 }
 
 // Parses the eq_shell_session cookie value out of a Cookie header.
