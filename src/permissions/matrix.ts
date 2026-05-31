@@ -60,12 +60,33 @@ const AUDIT_PERMS = ['audit.view', 'audit.rollback'] as const;
 type AuditPermKey = (typeof AUDIT_PERMS)[number];
 
 // ============================================================================
+// ENTITY permission keys — canonical records (Customers/Sites/Contacts/Assets)
+// ============================================================================
+//
+// Shell-owned, not a lazy module, so the keys live here rather than in a
+// modules/<x>/permissions.ts. Delete of a canonical record is manager-only
+// (platform_admin short-circuits via useCan); archive/restore stay open to any
+// authenticated user and so need no perm. Mirror in _shared/permissions.ts.
+
+const ENTITY_PERMS = ['entity.delete'] as const;
+
+type EntityPermKey = (typeof ENTITY_PERMS)[number];
+
+const ENTITY_MATRIX: Record<EqRole, readonly EntityPermKey[]> = {
+  manager:     ['entity.delete'],
+  supervisor:  [],
+  employee:    [],
+  apprentice:  [],
+  labour_hire: [],
+};
+
+// ============================================================================
 // MASTER LIST + TYPE
 // ============================================================================
 
-export const ALL_PERMS = [...ADMIN_PERMS, ...AUDIT_PERMS, ...INTAKE_PERMS, ...EQUIPMENT_PERMS, ...GM_REPORTS_PERMS] as const;
+export const ALL_PERMS = [...ADMIN_PERMS, ...AUDIT_PERMS, ...ENTITY_PERMS, ...INTAKE_PERMS, ...EQUIPMENT_PERMS, ...GM_REPORTS_PERMS] as const;
 
-export type PermKey = AdminPermKey | AuditPermKey | IntakePermKey | EquipmentPermKey | GmReportsPermKey;
+export type PermKey = AdminPermKey | AuditPermKey | EntityPermKey | IntakePermKey | EquipmentPermKey | GmReportsPermKey;
 
 // ============================================================================
 // PER-ROLE GRANTS â€” composed from module-local matrices
@@ -89,6 +110,7 @@ function rolesAdminAudit(role: EqRole): PermKey[] {
 function compose(role: EqRole): Set<PermKey> {
   return new Set<PermKey>([
     ...rolesAdminAudit(role),
+    ...ENTITY_MATRIX[role],
     ...INTAKE_MATRIX[role],
     ...EQUIPMENT_MATRIX[role],
     ...GM_REPORTS_MATRIX[role],

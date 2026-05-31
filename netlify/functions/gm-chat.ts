@@ -6,6 +6,7 @@
 import type { Context } from '@netlify/functions';
 import { getTenantDataClientById, TenantNotFoundError, TenantNotActiveError } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { can } from './_shared/permissions.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
 
 const ANTHROPIC_API_VERSION = '2023-06-01';
@@ -26,7 +27,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const session = verifySessionToken(readSessionCookie(req));
   if (!session) return json(401, { error: 'not_signed_in' });
-  if (session.role !== 'manager' && !session.is_platform_admin) {
+  if (!can(session, 'reports.view')) {
     return json(403, { error: 'forbidden' });
   }
 

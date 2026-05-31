@@ -19,6 +19,7 @@ import {
   TenantRoutingMisconfiguredError,
 } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 interface StaffRow {
@@ -61,7 +62,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const session = verifySessionToken(readSessionCookie(req));
   if (!session) return json(401, { error: 'Not signed in' });
 
-  if (session.role !== 'manager' && !session.is_platform_admin) {
+  if (!can(session, 'admin.review_cards')) {
     return json(403, { error: 'Manager access required' });
   }
 

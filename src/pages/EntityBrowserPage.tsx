@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
+import { useCan } from '../permissions';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
@@ -208,9 +209,7 @@ function useDebounce<T>(value: T, ms: number): T {
 
 function EntityBrowserInner({ entity }: { entity: string }) {
   const view = ENTITY_VIEW[entity];
-  const { session } = useSession();
-  const isManager =
-    session?.user.role === 'manager' || session?.user.is_platform_admin === true;
+  const canDelete = useCan('entity.delete');
 
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [count, setCount] = useState<number | null>(null);
@@ -477,7 +476,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
           row={selectedRow}
           onClose={() => setSelectedRow(null)}
           onMutated={() => { setSelectedRow(null); void load(); }}
-          isManager={isManager}
+          canDelete={canDelete}
         />
       )}
     </HubLayout>
@@ -495,13 +494,13 @@ function EntityDetailDrawer({
   row,
   onClose,
   onMutated,
-  isManager,
+  canDelete,
 }: {
   entity: string;
   row: Record<string, unknown>;
   onClose: () => void;
   onMutated: () => void;
-  isManager: boolean;
+  canDelete: boolean;
 }) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
@@ -689,7 +688,7 @@ function EntityDetailDrawer({
                 </Button>
               )}
 
-              {isManager && (
+              {canDelete && (
                 confirmDelete ? (
                   <>
                     <Button

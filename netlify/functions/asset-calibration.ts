@@ -29,6 +29,7 @@ import {
   TenantRoutingMisconfiguredError,
 } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -87,9 +88,7 @@ export default withSentry(async (req: Request): Promise<Response> => {
   if (!session) return json(401, { ok: false, error: 'not_signed_in' });
 
   // Authorisation: equipment.edit = manager / supervisor / platform_admin.
-  const canEdit =
-    session.is_platform_admin || session.role === 'manager' || session.role === 'supervisor';
-  if (!canEdit) {
+  if (!can(session, 'equipment.edit')) {
     return json(403, { ok: false, error: 'forbidden', detail: 'Editing equipment requires manager or supervisor.' });
   }
 

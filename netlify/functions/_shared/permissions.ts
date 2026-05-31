@@ -41,7 +41,8 @@ export type PermKey =
   | 'equipment.edit'
   | 'reports.view'
   | 'reports.upload'
-  | 'reports.generate_briefing';
+  | 'reports.generate_briefing'
+  | 'entity.delete';
 
 // Per-role grants. Omitting a perm denies it; there is no inheritance — every
 // grant is explicit, matching the client matrix's invariant. A manager holds
@@ -54,6 +55,7 @@ const MATRIX: Record<EqRole, ReadonlySet<PermKey>> = {
     'intake.view', 'intake.import', 'intake.commit',
     'equipment.view', 'equipment.edit',
     'reports.view', 'reports.upload', 'reports.generate_briefing',
+    'entity.delete',
   ]),
   supervisor: new Set<PermKey>([
     'audit.view',

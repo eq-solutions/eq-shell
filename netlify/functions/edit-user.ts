@@ -48,6 +48,7 @@ import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, EqRole } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
+import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 const VALID_ROLES: ReadonlySet<EqRole> = new Set([
@@ -84,9 +85,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(401, { ok: false, error: 'unauthorized' });
   }
 
-  const isManager = session.role === 'manager';
-  const isAllowed = isManager || session.is_platform_admin === true;
-  if (!isAllowed) {
+  if (!can(session, 'admin.edit_user')) {
     return jsonResponse(403, { ok: false, error: 'forbidden' });
   }
 
