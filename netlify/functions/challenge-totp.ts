@@ -86,6 +86,24 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(500, { valid: false, error: (e as Error).message });
   }
 
+  // Rate-limit TOTP code attempts. The challenge token binds to a user_id, so
+  // without this the 6-digit second factor is brute-forcible within the token's
+  // 5-minute window. Keyed per user (not IP) so the limit can't be evaded by
+  // rotating source IPs. Fail closed if the limiter errors — same posture as
+  // shell-login.
+  const { data: rlResult, error: rlErr } = await sb.schema('public').rpc('check_and_increment_rate_limit', {
+    p_key: `totp::${challengePayload.user_id}`,
+  });
+  if (rlErr) {
+    // eslint-disable-next-line no-console
+    console.error('[challenge-totp] rate-limit check failed — blocking as precaution:', rlErr.message);
+    return jsonResponse(503, { valid: false, error: 'service-unavailable' });
+  }
+  const rl = rlResult as { blocked: boolean; retry_after_seconds: number } | null;
+  if (rl?.blocked) {
+    return jsonResponse(429, { valid: false, error: 'too-many-attempts', retry_after: rl.retry_after_seconds });
+  }
+
   const { data: user, error: userErr } = await sb
     .from('users')
     .select('id, email, name, tenant_id, role, is_platform_admin, active, pin_hash, last_login_at, last_active_tenant_id, totp_secret, totp_enrolled_at')
