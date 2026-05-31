@@ -1,9 +1,32 @@
 # D4.2 — Records-into-Shell IA Migration Spec
 
-**Date:** 2026-05-31
-**Status:** DRAFT — for Royce review before build starts
+**Date:** 2026-05-31 | **Decisions locked:** 2026-06-01
+**Status:** PARTIALLY APPROVED — OQ-1 (Field nav) is on hold pending discussion. OQ-2 to OQ-6 locked.
 **Depends on:** D4.1 IA audit (`docs/d4-1-ia-audit.md`)
 **Feeds into:** D4.3 Records IA build (phased)
+
+## Confirmed decisions (2026-06-01)
+| # | Question | Decision |
+|---|---|---|
+| OQ-1 | Field nav — Phase 1 approach | **REVISED** — do NOT suppress Field's nav. Suppress Shell's HubSidebar on the Field iframe page instead. Field's nav is necessary (20+ items with no Shell equivalent). Icon rail (D3.3) becomes the only Shell chrome on iframe pages. No Field code changes needed. |
+| OQ-2 | Assets consolidation | Keep both surfaces with clearer labels (lowest risk, Phase 2). |
+| OQ-3 | Assets in RECORDS sidebar | Separate — EQUIPMENT stays as its own sidebar section. |
+| OQ-4 | Quotes sidebar | No sidebar in Quotes Flask app — no action needed. |
+| OQ-5 | Service /records hub | Decide after Phase 1 is stable. |
+| OQ-6 | Phase 1 Field deploy timing | EQ Field has no live EQ users; only SKS uses Field. Phase 1 requires NO Field deploy — Shell-only change. |
+
+### Phase 1 revised approach — Shell hides its own sidebar, not Field's
+
+**Root cause understood (2026-06-01):** Field's v3.5.40 nav reinstatement was correct — without Field's sidebar, users cannot navigate within Field (My Schedule, Leave, Safety, Teams, etc. have no Shell equivalent). Suppressing Field's nav removes navigation that users need.
+
+**New Phase 1:** On the `FieldIframe` page, Shell does not render `HubSidebar`. The icon rail (48px, D3.3) becomes the only persistent Shell chrome — it gives cross-app switching without duplicating Field's internal nav.
+
+**Result:** User sees [48px icon rail] + [Field full app with its own nav]. No double menu. No Field changes.
+
+**Shell change required:**
+- In `src/pages/FieldIframe.tsx` (or `HubLayout`): pass `hideSidebar={true}` or `iframeMode={true}` to suppress HubSidebar rendering.
+- The icon rail (D3.3) renders in its place.
+- This is a single prop on an existing component — low risk, no Field deploy needed.
 
 ---
 
