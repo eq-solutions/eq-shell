@@ -1,7 +1,8 @@
 import { Link, NavLink, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2 } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify } from 'lucide-react';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
+import { useDensity } from '../lib/useDensity';
 import { EqLogo } from './EqLogo';
 import { TenantSwitcher } from './TenantSwitcher';
 
@@ -48,6 +49,7 @@ export function HubSidebar({ apps, records }: Props) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const { session, logout } = useSession();
   const canEquipment = useCan('equipment.view');
+  const { compact, toggle: toggleDensity } = useDensity();
 
   if (!session) return null;
 
@@ -235,6 +237,15 @@ export function HubSidebar({ apps, records }: Props) {
             {roleLabel} · {session.tenant.name}
           </div>
         </div>
+        <button
+          className={`eq-hub-sidebar__density-toggle${compact ? ' active' : ''}`}
+          onClick={toggleDensity}
+          aria-label="Compact view"
+          aria-pressed={compact}
+          title={compact ? 'Switch to normal view' : 'Switch to compact view'}
+        >
+          <AlignJustify size={16} aria-hidden="true" />
+        </button>
         <button
           className="eq-hub-sidebar__user-logout"
           onClick={() => void logout()}
