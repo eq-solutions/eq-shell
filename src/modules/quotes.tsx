@@ -31,19 +31,19 @@ export default function QuotesModule() {
           background: '#fff',
         }}
       >
-        <p style={{ margin: '0 0 16px', color: '#1A1A2E' }}>
+        <p style={{ margin: '0 0 16px', color: 'var(--eq-ink, #1A1A2E)' }}>
           EQ Quotes runs as a separate app at{' '}
           <a
             href={STANDALONE_URL}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ color: '#2986B4', fontWeight: 500 }}
+            style={{ color: 'var(--eq-deep, #2986B4)', fontWeight: 500 }}
           >
             quotes.eq.solutions
           </a>
           . Sign in with the same email you use here.
         </p>
-        <p style={{ margin: '0 0 24px', fontSize: 14, color: '#1A1A2E', opacity: 0.7 }}>
+        <p style={{ margin: '0 0 24px', fontSize: 14, color: 'var(--eq-ink, #1A1A2E)', opacity: 0.7 }}>
           We're building a full Quotes experience right into this hub. Until
           it's ready, the standalone app does the job — same data, same login.
         </p>

@@ -630,7 +630,7 @@ function EntityDetailDrawer({
                 style={{
                   fontSize: 16,
                   fontWeight: 700,
-                  color: '#1A1A2E',
+                  color: 'var(--eq-ink, #1A1A2E)',
                   marginTop: 2,
                   letterSpacing: '-0.01em',
                 }}
@@ -769,7 +769,7 @@ function EntityDetailDrawer({
                 style={{
                   margin: 0,
                   fontSize: 13,
-                  color: '#1A1A2E',
+                  color: 'var(--eq-ink, #1A1A2E)',
                   wordBreak: 'break-word',
                   fontFamily:
                     value === null || typeof value === 'object'

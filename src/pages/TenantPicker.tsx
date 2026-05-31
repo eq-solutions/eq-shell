@@ -129,7 +129,7 @@ export default function TenantPicker() {
                   onClick={() => void choose(m.tenant_id, m.tenant_slug)}
                   disabled={busyId !== null}
                   style={busy ? { ...itemStyle, ...itemBusyStyle } : itemStyle}
-                  onMouseEnter={(e) => { if (busyId === null) e.currentTarget.style.borderColor = '#3DA8D8'; }}
+                  onMouseEnter={(e) => { if (busyId === null) e.currentTarget.style.borderColor = 'var(--eq-sky, #3DA8D8)'; }}
                   onMouseLeave={(e) => { if (busyId === null) e.currentTarget.style.borderColor = '#E2E8F0'; }}
                 >
                   <div style={{ flex: 1, textAlign: 'left' }}>
@@ -169,10 +169,10 @@ const containerStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  background: '#EAF5FB',
+  background: 'var(--eq-ice, #EAF5FB)',
   padding: 24,
   fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif',
-  color: '#1A1A2E',
+  color: 'var(--eq-ink, #1A1A2E)',
 };
 
 const cardStyle: React.CSSProperties = {
@@ -188,7 +188,7 @@ const titleStyle: React.CSSProperties = {
   fontSize: 24,
   fontWeight: 700,
   margin: '0 0 8px',
-  color: '#1A1A2E',
+  color: 'var(--eq-ink, #1A1A2E)',
 };
 
 const subtitleStyle: React.CSSProperties = {
@@ -229,7 +229,7 @@ const itemBusyStyle: React.CSSProperties = {
 const tenantNameStyle: React.CSSProperties = {
   fontSize: 16,
   fontWeight: 600,
-  color: '#1A1A2E',
+  color: 'var(--eq-ink, #1A1A2E)',
 };
 
 const tenantRoleStyle: React.CSSProperties = {
@@ -241,7 +241,7 @@ const tenantRoleStyle: React.CSSProperties = {
 const enterStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
-  color: '#2986B4',
+  color: 'var(--eq-deep, #2986B4)',
 };
 
 const errStyle: React.CSSProperties = {
@@ -264,7 +264,7 @@ const footStyle: React.CSSProperties = {
 const linkStyle: React.CSSProperties = {
   background: 'none',
   border: 'none',
-  color: '#2986B4',
+  color: 'var(--eq-deep, #2986B4)',
   cursor: 'pointer',
   padding: 0,
   font: 'inherit',
