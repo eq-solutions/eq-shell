@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Check } from 'lucide-react';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { Gate } from '../permissions/Gate';
@@ -340,7 +341,7 @@ function AdminTenantSettingsInner() {
                       />
                     </div>
                     {logoUploadStatus.kind === 'success' && (
-                      <span style={{ fontSize: 13, color: '#15803D', fontWeight: 500 }}>✓ Logo updated</span>
+                      <span style={{ fontSize: 13, color: '#15803D', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Check size={14} aria-hidden="true" /> Logo updated</span>
                     )}
                     {logoUploadStatus.kind === 'error' && (
                       <span style={{ fontSize: 13, color: '#B91C1C' }}>{logoUploadStatus.message}</span>

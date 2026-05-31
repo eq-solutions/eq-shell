@@ -2,6 +2,7 @@
 // URL: /:tenant/data/:entity (entity is the singular registry name)
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { X } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
@@ -652,7 +653,7 @@ function EntityDetailDrawer({
                 flexShrink: 0,
               }}
             >
-              ✕
+              <X size={18} aria-hidden="true" />
             </button>
           </header>
 

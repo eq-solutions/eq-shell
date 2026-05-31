@@ -13,6 +13,7 @@
 // "overdue" event in the canonical feed yet (that would need an emitter).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { Button } from '@eq-solutions/ui';
 import { useCan } from '../../permissions';
 import { HubLayout } from '../../components/HubLayout';
@@ -356,7 +357,7 @@ function EquipmentFormDrawer({
               aria-label="Close"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--eq-mute)' }}
             >
-              ✕
+              <X size={18} aria-hidden="true" />
             </button>
           </header>
 
