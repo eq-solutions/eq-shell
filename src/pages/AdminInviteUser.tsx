@@ -14,6 +14,9 @@ import { Link, useParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 import type { EqRole } from '../session';
 
 const ROLE_OPTIONS: { value: EqRole; label: string; helper: string }[] = [
@@ -257,7 +260,7 @@ const labelStyle: React.CSSProperties = {
 function InviteShell({ children }: { children: React.ReactNode }) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <p style={{ marginBottom: 16 }}>
         <Link to={`/${tenantSlug}/admin/users`} style={{ fontSize: 13 }}>
           ← Back to users

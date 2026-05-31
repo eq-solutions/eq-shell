@@ -10,6 +10,9 @@ import { useCan } from '../permissions';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 // Response from /.netlify/functions/entity-rows. The function reads from
 // the tenant data plane via eq_browse_entity RPC (see
@@ -303,7 +306,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
 
   if (!view) {
     return (
-      <HubLayout>
+      <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
         <div className="eq-empty">
           <p className="eq-empty__title">Unknown entity "{entity}"</p>
           <p>Try one of: {Object.keys(ENTITY_VIEW).join(', ')}.</p>

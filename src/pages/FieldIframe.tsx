@@ -278,7 +278,7 @@ export default function FieldIframe() {
     // No Field workspace configured for this account.
     if (visibleOptions.length === 0) {
       return (
-        <HubLayout iframe>
+        <HubLayout iframe hideMainSidebar>
           <div className="eq-field-frame-loading">
             EQ Field isn't linked to this account yet. Contact your manager.
           </div>
@@ -288,7 +288,7 @@ export default function FieldIframe() {
     // Single option — auto-select fires via useEffect; show loading until it fires.
     if (visibleOptions.length === 1) {
       return (
-        <HubLayout iframe>
+        <HubLayout iframe hideMainSidebar>
           <div className="eq-field-frame-loading">Connecting to EQ Field…</div>
         </HubLayout>
       );

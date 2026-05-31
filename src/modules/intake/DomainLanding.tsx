@@ -12,6 +12,9 @@ import { useSession } from '../../session';
 import { createSupabaseClient } from '../../lib/supabaseJwt';
 import { Gate } from '../../permissions/Gate';
 import { HubLayout } from '../../components/HubLayout';
+import { defaultSidebarRecords } from '../../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 import { EntityImportPanel, WIRED_ENTITY_NAMES } from './EntityImportPanel';
 import { friendlyError } from '../../lib/friendlyError';
 
@@ -68,7 +71,7 @@ function DomainLanding({ module, title, description }: DomainLandingProps) {
   if (!session) return null;
 
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <div className="domain-landing">
         <header className="domain-landing__header">
           <h1>{title}</h1>

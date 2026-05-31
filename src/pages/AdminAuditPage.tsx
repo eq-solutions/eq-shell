@@ -5,6 +5,9 @@ import { useEffect, useState } from 'react';
 import { Button } from '@eq-solutions/ui';
 import { createSupabaseClient } from '../lib/supabaseJwt';
 import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { friendlyError } from '../lib/friendlyError';
@@ -169,7 +172,7 @@ function AdminAuditInner() {
   };
 
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <div className="eq-page__header">
           <h1 className="eq-page__title">Audit log</h1>
           <p className="eq-page__lede">
@@ -522,7 +525,7 @@ export default function AdminAuditPage() {
     <Gate
       perm="audit.view"
       fallback={
-        <HubLayout>
+        <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
           <div className="eq-empty">
             <p className="eq-empty__title">Audit log requires manager access</p>
             <p>Talk to your manager if you need this view.</p>

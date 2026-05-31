@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AlertTriangle, Check } from 'lucide-react';
 import { useSession, moduleEnabled, type EqTier } from '../session';
-import { HubSidebar, HUB_APP_ICONS, type HubApp, type RecordLink } from '../components/HubSidebar';
+import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { HubLayout } from '../components/HubLayout';
@@ -217,11 +218,12 @@ export default function TenantHome() {
   const assetDueSoon  = counts?.find((c) => c.entity === 'asset_service_due')?.count_total  ?? 0;
   const assetOverdue  = counts?.find((c) => c.entity === 'asset_service_due')?.count_recent ?? 0;
 
-  const sidebarRecords: RecordLink[] = [
-    { key: 'customer', label: 'Customers', entity: 'customer', count: customerCount },
-    { key: 'site',     label: 'Sites',     entity: 'site',     count: siteCount     },
-    { key: 'contact',  label: 'Contacts',  entity: 'contact',  count: contactCount  },
-  ];
+  const sidebarRecords = defaultSidebarRecords().map((r) => {
+    if (r.key === 'customer') return { ...r, count: customerCount };
+    if (r.key === 'site')     return { ...r, count: siteCount };
+    if (r.key === 'contact')  return { ...r, count: contactCount };
+    return r;
+  });
 
   const alertItems = events?.filter(
     (e) => ['failed', 'rejected', 'rolled_back'].includes(e.status) || e.rows_flagged > 0 || e.rows_rejected > 0

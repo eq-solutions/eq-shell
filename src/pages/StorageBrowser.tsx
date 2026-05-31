@@ -10,6 +10,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { createSupabaseClient } from '../lib/supabaseJwt';
@@ -146,7 +149,7 @@ export default function StorageBrowser() {
   const crumbs = prefix.split('/').filter(Boolean);
 
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
         <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
           <div>
             <h1 className="eq-page__title">Storage</h1>

@@ -7,6 +7,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@eq-solutions/ui';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 
@@ -93,7 +96,7 @@ function AdminCardsFeedInner() {
   }, [pending, query]);
 
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
           <div>
             <h1 className="eq-page__title">New staff</h1>
@@ -220,7 +223,7 @@ export default function AdminCardsFeed() {
     <Gate
       perm="admin.review_cards"
       fallback={
-        <HubLayout>
+        <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
           <div className="eq-empty">
             <p className="eq-empty__title">Not allowed</p>
             <p>Only managers can review Cards submissions.</p>

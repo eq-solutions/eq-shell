@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
 import { HubLayout } from '../components/HubLayout';
 import { EqError } from '../components/EqError';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 // Embeds EQ Service (Next.js) as a Shell iframe.
 //
@@ -179,7 +182,7 @@ export default function ServiceIframe() {
   const src = state.phase === 'loading' || state.phase === 'ready' ? state.src : null;
 
   return (
-    <HubLayout iframe>
+    <HubLayout iframe sidebarRecords={SIDEBAR_RECORDS}>
       <div className="eq-service-frame-wrap">
         {(state.phase === 'minting' || state.phase === 'loading') && (
           <div className="eq-loading">

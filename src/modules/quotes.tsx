@@ -9,12 +9,15 @@
 // Paying tiers see this surface and can jump straight to the standalone app.
 
 import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 const STANDALONE_URL = 'https://quotes.eq.solutions';
 
 export default function QuotesModule() {
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <div className="eq-page__header">
         <h1 className="eq-page__title">EQ Quotes</h1>
         <p className="eq-page__lede">
