@@ -12,8 +12,8 @@ importers:
         specifier: github:eq-solutions/eq-roles#v1.0.0
         version: https://codeload.github.com/eq-solutions/eq-roles/tar.gz/6a4c4b6a15ea649bb0caf84a10c2b0a34b5320da
       '@eq-solutions/tokens':
-        specifier: github:eq-solutions/eq-design-tokens#v1.1.0
-        version: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/855a263afed1fcfe539004dc59f6c8512391c84f
+        specifier: github:eq-solutions/eq-design-tokens#v1.2.0
+        version: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/a543ede7d6f1045c041834bd02d6af614e98f2a8
       '@eq-solutions/ui':
         specifier: github:eq-solutions/eq-ui#v1.0.1
         version: https://codeload.github.com/eq-solutions/eq-ui/tar.gz/a9a6b95fe50968202ddb968fa92de5211e282b1d(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -436,9 +436,9 @@ packages:
     version: 1.0.0
     engines: {node: '>=18'}
 
-  '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/855a263afed1fcfe539004dc59f6c8512391c84f':
-    resolution: {tarball: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/855a263afed1fcfe539004dc59f6c8512391c84f}
-    version: 1.1.0
+  '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/a543ede7d6f1045c041834bd02d6af614e98f2a8':
+    resolution: {tarball: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/a543ede7d6f1045c041834bd02d6af614e98f2a8}
+    version: 1.2.0
     engines: {node: '>=18'}
 
   '@eq-solutions/ui@https://codeload.github.com/eq-solutions/eq-ui/tar.gz/a9a6b95fe50968202ddb968fa92de5211e282b1d':
@@ -3134,7 +3134,7 @@ snapshots:
 
   '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/6340e468686cb1fbdb10d50cdb73801e4c2d997f': {}
 
-  '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/855a263afed1fcfe539004dc59f6c8512391c84f': {}
+  '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/a543ede7d6f1045c041834bd02d6af614e98f2a8': {}
 
   '@eq-solutions/ui@https://codeload.github.com/eq-solutions/eq-ui/tar.gz/a9a6b95fe50968202ddb968fa92de5211e282b1d(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:

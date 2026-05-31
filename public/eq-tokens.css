@@ -5,10 +5,15 @@
 
 :root {
   /* Brand colours */
-  --eq-sky:    #3DA8D8;
-  --eq-deep:   #2986B4;
-  --eq-ice:    #EAF5FB;
-  --eq-ink:    #1A1A2E;
+  --eq-sky:      #3DA8D8;
+  --eq-deep:     #2986B4;
+  --eq-sky-deep: var(--eq-deep);
+  --eq-ice:      #EAF5FB;
+  --eq-ink:      #1A1A2E;
+  --eq-amber:      #F59E0B;
+  --eq-amber-deep: #B45309;
+  --eq-slate:      #94A3B8;
+  --eq-live:       #38BDF8;
   --eq-sky-rgb: 61, 168, 216;   /* RGB channels of --eq-sky, for rgba() tints */
 
   /* Accent — Direction D clay (brand decoration only, never status) */
