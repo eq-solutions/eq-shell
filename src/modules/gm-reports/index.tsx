@@ -310,15 +310,20 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
   const [briefingError, setBriefingError] = useState<string | null>(null);
   const [selectedPMs, setSelectedPMs] = useState<string[]>([]);
   const [selectedWip, setSelectedWip] = useState<string | null>(null);
+  const [jobsError, setJobsError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       setLoadingJobs(true);
+      setJobsError(null);
       try {
         const res = await fetch(`/.netlify/functions/gm-reports?id=${period.id}`, { credentials: 'include' });
+        if (!res.ok) throw new Error(`Server error ${res.status}`);
         const data = await res.json() as { ok: boolean; period: Period & { briefing?: Briefing }; jobs: Job[] };
         setJobs(data.jobs ?? []);
         if (data.period?.briefing) setBriefing(data.period.briefing as Briefing);
+      } catch {
+        setJobsError("Couldn't load this period's jobs — check your connection and try again.");
       } finally {
         setLoadingJobs(false);
       }
@@ -456,6 +461,13 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
                 <div style={{ fontWeight: 600, color: '#7B1414', fontSize: 13, marginBottom: 2 }}>AI briefing failed</div>
                 <div style={{ fontSize: 12, color: '#7B1414', fontFamily: 'monospace', wordBreak: 'break-all' }}>{briefingError}</div>
               </div>
+            </div>
+          )}
+
+          {jobsError && (
+            <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 10 }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+              <div style={{ fontSize: 13, color: '#7B1414' }}>{jobsError}</div>
             </div>
           )}
 
@@ -617,15 +629,21 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
   const [showArchived, setShowArchived] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (archived: boolean) => {
     setLoading(true);
+    setLoadError(null);
     try {
       const qs = archived ? '?archived=true' : '';
       const res = await fetch(`/.netlify/functions/gm-reports${qs}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json() as { ok: boolean; periods?: Period[] };
       setPeriods(data.periods ?? []);
+    } catch {
+      setLoadError("Couldn't load reports — check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -659,6 +677,7 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
 
   async function handleArchive(id: string, archive: boolean) {
     setActionLoading(id);
+    setActionError(null);
     try {
       const res = await fetch(`/.netlify/functions/manage-gm-report?id=${id}`, {
         method: 'PATCH',
@@ -667,6 +686,9 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
         body: JSON.stringify({ archived: archive }),
       });
       if (res.ok) setPeriods(ps => ps.filter(p => p.id !== id));
+      else setActionError(archive ? "Couldn't archive that report." : "Couldn't restore that report.");
+    } catch {
+      setActionError('Something went wrong — check your connection and try again.');
     } finally {
       setActionLoading(null);
     }
@@ -674,6 +696,7 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
 
   async function handleDelete(id: string) {
     setActionLoading(id);
+    setActionError(null);
     try {
       const res = await fetch(`/.netlify/functions/manage-gm-report?id=${id}`, {
         method: 'DELETE',
@@ -682,7 +705,11 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
       if (res.ok) {
         setPeriods(ps => ps.filter(p => p.id !== id));
         setConfirmDelete(null);
+      } else {
+        setActionError("Couldn't delete that report.");
       }
+    } catch {
+      setActionError('Something went wrong — check your connection and try again.');
     } finally {
       setActionLoading(null);
     }
@@ -730,7 +757,19 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
 
       {loading && <div style={{ textAlign: 'center', color: '#6B7A99', padding: 24 }}>Loading…</div>}
 
-      {!loading && periods.length === 0 && (
+      {!loading && loadError && (
+        <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+          <div style={{ flex: 1, fontSize: 13, color: '#7B1414' }}>{loadError}</div>
+          <button onClick={() => void load(showArchived)} style={{ ...actionBtn, color: '#7B1414', borderColor: '#F5C6CB' }}>Retry</button>
+        </div>
+      )}
+
+      {actionError && (
+        <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#7B1414' }}>{actionError}</div>
+      )}
+
+      {!loading && !loadError && periods.length === 0 && (
         <div style={{ textAlign: 'center', color: '#6B7A99', padding: 24, fontSize: 13 }}>
           {showArchived ? 'No archived reports.' : 'No reports uploaded yet. Drop a Workbench export above to get started.'}
         </div>
