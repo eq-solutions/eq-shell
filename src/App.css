@@ -1695,6 +1695,35 @@
 
 .eq-hub-sidebar__user-logout:hover { color: rgba(255,255,255,0.6); }
 
+.eq-hub-sidebar__density-toggle {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.25);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+
+.eq-hub-sidebar__density-toggle:hover { color: rgba(255,255,255,0.6); }
+.eq-hub-sidebar__density-toggle.active { color: var(--eq-sky); }
+
+/* ── Compact density overrides ── */
+
+[data-density="compact"] .eq-table th {
+  padding: 8px 12px;
+}
+
+[data-density="compact"] .eq-table td {
+  padding: 6px 12px;
+}
+
+[data-density="compact"] .eq-table {
+  font-size: 12px;
+}
+
 /* ── Content area ── */
 
 .eq-hub__content {
