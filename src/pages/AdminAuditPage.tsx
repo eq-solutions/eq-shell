@@ -7,6 +7,7 @@ import { createSupabaseClient } from '../lib/supabaseJwt';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
+import { friendlyError } from '../lib/friendlyError';
 import { Gate } from '../permissions/Gate';
 
 interface IntakeEvent {
@@ -111,7 +112,7 @@ function AdminAuditInner() {
       setIntakes(iRes.data as IntakeEvent[]);
       setMints(mRes.data as MintAudit[]);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(friendlyError(e, "We couldn't load the activity log. Please try refreshing."));
     } finally {
       setLoading(false);
     }
@@ -133,7 +134,7 @@ function AdminAuditInner() {
       setDrilldown({ intake, rows: data as IntakeRow[], loading: false });
     } catch (e) {
       setDrilldown({ intake, rows: [], loading: false });
-      setErr((e as Error).message);
+      setErr(friendlyError(e, "We couldn't open this import's details. Please try again."));
     }
   };
 
