@@ -5,6 +5,7 @@ import { Gate } from '../permissions/Gate';
 import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
+import { friendlyError } from '../lib/friendlyError';
 import { createSupabaseClient } from '../lib/supabaseJwt';
 import { moduleEnabled } from '../session';
 
@@ -68,7 +69,7 @@ function AdminTenantSettingsInner() {
     try {
       const sb = await createSupabaseClient();
       const { data, error } = await sb.rpc('eq_get_tenant_settings');
-      if (error) { setErr(error.message); return; }
+      if (error) { setErr(friendlyError(error, "We couldn't load your settings. Please try refreshing.")); return; }
       const rows = (data as TenantSettings[] | null) ?? [];
       if (rows.length === 0) { setErr('Settings not found.'); return; }
       const s = rows[0];
@@ -81,7 +82,7 @@ function AdminTenantSettingsInner() {
       s.modules.forEach((mod) => { m[mod.module] = mod.enabled; });
       setModuleState(m);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(friendlyError(e, "We couldn't load your settings. Please try refreshing."));
     }
   };
 
@@ -182,7 +183,7 @@ function AdminTenantSettingsInner() {
         if (detected) { setBrandColor(detected); setColorDetected(true); }
       }
     } catch (e) {
-      setLogoUploadStatus({ kind: 'error', message: (e as Error).message ?? 'Upload failed.' });
+      setLogoUploadStatus({ kind: 'error', message: friendlyError(e, 'Upload failed. Please try again.') });
     } finally {
       if (logoUploadRef.current) logoUploadRef.current.value = '';
     }
@@ -221,7 +222,7 @@ function AdminTenantSettingsInner() {
     try {
       const sb = await createSupabaseClient();
       const { data, error } = await sb.rpc('eq_update_tenant_settings', { p_payload: payload });
-      if (error) { setSaveErr(error.message); setBusy(false); return; }
+      if (error) { setSaveErr(friendlyError(error, "We couldn't save your changes. Please try again.")); setBusy(false); return; }
       const rows = (data as TenantSettings[] | null) ?? [];
       if (rows.length > 0) {
         const s = rows[0];
@@ -236,7 +237,7 @@ function AdminTenantSettingsInner() {
       }
       setSavedAt(Date.now());
     } catch (e) {
-      setSaveErr((e as Error).message);
+      setSaveErr(friendlyError(e, "We couldn't save your changes. Please try again."));
     } finally {
       setBusy(false);
     }
