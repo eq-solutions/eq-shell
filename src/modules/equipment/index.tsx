@@ -443,9 +443,9 @@ function EquipmentFormDrawer({
           )}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button type="button" className="eq-btn-primary" disabled={!canSave} onClick={() => void save()}>
+            <Button type="button" disabled={!canSave} onClick={() => void save()}>
               {saving ? 'Saving…' : 'Save'}
-            </button>
+            </Button>
             <Button type="button" variant="ghost" disabled={saving} onClick={onClose}>
               Cancel
             </Button>
@@ -554,9 +554,9 @@ export default function EquipmentModule() {
           <p className="eq-page__lede">{lede}</p>
         </div>
         {canEdit && (
-          <button type="button" className="eq-btn-primary" onClick={() => setForm({ mode: 'create', row: null })}>
+          <Button type="button" onClick={() => setForm({ mode: 'create', row: null })}>
             Add item
-          </button>
+          </Button>
         )}
       </div>
 
