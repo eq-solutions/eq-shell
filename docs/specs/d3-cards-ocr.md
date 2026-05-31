@@ -1,7 +1,17 @@
 # Spec: EQ Cards — OCR onboarding flow
-**Status:** DRAFT — for Royce review before any code is built.
+**Status:** APPROVED — decisions locked 2026-06-01. Ready for D3.3 build.
 **Design ref:** `EQ Cards - Onboarding.html` (Direction D handoff bundle)
 **Task:** D3.1 → feeds into D3.3 build wave
+
+## Confirmed decisions (2026-06-01)
+| # | Question | Decision |
+|---|---|---|
+| Q1 | OCR provider | Google Vision API |
+| Q2 | Document storage | eq-canonical (control plane, `jvknxcmbtrfnxfrwfimn`) |
+| Q3 | Platform | Both — Flutter Cards app (primary) + Shell-hosted React fallback |
+| Q4 | Admin on behalf | Self-service only |
+| Q5 | Document type list | Define as part of D3.3 — eq-intake does NOT yet have a licence kind enum |
+| Q6 | Multi-document | Multi — user can upload several licences in one session |
 
 ---
 

@@ -1,7 +1,14 @@
 # Spec: Calendar screen
-**Status:** DRAFT — for Royce review before any code is built.
+**Status:** APPROVED — decisions locked 2026-06-01. Ready for D3.3 build.
 **Design ref:** `EQ Service - Calendar.html` (Direction D handoff bundle)
 **Task:** D3.1 → feeds into D3.3 build wave
+
+## Confirmed decisions (2026-06-01)
+| # | Question | Decision |
+|---|---|---|
+| Q1 | Week view priority | Defer — month + list only for D3.3 |
+| Q2 | Notification deep-link | Yes — support `?id=xxx` deep-link from notifications; ServiceIframe accepts path suffix |
+| Q3 | Unified future | Yes — unified Shell-level calendar (Field + Service) is the goal; plan for D4+ |
 
 ---
 

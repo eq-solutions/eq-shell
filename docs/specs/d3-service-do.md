@@ -1,7 +1,16 @@
 # Spec: EQ Service — "Do" screen
-**Status:** DRAFT — for Royce review before any code is built.
+**Status:** APPROVED — decisions locked 2026-06-01. Ready for D3.3 build.
 **Design ref:** `EQ Service - Do.html` (Direction D handoff bundle)
 **Task:** D3.1 → feeds into D3.3 build wave
+
+## Confirmed decisions (2026-06-01)
+| # | Question | Decision |
+|---|---|---|
+| Q1 | Data source | `work_orders` table |
+| Q2 | Assignment model | User-level — `assigned_to = auth.uid()` |
+| Q3 | Shell deep-link default | Dashboard (manager default); technician navigates to Do via Service sidebar |
+| Q4 | Status enum | `open → in_progress → completed` (confirmed correct) |
+| Q5 | Escalate action | Creates a defect record linked to the WO via existing defects API |
 
 ---
 

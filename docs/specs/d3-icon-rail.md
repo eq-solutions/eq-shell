@@ -1,7 +1,16 @@
 # Spec: Suite icon rail
-**Status:** DRAFT — for Royce review before any code is built.
+**Status:** APPROVED — decisions locked 2026-06-01. Ready for D3.3 build.
 **Design ref:** `EQ.html` (Direction D handoff bundle — "Suite rail" screen)
 **Task:** D3.1 → feeds into D3.3 build wave
+
+## Confirmed decisions (2026-06-01)
+| # | Question | Decision |
+|---|---|---|
+| Q1 | TenantHome | Iframe pages only — TenantHome keeps its current full sidebar |
+| Q2 | Expand trigger | Hover to expand (handoff pattern) |
+| Q3 | Records icon | No — Records stays in TenantHome sidebar only |
+| Q4 | Quotes trial tier | Show greyed out with "Upgrade" tooltip |
+| Q5 | Mobile | Build bottom tab bar in D3.3 |
 
 ---
 

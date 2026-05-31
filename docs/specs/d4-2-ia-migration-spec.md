@@ -1,9 +1,22 @@
 # D4.2 — Records-into-Shell IA Migration Spec
 
-**Date:** 2026-05-31
-**Status:** DRAFT — for Royce review before build starts
+**Date:** 2026-05-31 | **Decisions locked:** 2026-06-01
+**Status:** PARTIALLY APPROVED — OQ-1 (Field nav) is on hold pending discussion. OQ-2 to OQ-6 locked.
 **Depends on:** D4.1 IA audit (`docs/d4-1-ia-audit.md`)
 **Feeds into:** D4.3 Records IA build (phased)
+
+## Confirmed decisions (2026-06-01)
+| # | Question | Decision |
+|---|---|---|
+| OQ-1 | Field v3.5.40 nav suppression | **HOLD** — removal was deliberate. D4 Phase 1 (Field `?embedded=1`) requires discussion before build. |
+| OQ-2 | Assets consolidation | Keep both surfaces with clearer labels (lowest risk, Phase 2). |
+| OQ-3 | Assets in RECORDS sidebar | Separate — EQUIPMENT stays as its own sidebar section. |
+| OQ-4 | Quotes sidebar | No sidebar in Quotes Flask app — no action needed. |
+| OQ-5 | Service /records hub | Decide after Phase 1 is stable. |
+| OQ-6 | Phase 1 Field deploy timing | EQ Field has no live EQ users; only SKS uses Field. SKS deploy window TBD with Royce. |
+
+### Phase 1 hold — context needed
+OQ-1 answer: "deliberate". Before Phase 1 can proceed, need to understand why Field was changed in v3.5.40 to always show its own nav, and whether the intent is for Field to always be a standalone-feeling app even when inside Shell, or if suppression should return with a better mechanism. Phase 2 and Phase 3 can proceed independently.
 
 ---
 
