@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { AlertTriangle, Check } from 'lucide-react';
 import { HubLayout } from '../../components/HubLayout';
 import { Gate } from '../../permissions/Gate';
 import { EqTable, type ColDef } from '../../components/EqTable';
@@ -404,8 +405,9 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {briefingError && (
-            <span style={{ fontSize: 11, color: '#C0392B', background: '#FDECEA', padding: '4px 10px', borderRadius: 20, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={briefingError}>
-              ⚠ {briefingError}
+            <span style={{ fontSize: 11, color: '#C0392B', background: '#FDECEA', padding: '4px 10px', borderRadius: 20, maxWidth: 260, display: 'inline-flex', alignItems: 'center', gap: 4 }} title={briefingError}>
+              <AlertTriangle size={12} aria-hidden="true" style={{ flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{briefingError}</span>
             </span>
           )}
           {!briefing && (
@@ -415,7 +417,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
               {generatingBriefing ? 'Generating…' : briefingError ? 'Retry' : 'Generate AI briefing'}
             </button>
           )}
-          {briefing && <span style={{ fontSize: 11, color: '#1E7E4A', background: '#EAF5EE', padding: '4px 10px', borderRadius: 20 }}>✓ Briefing ready</span>}
+          {briefing && <span style={{ fontSize: 11, color: '#1E7E4A', background: '#EAF5EE', padding: '4px 10px', borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Check size={12} aria-hidden="true" />Briefing ready</span>}
         </div>
       </div>
 
@@ -456,7 +458,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', minWidth: 0 }}>
           {briefingError && (
             <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 10 }}>
-              <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+              <AlertTriangle size={18} aria-hidden="true" style={{ flexShrink: 0, color: '#7B1414' }} />
               <div>
                 <div style={{ fontWeight: 600, color: '#7B1414', fontSize: 13, marginBottom: 2 }}>AI briefing failed</div>
                 <div style={{ fontSize: 12, color: '#7B1414', fontFamily: 'monospace', wordBreak: 'break-all' }}>{briefingError}</div>
@@ -466,7 +468,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
 
           {jobsError && (
             <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 10 }}>
-              <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+              <AlertTriangle size={18} aria-hidden="true" style={{ flexShrink: 0, color: '#7B1414' }} />
               <div style={{ fontSize: 13, color: '#7B1414' }}>{jobsError}</div>
             </div>
           )}
@@ -585,7 +587,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
                         color: isActive ? '#fff' : statusDot,
                         border: `2px solid ${isActive ? 'var(--eq-sky, #3DA8D8)' : 'transparent'}`,
                       }}>
-                        {isActive ? '✓' : initials}
+                        {isActive ? <Check size={14} aria-hidden="true" /> : initials}
                       </div>
                       {/* Name + job count */}
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -759,7 +761,7 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
 
       {!loading && loadError && (
         <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+          <AlertTriangle size={16} aria-hidden="true" style={{ flexShrink: 0, color: '#7B1414' }} />
           <div style={{ flex: 1, fontSize: 13, color: '#7B1414' }}>{loadError}</div>
           <button onClick={() => void load(showArchived)} style={{ ...actionBtn, color: '#7B1414', borderColor: '#F5C6CB' }}>Retry</button>
         </div>

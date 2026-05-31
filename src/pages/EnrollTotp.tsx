@@ -9,6 +9,7 @@
 // Accessible to any logged-in user from the hub.
 
 import { useState, type FormEvent } from 'react';
+import { Check } from 'lucide-react';
 import { useParams, Link } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { HubLayout } from '../components/HubLayout';
@@ -249,8 +250,8 @@ export default function EnrollTotp() {
               borderRadius: 8,
               marginBottom: 20,
             }}>
-              <p style={{ margin: 0, fontWeight: 600, marginBottom: 4 }}>
-                ✓ Two-step verification is active
+              <p style={{ margin: 0, fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Check size={16} aria-hidden="true" /> Two-step verification is active
               </p>
               <p style={{ margin: 0, fontSize: 13, color: 'var(--eq-grey)' }}>
                 From now on, you'll enter a code from your authenticator app each time you sign in.

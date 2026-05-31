@@ -106,3 +106,7 @@ for env vars, deploys, migrations.
 - TypeScript strict — no `any` without justification.
 - Default to writing no comments. WHY-only when added.
 - Never delete files without explicit permission.
+- **Icons: Lucide (`lucide-react`)** for all meaningful icons — alerts, status,
+  actions. Don't use Unicode/emoji glyphs (`⚠ ✓ ✕`) for iconography; decorative
+  typography (arrows, bullets) is fine. Scoped adoption — see `docs/adr-001-icons.md`
+  (Cards stays on Material Icons; no blanket retrofit).

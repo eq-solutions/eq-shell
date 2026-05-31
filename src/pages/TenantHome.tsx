@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { AlertTriangle, Check } from 'lucide-react';
 import { useSession, moduleEnabled, type EqTier } from '../session';
 import { HubSidebar, HUB_APP_ICONS, type HubApp, type RecordLink } from '../components/HubSidebar';
 import { Skeleton } from '../components/Skeleton';
@@ -263,7 +264,7 @@ export default function TenantHome() {
 
         {hasAlerts && (
           <div className="eq-hub-alert eq-hub-alert--action">
-            <span className="eq-hub-alert__icon" aria-hidden="true">⚠</span>
+            <span className="eq-hub-alert__icon" aria-hidden="true"><AlertTriangle size={14} /></span>
             <span className="eq-hub-alert__text">
               {alertItems.length === 1
                 ? '1 import needs attention'
@@ -276,7 +277,7 @@ export default function TenantHome() {
 
         {allClear && (
           <div className="eq-hub-alert eq-hub-alert--clear">
-            <span className="eq-hub-alert__icon" aria-hidden="true">✓</span>
+            <span className="eq-hub-alert__icon" aria-hidden="true"><Check size={14} /></span>
             <span className="eq-hub-alert__text">All clear — no action needed</span>
           </div>
         )}

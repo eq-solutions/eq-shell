@@ -12,6 +12,7 @@
 //     a separate chunk by default)
 
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import type { CommitFn, CommittableRow } from '@eq/confirm-ui';
 import { createSupabaseClient } from '../../lib/supabaseJwt';
 import { useSession } from '../../session';
@@ -245,7 +246,7 @@ export function EntityImportPanel({ entity, entityLabel, onClose }: EntityImport
       </header>
       {requiresSite && siteCount === 0 && (
         <div className="eq-hub-alert eq-hub-alert--action" role="alert" style={{ marginBottom: 12 }}>
-          <span className="eq-hub-alert__icon" aria-hidden="true">⚠</span>
+          <span className="eq-hub-alert__icon" aria-hidden="true"><AlertTriangle size={14} /></span>
           <span className="eq-hub-alert__text">
             No sites found yet. Each item links to a site, so import your sites first
             (Core intake) — otherwise rows without a matching site won't be saved.
