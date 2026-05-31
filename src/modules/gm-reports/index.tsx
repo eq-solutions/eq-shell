@@ -222,7 +222,7 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ background: '#1A1A2E', padding: '14px 18px' }}>
+      <div style={{ background: 'var(--eq-ink, #1A1A2E)', padding: '14px 18px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#5DCAA5', boxShadow: '0 0 0 3px rgba(93,202,165,0.25)', display: 'inline-block' }} />
           <span style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>Ask Claude</span>
@@ -241,8 +241,8 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
           <div key={i} style={{
             alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
             maxWidth: '90%',
-            background: m.role === 'user' ? '#1A1A2E' : '#F7FAFC',
-            color: m.role === 'user' ? '#fff' : '#1A1A2E',
+            background: m.role === 'user' ? 'var(--eq-ink, #1A1A2E)' : '#F7FAFC',
+            color: m.role === 'user' ? '#fff' : 'var(--eq-ink, #1A1A2E)',
             border: m.role === 'assistant' ? '1px solid #E2EAF0' : 'none',
             borderRadius: 12,
             borderBottomLeftRadius: m.role === 'assistant' ? 3 : 12,
@@ -259,7 +259,7 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
         {chips.length > 0 && messages.length <= 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
             {chips.map((c, i) => (
-              <button key={i} onClick={() => send(c)} style={{ background: '#fff', border: '1px solid #E2EAF0', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#1A1A2E', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', lineHeight: 1.4 }}>
+              <button key={i} onClick={() => send(c)} style={{ background: '#fff', border: '1px solid #E2EAF0', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--eq-ink, #1A1A2E)', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', lineHeight: 1.4 }}>
                 {c}
               </button>
             ))}
@@ -278,7 +278,7 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
       {/* Input */}
       <div style={{ padding: '10px 12px', borderTop: '1px solid #E2EAF0', display: 'flex', gap: 8 }}>
         <input
-          style={{ flex: 1, border: '1px solid #E2EAF0', borderRadius: 20, padding: '8px 13px', fontSize: 13, fontFamily: 'inherit', color: '#1A1A2E', background: '#F7FAFC', outline: 'none' }}
+          style={{ flex: 1, border: '1px solid #E2EAF0', borderRadius: 20, padding: '8px 13px', fontSize: 13, fontFamily: 'inherit', color: 'var(--eq-ink, #1A1A2E)', background: '#F7FAFC', outline: 'none' }}
           placeholder={briefing ? 'Ask anything about these jobs…' : 'Generate briefing first…'}
           value={input}
           disabled={!briefing || sending}
@@ -288,7 +288,7 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
         <button
           onClick={() => send(input)}
           disabled={!briefing || sending || !input.trim()}
-          style={{ width: 34, height: 34, borderRadius: '50%', background: '#1A1A2E', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: (!briefing || sending || !input.trim()) ? 0.4 : 1 }}
+          style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--eq-ink, #1A1A2E)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: (!briefing || sending || !input.trim()) ? 0.4 : 1 }}
         >
           <svg viewBox="0 0 24 24" width={15} height={15} fill="#fff"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
         </button>
@@ -379,8 +379,8 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
   } : null;
 
   // Chip style helpers
-  const chipBase: React.CSSProperties = { fontSize: 11, fontWeight: 500, padding: '4px 10px', borderRadius: 20, border: '1px solid #E2EAF0', cursor: 'pointer', fontFamily: 'inherit', background: '#fff', color: '#1A1A2E', transition: 'all 0.1s' };
-  const chipActive: React.CSSProperties = { ...chipBase, background: '#1A1A2E', color: '#fff', border: '1px solid #1A1A2E' };
+  const chipBase: React.CSSProperties = { fontSize: 11, fontWeight: 500, padding: '4px 10px', borderRadius: 20, border: '1px solid #E2EAF0', cursor: 'pointer', fontFamily: 'inherit', background: '#fff', color: 'var(--eq-ink, #1A1A2E)', transition: 'all 0.1s' };
+  const chipActive: React.CSSProperties = { ...chipBase, background: 'var(--eq-ink, #1A1A2E)', color: '#fff', border: '1px solid #1A1A2E' };
 
   return (
     // Flex column: sub-header (fixed) + body row (fills rest)
@@ -389,11 +389,11 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
 
       {/* Sub-header */}
       <div style={{ height: 48, flexShrink: 0, background: '#F7FAFC', borderBottom: '1px solid #E2EAF0', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12 }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3DA8D8', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--eq-sky, #3DA8D8)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'inherit' }}>
           ← Reports
         </button>
         <span style={{ color: '#C8D4DF' }}>|</span>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#1A1A2E' }}>Period {period.period_code}</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--eq-ink, #1A1A2E)' }}>Period {period.period_code}</span>
         <span style={{ fontSize: 12, color: '#6B7A99' }}>
           {new Date(period.uploaded_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
         </span>
@@ -405,7 +405,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           )}
           {!briefing && (
             <button onClick={generateBriefing} disabled={generatingBriefing}
-              style={{ background: '#3DA8D8', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: generatingBriefing ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+              style={{ background: 'var(--eq-sky, #3DA8D8)', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: generatingBriefing ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
               {generatingBriefing && <span style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'gm-spin 0.7s linear infinite', flexShrink: 0 }} />}
               {generatingBriefing ? 'Generating…' : briefingError ? 'Retry' : 'Generate AI briefing'}
             </button>
@@ -430,7 +430,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           {selectedPMs.length > 0 && (
             <>
               <div style={{ width: 1, height: 20, background: '#E2EAF0', flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: '#3DA8D8', background: '#EAF5FB', padding: '3px 10px', borderRadius: 20, fontWeight: 500, flexShrink: 0 }}>
+              <span style={{ fontSize: 11, color: 'var(--eq-sky, #3DA8D8)', background: 'var(--eq-ice, #EAF5FB)', padding: '3px 10px', borderRadius: 20, fontWeight: 500, flexShrink: 0 }}>
                 {selectedPMs.length === 1 ? selectedPMs[0] : `${selectedPMs.length} PMs selected`}
               </span>
             </>
@@ -461,7 +461,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
 
           {/* KPIs — update to filtered values when a filter is active */}
           {isFiltered && (
-            <div style={{ fontSize: 11, color: '#3DA8D8', background: '#EAF5FB', borderRadius: 6, padding: '5px 12px', marginBottom: 10, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--eq-sky, #3DA8D8)', background: 'var(--eq-ice, #EAF5FB)', borderRadius: 6, padding: '5px 12px', marginBottom: 10, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               ⚡ Showing figures for {[selectedPMs.length === 1 ? selectedPMs[0] : selectedPMs.length > 1 ? `${selectedPMs.length} PMs` : null, selectedWip ? `WIP: ${selectedWip}` : null].filter(Boolean).join(' · ')}
             </div>
           )}
@@ -476,7 +476,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
 
           {/* AI top concern */}
           {briefing?.top_concern && (
-            <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: '4px solid #3DA8D8', borderRadius: '0 10px 10px 0', padding: '11px 15px', fontSize: 13, color: '#1A1A2E', lineHeight: 1.6, marginBottom: 16 }}>
+            <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: '4px solid #3DA8D8', borderRadius: '0 10px 10px 0', padding: '11px 15px', fontSize: 13, color: 'var(--eq-ink, #1A1A2E)', lineHeight: 1.6, marginBottom: 16 }}>
               <strong>AI:</strong> {briefing.top_concern}
             </div>
           )}
@@ -521,7 +521,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           {/* Portfolio note */}
           {briefing?.portfolio_note && (
             <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: '4px solid #7C77B9', borderRadius: '0 10px 10px 0', padding: '11px 15px', fontSize: 12, color: '#6B7A99', lineHeight: 1.6, marginBottom: 8 }}>
-              <strong style={{ color: '#1A1A2E' }}>Note:</strong> {briefing.portfolio_note}
+              <strong style={{ color: 'var(--eq-ink, #1A1A2E)' }}>Note:</strong> {briefing.portfolio_note}
             </div>
           )}
 
@@ -545,7 +545,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
                     <span style={{ fontSize: 10, color: '#C8D4DF' }}>multi-select</span>
                   </div>
                   {selectedPMs.length > 0 && (
-                    <button onClick={() => setSelectedPMs([])} style={{ fontSize: 10, color: '#3DA8D8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>
+                    <button onClick={() => setSelectedPMs([])} style={{ fontSize: 10, color: 'var(--eq-sky, #3DA8D8)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>
                       Clear ×
                     </button>
                   )}
@@ -566,18 +566,18 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
                   return (
                     <div key={name}
                       onClick={() => setSelectedPMs(prev => isActive ? prev.filter(p => p !== name) : [...prev, name])}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', cursor: 'pointer', borderBottom: '1px solid #EEF2F7', background: isActive ? '#EAF5FB' : 'transparent', transition: 'background 0.1s' }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', cursor: 'pointer', borderBottom: '1px solid #EEF2F7', background: isActive ? 'var(--eq-ice, #EAF5FB)' : 'transparent', transition: 'background 0.1s' }}>
                       {/* Avatar — filled blue with ✓ when active */}
                       <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700,
-                        background: isActive ? '#3DA8D8' : statusBg,
+                        background: isActive ? 'var(--eq-sky, #3DA8D8)' : statusBg,
                         color: isActive ? '#fff' : statusDot,
-                        border: `2px solid ${isActive ? '#3DA8D8' : 'transparent'}`,
+                        border: `2px solid ${isActive ? 'var(--eq-sky, #3DA8D8)' : 'transparent'}`,
                       }}>
                         {isActive ? '✓' : initials}
                       </div>
                       {/* Name + job count */}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, color: '#1A1A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                        <div style={{ fontSize: 12, fontWeight: isActive ? 700 : 500, color: 'var(--eq-ink, #1A1A2E)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
                         <div style={{ fontSize: 10, color: '#9AA5BC', marginTop: 1 }}>{pmJobs.length} jobs{losses > 0 ? ` · ${losses} loss${losses > 1 ? 'es' : ''}` : ''}</div>
                       </div>
                       {/* Cash position */}
@@ -707,7 +707,7 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
         <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} />
         <div style={{ fontSize: 28, marginBottom: 8 }}>📊</div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1A2E', marginBottom: 4 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--eq-ink, #1A1A2E)', marginBottom: 4 }}>
           {uploading ? 'Uploading…' : 'Drop Workbench report here'}
         </div>
         <div style={{ fontSize: 12, color: '#6B7A99' }}>
@@ -722,7 +722,7 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
         <span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
         <button
           onClick={() => setShowArchived(v => !v)}
-          style={{ ...actionBtn, color: showArchived ? '#3DA8D8' : '#6B7A99', borderColor: showArchived ? '#3DA8D8' : '#E2EAF0' }}
+          style={{ ...actionBtn, color: showArchived ? 'var(--eq-sky, #3DA8D8)' : '#6B7A99', borderColor: showArchived ? 'var(--eq-sky, #3DA8D8)' : '#E2EAF0' }}
         >
           {showArchived ? '← Active' : 'Show archived'}
         </button>
@@ -753,7 +753,7 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
                 style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 14, background: 'none', border: 'none', cursor: showArchived ? 'default' : 'pointer', textAlign: 'left', fontFamily: 'inherit', padding: 0, minWidth: 0 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1A1A2E', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--eq-ink, #1A1A2E)', display: 'flex', alignItems: 'center', gap: 6 }}>
                     Period {p.period_code}
                     {p.is_archived && <span style={{ fontSize: 9, fontWeight: 700, color: '#9AA5BC', background: '#F2F4F7', padding: '2px 6px', borderRadius: 4, letterSpacing: '0.5px' }}>ARCHIVED</span>}
                   </div>
@@ -771,7 +771,7 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
                   <div style={{ fontSize: 9, color: '#6B7A99', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Losses</div>
                 </div>
                 <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#3DA8D8' }}>{fmtPct(p.overall_gp_pct)}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--eq-sky, #3DA8D8)' }}>{fmtPct(p.overall_gp_pct)}</div>
                   <div style={{ fontSize: 9, color: '#6B7A99', textTransform: 'uppercase', letterSpacing: '0.5px' }}>GP%</div>
                 </div>
                 {!showArchived && <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="#C8D4DF" strokeWidth={2} style={{ flexShrink: 0 }}><path d="M9 18l6-6-6-6"/></svg>}
@@ -836,7 +836,7 @@ export default function GmReportsModule() {
           {/* Page header */}
           <div style={{ background: '#fff', borderBottom: '1px solid #E2EAF0', padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="#3DA8D8" strokeWidth={2}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-            <span style={{ fontSize: 15, fontWeight: 700, color: '#1A1A2E' }}>GM Reports</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--eq-ink, #1A1A2E)' }}>GM Reports</span>
             <span style={{ fontSize: 12, color: '#6B7A99' }}>Cash flow & profitability</span>
           </div>
 
