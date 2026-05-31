@@ -389,7 +389,7 @@ function FieldTenantBar({ tenant, onSwitch }: { tenant: TenantOption; onSwitch: 
         <span className="eq-field-tenantbar__name">{tenant.name}</span>
       </div>
       <button type="button" className="eq-field-tenantbar__switch" onClick={onSwitch}>
-        Switch tenant
+        Switch workspace
       </button>
     </div>
   );

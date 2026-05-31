@@ -44,9 +44,8 @@ export default function QuotesModule() {
           . Sign in with the same email you use here.
         </p>
         <p style={{ margin: '0 0 24px', fontSize: 14, color: '#1A1A2E', opacity: 0.7 }}>
-          We're rebuilding Quotes as a shell module backed by your tenant's
-          data plane. Until that lands, the standalone app keeps doing the
-          job — same data, same login.
+          We're building a full Quotes experience right into this hub. Until
+          it's ready, the standalone app does the job — same data, same login.
         </p>
         <a
           href={STANDALONE_URL}

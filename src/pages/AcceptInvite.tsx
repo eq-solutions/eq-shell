@@ -160,7 +160,7 @@ function AcceptInviteShell({ children }: { children: React.ReactNode }) {
             modules; you just bring your trade and your tickets.
           </p>
           <div className="eq-login-hero__trust">
-            <span>One sign-in, every module</span>
+            <span>One sign-in, every app</span>
             <span className="eq-login-hero__trust-sep">·</span>
             <span>Data stays in Australia</span>
             <span className="eq-login-hero__trust-sep">·</span>

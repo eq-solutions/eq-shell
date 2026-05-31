@@ -266,7 +266,7 @@ function AdminTenantSettingsInner() {
               <div style={{ marginBottom: 28 }}>
                 <h1 style={{ fontSize: 26, fontWeight: 700, margin: '0 0 4px' }}>Settings</h1>
                 <p style={{ fontSize: 13, color: 'var(--gray-500)', margin: 0 }}>
-                  {settings.slug} · {settings.modules.filter((m) => m.enabled).length} apps enabled
+                  {settings.name} · {settings.modules.filter((m) => m.enabled).length} apps enabled
                 </p>
               </div>
 
@@ -355,7 +355,7 @@ function AdminTenantSettingsInner() {
                   <h2 className="eq-section__heading">Integrations</h2>
                   <FieldRow
                     label="Field workspace"
-                    hint="Which EQ Field organisation users on this tenant open by default."
+                    hint="Which EQ Field workspace your users open by default."
                   >
                     <select
                       value={fieldTenantSlug}
@@ -395,7 +395,6 @@ function AdminTenantSettingsInner() {
                     >
                       <span>
                         <strong style={{ display: 'block', fontSize: 14 }}>{MODULE_LABELS[m.module] ?? m.module}</strong>
-                        <span className="eq-table__mute">{m.module}</span>
                       </span>
                       <input
                         type="checkbox"
