@@ -3,7 +3,7 @@
 
 [build]
   publish = "dist"
-  command = "pnpm run build"
+  command = "pnpm run check:perms && pnpm run build"
 
 [functions]
   directory = "netlify/functions"
