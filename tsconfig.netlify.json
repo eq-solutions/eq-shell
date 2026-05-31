@@ -11,6 +11,7 @@
     "noEmit": true,
     "types": ["node"],
     "skipLibCheck": true,
+    "strict": true,
 
     "esModuleInterop": true,
     "noUnusedLocals": true,
