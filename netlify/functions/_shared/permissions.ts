@@ -26,56 +26,79 @@ import type { EqRole } from './supabase.js';
  * Closed union of every server-enforced permission. Mirrors ALL_PERMS in
  * src/permissions/matrix.ts.
  */
+// prettier-ignore
 export type PermKey =
-  | 'admin.list_users'
-  | 'admin.invite_user'
-  | 'admin.edit_user'
-  | 'admin.deactivate_user'
-  | 'admin.review_cards'
-  | 'audit.view'
-  | 'audit.rollback'
-  | 'intake.view'
-  | 'intake.import'
-  | 'intake.commit'
-  | 'equipment.view'
-  | 'equipment.edit'
-  | 'reports.view'
-  | 'reports.upload'
-  | 'reports.generate_briefing'
-  | 'entity.view'
-  | 'entity.create'
-  | 'entity.edit'
-  | 'entity.delete';
+  // admin
+  | 'admin.list_users' | 'admin.invite_user' | 'admin.edit_user'
+  | 'admin.deactivate_user' | 'admin.review_cards'
+  // audit
+  | 'audit.view' | 'audit.rollback'
+  // entity (canonical records — customers/sites/contacts/assets)
+  | 'entity.view' | 'entity.create' | 'entity.edit' | 'entity.delete'
+  // intake
+  | 'intake.view' | 'intake.import' | 'intake.commit'
+  // equipment
+  | 'equipment.view' | 'equipment.edit'
+  // reports
+  | 'reports.view' | 'reports.upload' | 'reports.generate_briefing'
+  // cards
+  | 'cards.view' | 'cards.onboard'
+  // service
+  | 'service.view' | 'service.create' | 'service.close'
+  // field
+  | 'field.view' | 'field.dispatch'
+  // quotes
+  | 'quotes.view' | 'quotes.create' | 'quotes.approve';
 
 // Per-role grants. Omitting a perm denies it; there is no inheritance — every
 // grant is explicit, matching the client matrix's invariant. A manager holds
 // supervisor's perms because they are listed, not by implication.
+// Mirror of src/permissions/matrix.ts — kept in sync manually until B12 (single-source)
+// lands. If you change grants here, change the client matrix too (and vice-versa).
+// The drift-guard script scripts/check-perm-sync.mjs will catch divergence in CI.
 const MATRIX: Record<EqRole, ReadonlySet<PermKey>> = {
   manager: new Set<PermKey>([
     'admin.list_users', 'admin.invite_user', 'admin.edit_user',
     'admin.deactivate_user', 'admin.review_cards',
     'audit.view', 'audit.rollback',
+    'entity.view', 'entity.create', 'entity.edit', 'entity.delete',
     'intake.view', 'intake.import', 'intake.commit',
     'equipment.view', 'equipment.edit',
     'reports.view', 'reports.upload', 'reports.generate_briefing',
-    'entity.view', 'entity.create', 'entity.edit', 'entity.delete',
+    'cards.view', 'cards.onboard',
+    'service.view', 'service.create', 'service.close',
+    'field.view', 'field.dispatch',
+    'quotes.view', 'quotes.create', 'quotes.approve',
   ]),
   supervisor: new Set<PermKey>([
     'audit.view',
+    'entity.view', 'entity.edit',
     'intake.view', 'intake.import', 'intake.commit',
     'equipment.view', 'equipment.edit',
-    'entity.view', 'entity.edit',
+    'cards.view', 'cards.onboard',
+    'service.view', 'service.create', 'service.close',
+    'field.view', 'field.dispatch',
+    'quotes.view', 'quotes.create',
   ]),
   employee: new Set<PermKey>([
+    'entity.view',
     'intake.view', 'intake.import',
     'equipment.view',
-    'entity.view',
+    'cards.view',
+    'service.view',
+    'field.view',
+    'quotes.view',
   ]),
   apprentice: new Set<PermKey>([
-    'intake.view',
     'entity.view',
+    'intake.view',
+    'cards.view',
+    'service.view',
+    'field.view',
   ]),
-  labour_hire: new Set<PermKey>([]),
+  labour_hire: new Set<PermKey>([
+    'field.view',
+  ]),
 };
 
 /**

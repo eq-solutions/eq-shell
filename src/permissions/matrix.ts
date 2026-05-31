@@ -35,6 +35,10 @@ import { MATRIX as ROLES_MATRIX } from '@eq-solutions/roles';
 import { INTAKE_PERMS, INTAKE_MATRIX, type IntakePermKey } from '../modules/intake/permissions';
 import { EQUIPMENT_PERMS, EQUIPMENT_MATRIX, type EquipmentPermKey } from '../modules/equipment/permissions';
 import { GM_REPORTS_PERMS, GM_REPORTS_MATRIX, type GmReportsPermKey } from '../modules/gm-reports/permissions';
+import { CARDS_PERMS, CARDS_MATRIX, type CardsPermKey } from '../modules/cards/permissions';
+import { SERVICE_PERMS, SERVICE_MATRIX, type ServicePermKey } from '../modules/service/permissions';
+import { FIELD_PERMS, FIELD_MATRIX, type FieldPermKey } from '../modules/field/permissions';
+import { QUOTES_PERMS, QUOTES_MATRIX, type QuotesPermKey } from '../modules/quotes/permissions';
 
 // ============================================================================
 // ADMIN + AUDIT permission keys â€” sourced from @eq-solutions/roles
@@ -89,9 +93,16 @@ const ENTITY_MATRIX: Record<EqRole, readonly EntityPermKey[]> = {
 // MASTER LIST + TYPE
 // ============================================================================
 
-export const ALL_PERMS = [...ADMIN_PERMS, ...AUDIT_PERMS, ...ENTITY_PERMS, ...INTAKE_PERMS, ...EQUIPMENT_PERMS, ...GM_REPORTS_PERMS] as const;
+export const ALL_PERMS = [
+  ...ADMIN_PERMS, ...AUDIT_PERMS, ...ENTITY_PERMS,
+  ...INTAKE_PERMS, ...EQUIPMENT_PERMS, ...GM_REPORTS_PERMS,
+  ...CARDS_PERMS, ...SERVICE_PERMS, ...FIELD_PERMS, ...QUOTES_PERMS,
+] as const;
 
-export type PermKey = AdminPermKey | AuditPermKey | EntityPermKey | IntakePermKey | EquipmentPermKey | GmReportsPermKey;
+export type PermKey =
+  | AdminPermKey | AuditPermKey | EntityPermKey
+  | IntakePermKey | EquipmentPermKey | GmReportsPermKey
+  | CardsPermKey | ServicePermKey | FieldPermKey | QuotesPermKey;
 
 // ============================================================================
 // PER-ROLE GRANTS â€” composed from module-local matrices
@@ -119,6 +130,10 @@ function compose(role: EqRole): Set<PermKey> {
     ...INTAKE_MATRIX[role],
     ...EQUIPMENT_MATRIX[role],
     ...GM_REPORTS_MATRIX[role],
+    ...CARDS_MATRIX[role],
+    ...SERVICE_MATRIX[role],
+    ...FIELD_MATRIX[role],
+    ...QUOTES_MATRIX[role],
   ]);
 }
 
