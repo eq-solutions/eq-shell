@@ -7,6 +7,7 @@ import { createSupabaseClient } from '../lib/supabaseJwt';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
+import { friendlyError } from '../lib/friendlyError';
 import { Gate } from '../permissions/Gate';
 
 interface IntakeEvent {
@@ -111,7 +112,7 @@ function AdminAuditInner() {
       setIntakes(iRes.data as IntakeEvent[]);
       setMints(mRes.data as MintAudit[]);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(friendlyError(e, "We couldn't load the activity log. Please try refreshing."));
     } finally {
       setLoading(false);
     }
@@ -133,7 +134,7 @@ function AdminAuditInner() {
       setDrilldown({ intake, rows: data as IntakeRow[], loading: false });
     } catch (e) {
       setDrilldown({ intake, rows: [], loading: false });
-      setErr((e as Error).message);
+      setErr(friendlyError(e, "We couldn't open this import's details. Please try again."));
     }
   };
 
@@ -198,7 +199,7 @@ function AdminAuditInner() {
             className={`eq-tab ${tab === 'mints' ? 'eq-tab--active' : ''}`}
             onClick={() => setTab('mints')}
           >
-            Token mints {mints && `(${mints.length})`}
+            Sign-in tokens {mints && `(${mints.length})`}
           </button>
         </div>
 
@@ -250,7 +251,7 @@ function AdminAuditInner() {
             <table className="eq-table">
               <thead>
                 <tr>
-                  <th>Entity</th>
+                  <th>Record type</th>
                   <th>Source</th>
                   <th>App</th>
                   <th>Status</th>
@@ -378,7 +379,7 @@ function AdminAuditInner() {
                     {drilldown.intake.source_filename ?? '—'} · {drilldown.intake.source_app ?? '—'}
                   </p>
                   <p style={{ margin: '8px 0 0', fontSize: 12, fontFamily: 'monospace', color: 'var(--eq-mute)' }}>
-                    intake_id: {drilldown.intake.intake_id}
+                    Import ID: {drilldown.intake.intake_id}
                   </p>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => setDrilldown(null)}>
@@ -524,7 +525,7 @@ export default function AdminAuditPage() {
         <HubLayout>
           <div className="eq-empty">
             <p className="eq-empty__title">Audit log requires manager access</p>
-            <p>Talk to your tenant manager if you need this view.</p>
+            <p>Talk to your manager if you need this view.</p>
           </div>
         </HubLayout>
       }

@@ -207,7 +207,7 @@ export default function LoginPage() {
             <div className="eq-login-left__brand">
               <EqLogo size={28} variant="wordmark" onDark />
             </div>
-            <p className="eq-login-left__eyebrow">EQ Shell</p>
+            <p className="eq-login-left__eyebrow">EQ Solutions</p>
             <h1 className="eq-login-left__heading">
               Your tools.<br /><strong>One sign-in.</strong>
             </h1>
@@ -313,7 +313,7 @@ export default function LoginPage() {
                   className="eq-login-submit"
                   disabled={busy || !email || pin.length < 4}
                 >
-                  {busy ? 'Signing in…' : 'Sign in to the Shell →'}
+                  {busy ? 'Signing in…' : 'Sign in →'}
                 </button>
               </form>
             )}
@@ -374,7 +374,7 @@ export default function LoginPage() {
                   className="eq-login-submit"
                   disabled={busy || otp.length !== 6}
                 >
-                  {busy ? 'Signing in…' : 'Sign in to the Shell →'}
+                  {busy ? 'Signing in…' : 'Sign in →'}
                 </button>
               </form>
             )}

@@ -157,10 +157,10 @@ function AcceptInviteShell({ children }: { children: React.ReactNode }) {
           <p className="eq-login-hero__sub">
             Set your PIN once. Use it to sign in across Field, Cards, Intake,
             and everything else your team has access to. Your manager picks the
-            modules; you just bring your trade and your tickets.
+            apps; you just bring your trade and your tickets.
           </p>
           <div className="eq-login-hero__trust">
-            <span>One sign-in, every module</span>
+            <span>One sign-in, every app</span>
             <span className="eq-login-hero__trust-sep">·</span>
             <span>Data stays in Australia</span>
             <span className="eq-login-hero__trust-sep">·</span>
