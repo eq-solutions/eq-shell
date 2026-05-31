@@ -68,15 +68,20 @@ type AuditPermKey = (typeof AUDIT_PERMS)[number];
 // (platform_admin short-circuits via useCan); archive/restore stay open to any
 // authenticated user and so need no perm. Mirror in _shared/permissions.ts.
 
-const ENTITY_PERMS = ['entity.delete'] as const;
+const ENTITY_PERMS = [
+  'entity.view',
+  'entity.create',
+  'entity.edit',
+  'entity.delete',
+] as const;
 
 type EntityPermKey = (typeof ENTITY_PERMS)[number];
 
 const ENTITY_MATRIX: Record<EqRole, readonly EntityPermKey[]> = {
-  manager:     ['entity.delete'],
-  supervisor:  [],
-  employee:    [],
-  apprentice:  [],
+  manager:     ['entity.view', 'entity.create', 'entity.edit', 'entity.delete'],
+  supervisor:  ['entity.view', 'entity.edit'],
+  employee:    ['entity.view'],
+  apprentice:  ['entity.view'],
   labour_hire: [],
 };
 

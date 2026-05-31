@@ -208,9 +208,14 @@ function useDebounce<T>(value: T, ms: number): T {
   return debounced;
 }
 
+// Entities that support manual creation from the shell (CRM records only;
+// assets are created via Service or Intake, not manual shell forms).
+const CREATE_ENTITIES = new Set(['customer', 'site', 'contact']);
+
 function EntityBrowserInner({ entity }: { entity: string }) {
   const view = ENTITY_VIEW[entity];
   const canDelete = useCan('entity.delete');
+  const canCreate = useCan('entity.create');
 
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [count, setCount] = useState<number | null>(null);
@@ -233,6 +238,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   const [activeFilter, setActiveFilter] = useState<boolean | null>(null);
 
   const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
+  const [creating, setCreating] = useState(false);
 
   // Reset to page 0 whenever search, sort, or active filter changes.
   const prevSearch = useRef(search);
@@ -316,15 +322,22 @@ function EntityBrowserInner({ entity }: { entity: string }) {
 
   return (
     <HubLayout>
-      <div className="eq-page__header">
-        <h1 className="eq-page__title">{view.label}</h1>
-        <p className="eq-page__lede">
-          {count != null
-            ? search || activeFilter !== null
-              ? `${count.toLocaleString()} matching`
-              : `${count.toLocaleString()} total`
-            : '…'}
-        </p>
+      <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <h1 className="eq-page__title">{view.label}</h1>
+          <p className="eq-page__lede">
+            {count != null
+              ? search || activeFilter !== null
+                ? `${count.toLocaleString()} matching`
+                : `${count.toLocaleString()} total`
+              : '…'}
+          </p>
+        </div>
+        {canCreate && CREATE_ENTITIES.has(entity) && (
+          <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+            New {view.label.toLowerCase().replace(/s$/, '')}
+          </Button>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -480,6 +493,14 @@ function EntityBrowserInner({ entity }: { entity: string }) {
           canDelete={canDelete}
         />
       )}
+
+      {creating && (
+        <EntityCreateDrawer
+          entity={entity}
+          onClose={() => setCreating(false)}
+          onCreated={() => { setCreating(false); void load(); }}
+        />
+      )}
     </HubLayout>
   );
 }
@@ -505,6 +526,10 @@ function EntityDetailDrawer({
 }) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
+  const canEdit = useCan('entity.edit');
+  const view = ENTITY_VIEW[entity];
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFields, setEditFields] = useState<Record<string, string>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [open, setOpen] = useState(false);
   const rafRef = useRef<number | null>(null);
@@ -528,6 +553,45 @@ function EntityDetailDrawer({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, confirmDelete]);
+
+  const startEditing = useCallback(() => {
+    const initial: Record<string, string> = {};
+    for (const col of (view?.columns ?? [])) {
+      const v = row[col.key];
+      initial[col.key] = v === null || v === undefined ? '' : String(v);
+    }
+    setEditFields(initial);
+    setIsEditing(true);
+    setActionErr(null);
+  }, [row, view]);
+
+  const handleSave = useCallback(async () => {
+    const id = row[`${entity}_id`] as string;
+    const fields: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(editFields)) {
+      if (v === 'true') fields[k] = true;
+      else if (v === 'false') fields[k] = false;
+      else if (v === '') fields[k] = null;
+      else fields[k] = v;
+    }
+    setActionLoading('save');
+    setActionErr(null);
+    try {
+      const res = await fetch('/.netlify/functions/entity-patch', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity, id, fields }),
+      });
+      const body = await res.json() as { ok: boolean; error?: string; detail?: string };
+      if (!res.ok || !body.ok) throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
+      setIsEditing(false);
+      onMutated();
+    } catch (e) {
+      setActionErr((e as Error).message);
+      setActionLoading(null);
+    }
+  }, [entity, row, editFields, onMutated]);
 
   const handleAction = useCallback(async (action: 'archive' | 'unarchive' | 'delete') => {
     const id = row[`${entity}_id`] as string;
@@ -667,7 +731,40 @@ function EntityDetailDrawer({
               borderBottom: '1px solid #E2E8F0',
               flexWrap: 'wrap',
             }}>
-              {isActive ? (
+              {canEdit && !isEditing && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={actionLoading !== null}
+                  onClick={startEditing}
+                >
+                  Edit
+                </Button>
+              )}
+              {isEditing && (
+                <>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    disabled={actionLoading !== null}
+                    onClick={() => void handleSave()}
+                  >
+                    {actionLoading === 'save' ? 'Saving…' : 'Save'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={actionLoading !== null}
+                    onClick={() => setIsEditing(false)}
+                  >
+                    Cancel
+                  </Button>
+                </>
+              )}
+              {!isEditing && (isActive ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -687,9 +784,9 @@ function EntityDetailDrawer({
                 >
                   {actionLoading === 'unarchive' ? 'Restoring…' : 'Restore'}
                 </Button>
-              )}
+              ))}
 
-              {canDelete && (
+              {!isEditing && canDelete && (
                 confirmDelete ? (
                   <>
                     <Button
@@ -741,55 +838,272 @@ function EntityDetailDrawer({
           )}
         </div>
 
-        <dl style={{ margin: 0, padding: '0 24px 24px', flex: 1 }}>
-          {sortedEntries.map(([key, value]) => (
-            <div
-              key={key}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '140px 1fr',
-                gap: 12,
-                padding: '10px 0',
-                borderBottom: '1px solid #E2E8F0',
-                alignItems: 'baseline',
-              }}
-            >
-              <dt
+        {isEditing ? (
+          <div style={{ padding: '0 24px 24px', flex: 1 }}>
+            {(view?.columns ?? []).map((col) => {
+              const isBool = col.key === 'active';
+              const isDate = col.key.endsWith('_date') || col.key.endsWith('_due');
+              const isEmail = col.key === 'email';
+              const isTel = col.key.includes('phone');
+              return (
+                <div key={col.key} style={{ marginBottom: 14 }}>
+                  <label
+                    htmlFor={`edit-${col.key}`}
+                    style={{
+                      display: 'block',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#64748B',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      marginBottom: 4,
+                    }}
+                  >
+                    {col.label}
+                  </label>
+                  {isBool ? (
+                    <select
+                      id={`edit-${col.key}`}
+                      value={editFields[col.key] ?? ''}
+                      onChange={(e) => setEditFields((f) => ({ ...f, [col.key]: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '7px 10px',
+                        border: '1px solid var(--eq-border, #E2E8F0)',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        background: 'var(--eq-bg, #fff)',
+                        color: 'var(--eq-ink, #1A1A2E)',
+                      }}
+                    >
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  ) : (
+                    <input
+                      id={`edit-${col.key}`}
+                      type={isDate ? 'date' : isEmail ? 'email' : isTel ? 'tel' : 'text'}
+                      value={editFields[col.key] ?? ''}
+                      onChange={(e) => setEditFields((f) => ({ ...f, [col.key]: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '7px 10px',
+                        border: '1px solid var(--eq-border, #E2E8F0)',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        background: 'var(--eq-bg, #fff)',
+                        color: 'var(--eq-ink, #1A1A2E)',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <dl style={{ margin: 0, padding: '0 24px 24px', flex: 1 }}>
+            {sortedEntries.map(([key, value]) => (
+              <div
+                key={key}
                 style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#64748B',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
+                  display: 'grid',
+                  gridTemplateColumns: '140px 1fr',
+                  gap: 12,
+                  padding: '10px 0',
+                  borderBottom: '1px solid #E2E8F0',
+                  alignItems: 'baseline',
                 }}
               >
-                {key.replace(/_/g, ' ')}
-              </dt>
-              <dd
+                <dt
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#64748B',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                  }}
+                >
+                  {key.replace(/_/g, ' ')}
+                </dt>
+                <dd
+                  style={{
+                    margin: 0,
+                    fontSize: 13,
+                    color: 'var(--eq-ink, #1A1A2E)',
+                    wordBreak: 'break-word',
+                    fontFamily:
+                      value === null || typeof value === 'object'
+                        ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+                        : 'inherit',
+                  }}
+                >
+                  {value === null || value === undefined ? (
+                    <span style={{ color: '#64748B' }}>—</span>
+                  ) : typeof value === 'boolean' ? (
+                    value ? 'Yes' : 'No'
+                  ) : typeof value === 'object' ? (
+                    JSON.stringify(value, null, 2)
+                  ) : (
+                    String(value)
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </aside>
+    </>
+  );
+}
+
+// Per-entity create form fields with labels, input type, and required flag.
+const CREATE_FORM_META: Record<string, { key: string; label: string; type: string; required: boolean }[]> = {
+  customer: [
+    { key: 'company_name', label: 'Company name', type: 'text',  required: true  },
+    { key: 'email',        label: 'Email',         type: 'email', required: false },
+    { key: 'primary_phone',label: 'Phone',         type: 'tel',   required: false },
+    { key: 'state',        label: 'State',         type: 'text',  required: false },
+  ],
+  contact: [
+    { key: 'first_name',   label: 'First name',    type: 'text',  required: true  },
+    { key: 'last_name',    label: 'Last name',     type: 'text',  required: true  },
+    { key: 'email',        label: 'Email',         type: 'email', required: false },
+    { key: 'mobile_phone', label: 'Mobile',        type: 'tel',   required: false },
+    { key: 'position',     label: 'Position',      type: 'text',  required: false },
+  ],
+  site: [
+    { key: 'name',         label: 'Site name',     type: 'text',  required: true  },
+    { key: 'code',         label: 'Code',          type: 'text',  required: false },
+    { key: 'suburb',       label: 'Suburb',        type: 'text',  required: false },
+    { key: 'state',        label: 'State',         type: 'text',  required: false },
+    { key: 'site_type',    label: 'Type',          type: 'text',  required: false },
+  ],
+};
+
+function EntityCreateDrawer({
+  entity,
+  onClose,
+  onCreated,
+}: {
+  entity: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const fields = CREATE_FORM_META[entity] ?? [];
+  const [values, setValues] = useState<Record<string, string>>(
+    Object.fromEntries(fields.map((f) => [f.key, ''])),
+  );
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    rafRef.current = requestAnimationFrame(() => setOpen(true));
+    return () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setErr(null);
+    try {
+      const fieldPayload: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(values)) {
+        if (v.trim() !== '') fieldPayload[k] = v.trim();
+      }
+      const res = await fetch('/.netlify/functions/entity-insert', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity, fields: fieldPayload }),
+      });
+      const body = await res.json() as { ok: boolean; error?: string; detail?: string };
+      if (!res.ok || !body.ok) throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
+      onCreated();
+    } catch (e) {
+      setErr((e as Error).message);
+      setSaving(false);
+    }
+  }, [entity, values, onCreated]);
+
+  const label = ENTITY_VIEW[entity]?.label.toLowerCase().replace(/s$/, '') ?? entity;
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 40 }} />
+      <aside
+        role="dialog"
+        aria-label={`New ${label}`}
+        style={{
+          position: 'fixed', right: 0, top: 0, height: '100vh',
+          width: 'min(380px, 100vw)', background: 'white',
+          borderLeft: '1px solid #E2E8F0', zIndex: 50,
+          display: 'flex', flexDirection: 'column', overflowY: 'auto',
+          transform: open ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 200ms ease',
+        }}
+      >
+        <div style={{ padding: '20px 24px 0' }}>
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div>
+              <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748B' }}>
+                new
+              </span>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--eq-ink, #1A1A2E)', marginTop: 2 }}>
+                {label.charAt(0).toUpperCase() + label.slice(1)}
+              </div>
+            </div>
+            <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748B', padding: '4px 6px' }}>
+              <X size={18} aria-hidden="true" />
+            </button>
+          </header>
+
+          {err && (
+            <div style={{ background: '#fdf2f2', border: '1px solid #c0392b', borderRadius: 6, padding: '8px 12px', fontSize: 12, color: '#c0392b', marginBottom: 16 }}>
+              {err}
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={(e) => void handleSubmit(e)} style={{ padding: '0 24px 24px', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {fields.map((f) => (
+            <div key={f.key}>
+              <label htmlFor={`create-${f.key}`} style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+                {f.label}{f.required && <span style={{ color: '#c0392b', marginLeft: 2 }}>*</span>}
+              </label>
+              <input
+                id={`create-${f.key}`}
+                type={f.type}
+                required={f.required}
+                value={values[f.key] ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
                 style={{
-                  margin: 0,
-                  fontSize: 13,
-                  color: 'var(--eq-ink, #1A1A2E)',
-                  wordBreak: 'break-word',
-                  fontFamily:
-                    value === null || typeof value === 'object'
-                      ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
-                      : 'inherit',
+                  width: '100%', padding: '7px 10px',
+                  border: '1px solid var(--eq-border, #E2E8F0)', borderRadius: 6,
+                  fontSize: 13, background: 'var(--eq-bg, #fff)', color: 'var(--eq-ink, #1A1A2E)',
+                  boxSizing: 'border-box',
                 }}
-              >
-                {value === null || value === undefined ? (
-                  <span style={{ color: '#64748B' }}>—</span>
-                ) : typeof value === 'boolean' ? (
-                  value ? 'Yes' : 'No'
-                ) : typeof value === 'object' ? (
-                  JSON.stringify(value, null, 2)
-                ) : (
-                  String(value)
-                )}
-              </dd>
+              />
             </div>
           ))}
-        </dl>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <Button type="submit" variant="primary" size="sm" disabled={saving}>
+              {saving ? 'Saving…' : `Add ${label}`}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={saving}>
+              Cancel
+            </Button>
+          </div>
+        </form>
       </aside>
     </>
   );

@@ -42,6 +42,9 @@ export type PermKey =
   | 'reports.view'
   | 'reports.upload'
   | 'reports.generate_briefing'
+  | 'entity.view'
+  | 'entity.create'
+  | 'entity.edit'
   | 'entity.delete';
 
 // Per-role grants. Omitting a perm denies it; there is no inheritance — every
@@ -55,19 +58,22 @@ const MATRIX: Record<EqRole, ReadonlySet<PermKey>> = {
     'intake.view', 'intake.import', 'intake.commit',
     'equipment.view', 'equipment.edit',
     'reports.view', 'reports.upload', 'reports.generate_briefing',
-    'entity.delete',
+    'entity.view', 'entity.create', 'entity.edit', 'entity.delete',
   ]),
   supervisor: new Set<PermKey>([
     'audit.view',
     'intake.view', 'intake.import', 'intake.commit',
     'equipment.view', 'equipment.edit',
+    'entity.view', 'entity.edit',
   ]),
   employee: new Set<PermKey>([
     'intake.view', 'intake.import',
     'equipment.view',
+    'entity.view',
   ]),
   apprentice: new Set<PermKey>([
     'intake.view',
+    'entity.view',
   ]),
   labour_hire: new Set<PermKey>([]),
 };
