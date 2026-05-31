@@ -34,6 +34,7 @@ import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, EqRole } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { sendEmail } from './_shared/email.js';
+import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 const VALID_ROLES: ReadonlySet<EqRole> = new Set([
@@ -78,9 +79,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Server-side permission check — must mirror the in-shell useCan()
   // matrix entry for admin.invite_user. The matrix grants this to
   // manager + (via platform_admin short-circuit) platform admins.
-  const isManager = session.role === 'manager';
-  const allowed = isManager || session.is_platform_admin === true;
-  if (!allowed) {
+  if (!can(session, 'admin.invite_user')) {
     return jsonResponse(403, { ok: false, error: 'forbidden' });
   }
 

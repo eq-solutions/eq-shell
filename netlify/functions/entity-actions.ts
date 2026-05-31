@@ -34,6 +34,7 @@ import {
   TenantRoutingMisconfiguredError,
 } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 // ──────────────────────────────────────────────────────────────────────
@@ -112,18 +113,13 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     });
   }
 
-  // Authorisation: delete is manager/admin only
-  if (action === 'delete') {
-    const role = (session as unknown as { role?: string; is_platform_admin?: boolean });
-    const canDelete =
-      (role as { role?: string }).role === 'manager' ||
-      (role as { is_platform_admin?: boolean }).is_platform_admin === true;
-    if (!canDelete) {
-      return json(403, {
-        ok: false, error: 'forbidden',
-        detail: 'Delete requires manager or platform admin role',
-      });
-    }
+  // Authorisation: delete is manager/admin only (archive/restore stay open to
+  // any authenticated user). Decision routed through the shared perm matrix.
+  if (action === 'delete' && !can(session, 'entity.delete')) {
+    return json(403, {
+      ok: false, error: 'forbidden',
+      detail: 'Delete requires manager or platform admin role',
+    });
   }
 
   // Resolve tenant data client
