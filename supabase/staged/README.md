@@ -16,6 +16,8 @@ Source review: [`docs/FINAL-SPRINT.md`](../../docs/FINAL-SPRINT.md) — Phases 2
 | `sks_gm_briefing_reshape_expand.sql` | ehowg | 🔒🔒 | 🟡 staged (parity, safe) | PHASE 1: add `tenant_id` (nullable) + backfill + per-tenant index. Additive, invisible to the app. |
 | `sks_gm_briefing_reshape_contract.sql` | ehowg | 🔒🔒 | 🟡 staged — **deploy-coupled** | PHASE 2: enforce NOT NULL + swap the period unique key. Ship the `upload-gm-report.ts` change first (documented in the file). |
 
+| `sks_intake_vestige_tables_drop.sql` | ehowg | 🔒 | 🟡 staged — safe, no data loss | Drop 4 leftover `eq_intake_*` tables (shell_control + app_data) from pre-silo era. All empty except `eq_intake_events` (5 rolled-back smoke-test rows, snapshotted in file). RPCs already dropped by `0027`. |
+
 ## Not authored here (specced in FINAL-SPRINT Phase 3, need the drift work-list + smoke)
 
 - **SKS Service CMMS reconcile** — converge the older `ppm_*` path onto the branch `0020`/`0021` shape; drive off `check-tenant-drift.mjs` once the runner has produced the diff.
