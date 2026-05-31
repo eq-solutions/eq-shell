@@ -75,7 +75,7 @@ function DomainLanding({ module, title, description }: DomainLandingProps) {
           <p>{description}</p>
         </header>
 
-      {loading && <div className="eq-loading">Loading entities…</div>}
+      {loading && <div className="eq-loading">Loading…</div>}
       {err && (
         <div className="eq-error" role="alert">
           {err}
@@ -84,7 +84,7 @@ function DomainLanding({ module, title, description }: DomainLandingProps) {
 
       {!loading && !err && entities.length === 0 && (
         <div className="eq-coming-soon">
-          <p>No entities registered for this module yet.</p>
+          <p>Nothing to import here yet.</p>
         </div>
       )}
 
@@ -96,10 +96,8 @@ function DomainLanding({ module, title, description }: DomainLandingProps) {
             return (
               <article key={e.entity} className="entity-card">
                 <header>
-                  <h3>{e.entity}</h3>
-                  <small>v{e.version}</small>
+                  <h3>{e.description || e.entity}</h3>
                 </header>
-                <p>{e.description}</p>
                 <button
                   type="button"
                   className="entity-import-btn"
@@ -107,20 +105,21 @@ function DomainLanding({ module, title, description }: DomainLandingProps) {
                   onClick={() => wired && setActiveEntity(isOpen ? null : e.entity)}
                   title={
                     wired
-                      ? 'Open a ParserDropZone to import a CSV/XLSX for this entity.'
-                      : 'Schema wiring lands in S2 (this entity is registered but not yet hooked to a ParserDropZone).'
+                      ? 'Import a CSV or XLSX file for this record type.'
+                      : 'Import isn’t available for this record type yet.'
                   }
                 >
                   {wired
                     ? isOpen
                       ? 'Hide importer'
                       : 'Import CSV / XLSX'
-                    : 'Import (S2)'}
+                    : 'Coming soon'}
                 </button>
                 {isOpen && wired && (
                   <div className="entity-card__panel">
                     <EntityImportPanel
                       entity={e.entity}
+                      entityLabel={e.description || e.entity}
                       onClose={() => setActiveEntity(null)}
                     />
                   </div>
@@ -156,7 +155,7 @@ export function CoreIntakeLanding() {
     <GatedDomainLanding
       module="core"
       title="Core intake"
-      description="Import customers, contacts, and sites — the shared-root entities used by every other module."
+      description="Import customers, contacts, and sites — the shared records every other app builds on."
     />
   );
 }

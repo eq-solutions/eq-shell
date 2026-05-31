@@ -15,6 +15,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { CommitFn, CommittableRow } from '@eq/confirm-ui';
 import { createSupabaseClient } from '../../lib/supabaseJwt';
 import { useSession } from '../../session';
+import { friendlyError } from '../../lib/friendlyError';
 
 // Lazy-load the @eq/confirm-ui ParserDropZone — pulls pdfjs + a lot of other
 // weight. Only mounted once a user actually opens an import panel.
@@ -141,10 +142,12 @@ async function loadEntitySchema(entity: string): Promise<Record<string, unknown>
 
 interface EntityImportPanelProps {
   entity: string;
+  entityLabel?: string;
   onClose?: () => void;
 }
 
-export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
+export function EntityImportPanel({ entity, entityLabel, onClose }: EntityImportPanelProps) {
+  const label = entityLabel || entity;
   const { session } = useSession();
   const table = ENTITY_TABLE_MAP[entity];
   const [schema, setSchema] = useState<Record<string, unknown> | null>(null);
@@ -163,11 +166,11 @@ export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
     loadEntitySchema(entity)
       .then((s) => {
         if (cancelled) return;
-        if (!s) setLoadErr(`No schema found for "${entity}".`);
+        if (!s) setLoadErr(`This record type isn't set up for import yet.`);
         else setSchema(s);
       })
       .catch((e) => {
-        if (!cancelled) setLoadErr((e as Error).message);
+        if (!cancelled) setLoadErr(friendlyError(e, "We couldn't load this importer. Please try again."));
       });
     return () => {
       cancelled = true;
@@ -206,8 +209,8 @@ export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
   if (!table) {
     return (
       <div className="eq-coming-soon">
-        <h3>Import for "{entity}"</h3>
-        <p>This entity isn't wired for direct CSV import yet.</p>
+        <h3>Import {label}</h3>
+        <p>Direct file import isn't available for this record type yet.</p>
         {onClose && <button type="button" onClick={onClose}>Close</button>}
       </div>
     );
@@ -216,7 +219,7 @@ export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
   if (loadErr) {
     return (
       <div className="eq-error" role="alert">
-        <p className="eq-error__title">Couldn't load schema</p>
+        <p className="eq-error__title">Couldn't load the importer</p>
         <p className="eq-error__body">{loadErr}</p>
         {onClose && <button type="button" className="eq-error__retry" onClick={onClose}>Close</button>}
       </div>
@@ -224,7 +227,7 @@ export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
   }
 
   if (!schema || !config) {
-    return <div className="eq-loading">Loading schema for {entity}…</div>;
+    return <div className="eq-loading">Loading importer…</div>;
   }
 
   const properties = schema.properties as Record<string, unknown> | undefined;
@@ -233,7 +236,7 @@ export function EntityImportPanel({ entity, onClose }: EntityImportPanelProps) {
   return (
     <div className="entity-import-panel">
       <header className="entity-import-panel__header">
-        <h3>Import {entity}</h3>
+        <h3>Import {label}</h3>
         {onClose && (
           <button type="button" className="entity-import-panel__close" onClick={onClose}>
             Close
