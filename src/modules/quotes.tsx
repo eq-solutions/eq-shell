@@ -52,7 +52,7 @@ export default function QuotesModule() {
           href={STANDALONE_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="eq-btn"
+          className="eq-btn-primary"
           style={{ display: 'inline-block' }}
         >
           Open EQ Quotes →

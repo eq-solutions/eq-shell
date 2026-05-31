@@ -8,6 +8,7 @@
   --eq-deep:   #2986B4;
   --eq-ice:    #EAF5FB;
   --eq-ink:    #1A1A2E;
+  --eq-sky-rgb: 61, 168, 216;   /* RGB channels of --eq-sky, for rgba() tints */
 
   /* Sidebar tokens (shell dark sidebar) */
   --eq-sidebar-bg:        #0F1117;
