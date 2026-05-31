@@ -10,7 +10,7 @@ export default function ServiceModule() {
   return (
     <ComingSoon
       module="Service"
-      description="EQ Service (eq-solves-service) — CMMS for trade subcontractors. Maintenance checks, defect tracking, customer reports, testing workflows. Currently in active development as a standalone app; in-shell mount lands once Field is on canonical end-to-end."
+      description="Maintenance checks, defect tracking, customer reports, and testing workflows — built for trade teams. In active development as a standalone app today."
       features={[
         'Asset register (port from EQ Field assets)',
         'Maintenance check schedules (PPM)',
@@ -18,7 +18,7 @@ export default function ServiceModule() {
         'Customer service reports (PDF)',
         'Cross-app: convert defect → quote in one click',
       ]}
-      eta="Standalone build first (eq-solves-service.netlify.app). In-shell mount after EQ Field's canonical-resource-model is live."
+      eta="Available now as a standalone app. Full integration into this hub is coming."
     />
   );
 }
