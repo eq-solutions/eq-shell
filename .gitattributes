@@ -1,0 +1,3 @@
+# Generated token file — always LF so regeneration produces a stable diff
+# and the committed copy never shows CRLF churn against the build output.
+public/eq-tokens.css text eol=lf
