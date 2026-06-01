@@ -181,7 +181,7 @@ const cardStyle: React.CSSProperties = {
   background: '#FFFFFF',
   borderRadius: 12,
   border: '1px solid #E2E8F0',
-  padding: 32,
+  padding: 'clamp(16px, 4vw, 32px)',
 };
 
 const titleStyle: React.CSSProperties = {
