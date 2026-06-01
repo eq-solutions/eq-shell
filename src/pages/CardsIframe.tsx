@@ -67,13 +67,19 @@ export default function CardsIframe() {
       if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
       if (ev.origin !== expectedOrigin) return;
 
+      // Use ev.source (the live contentWindow of the originating iframe) rather
+      // than iframeRef.current?.contentWindow. iframeRef can be stale/null
+      // during the 12-min re-mint cycle if the iframe has re-mounted between
+      // REQUEST_SHELL_TOKEN and our async response — ev.source is always valid.
+      const replyTarget = ev.source as Window | null;
+
       try {
         const res = await fetch('/.netlify/functions/mint-cards-iframe-token', {
           method: 'POST',
           credentials: 'include',
         });
         if (!res.ok) {
-          iframeRef.current?.contentWindow?.postMessage(
+          replyTarget?.postMessage(
             { type: 'SHELL_TOKEN_RESPONSE', error: 'mint-failed' },
             expectedOrigin,
           );
@@ -81,12 +87,12 @@ export default function CardsIframe() {
           return;
         }
         const { token } = (await res.json()) as { token: string };
-        iframeRef.current?.contentWindow?.postMessage(
+        replyTarget?.postMessage(
           { type: 'SHELL_TOKEN_RESPONSE', token },
           expectedOrigin,
         );
       } catch (e) {
-        iframeRef.current?.contentWindow?.postMessage(
+        replyTarget?.postMessage(
           { type: 'SHELL_TOKEN_RESPONSE', error: 'mint-failed' },
           expectedOrigin,
         );
