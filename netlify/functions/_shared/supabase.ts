@@ -5,6 +5,13 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+// @supabase/realtime-js v2.106+ throws at createClient() time if globalThis.WebSocket
+// is absent (Node < 22 has no native WebSocket). Server-side functions never use
+// Realtime, so a stub satisfies the existence check without pulling in the ws package.
+if (typeof globalThis.WebSocket === 'undefined') {
+  (globalThis as any).WebSocket = class StubWebSocket {};
+}
+
 // We type the cache as `any`-schema because we pin db.schema='shell_control'
 // at construction; supabase-js infers a different generic when that's set
 // and the strict typing fights cross-schema usage like .schema('app_data').
