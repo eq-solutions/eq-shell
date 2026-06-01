@@ -3,7 +3,7 @@
 
 [build]
   publish = "dist"
-  command = "npm install -g pnpm@9.15.9 && pnpm run check:perms && pnpm run build"
+  command = "pnpm run check:perms && pnpm run build"
 
 [build.environment]
   # Lock pnpm to match packageManager field in package.json.
