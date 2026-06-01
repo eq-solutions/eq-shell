@@ -90,8 +90,7 @@ export default function ComingSoon({ module, description, features, eta }: Comin
         <section className="eq-section" style={{ marginTop: 48 }}>
           <Link
             to={`/${tenantSlug}`}
-            className="eq-btn-ghost"
-            style={{ textDecoration: 'none', display: 'inline-block', padding: '8px 16px' }}
+            style={{ textDecoration: 'none', display: 'inline-block', padding: '8px 16px', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 13, color: 'var(--eq-ink)', background: 'transparent' }}
           >
             ← Back to home
           </Link>

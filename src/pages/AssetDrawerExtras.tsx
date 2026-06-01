@@ -138,7 +138,7 @@ export function AssetDrawerExtras({
         {qr ? (
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             <img src={qr} width={96} height={96} alt="Asset QR code" style={{ border: '1px solid #E2E8F0', borderRadius: 6 }} />
-            <button type="button" className="eq-btn-ghost" style={{ fontSize: 12 }} onClick={printLabel}>
+            <button type="button" style={{ fontSize: 12, background: 'transparent', border: '1px solid var(--gray-200)', padding: '6px 12px', borderRadius: 6, color: 'var(--eq-ink)', cursor: 'pointer' }} onClick={printLabel}>
               Print label
             </button>
           </div>

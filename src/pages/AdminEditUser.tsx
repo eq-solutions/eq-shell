@@ -233,7 +233,7 @@ function AdminEditUserInner() {
           >
             {busy ? 'Saving…' : 'Save changes'}
           </Button>
-          <Link to={`/${tenantSlug}/admin/users`} className="eq-btn-ghost" style={{ textDecoration: 'none' }}>
+          <Link to={`/${tenantSlug}/admin/users`} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', padding: '6px 12px', borderRadius: 6, border: '1px solid var(--gray-200)', fontSize: 13, color: 'var(--eq-ink)', background: 'transparent' }}>
             Cancel
           </Link>
         </div>

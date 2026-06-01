@@ -260,7 +260,7 @@ export default function EnrollTotp() {
                 From now on, you'll enter a code from your authenticator app each time you sign in.
               </p>
             </div>
-            <Link to={`/${tenantSlug ?? ''}`} className="eq-btn-primary" style={{ textDecoration: 'none', display: 'inline-block', padding: '0 24px' }}>
+            <Link to={`/${tenantSlug ?? ''}`} style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px', height: 40, background: 'var(--eq-sky)', color: '#fff', borderRadius: 6, fontWeight: 600, fontSize: 14 }}>
               Back to hub →
             </Link>
           </div>
