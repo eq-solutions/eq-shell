@@ -10,6 +10,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import './auth.css';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { EqLogo } from '../components/EqLogo';
