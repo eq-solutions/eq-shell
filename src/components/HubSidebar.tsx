@@ -49,6 +49,9 @@ export function HubSidebar({ apps, records }: Props) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const { session, logout } = useSession();
   const canEquipment = useCan('equipment.view');
+  const canIntake = useCan('intake.view');
+  const canReports = useCan('reports.view');
+  const canAdmin = useCan('admin.list_users');
   const { compact, toggle: toggleDensity } = useDensity();
 
   if (!session) return null;
@@ -56,7 +59,6 @@ export function HubSidebar({ apps, records }: Props) {
   const userInitials = initials(session.user.name, session.user.email);
   const userName = session.user.name ?? session.user.email.split('@')[0].replace('.', ' ');
   const roleLabel = session.user.role.replace(/_/g, ' ').toUpperCase();
-  const isManager = session.user.role === 'manager' || session.user.is_platform_admin;
 
   return (
     <aside className="eq-hub__sidebar">
@@ -154,7 +156,7 @@ export function HubSidebar({ apps, records }: Props) {
       </nav>
 
       {/* ── INTAKE ── */}
-      {isManager && (
+      {canIntake && (
         <>
           <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>INTAKE</p>
           <nav className="eq-hub-sidebar__nav" aria-label="Intake navigation">
@@ -171,7 +173,7 @@ export function HubSidebar({ apps, records }: Props) {
       )}
 
       {/* ── REPORTS ── */}
-      {isManager && (
+      {canReports && (
         <>
           <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>REPORTS</p>
           <nav className="eq-hub-sidebar__nav" aria-label="Reports navigation">
@@ -188,7 +190,7 @@ export function HubSidebar({ apps, records }: Props) {
       )}
 
       {/* ── ADMIN ── */}
-      {isManager && (
+      {canAdmin && (
         <>
           <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>ADMIN</p>
           <nav className="eq-hub-sidebar__nav" aria-label="Admin navigation">

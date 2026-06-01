@@ -348,20 +348,6 @@
   .eq-login-right__title { font-size: 22px; }
 }
 
-.eq-btn-primary {
-  width: 100%;
-  height: 40px;
-  border: none;
-  background: var(--eq-sky);
-  color: var(--eq-white);
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 14px;
-  transition: background 150ms ease;
-}
-
-.eq-btn-primary:hover:not(:disabled) { background: var(--eq-deep); }
-.eq-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .eq-err {
   margin-top: 16px;
@@ -406,17 +392,6 @@
   to   { width: 100%; opacity: 0; }
 }
 
-.eq-btn-ghost {
-  background: transparent;
-  border: 1px solid var(--gray-200);
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--eq-ink);
-  transition: background 150ms ease, border-color 150ms ease;
-}
-
-.eq-btn-ghost:hover { background: var(--gray-50); border-color: var(--gray-300); }
 
 /* ──────────────────────────────────────────────────────────────────
  * Page layout

@@ -407,8 +407,8 @@ function EquipmentFormDrawer({
             />
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
               <label
-                className="eq-btn-ghost"
-                style={{ fontSize: 13, cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}
+                className="eq-btn eq-btn--ghost eq-btn--sm"
+                style={{ cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}
               >
                 {uploading ? 'Uploading…' : 'Upload file'}
                 <input

@@ -80,8 +80,8 @@ function AdminUserListInner() {
           </div>
           <Link
             to={`/${tenantSlug}/admin/users/invite`}
-            className="eq-btn-primary"
-            style={{ width: 'auto', padding: '0 16px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+            className="eq-btn eq-btn--primary eq-btn--md"
+            style={{ width: 'auto', textDecoration: 'none' }}
           >
             + Invite user
           </Link>

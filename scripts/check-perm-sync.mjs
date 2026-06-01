@@ -2,53 +2,29 @@
 /**
  * Drift guard for the permission matrix.
  *
- * Verifies that netlify/functions/_shared/permissions.ts lists exactly the same
- * PermKey members and role grants as src/permissions/matrix.ts (via its composed
- * module files). Run in CI on every PR that touches src/permissions/** or
- * netlify/functions/_shared/permissions.ts.
+ * Verifies that @eq-solutions/roles (the single source of truth after B12) lists
+ * exactly the same PermKey members and role grants as src/permissions/matrix.ts
+ * (via its composed module files). Run in CI on every PR that touches
+ * src/permissions/** or netlify/functions/_shared/permissions.ts.
  *
- * We parse both files with regex rather than importing them (avoids needing tsc
- * or a full bundle step in CI). The patterns are tight enough to be reliable for
- * the well-structured format we use.
+ * We parse client module files with regex (avoids needing tsc or a full bundle
+ * step in CI). The roles package is imported directly as ESM since it ships
+ * pre-built TypeScript with `"type":"module"`.
  *
  * Exit 0 = in sync. Exit 1 = drift detected (prints a diff).
  */
 
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { createRequire } from 'module';
+
+const _require = createRequire(import.meta.url);
+const { matrix: MATRIX, permissions: PERMISSIONS } = _require('@eq-solutions/roles/roles.json');
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
 function readFile(rel) {
   return readFileSync(resolve(ROOT, rel), 'utf8');
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Parse PermKey union members from a TypeScript file.
-// Matches   | 'some.perm'
-// ──────────────────────────────────────────────────────────────────────────────
-function parsePermKeys(src) {
-  const keys = new Set();
-  for (const m of src.matchAll(/\|\s*'([a-z_]+\.[a-z_]+)'/g)) {
-    keys.add(m[1]);
-  }
-  return keys;
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Parse per-role grant sets from a server permissions.ts file.
-// Looks for:   role: new Set<PermKey>([ ... ])
-// ──────────────────────────────────────────────────────────────────────────────
-function parseServerGrants(src) {
-  const grants = {};
-  const roleBlocks = src.matchAll(/(\w+):\s*new Set<PermKey>\(\[([^\]]*)\]\)/gs);
-  for (const [, role, body] of roleBlocks) {
-    grants[role] = new Set();
-    for (const m of body.matchAll(/'([a-z_]+\.[a-z_]+)'/g)) {
-      grants[role].add(m[1]);
-    }
-  }
-  return grants;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -82,8 +58,6 @@ function mergeGrants(...matrixList) {
 // Main
 // ──────────────────────────────────────────────────────────────────────────────
 
-const serverSrc = readFile('netlify/functions/_shared/permissions.ts');
-
 // Collect client-side grants from all module permissions files + roles package matrix
 const moduleFiles = [
   'src/modules/intake/permissions.ts',
@@ -101,14 +75,10 @@ const entityMatrix = parseModuleMatrix(
   matrixSrc.match(/ENTITY_MATRIX[^=]+=([^;]+)/s)?.[1] ?? '',
 );
 
-// Admin + audit from roles package (hardcoded here for simplicity — they rarely change)
-const rolesGrants = {
-  manager:     new Set(['admin.list_users','admin.invite_user','admin.edit_user','admin.deactivate_user','admin.review_cards','audit.view','audit.rollback']),
-  supervisor:  new Set(['audit.view']),
-  employee:    new Set(),
-  apprentice:  new Set(),
-  labour_hire: new Set(),
-};
+// Admin + audit + all other grants from the canonical roles package (single source of truth)
+const rolesGrants = Object.fromEntries(
+  Object.entries(MATRIX).map(([role, perms]) => [role, new Set(perms)]),
+);
 
 const clientGrants = mergeGrants(
   rolesGrants,
@@ -116,9 +86,14 @@ const clientGrants = mergeGrants(
   ...moduleFiles.map((f) => parseModuleMatrix(readFile(f))),
 );
 
-const serverGrants = parseServerGrants(serverSrc);
-const serverKeys   = parsePermKeys(serverSrc);
-const clientKeys   = new Set([...Object.values(clientGrants)].flatMap((s) => [...s]));
+// Server grants = roles package matrix (permissions.ts now delegates fully to it)
+const serverGrants = Object.fromEntries(
+  Object.entries(MATRIX).map(([role, perms]) => [role, new Set(perms)]),
+);
+
+// PermKey sets from each source
+const serverKeys = new Set(PERMISSIONS.map((p) => p.key));
+const clientKeys = new Set([...Object.values(clientGrants)].flatMap((s) => [...s]));
 
 let ok = true;
 
@@ -154,6 +129,6 @@ if (ok) {
   console.log('✅  Permission matrix is in sync (client ≡ server)');
   process.exit(0);
 } else {
-  console.error('\nFix: update netlify/functions/_shared/permissions.ts to match src/permissions/matrix.ts (or vice-versa).');
+  console.error('\nFix: update @eq-solutions/roles model.json or src/permissions/matrix.ts so both sides agree.');
   process.exit(1);
 }

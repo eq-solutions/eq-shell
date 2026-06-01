@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
+import { useCan } from '../permissions';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
@@ -59,11 +60,7 @@ export default function StorageBrowser() {
     [session],
   );
 
-  // Upload permission: no specific upload perm key exists in the current
-  // matrix — direct role check is acceptable here per sprint spec.
-  const canUpload =
-    session != null &&
-    (session.user.role === 'manager' || session.user.is_platform_admin);
+  const canUpload = useCan('admin.list_users');
 
   const load = async () => {
     if (!bucket) return;

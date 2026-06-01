@@ -51,8 +51,8 @@ export default function QuotesModule() {
           href={STANDALONE_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="eq-btn-primary"
-          style={{ display: 'inline-block' }}
+          className="eq-btn eq-btn--primary eq-btn--md"
+          style={{ textDecoration: 'none' }}
         >
           Open EQ Quotes →
         </a>
