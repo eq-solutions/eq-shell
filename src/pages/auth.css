@@ -1,0 +1,334 @@
+/* Auth page styles — LoginPage, TotpChallenge, ResetPin, AcceptInvite.
+ * Extracted from App.css so each auth page imports only what it needs.
+ * Tokens: var(--eq-*) from eq-tokens.css (loaded globally).
+ */
+
+/* ── Page wrapper ── */
+
+.eq-login-page {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #F5F4F0;
+  padding: 32px 20px;
+}
+
+.eq-login-card-wrap {
+  width: 100%;
+  max-width: 840px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.eq-login-split {
+  width: 100%;
+  display: flex;
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* ── Left dark panel ── */
+
+.eq-login-left {
+  width: 280px;
+  flex-shrink: 0;
+  background: #0F1117;
+  padding: 40px 36px;
+  display: flex;
+  flex-direction: column;
+}
+
+.eq-login-left__brand { margin-bottom: 36px; }
+
+.eq-login-left__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--eq-sky);
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+
+.eq-login-left__eyebrow::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--eq-sky);
+  flex-shrink: 0;
+}
+
+.eq-login-left__heading {
+  font-size: 24px;
+  font-weight: 500;
+  color: #fff;
+  line-height: 1.3;
+  margin: 0 0 auto;
+  letter-spacing: -0.02em;
+}
+
+.eq-login-left__heading strong { font-weight: 800; }
+
+.eq-login-left__apps {
+  list-style: none;
+  padding: 20px 0 0;
+  margin: 32px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.eq-login-left__apps li {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.38);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eq-login-left__apps li::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+/* ── Right white panel ── */
+
+.eq-login-right {
+  flex: 1;
+  background: #fff;
+  padding: 40px 44px;
+}
+
+.eq-login-right__eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--eq-sky);
+  text-transform: uppercase;
+  margin: 0 0 10px;
+}
+
+.eq-login-right__title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--eq-ink);
+  margin: 0 0 6px;
+}
+
+.eq-login-right__sub {
+  font-size: 13px;
+  color: var(--gray-500);
+  margin: 0 0 28px;
+}
+
+/* ── Shared field / input ── */
+
+.eq-login-field { margin-bottom: 16px; }
+
+.eq-login-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: var(--eq-grey);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.eq-login-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--gray-300);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--eq-ink);
+  font-size: 14px;
+  font-family: var(--eq-font);
+  transition: border-color 150ms ease;
+  box-sizing: border-box;
+}
+
+.eq-login-input:focus {
+  outline: none;
+  border-color: var(--eq-sky);
+}
+
+/* ── 4-box PIN ── */
+
+.eq-login-pin-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.eq-login-pin-forgot {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--eq-sky);
+  cursor: pointer;
+  font-family: var(--eq-font);
+  letter-spacing: 0.02em;
+}
+
+.eq-login-pin-forgot:hover { color: var(--eq-deep); }
+
+.eq-login-pin-row {
+  display: flex;
+  gap: 10px;
+}
+
+.eq-login-pin-box {
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--gray-300);
+  border-radius: 8px;
+  background: #fff;
+  text-align: center;
+  font-size: 20px;
+  color: var(--eq-ink);
+  font-family: var(--eq-font);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  caret-color: var(--eq-sky);
+}
+
+.eq-login-pin-box:focus {
+  outline: none;
+  border-color: var(--eq-sky);
+  box-shadow: 0 0 0 3px rgba(61, 168, 216, 0.18);
+}
+
+/* ── Stay signed in ── */
+
+.eq-login-stay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 4px;
+  font-size: 13px;
+  color: var(--eq-ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ── Submit ── */
+
+.eq-login-submit {
+  width: 100%;
+  height: 42px;
+  margin-top: 12px;
+  border: none;
+  background: var(--eq-sky);
+  color: #fff;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-family: var(--eq-font);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.eq-login-submit:hover:not(:disabled) { background: var(--eq-deep); }
+.eq-login-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── Hint / inline text ── */
+
+.eq-login-hint {
+  font-size: 13px;
+  color: var(--eq-grey);
+  margin: 0 0 20px;
+}
+
+/* ── Footer ── */
+
+.eq-login-foot {
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--gray-500);
+}
+
+/* ── Tabs ── */
+
+.eq-login-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--gray-200);
+  margin-bottom: 24px;
+}
+
+.eq-login-tab {
+  flex: 1;
+  height: 36px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--eq-grey);
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+  font-family: var(--eq-font);
+}
+
+.eq-login-tab:hover { color: var(--eq-ink); }
+
+.eq-login-tab--active {
+  color: var(--eq-sky);
+  border-bottom-color: var(--eq-sky);
+}
+
+/* ── Inline text links / back ── */
+
+.eq-login-back-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: var(--eq-sky);
+  cursor: pointer;
+  font-family: var(--eq-font);
+  text-decoration: underline;
+}
+
+.eq-login-back-link:hover { color: var(--eq-deep); }
+
+/* ── Copyright ── */
+
+.eq-login-page__copy {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.28);
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+/* ── Responsive: stack on mobile ── */
+
+@media (max-width: 640px) {
+  .eq-login-split { flex-direction: column; }
+  .eq-login-left { width: 100%; padding: 28px 28px 20px; }
+  .eq-login-left__heading { font-size: 20px; }
+  .eq-login-left__apps { display: none; }
+  .eq-login-right { padding: 28px 28px 32px; }
+  .eq-login-right__title { font-size: 22px; }
+}

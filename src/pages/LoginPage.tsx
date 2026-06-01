@@ -1,4 +1,5 @@
 import React, { useState, useRef, type FormEvent } from 'react';
+import './auth.css';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
 import { useSession, type EqRole } from '../session';

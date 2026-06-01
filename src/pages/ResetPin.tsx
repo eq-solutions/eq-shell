@@ -3,6 +3,7 @@
 // No session required — the token is the authentication.
 
 import { useState, type FormEvent } from 'react';
+import './auth.css';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
