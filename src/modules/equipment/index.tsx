@@ -410,8 +410,7 @@ function EquipmentFormDrawer({
             />
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
               <label
-                className="eq-btn-ghost"
-                style={{ fontSize: 13, cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1 }}
+                style={{ fontSize: 13, cursor: uploading ? 'default' : 'pointer', opacity: uploading ? 0.6 : 1, display: 'inline-block', padding: '6px 12px', borderRadius: 6, border: '1px solid var(--gray-200)', color: 'var(--eq-ink)', background: 'transparent' }}
               >
                 {uploading ? 'Uploading…' : 'Upload file'}
                 <input

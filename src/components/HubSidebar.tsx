@@ -56,7 +56,7 @@ export function HubSidebar({ apps, records }: Props) {
   const userInitials = initials(session.user.name, session.user.email);
   const userName = session.user.name ?? session.user.email.split('@')[0].replace('.', ' ');
   const roleLabel = session.user.role.replace(/_/g, ' ').toUpperCase();
-  const isManager = session.user.role === 'manager' || session.user.is_platform_admin;
+  const isManager = useCan('admin.list_users');
 
   return (
     <aside className="eq-hub__sidebar">
