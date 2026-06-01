@@ -5,15 +5,22 @@
 // sends the document to Document AI (Form Parser), and returns structured fields
 // with per-field confidence scores.
 //
-// Env vars (already set in Netlify):
-//   GOOGLE_DOC_AI_ENDPOINT    — full processor endpoint URL (processDocument)
-//   GOOGLE_DOC_AI_CREDENTIALS — JSON string of service account key
-//   GOOGLE_DOC_AI_REGION      — "australia-southeast1" (reference only)
+// Credentials source (in order):
+//   1. shell_control.platform_config WHERE key = 'google_doc_ai_credentials' (primary)
+//   2. GOOGLE_DOC_AI_CREDENTIALS env var (fallback for local dev)
+//
+// GOOGLE_DOC_AI_CREDENTIALS is scoped to builds-only in Netlify (removed from Lambda
+// env vars to stay under the 4KB limit). The credentials live in Supabase instead.
+//
+// Other env vars still needed:
+//   GOOGLE_DOC_AI_ENDPOINT  — full processor endpoint URL (processDocument)
+//   GOOGLE_DOC_AI_REGION    — "australia-southeast1" (reference only)
 //
 // Max file size: 10 MB. Accepted MIME types: PDF, JPG, PNG.
 
 import { GoogleAuth } from 'google-auth-library'
 import { withSentry } from './_shared/sentry.js'
+import { getServiceClient } from './_shared/supabase.js'
 
 const MAX_BYTES = 10 * 1024 * 1024
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf']
@@ -84,10 +91,27 @@ export default withSentry(async (req: Request): Promise<Response> => {
     return json(413, { error: 'File too large. Maximum size is 10 MB.' })
   }
 
-  // Authenticate with Google using service account credentials
-  const credentialsRaw = process.env.GOOGLE_DOC_AI_CREDENTIALS
+  // Authenticate with Google — credentials in Supabase platform_config (builds-only env var fallback).
+  let credentialsRaw: string | undefined
+  try {
+    const sb = getServiceClient()
+    const { data, error } = await sb
+      .schema('shell_control')
+      .from('platform_config')
+      .select('value')
+      .eq('key', 'google_doc_ai_credentials')
+      .maybeSingle()
+    if (!error && data?.value) {
+      credentialsRaw = data.value as string
+    }
+  } catch {
+    // Supabase unreachable — fall through to env var
+  }
   if (!credentialsRaw) {
-    console.error('[ocr-parse] GOOGLE_DOC_AI_CREDENTIALS not set')
+    credentialsRaw = process.env.GOOGLE_DOC_AI_CREDENTIALS
+  }
+  if (!credentialsRaw) {
+    console.error('[ocr-parse] google_doc_ai_credentials not found in Supabase or env')
     return json(500, { error: 'OCR service not configured.' })
   }
 
