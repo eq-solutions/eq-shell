@@ -1,0 +1,36 @@
+name: Tenant drift + anon-grant check
+
+on:
+  schedule:
+    # Monday 08:00 AEST (UTC+10 standard time) = Sunday 22:00 UTC
+    - cron: '0 22 * * 0'
+  workflow_dispatch:
+    inputs:
+      anon_only:
+        description: 'Skip cross-tenant drift, run anon-grant check only'
+        type: boolean
+        default: false
+
+jobs:
+  drift-check:
+    name: Schema drift + anon-grant invariant
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run drift + anon-grant check
+        run: |
+          FLAGS=""
+          if [ "${{ inputs.anon_only }}" = "true" ]; then
+            FLAGS="--anon-only"
+          fi
+          node scripts/check-tenant-drift.mjs $FLAGS
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}
+          CANONICAL_INTERNAL_PROJECT_REF: ${{ secrets.CANONICAL_INTERNAL_PROJECT_REF }}
+          SKS_CANONICAL_PROJECT_REF: ${{ secrets.SKS_CANONICAL_PROJECT_REF }}
