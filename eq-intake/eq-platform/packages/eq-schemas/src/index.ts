@@ -11,3 +11,4 @@
  */
 
 export * from "./generated/index.js";
+export * from "./licence-kinds.js";
