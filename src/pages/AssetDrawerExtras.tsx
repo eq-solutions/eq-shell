@@ -69,6 +69,9 @@ export function AssetDrawerExtras({
     return () => { cancelled = true; };
   }, [deepLink]);
 
+  const esc = (s: string) =>
+    String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
   const printLabel = () => {
     if (!qr) return;
     const name = (row.name as string | null) || 'Equipment';
@@ -76,10 +79,10 @@ export function AssetDrawerExtras({
     const w = window.open('', '_blank', 'width=400,height=480');
     if (!w) return;
     w.document.write(
-      `<html><head><title>${name}</title></head><body style="font-family:sans-serif;text-align:center;padding:24px">` +
+      `<html><head><title>${esc(name)}</title></head><body style="font-family:sans-serif;text-align:center;padding:24px">` +
       `<img src="${qr}" width="180" height="180" alt="QR" />` +
-      `<div style="font-size:16px;font-weight:700;margin-top:12px">${name}</div>` +
-      (tag ? `<div style="font-size:13px;color:#555">${tag}</div>` : '') +
+      `<div style="font-size:16px;font-weight:700;margin-top:12px">${esc(name)}</div>` +
+      (tag ? `<div style="font-size:13px;color:#555">${esc(tag)}</div>` : '') +
       `</body></html>`,
     );
     w.document.close();
