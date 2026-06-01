@@ -117,7 +117,8 @@ export type ValidationError =
   | { kind: 'cross_field_error'; rule_id: string; message: string }
   | { kind: 'fk_no_match'; field: string; value: unknown }
   | { kind: 'date_ambiguous_strict'; field: string }
-  | { kind: 'coerce_failed'; field: string; reason: string };
+  | { kind: 'coerce_failed'; field: string; reason: string }
+  | { kind: 'cap_exceeded'; field: string; reason: string };
 
 export interface ValidationSummary {
   total: number;
