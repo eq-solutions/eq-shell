@@ -10,7 +10,8 @@
 --   brief unless the underlying event re-fires.
 --   Rows older than 48h are ignored (brief re-surfaces stale items).
 --
--- RLS: tenant-scoped read/write (anon key is the app layer's credential).
+-- RLS: each user can only read and write their own rows (auth.uid() = user_id).
+-- Service-role has unrestricted access (RLS bypassed) for the Netlify function.
 -- Idempotent throughout.
 
 -- ─── briefing_cache ──────────────────────────────────────────
@@ -26,13 +27,22 @@ COMMENT ON TABLE app_data.briefing_cache IS
 
 ALTER TABLE app_data.briefing_cache ENABLE ROW LEVEL SECURITY;
 
+-- Drop the insecure open policy if it was previously applied.
+DROP POLICY IF EXISTS anon_all_briefing_cache ON app_data.briefing_cache;
+
+-- Authenticated users may read and write only their own row.
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
-    WHERE schemaname = 'app_data' AND tablename = 'briefing_cache' AND policyname = 'anon_all_briefing_cache'
+    WHERE schemaname = 'app_data'
+      AND tablename  = 'briefing_cache'
+      AND policyname = 'authenticated_own_briefing_cache'
   ) THEN
-    CREATE POLICY anon_all_briefing_cache ON app_data.briefing_cache
-      FOR ALL USING (true) WITH CHECK (true);
+    CREATE POLICY authenticated_own_briefing_cache ON app_data.briefing_cache
+      FOR ALL
+      TO authenticated
+      USING (auth.uid() = user_id)
+      WITH CHECK (auth.uid() = user_id);
   END IF;
 END $$;
 
@@ -55,12 +65,21 @@ COMMENT ON TABLE app_data.briefing_actions IS
 
 ALTER TABLE app_data.briefing_actions ENABLE ROW LEVEL SECURITY;
 
+-- Drop the insecure open policy if it was previously applied.
+DROP POLICY IF EXISTS anon_all_briefing_actions ON app_data.briefing_actions;
+
+-- Authenticated users may read and write only their own rows.
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
-    WHERE schemaname = 'app_data' AND tablename = 'briefing_actions' AND policyname = 'anon_all_briefing_actions'
+    WHERE schemaname = 'app_data'
+      AND tablename  = 'briefing_actions'
+      AND policyname = 'authenticated_own_briefing_actions'
   ) THEN
-    CREATE POLICY anon_all_briefing_actions ON app_data.briefing_actions
-      FOR ALL USING (true) WITH CHECK (true);
+    CREATE POLICY authenticated_own_briefing_actions ON app_data.briefing_actions
+      FOR ALL
+      TO authenticated
+      USING (auth.uid() = user_id)
+      WITH CHECK (auth.uid() = user_id);
   END IF;
 END $$;
