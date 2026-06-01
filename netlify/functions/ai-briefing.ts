@@ -175,15 +175,7 @@ interface AiUpcoming { day?: string; time?: string; label: string; source: strin
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
-<<<<<<< HEAD
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'private, max-age=300',
-      ...extraHeaders,
-    },
-=======
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
->>>>>>> d97494e (feat(ai-briefing): full sprint — structured briefing, caching, feedback loop, pipeline integration)
   });
 }
 
