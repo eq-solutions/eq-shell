@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState, useId, type ChangeEvent } fro
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ScanLine, CheckCircle2, Upload, Camera } from 'lucide-react';
 import { Button, FormInput, ConfirmDialog } from '@eq-solutions/ui';
+import { Skeleton } from '../../components/Skeleton';
 import { EqLogo } from '../../components/EqLogo';
 import { useSession } from '../../session';
 
@@ -237,14 +238,8 @@ function StepIndicator({ step, total }: { step: number; total: number }) {
 function SkeletonRow() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span
-        className="eq-skeleton eq-skeleton--text"
-        style={{ width: '35%', height: 12 }}
-      />
-      <span
-        className="eq-skeleton eq-skeleton--text"
-        style={{ width: '70%', height: 18 }}
-      />
+      <Skeleton variant="text" width="35%" height={12} />
+      <Skeleton variant="text" width="70%" height={18} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSession, moduleEnabled } from '../session';
 import { HubSidebar, HUB_APP_ICONS, type HubApp, type RecordLink } from './HubSidebar';
 import { IconRail } from './IconRail';
@@ -57,9 +57,12 @@ export function HubLayout({
   iframe?: boolean;
   /** Skip the eq-hub-content max-width wrapper. Use for full-bleed dashboard modules. */
   fullWidth?: boolean;
-  /** Hide HubSidebar and render IconRail instead. Use on iframe module pages. */
+  /**
+   * @deprecated Equivalent to `iframe`. Both props render IconRail.
+   * Kept for backward-compat — prefer `iframe` alone on new call sites.
+   */
   hideMainSidebar?: boolean;
-  /** Records links rendered in HubSidebar. Pass from sidebarConfig for consistency. */
+  /** Records links rendered in HubSidebar. Unused in iframe mode (icon rail has no records section). */
   sidebarRecords?: RecordLink[];
 }) {
   const { session } = useSession();
@@ -69,13 +72,10 @@ export function HubLayout({
     quotes: null,
     cards: null,
   });
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
-  // Fetch live counts once on mount. No polling — the hub sidebar is a
-  // lightweight nav aid, not a realtime dashboard.
+  // Fetch live counts once on mount — only used by the full HubSidebar path.
   useEffect(() => {
-    if (!session) return;
+    if (!session || iframe || hideMainSidebar) return;
     let cancelled = false;
     (async () => {
       try {
@@ -94,7 +94,21 @@ export function HubLayout({
     return () => {
       cancelled = true;
     };
-  }, [session]);
+  }, [session, iframe, hideMainSidebar]);
+
+  // Iframe module pages (Field, Service, Cards, Quotes) — render the icon rail
+  // instead of the full sidebar. The rail is 48px wide and fixed to the left
+  // edge; content is offset by the same amount.
+  if (iframe || hideMainSidebar) {
+    return (
+      <>
+        <IconRail />
+        <div className="eq-icon-rail-offset" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          {children}
+        </div>
+      </>
+    );
+  }
 
   const sidebarApps: HubApp[] = HUB_APPS
     .filter((a) => session ? moduleEnabled(session, a.key) : false)
@@ -108,61 +122,18 @@ export function HubLayout({
       icon: HUB_APP_ICONS[a.key],
     }));
 
-
-  // When hideMainSidebar is true, render the IconRail + offset content wrapper
-  // instead of HubSidebar. Used on iframe module pages (Field) so the full
-  // sidebar is suppressed and the narrow icon rail takes its place.
-  if (hideMainSidebar) {
-    return (
-      <>
-        <IconRail />
-        <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 48, minHeight: '100vh' }}>
-          {children}
-        </div>
-      </>
-    );
-  }
-
   return (
     <div className="eq-hub">
-      {iframe && sidebarOpen && (
-        <div
-          className="eq-hub__mobile-backdrop"
-          aria-hidden="true"
-          onClick={closeSidebar}
-        />
-      )}
-      <div className={
-        iframe
-          ? sidebarOpen
-            ? 'eq-hub__sidebar-rail-wrap eq-hub__sidebar-overlay'
-            : 'eq-hub__sidebar-rail-wrap'
-          : undefined
-      }>
+      <div>
         <HubSidebar apps={sidebarApps} records={sidebarRecords} />
       </div>
-      {iframe ? (
-        <div className="eq-hub__iframe-content">
-          <button
-            className="eq-hub__mobile-toggle"
-            aria-label="Open navigation"
-            onClick={() => setSidebarOpen((v) => !v)}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-              <path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
-          </button>
-          {children}
-        </div>
-      ) : (
-        <div className="eq-hub__content" style={fullWidth ? { overflow: 'hidden' } : undefined}>
-          {fullWidth ? children : (
-            <main className="eq-hub-content">
-              {children}
-            </main>
-          )}
-        </div>
-      )}
+      <div className="eq-hub__content" style={fullWidth ? { overflow: 'hidden' } : undefined}>
+        {fullWidth ? children : (
+          <main className="eq-hub-content">
+            {children}
+          </main>
+        )}
+      </div>
     </div>
   );
 }
