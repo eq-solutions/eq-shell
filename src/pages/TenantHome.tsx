@@ -167,6 +167,7 @@ export default function TenantHome() {
   const [feed, setFeed]     = useState<CanonicalEvent[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [briefingLoading, setBriefingLoading] = useState(true);
   // undefined = still fetching, null = no data, AiData = loaded
   const [aiData, setAiData]             = useState<AiData | null | undefined>(undefined);
   const [regenerating, setRegenerating] = useState(false);
@@ -223,6 +224,7 @@ export default function TenantHome() {
       setAiData(null);
     } finally {
       if (isRegenerate) setRegenerating(false);
+      setBriefingLoading(false);
     }
   };
 
@@ -382,7 +384,7 @@ export default function TenantHome() {
           </h1>
 
           {/* AI Briefing */}
-          {aiData === undefined && loading && (
+          {aiData === undefined && briefingLoading && (
             <div className="eq-hub-briefing-skeleton">
               <Skeleton variant="text" width={480} />
               <Skeleton variant="text" width={360} />
