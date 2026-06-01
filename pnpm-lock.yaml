@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@eq-solutions/roles':
-        specifier: github:eq-solutions/eq-roles#v1.2.0
-        version: https://codeload.github.com/eq-solutions/eq-roles/tar.gz/dbc56a79d579bd3cb96adf409ea8d6c5363e96ed
+        specifier: github:eq-solutions/eq-roles#v1.3.0
+        version: https://codeload.github.com/eq-solutions/eq-roles/tar.gz/d0fa143a5f79383685f9efd76a9d9270cec13922
       '@eq-solutions/tokens':
         specifier: github:eq-solutions/eq-design-tokens#v1.2.0
         version: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/a543ede7d6f1045c041834bd02d6af614e98f2a8
@@ -438,9 +438,9 @@ packages:
   '@emnapi/wasi-threads@1.2.1':
     resolution: {integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==}
 
-  '@eq-solutions/roles@https://codeload.github.com/eq-solutions/eq-roles/tar.gz/dbc56a79d579bd3cb96adf409ea8d6c5363e96ed':
-    resolution: {tarball: https://codeload.github.com/eq-solutions/eq-roles/tar.gz/dbc56a79d579bd3cb96adf409ea8d6c5363e96ed}
-    version: 1.1.0
+  '@eq-solutions/roles@https://codeload.github.com/eq-solutions/eq-roles/tar.gz/d0fa143a5f79383685f9efd76a9d9270cec13922':
+    resolution: {tarball: https://codeload.github.com/eq-solutions/eq-roles/tar.gz/d0fa143a5f79383685f9efd76a9d9270cec13922}
+    version: 1.3.0
     engines: {node: '>=18'}
 
   '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/a543ede7d6f1045c041834bd02d6af614e98f2a8':
@@ -3302,7 +3302,7 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@eq-solutions/roles@https://codeload.github.com/eq-solutions/eq-roles/tar.gz/dbc56a79d579bd3cb96adf409ea8d6c5363e96ed': {}
+  '@eq-solutions/roles@https://codeload.github.com/eq-solutions/eq-roles/tar.gz/d0fa143a5f79383685f9efd76a9d9270cec13922': {}
 
   '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/a543ede7d6f1045c041834bd02d6af614e98f2a8': {}
 
