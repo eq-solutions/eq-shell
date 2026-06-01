@@ -6,7 +6,7 @@
   "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "vite",
-    "build:packages": "pnpm -r --filter \"./eq-intake/eq-platform/packages/**\" run build",
+    "build:packages": "pnpm -r --filter \"@eq/*\" run build",
     "build:tokens": "node scripts/build-public-tokens.mjs",
     "check:perms": "node scripts/check-perm-sync.mjs",
     "build": "pnpm run build:packages && pnpm run build:tokens && tsc -b && vite build",
