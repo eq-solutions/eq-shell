@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS app_data.briefing_cache (
   generated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- tenant_id added to support multi-tenant isolation (0025 shape).
+-- ADD COLUMN IF NOT EXISTS is a no-op if the column already exists
+-- (e.g. tables provisioned directly from 0025 on older deployments).
+ALTER TABLE app_data.briefing_cache ADD COLUMN IF NOT EXISTS tenant_id text;
+
 COMMENT ON TABLE app_data.briefing_cache IS
   'Per-user AI briefing cache. One row per user; upserted on generation, deleted on invalidation.';
 
@@ -56,6 +61,9 @@ CREATE TABLE IF NOT EXISTS app_data.briefing_actions (
   state         text        NOT NULL CHECK (state IN ('actioned', 'dismissed')),
   created_at    timestamptz NOT NULL DEFAULT now()
 );
+
+-- tenant_id added alongside briefing_cache above.
+ALTER TABLE app_data.briefing_actions ADD COLUMN IF NOT EXISTS tenant_id text;
 
 CREATE INDEX IF NOT EXISTS briefing_actions_user_recent
   ON app_data.briefing_actions (user_id, created_at DESC);
