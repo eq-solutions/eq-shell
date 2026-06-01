@@ -1500,6 +1500,111 @@
   background: #0F1117;
 }
 
+/* ── Mobile hamburger (< 768px, non-iframe Shell pages) ── */
+
+.eq-hub-hamburger {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 300;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  background: #1A1A2E;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.80);
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.eq-hub-hamburger:hover { background: rgba(255,255,255,0.08); }
+.eq-hub-hamburger:focus-visible {
+  outline: 2px solid rgba(61,168,216,0.40);
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .eq-hub-hamburger { display: flex; }
+}
+
+/* ── Mobile drawer backdrop ── */
+
+.eq-hub-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.40);
+  z-index: 350;
+}
+
+/* ── Mobile drawer ── */
+
+.eq-hub-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 280px;
+  background: #0F1117;
+  z-index: 400;
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+  overflow-y: auto;
+  display: none;
+}
+
+.eq-hub-drawer--open {
+  transform: translateX(0);
+}
+
+.eq-hub-drawer__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 100ms ease;
+}
+
+.eq-hub-drawer__close:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.80); }
+.eq-hub-drawer__close:focus-visible {
+  outline: 2px solid rgba(61,168,216,0.40);
+  outline-offset: 2px;
+}
+
+/* The drawer re-hosts HubSidebar — strip its fixed width so it fills the drawer */
+.eq-hub-drawer .eq-hub__sidebar {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border-right: none;
+}
+
+@media (max-width: 767px) {
+  /* Hide desktop sidebar, show drawer instead */
+  .eq-hub > .eq-hub__sidebar {
+    display: none;
+  }
+  .eq-hub-drawer {
+    display: block;
+  }
+  /* Content takes full width on mobile */
+  .eq-hub__content {
+    margin-left: 0;
+  }
+}
+
 /* ── Sidebar ── */
 
 .eq-hub__sidebar {
@@ -1788,6 +1893,35 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Ghost button to trigger deferred AI briefing load */
+.eq-hub-briefing-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 1.5rem;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--eq-sky, #3DA8D8);
+  background: transparent;
+  border: 1px solid rgba(61,168,216,0.35);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+.eq-hub-briefing-load:hover {
+  background: rgba(61,168,216,0.06);
+  border-color: rgba(61,168,216,0.55);
+}
+.eq-hub-briefing-load:focus-visible {
+  outline: 2px solid rgba(61,168,216,0.40);
+  outline-offset: 2px;
+}
+.eq-hub-briefing-load:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* ── AI Brief container ────────────────────────────────────── */

@@ -80,14 +80,14 @@ export function IconRail() {
                 <span
                   key={item.key}
                   className="eq-icon-rail__item eq-icon-rail__item--disabled"
-                  title="Not available on your plan"
-                  aria-label={`${item.label} — not available on your plan`}
+                  title="Upgrade to access Quotes"
+                  aria-label={`${item.label} — upgrade to access`}
                   role="link"
                   aria-disabled="true"
                 >
                   <span className="eq-icon-rail__icon">{item.icon}</span>
                   <span className="eq-icon-rail__label" aria-hidden="true">{item.label}</span>
-                  <span className="eq-icon-rail__sr-only">{item.label} (not available on your plan)</span>
+                  <span className="eq-icon-rail__sr-only">{item.label} (upgrade to access)</span>
                 </span>
               );
             }
