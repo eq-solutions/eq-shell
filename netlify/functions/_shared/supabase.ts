@@ -134,3 +134,30 @@ export interface CanonicalEntitlement {
   module: string;
   enabled: boolean;
 }
+
+/**
+ * Fetches all extra permission keys granted to a user via security groups
+ * for a specific tenant. Returns an empty array if the user has no groups.
+ * Called during login and verify-shell-session to populate `extra_perms`.
+ */
+export async function getUserSecurityGroupPerms(userId: string, tenantId: string): Promise<string[]> {
+  const client = getServiceClient();
+  const { data, error } = await client
+    .schema('shell_control')
+    .from('user_security_groups')
+    .select('group_id, security_groups!inner(tenant_id), security_group_perms!inner(perm_key)')
+    .eq('user_id', userId)
+    .eq('security_groups.tenant_id', tenantId);
+  if (error) {
+    // Non-fatal: if the query fails (e.g. during migration), log and return empty.
+    console.warn('[getUserSecurityGroupPerms] failed:', error.message);
+    return [];
+  }
+  const perms = new Set<string>();
+  for (const row of (data ?? []) as Array<{ security_group_perms: { perm_key: string }[] }>) {
+    for (const p of row.security_group_perms ?? []) {
+      perms.add(p.perm_key);
+    }
+  }
+  return [...perms];
+}

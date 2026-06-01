@@ -11,7 +11,7 @@
 // returns yes-then-401 thrash.
 
 import type { Context } from '@netlify/functions';
-import { getServiceClient, getUserMemberships, getEnrichedMemberships } from './_shared/supabase.js';
+import { getServiceClient, getUserMemberships, getEnrichedMemberships, getUserSecurityGroupPerms } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import { verifySessionToken, signSessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
@@ -105,7 +105,16 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     user.is_platform_admin,
   );
 
-  const userForResponse = { ...user, tenant_id: tenant.id, role: activeMembership.role };
+  // Refresh extra_perms on every verify call so group changes take effect
+  // without requiring a re-login. Best-effort: missing table → empty array.
+  const extra_perms = await getUserSecurityGroupPerms(user.id, session.active_tenant_id);
+
+  const userForResponse = {
+    ...user,
+    tenant_id: tenant.id,
+    role: activeMembership.role,
+    ...(extra_perms.length > 0 ? { extra_perms } : {}),
+  };
 
   const body = {
     valid: true,

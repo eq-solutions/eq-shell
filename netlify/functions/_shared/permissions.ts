@@ -30,7 +30,7 @@ import type { EqRole } from './supabase.js';
 export type PermKey =
   // admin
   | 'admin.list_users' | 'admin.invite_user' | 'admin.edit_user'
-  | 'admin.deactivate_user' | 'admin.review_cards'
+  | 'admin.deactivate_user' | 'admin.review_cards' | 'admin.manage_groups'
   // audit
   | 'audit.view' | 'audit.rollback'
   // entity (canonical records — customers/sites/contacts/assets)
@@ -59,7 +59,7 @@ export type PermKey =
 const MATRIX: Record<EqRole, ReadonlySet<PermKey>> = {
   manager: new Set<PermKey>([
     'admin.list_users', 'admin.invite_user', 'admin.edit_user',
-    'admin.deactivate_user', 'admin.review_cards',
+    'admin.deactivate_user', 'admin.review_cards', 'admin.manage_groups',
     'audit.view', 'audit.rollback',
     'entity.view', 'entity.create', 'entity.edit', 'entity.delete',
     'intake.view', 'intake.import', 'intake.commit',
@@ -110,14 +110,18 @@ const MATRIX: Record<EqRole, ReadonlySet<PermKey>> = {
 export interface Principal {
   role?: EqRole | null;
   is_platform_admin?: boolean | null;
+  /** Extra permission keys granted via security groups. */
+  extra_perms?: string[] | null;
 }
 
 /**
  * Can this principal perform `perm`? Mirrors the browser useCan(): platform
  * admins short-circuit to true; a missing or unrecognised role is denied.
+ * Security-group extra_perms are checked before the role matrix.
  */
 export function can(principal: Principal, perm: PermKey): boolean {
   if (principal.is_platform_admin === true) return true;
+  if (principal.extra_perms?.includes(perm)) return true;
   const role = principal.role;
   if (!role) return false;
   const grants = MATRIX[role];

@@ -39,6 +39,11 @@ export interface User {
   is_platform_admin: boolean;
   active: boolean;
   last_login_at: string | null;
+  /**
+   * Extra permission keys granted via security groups (optional — absent
+   * for users with no group membership). Populated by verify-shell-session.
+   */
+  extra_perms?: string[];
 }
 
 export interface Entitlement {

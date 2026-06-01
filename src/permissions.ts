@@ -31,5 +31,6 @@ export function useCan(perm: PermKey): boolean {
   const { session } = useSession();
   if (!session) return false;
   if (session.user.is_platform_admin) return true;
+  if (session.user.extra_perms?.includes(perm)) return true;
   return MATRIX[session.user.role].has(perm);
 }
