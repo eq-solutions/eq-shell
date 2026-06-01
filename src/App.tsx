@@ -30,6 +30,7 @@ import EntityBrowserPage from './pages/EntityBrowserPage';
 import ServiceIframe from './pages/ServiceIframe';
 import QuotesIframe from './pages/QuotesIframe';
 import StorageBrowser from './pages/StorageBrowser';
+import LicenceOcrPage from './pages/ocr/LicenceOcrPage';
 import NotFound from './pages/NotFound';
 import { RouteProgressBar } from './components/RouteProgressBar';
 import './App.css';
@@ -428,6 +429,8 @@ function TenantTree() {
           }
         />
         <Route path="data/:entity" element={<EntityBrowserPage />} />
+        {/* D3.3d — Shell-hosted licence OCR onboarding (browser fallback for Cards OCR) */}
+        <Route path="onboarding/licence" element={<LicenceOcrPage />} />
         {/* Real 404 instead of silent redirect to home (caught users in a
             loop where stale links just bounced them home with no signal). */}
         <Route path="*" element={<NotFound />} />
