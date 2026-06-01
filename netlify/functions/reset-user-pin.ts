@@ -19,6 +19,7 @@ import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
+import { can } from './_shared/permissions.js';
 import { sendEmail } from './_shared/email.js';
 import { withSentry } from './_shared/sentry.js';
 
@@ -50,8 +51,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(401, { ok: false, error: 'unauthorized' });
   }
 
-  const isManager = session.role === 'manager';
-  if (!isManager && !session.is_platform_admin) {
+  if (!can(session, 'admin.edit_user')) {
     return jsonResponse(403, { ok: false, error: 'forbidden' });
   }
 

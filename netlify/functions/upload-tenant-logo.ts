@@ -1,6 +1,7 @@
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'] as const;
@@ -33,7 +34,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(401, { error: 'Unauthorised' });
   }
 
-  if (session.role !== 'manager' && !session.is_platform_admin) {
+  if (!can(session, 'admin.list_users')) {
     return jsonResponse(403, { error: 'forbidden' });
   }
 
