@@ -14,6 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import { getServiceClient } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 const ALLOWED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'] as const;
@@ -33,9 +34,7 @@ export default withSentry(async (req: Request): Promise<Response> => {
   const session = verifySessionToken(readSessionCookie(req));
   if (!session) return json(401, { ok: false, error: 'not_signed_in' });
 
-  const canEdit =
-    session.is_platform_admin || session.role === 'manager' || session.role === 'supervisor';
-  if (!canEdit) {
+  if (!can(session, 'equipment.edit')) {
     return json(403, { ok: false, error: 'forbidden', detail: 'Uploading certificates requires manager or supervisor.' });
   }
 
