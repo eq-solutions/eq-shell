@@ -55,6 +55,7 @@ const ADMIN_PERMS = [
   'admin.edit_user',
   'admin.deactivate_user',
   'admin.review_cards',
+  'admin.manage_groups',
 ] as const;
 
 type AdminPermKey = (typeof ADMIN_PERMS)[number];

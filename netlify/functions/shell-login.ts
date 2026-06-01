@@ -26,7 +26,7 @@
 
 import bcrypt from 'bcryptjs';
 import type { Context } from '@netlify/functions';
-import { getServiceClient, getUserMemberships, getEnrichedMemberships } from './_shared/supabase.js';
+import { getServiceClient, getUserMemberships, getEnrichedMemberships, getUserSecurityGroupPerms } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement, UserTenantMembership } from './_shared/supabase.js';
 import { signSessionToken, signTenantSelectionToken, signTotpChallengeToken, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
@@ -268,6 +268,10 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   logShellLogin(req, email, 'success');
   void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.success', p_actor_id: user.id, p_tenant_id: tenant.id, p_ip: ip, p_detail: { role: activeRole } });
 
+  // Best-effort security group perm fetch. Non-blocking: if the table
+  // doesn't exist yet (pre-migration deploy) the helper logs and returns [].
+  const extra_perms = await getUserSecurityGroupPerms(user.id, tenant.id);
+
   const exp = Date.now() + SESSION_TTL_MS;
   const cookieValue = signSessionToken({
     user_id: user.id,
@@ -278,6 +282,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     memberships: memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
     email: user.email,
     name: user.name ?? null,
+    ...(extra_perms.length > 0 ? { extra_perms } : {}),
     exp,
   });
   // Domain scoping handled by buildSessionCookie — set to .eq.solutions

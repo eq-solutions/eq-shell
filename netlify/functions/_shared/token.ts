@@ -67,6 +67,13 @@ export interface SessionPayload {
   email?: string;
   /** Display name — same caveat as email above. */
   name?: string | null;
+  /**
+   * Extra permission keys granted via security groups.
+   * Fetched from shell_control.user_security_groups + security_group_perms
+   * at login / verify-session time. Absent on pre-security-groups cookies —
+   * verify-shell-session re-fetches and upgrades them transparently.
+   */
+  extra_perms?: string[];
   exp: number;
 }
 
