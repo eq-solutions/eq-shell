@@ -333,7 +333,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   const totalPages = count != null ? Math.ceil(count / PAGE_SIZE) : null;
 
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
         <div>
           <h1 className="eq-page__title">{view.label}</h1>

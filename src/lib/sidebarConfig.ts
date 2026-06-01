@@ -10,6 +10,8 @@ export const SIDEBAR_RECORDS: Omit<RecordLink, 'count'>[] = [
   { key: 'customer', label: 'Customers', entity: 'customer' },
   { key: 'site',     label: 'Sites',     entity: 'site'     },
   { key: 'contact',  label: 'Contacts',  entity: 'contact'  },
+  { key: 'staff',    label: 'Staff',     entity: 'staff'    },
+  { key: 'licence',  label: 'Licences',  entity: 'licence'  },
 ];
 
 // Build a RecordLink array with null counts (for pages that don't fetch dashboard data).
