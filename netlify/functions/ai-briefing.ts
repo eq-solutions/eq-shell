@@ -366,14 +366,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   };
 
   if (events.length === 0 && !pipeline) {
-    await writeCache(tenantAny, userId, emptyResponse);
+    await writeCache(tenantAny, tenantId, userId, emptyResponse);
     return json(200, emptyResponse);
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.info('[ai-briefing] ANTHROPIC_API_KEY not set');
-    await writeCache(tenantAny, userId, emptyResponse);
+    await writeCache(tenantAny, tenantId, userId, emptyResponse);
     return json(200, emptyResponse);
   }
 
@@ -419,13 +419,13 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       generated_at:         new Date().toISOString(),
     };
 
-    await writeCache(tenantAny, userId, fullResponse);
+    await writeCache(tenantAny, tenantId, userId, fullResponse);
     return json(200, fullResponse);
 
   } catch (e) {
     captureServerError(e, { context: 'ai-briefing', tenantId });
     console.warn('[ai-briefing] synthesis failed:', (e as Error).message);
-    await writeCache(tenantAny, userId, emptyResponse);
+    await writeCache(tenantAny, tenantId, userId, emptyResponse);
     return json(200, emptyResponse);
   }
 });
@@ -435,6 +435,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 async function writeCache(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tenantDb: any,
+  tenantId: string,
   userId:   string,
   payload:  FullBriefingResponse,
 ): Promise<void> {
@@ -443,7 +444,7 @@ async function writeCache(
       .schema('app_data')
       .from('briefing_cache')
       .upsert(
-        { user_id: userId, payload, generated_at: payload.generated_at },
+        { tenant_id: tenantId, user_id: userId, payload, generated_at: payload.generated_at },
         { onConflict: 'user_id' },
       );
   } catch (e) {

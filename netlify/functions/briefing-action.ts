@@ -76,6 +76,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .schema('app_data')
       .from('briefing_actions')
       .insert({
+        tenant_id:     tenantId,
         user_id:       userId,
         action_title:  action_title.trim(),
         action_source: action_source.trim(),

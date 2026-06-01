@@ -225,18 +225,22 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     throw e;
   }
 
-  // Upsert period (allow re-upload for same period code)
+  // Upsert period (allow re-upload for same period code).
+  // tenant_id written explicitly so the per-tenant unique index
+  // (tenant_id, period_code) can serve as the conflict target once the
+  // reshape contract migration is applied.
   const { data: periodRow, error: periodErr } = await db
     .from('gm_report_periods')
     .upsert(
       {
+        tenant_id:            session.tenant_id,
         period_code:          parsed.period_code,
         uploaded_by:          session.user_id ?? null,
         ...kpis,
         briefing:             null,
         briefing_generated_at: null,
       },
-      { onConflict: 'period_code' },
+      { onConflict: 'tenant_id,period_code' },
     )
     .select('id')
     .single();
