@@ -40,7 +40,7 @@ export default withSentry(async (): Promise<Response> => {
       signal: AbortSignal.timeout(30_000),
     });
 
-    const body = await res.json();
+    const body = await res.json() as Record<string, unknown>;
     console.log(`[quotes-expiry-scheduler] status=${res.status}`, body);
 
     if (!res.ok) {
