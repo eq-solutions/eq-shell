@@ -1,7 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { Menu, X } from 'lucide-react';
 import { useSession, moduleEnabled } from '../session';
 import { HubSidebar, HUB_APP_ICONS, type HubApp, type RecordLink } from './HubSidebar';
 import { IconRail } from './IconRail';
+
+// Module-level cache for tenant-dashboard counts.
+// Sidebar counts are best-effort — 1-minute TTL is fine.
+interface DashboardCount {
+  entity: string;
+  count_total: number;
+}
+
+interface DashboardResponse {
+  ok: boolean;
+  counts?: DashboardCount[];
+}
+
+const _dashboardCache = new Map<string, { data: DashboardResponse; ts: number }>();
+const DASHBOARD_TTL_MS = 60_000;
+
+function getCachedDashboard(key: string): DashboardResponse | null {
+  const entry = _dashboardCache.get(key);
+  if (entry && Date.now() - entry.ts < DASHBOARD_TTL_MS) return entry.data;
+  return null;
+}
+function setCachedDashboard(key: string, data: DashboardResponse): void {
+  _dashboardCache.set(key, { data, ts: Date.now() });
+}
 
 const HUB_APPS = [
   { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
@@ -15,16 +40,6 @@ interface DashboardCounts {
   service: number | null;
   quotes:  number | null;
   cards:   number | null;
-}
-
-interface DashboardCount {
-  entity: string;
-  count_total: number;
-}
-
-interface DashboardResponse {
-  ok: boolean;
-  counts?: DashboardCount[];
 }
 
 function extractCounts(data: DashboardResponse): DashboardCounts {
@@ -72,10 +87,30 @@ export function HubLayout({
     quotes: null,
     cards: null,
   });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+
+  // Close drawer on Escape
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeDrawer();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [drawerOpen, closeDrawer]);
 
   // Fetch live counts once on mount — only used by the full HubSidebar path.
+  // Uses a module-level cache (1-minute TTL) to avoid refetching on every non-iframe page load.
   useEffect(() => {
     if (!session || iframe || hideMainSidebar) return;
+    const cacheKey = `dashboard:${session.tenant.slug ?? 'default'}`;
+    const cached = getCachedDashboard(cacheKey);
+    if (cached) {
+      setLiveCounts(extractCounts(cached));
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -85,6 +120,7 @@ export function HubLayout({
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as DashboardResponse;
         if (!cancelled) {
+          setCachedDashboard(cacheKey, data);
           setLiveCounts(extractCounts(data));
         }
       } catch {
@@ -124,9 +160,38 @@ export function HubLayout({
 
   return (
     <div className="eq-hub">
-      <div>
+      {/* Mobile hamburger — only visible < 768px */}
+      <button
+        className="eq-hub-hamburger"
+        onClick={() => setDrawerOpen(true)}
+        aria-label="Open navigation"
+        aria-expanded={drawerOpen}
+      >
+        <Menu size={20} aria-hidden="true" />
+      </button>
+
+      {/* Mobile drawer sidebar */}
+      {drawerOpen && (
+        <div
+          className="eq-hub-drawer-backdrop"
+          onClick={closeDrawer}
+          aria-hidden="true"
+        />
+      )}
+      <div className={`eq-hub-drawer${drawerOpen ? ' eq-hub-drawer--open' : ''}`} aria-hidden={!drawerOpen}>
+        <button
+          className="eq-hub-drawer__close"
+          onClick={closeDrawer}
+          aria-label="Close navigation"
+        >
+          <X size={20} aria-hidden="true" />
+        </button>
         <HubSidebar apps={sidebarApps} records={sidebarRecords} />
       </div>
+
+      {/* Desktop sidebar — hidden on mobile via CSS */}
+      <HubSidebar apps={sidebarApps} records={sidebarRecords} />
+
       <div className="eq-hub__content" style={fullWidth ? { overflow: 'hidden' } : undefined}>
         {fullWidth ? children : (
           <main className="eq-hub-content">

@@ -167,8 +167,9 @@ export default function TenantHome() {
   const [feed, setFeed]     = useState<CanonicalEvent[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // undefined = still fetching, null = no data, AiData = loaded
-  const [aiData, setAiData]             = useState<AiData | null | undefined>(undefined);
+  // null = not yet loaded (user hasn't requested briefing), undefined = loading, AiData = loaded
+  const [aiData, setAiData]             = useState<AiData | null | undefined>(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   // Optimistic local state for dismissed/actioned items
   const [actionedTitles, setActionedTitles] = useState<Set<string>>(new Set());
@@ -200,7 +201,12 @@ export default function TenantHome() {
   };
 
   const loadAiData = async (isRegenerate = false) => {
-    if (isRegenerate) setRegenerating(true);
+    if (isRegenerate) {
+      setRegenerating(true);
+    } else {
+      setBriefingLoading(true);
+      setAiData(undefined); // undefined = loading
+    }
     try {
       const url = isRegenerate
         ? '/.netlify/functions/ai-briefing?refresh=1'
@@ -223,6 +229,7 @@ export default function TenantHome() {
       setAiData(null);
     } finally {
       if (isRegenerate) setRegenerating(false);
+      else setBriefingLoading(false);
     }
   };
 
@@ -248,7 +255,7 @@ export default function TenantHome() {
 
   useEffect(() => {
     void loadData();
-    void loadAiData();
+    // AI briefing is deferred — user triggers it via the "Load briefing" button.
     pollRef.current = setInterval(() => { void silentRefreshFeed(); }, 60_000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -381,8 +388,17 @@ export default function TenantHome() {
             {greeting()}, {greetName}.
           </h1>
 
-          {/* AI Briefing */}
-          {aiData === undefined && loading && (
+          {/* AI Briefing — deferred until user requests it */}
+          {aiData === null && (
+            <button
+              className="eq-hub-briefing-load"
+              onClick={() => void loadAiData()}
+              disabled={briefingLoading}
+            >
+              {briefingLoading ? 'Loading briefing…' : 'Load AI briefing'}
+            </button>
+          )}
+          {aiData === undefined && (
             <div className="eq-hub-briefing-skeleton">
               <Skeleton variant="text" width={480} />
               <Skeleton variant="text" width={360} />

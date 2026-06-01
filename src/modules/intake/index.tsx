@@ -84,11 +84,11 @@ function IntakePivotBanner() {
       <div className="eq-intake-pivots__head">
         <p className="eq-intake-pivots__eyebrow">PER-DOMAIN INTAKE</p>
         <h2 className="eq-intake-pivots__title">
-          Importing structured data? Use the canonical per-domain importers.
+          Importing structured data? Use the per-domain importers.
         </h2>
         <p className="eq-intake-pivots__sub">
           The SimPRO surface below is the legacy bundle workflow. For typed
-          CSV/XLSX imports across 42 canonical entities, pick a domain:
+          CSV/XLSX imports across 42 record types, pick a domain:
         </p>
       </div>
       <div className="eq-intake-pivots__grid">

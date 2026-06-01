@@ -30,8 +30,6 @@
  * No gradients on static backgrounds. No drop shadows on static cards.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-
 /* Canonical design tokens — the single source of truth for every value
  * (brand, neutrals, status, shadows, type, spacing, radii, motion, focus).
  * Defines --eq-* on :root (and [data-tier] deltas). The @theme block inside
