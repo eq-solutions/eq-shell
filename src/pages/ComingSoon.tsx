@@ -91,7 +91,6 @@ export default function ComingSoon({ module, description, features, eta }: Comin
           <Link
             to={`/${tenantSlug}`}
             className="eq-btn-ghost"
-            style={{ textDecoration: 'none', display: 'inline-block', padding: '8px 16px' }}
           >
             ← Back to home
           </Link>
