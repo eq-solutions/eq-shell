@@ -76,7 +76,7 @@ export async function loadActiveTenants({ includeSuspended = false, slug = null 
   return mgmtRows(ref, `
     SELECT tr.supabase_project_ref AS ref, tr.status AS status, t.slug AS slug
     FROM shell_control.tenant_routing tr
-    JOIN shell_control.tenants t ON t.tenant_id = tr.tenant_id
+    JOIN shell_control.tenants t ON t.id = tr.tenant_id
     WHERE tr.status IN (${statuses}) ${slugFilter}
     ORDER BY t.slug;
   `);
