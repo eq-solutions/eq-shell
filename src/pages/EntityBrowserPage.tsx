@@ -220,11 +220,8 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   const view = ENTITY_VIEW[entity];
   const canDelete = useCan('entity.delete');
   const canCreate = useCan('entity.create');
-  const { session } = useSession();
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const [urlSearchParams] = useSearchParams();
-  const isManager =
-    session?.user.role === 'manager' || session?.user.is_platform_admin === true;
 
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [count, setCount] = useState<number | null>(null);

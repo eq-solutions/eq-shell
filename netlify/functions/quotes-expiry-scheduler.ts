@@ -47,7 +47,7 @@ export default withSentry(async (): Promise<Response> => {
       throw new Error(`quotes app returned ${res.status}: ${JSON.stringify(body)}`);
     }
 
-    return new Response(JSON.stringify({ ok: true, ...body }), { status: 200 });
+    return new Response(JSON.stringify({ ok: true, ...(body as object) }), { status: 200 });
   } catch (e) {
     captureServerError(e, { context: 'quotes-expiry-scheduler' });
     console.error('[quotes-expiry-scheduler] failed:', e);
