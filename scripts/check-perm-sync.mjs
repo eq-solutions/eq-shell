@@ -101,14 +101,17 @@ const entityMatrix = parseModuleMatrix(
   matrixSrc.match(/ENTITY_MATRIX[^=]+=([^;]+)/s)?.[1] ?? '',
 );
 
-// Admin + audit from roles package (hardcoded here for simplicity — they rarely change)
-const rolesGrants = {
-  manager:     new Set(['admin.list_users','admin.invite_user','admin.edit_user','admin.deactivate_user','admin.review_cards','audit.view','audit.rollback']),
-  supervisor:  new Set(['audit.view']),
-  employee:    new Set(),
-  apprentice:  new Set(),
-  labour_hire: new Set(),
-};
+// Admin + audit grants sourced directly from the installed @eq-solutions/roles package.
+// B12 complete: no more hardcoding — the package is the single source of truth for
+// admin/audit perms. entity/module perms still live in src/modules/*/permissions.ts
+// until those are promoted into the package too.
+const rolesJson = JSON.parse(readFile('node_modules/@eq-solutions/roles/roles.json'));
+const rolesGrants = Object.fromEntries(
+  Object.entries(rolesJson.matrix).map(([role, perms]) => [
+    role,
+    new Set(perms.filter((p) => p.startsWith('admin.') || p.startsWith('audit.'))),
+  ]),
+);
 
 const clientGrants = mergeGrants(
   rolesGrants,

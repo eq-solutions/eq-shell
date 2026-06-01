@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@eq-solutions/roles':
-        specifier: github:eq-solutions/eq-roles#v1.0.0
-        version: https://codeload.github.com/eq-solutions/eq-roles/tar.gz/6a4c4b6a15ea649bb0caf84a10c2b0a34b5320da
+        specifier: github:eq-solutions/eq-roles#v1.1.0
+        version: https://codeload.github.com/eq-solutions/eq-roles/tar.gz/c864c19335647499620f93b602f13094d1ce1217
       '@eq-solutions/tokens':
         specifier: github:eq-solutions/eq-design-tokens#v1.2.0
         version: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/a543ede7d6f1045c041834bd02d6af614e98f2a8
@@ -65,6 +65,9 @@ importers:
       react-dom:
         specifier: ^19.2.6
         version: 19.2.6(react@19.2.6)
+      react-hook-form:
+        specifier: ^7.76.0
+        version: 7.77.0(react@19.2.6)
       react-router-dom:
         specifier: ^6.30.3
         version: 6.30.3(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -435,9 +438,9 @@ packages:
   '@emnapi/wasi-threads@1.2.1':
     resolution: {integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==}
 
-  '@eq-solutions/roles@https://codeload.github.com/eq-solutions/eq-roles/tar.gz/6a4c4b6a15ea649bb0caf84a10c2b0a34b5320da':
-    resolution: {tarball: https://codeload.github.com/eq-solutions/eq-roles/tar.gz/6a4c4b6a15ea649bb0caf84a10c2b0a34b5320da}
-    version: 1.0.0
+  '@eq-solutions/roles@https://codeload.github.com/eq-solutions/eq-roles/tar.gz/c864c19335647499620f93b602f13094d1ce1217':
+    resolution: {tarball: https://codeload.github.com/eq-solutions/eq-roles/tar.gz/c864c19335647499620f93b602f13094d1ce1217}
+    version: 1.1.0
     engines: {node: '>=18'}
 
   '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/a543ede7d6f1045c041834bd02d6af614e98f2a8':
@@ -2678,6 +2681,12 @@ packages:
     peerDependencies:
       react: ^19.2.6
 
+  react-hook-form@7.77.0:
+    resolution: {integrity: sha512-Sslh9YDYc0GDlWT/lxasnIduNo4v3yyvqRGvmGKUre5AFjDs/HV9/OafHGD8d+sB2yoL4UIL9L8X9i0WlZZebg==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      react: ^16.8.0 || ^17 || ^18 || ^19
+
   react-refresh@0.14.2:
     resolution: {integrity: sha512-jCvmsr+1IUSMUyzOkRcvnVbX3ZYC6g9TDrDbFuFmRDq7PD4yaGbLKNQL6k2jnArV8hjYxh7hVhAZB6s9HDGpZA==}
     engines: {node: '>=0.10.0'}
@@ -3293,7 +3302,7 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@eq-solutions/roles@https://codeload.github.com/eq-solutions/eq-roles/tar.gz/6a4c4b6a15ea649bb0caf84a10c2b0a34b5320da': {}
+  '@eq-solutions/roles@https://codeload.github.com/eq-solutions/eq-roles/tar.gz/c864c19335647499620f93b602f13094d1ce1217': {}
 
   '@eq-solutions/tokens@https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/a543ede7d6f1045c041834bd02d6af614e98f2a8': {}
 
@@ -5385,6 +5394,10 @@ snapshots:
     dependencies:
       react: 19.2.6
       scheduler: 0.27.0
+
+  react-hook-form@7.77.0(react@19.2.6):
+    dependencies:
+      react: 19.2.6
 
   react-refresh@0.14.2: {}
 
