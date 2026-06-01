@@ -5,6 +5,13 @@
   publish = "dist"
   command = "pnpm run check:perms && pnpm run build"
 
+[build.environment]
+  # Lock pnpm to match packageManager field in package.json.
+  # Without this, Netlify's build image defaults to pnpm 8.x which cannot
+  # parse lockfileVersion 9.0 — causing exit code 2 on production builds.
+  PNPM_VERSION = "9.15.9"
+  NODE_VERSION = "20"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
