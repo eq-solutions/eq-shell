@@ -1,4 +1,4 @@
--- Tenant migration 0017: AI briefing cache + action state
+-- Tenant migration 0026: AI briefing cache + action state
 --
 -- briefing_cache: per-user brief cache keyed by user_id.
 --   Generated fresh on login, cached for 10 minutes per user.
