@@ -4,6 +4,7 @@ import { HubLayout } from '../../components/HubLayout';
 import { Gate } from '../../permissions/Gate';
 import { EqTable, type ColDef } from '../../components/EqTable';
 import { defaultSidebarRecords } from '../../lib/sidebarConfig';
+import './gm-reports.css';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
@@ -86,25 +87,22 @@ function KpiCard({ label, value, sub, accent }: { label: string; value: string; 
   };
   const color = accent ? accentMap[accent] : 'var(--eq-ink, #1A1A2E)';
   return (
-    <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderRadius: 10, padding: '14px 16px', borderTop: `3px solid ${color}` }}>
-      <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 26, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#6B7A99', marginTop: 4 }}>{sub}</div>}
+    <div className="gm-kpi-card" style={{ borderTop: `3px solid ${color}` }}>
+      <div className="gm-kpi-card__label">{label}</div>
+      <div className="gm-kpi-card__value" style={{ color }}>{value}</div>
+      {sub && <div className="gm-kpi-card__sub">{sub}</div>}
     </div>
   );
 }
 
+const BADGE_LABELS: Record<string, string> = {
+  loss: 'Forecast loss',
+  watch: 'Invoice needed',
+  ok: 'On track',
+};
 function Badge({ type }: { type: 'loss' | 'watch' | 'ok' }) {
-  const styles: Record<string, { bg: string; color: string; label: string }> = {
-    loss:  { bg: '#FDECEA', color: '#7B1414', label: 'Forecast loss' },
-    watch: { bg: '#FEF6E4', color: '#5C3A00', label: 'Invoice needed' },
-    ok:    { bg: '#EAF5EE', color: '#0D4A25', label: 'On track' },
-  };
-  const s = styles[type];
   return (
-    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: s.bg, color: s.color }}>
-      {s.label}
-    </span>
+    <span className={`gm-badge gm-badge--${type}`}>{BADGE_LABELS[type]}</span>
   );
 }
 
@@ -114,8 +112,8 @@ function Badge({ type }: { type: 'loss' | 'watch' | 'ok' }) {
 
 function SectionLabel({ text }: { text: string }) {
   return (
-    <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#6B7A99', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-      {text}<span style={{ flex: 1, height: 1, background: '#E2EAF0', display: 'block' }} />
+    <div className="gm-section-label">
+      {text}<span className="gm-section-label__rule" />
     </div>
   );
 }
@@ -226,12 +224,12 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ background: 'var(--eq-ink, #1A1A2E)', padding: '14px 18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#5DCAA5', boxShadow: '0 0 0 3px rgba(93,202,165,0.25)', display: 'inline-block' }} />
-          <span style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>Ask Claude</span>
+      <div className="gm-chat-header">
+        <div className="gm-chat-header__title">
+          <span className="gm-chat-header__dot" aria-hidden="true" />
+          Ask Claude
         </div>
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', paddingLeft: 16 }}>AI analyst for this report</div>
+        <div className="gm-chat-header__sub">AI analyst for this report</div>
       </div>
 
       {/* Messages + chips inline so there's no dead space */}
@@ -272,7 +270,7 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
         {sending && (
           <div style={{ alignSelf: 'flex-start', background: '#F7FAFC', border: '1px solid #E2EAF0', borderRadius: 12, borderBottomLeftRadius: 3, padding: '12px 14px', display: 'flex', gap: 4 }}>
             {[0, 0.2, 0.4].map((d, i) => (
-              <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#6B7A99', display: 'inline-block', animation: `bounce 1.2s ${d}s infinite` }} />
+              <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#6B7A99', display: 'inline-block', animation: `gm-bounce 1.2s ${d}s infinite` }} />
             ))}
           </div>
         )}
@@ -297,7 +295,7 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
           <svg viewBox="0 0 24 24" width={15} height={15} fill="#fff"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
         </button>
       </div>
-      <div style={{ fontSize: 10, color: '#9AA5BC', textAlign: 'center', padding: '0 12px 8px' }}>Powered by Claude · Based on this period's data</div>
+      <div className="gm-chat-footer">Powered by Claude · Based on this period's data</div>
     </div>
   );
 }
@@ -388,8 +386,8 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
   } : null;
 
   // Chip style helpers
-  const chipBase: React.CSSProperties = { fontSize: 11, fontWeight: 500, padding: '4px 10px', borderRadius: 20, border: '1px solid #E2EAF0', cursor: 'pointer', fontFamily: 'inherit', background: '#fff', color: 'var(--eq-ink, #1A1A2E)', transition: 'all 0.1s' };
-  const chipActive: React.CSSProperties = { ...chipBase, background: 'var(--eq-ink, #1A1A2E)', color: '#fff', border: '1px solid #1A1A2E' };
+  const chipBase = 'gm-chip';
+  const chipActive = 'gm-chip gm-chip--active';
 
   return (
     // Flex column: sub-header (fixed) + body row (fills rest)
@@ -430,9 +428,9 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           {allWips.length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               <span style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.8px', color: '#6B7A99' }}>WIP</span>
-              <button style={!selectedWip ? chipActive : chipBase} onClick={() => setSelectedWip(null)}>All</button>
+              <button className={!selectedWip ? chipActive : chipBase} onClick={() => setSelectedWip(null)}>All</button>
               {allWips.map(w => (
-                <button key={w} style={selectedWip === w ? chipActive : chipBase} onClick={() => setSelectedWip(selectedWip === w ? null : w)}>{w}</button>
+                <button key={w} className={selectedWip === w ? chipActive : chipBase} onClick={() => setSelectedWip(selectedWip === w ? null : w)}>{w}</button>
               ))}
             </div>
           )}
@@ -460,18 +458,18 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         {/* Left column — scrolls */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', minWidth: 0 }}>
           {briefingError && (
-            <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 10 }}>
-              <AlertTriangle size={18} aria-hidden="true" style={{ flexShrink: 0, color: '#7B1414' }} />
+            <div className="gm-error-banner">
+              <AlertTriangle size={18} aria-hidden="true" className="gm-error-banner__icon" />
               <div>
-                <div style={{ fontWeight: 600, color: '#7B1414', fontSize: 13, marginBottom: 2 }}>AI briefing failed</div>
-                <div style={{ fontSize: 12, color: '#7B1414', fontFamily: 'monospace', wordBreak: 'break-all' }}>{briefingError}</div>
+                <div className="gm-error-banner__title">AI briefing failed</div>
+                <div className="gm-error-banner__detail" style={{ fontFamily: 'monospace' }}>{briefingError}</div>
               </div>
             </div>
           )}
 
           {jobsError && (
-            <div style={{ background: '#FDECEA', border: '1px solid #F5C6CB', borderRadius: 8, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 10 }}>
-              <AlertTriangle size={18} aria-hidden="true" style={{ flexShrink: 0, color: '#7B1414' }} />
+            <div className="gm-error-banner">
+              <AlertTriangle size={18} aria-hidden="true" className="gm-error-banner__icon" />
               <div style={{ fontSize: 13, color: '#7B1414' }}>{jobsError}</div>
             </div>
           )}
@@ -482,7 +480,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
               ⚡ Showing figures for {[selectedPMs.length === 1 ? selectedPMs[0] : selectedPMs.length > 1 ? `${selectedPMs.length} PMs` : null, selectedWip ? `WIP: ${selectedWip}` : null].filter(Boolean).join(' · ')}
             </div>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+          <div className="gm-kpi-grid">
             <KpiCard label="Total contract value" value={fmt(fKpis?.total_contract ?? period.total_contract).replace(/^[+-]/, '')} sub={isFiltered ? `${nonOverhead.length} jobs` : 'Active portfolio'} />
             <KpiCard label="Net cash position"    value={fmt(fKpis?.net_cash ?? period.net_cash_position)} sub="Invoiced vs spent" accent={(fKpis?.net_cash ?? period.net_cash_position) >= 0 ? 'green' : 'red'} />
             <KpiCard label="Overall GP%"          value={fmtPct(fKpis?.gp_pct ?? period.overall_gp_pct)} sub={`${fmt(fKpis?.gp ?? period.gp_at_completion)} at completion`} accent="blue" />
@@ -493,7 +491,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
 
           {/* AI top concern */}
           {briefing?.top_concern && (
-            <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: '4px solid #3DA8D8', borderRadius: '0 10px 10px 0', padding: '11px 15px', fontSize: 13, color: 'var(--eq-ink, #1A1A2E)', lineHeight: 1.6, marginBottom: 16 }}>
+            <div className="gm-concern-banner">
               <strong>AI:</strong> {briefing.top_concern}
             </div>
           )}
@@ -537,7 +535,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
 
           {/* Portfolio note */}
           {briefing?.portfolio_note && (
-            <div style={{ background: '#fff', border: '1px solid #E2EAF0', borderLeft: '4px solid #7C77B9', borderRadius: '0 10px 10px 0', padding: '11px 15px', fontSize: 12, color: '#6B7A99', lineHeight: 1.6, marginBottom: 8 }}>
+            <div className="gm-note-banner">
               <strong style={{ color: 'var(--eq-ink, #1A1A2E)' }}>Note:</strong> {briefing.portfolio_note}
             </div>
           )}
@@ -614,10 +612,6 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         </div>
       </div>
 
-      <style>{`
-        @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-4px)} }
-        @keyframes gm-spin { to{transform:rotate(360deg)} }
-      `}</style>
     </div>
   );
 }
@@ -731,21 +725,21 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
 
       {/* Upload zone */}
       <div
+        className="gm-upload-zone"
         onDragOver={e => e.preventDefault()}
         onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleUpload(f); }}
         onClick={() => fileRef.current?.click()}
-        style={{ border: '2px dashed #C8D9E8', borderRadius: 12, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', marginBottom: 24, background: '#F7FAFC' }}
       >
         <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
           onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} />
-        <div style={{ fontSize: 28, marginBottom: 8 }}>📊</div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--eq-ink, #1A1A2E)', marginBottom: 4 }}>
+        <div className="gm-upload-zone__icon">📊</div>
+        <div className="gm-upload-zone__title">
           {uploading ? 'Uploading…' : 'Drop Workbench report here'}
         </div>
-        <div style={{ fontSize: 12, color: '#6B7A99' }}>
+        <div className="gm-upload-zone__hint">
           Project Manager Live Update Report (.xlsx) · or click to browse
         </div>
-        {uploadError && <div style={{ marginTop: 8, fontSize: 12, color: '#C0392B' }}>{uploadError}</div>}
+        {uploadError && <div className="gm-upload-zone__error">{uploadError}</div>}
       </div>
 
       {/* List header */}
@@ -788,7 +782,7 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
           const isBusy     = actionLoading === p.id;
 
           return (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #E2EAF0', borderRadius: 10, padding: '12px 14px' }}>
+            <div key={p.id} className="gm-period-row">
 
               {/* Main clickable area — opens period detail */}
               <button
@@ -822,7 +816,7 @@ function PeriodList({ onSelect }: { onSelect: (p: Period) => void }) {
               </button>
 
               {/* Separator */}
-              <div style={{ width: 1, height: 32, background: '#E2EAF0', flexShrink: 0 }} />
+              <div className="gm-period-row__divider" />
 
               {/* Actions */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -878,10 +872,10 @@ export default function GmReportsModule() {
       <HubLayout fullWidth sidebarRecords={SIDEBAR_RECORDS}>
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Page header */}
-          <div style={{ background: '#fff', borderBottom: '1px solid #E2EAF0', padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="#3DA8D8" strokeWidth={2}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--eq-ink, #1A1A2E)' }}>GM Reports</span>
-            <span style={{ fontSize: 12, color: '#6B7A99' }}>Cash flow & profitability</span>
+          <div className="gm-module-header">
+            <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="#3DA8D8" strokeWidth={2} aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            <span className="gm-module-header__title">GM Reports</span>
+            <span className="gm-module-header__sub">Cash flow &amp; profitability</span>
           </div>
 
           {/* Content */}
