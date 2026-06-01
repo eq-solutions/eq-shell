@@ -27,12 +27,13 @@
     "@sentry/react": "^10.53.1",
     "@supabase/supabase-js": "^2.106.0",
     "bcryptjs": "^3.0.3",
-    "xlsx": "^0.18.5",
+    "google-auth-library": "^10.6.2",
     "lucide-react": "^1.16.0",
     "posthog-js": "^1.374.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router-dom": "^6.30.3"
+    "react-router-dom": "^6.30.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
