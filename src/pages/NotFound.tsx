@@ -4,12 +4,15 @@
 
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 export default function NotFound() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const loc = useLocation();
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
         <div className="eq-page__header">
           <span
             className="eq-pill eq-pill--warn"

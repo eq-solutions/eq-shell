@@ -1,0 +1,293 @@
+/* IconRail — 48px fixed left nav strip for iframe module pages.
+   Hover-expands to 200px. Sits above the iframe via z-index. */
+
+.eq-icon-rail {
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100vh;
+  width: 48px;
+  background: var(--eq-ink, #1A1A2E);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 200;
+  transition: width 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eq-icon-rail {
+    transition: none;
+  }
+}
+
+.eq-icon-rail:hover {
+  width: 200px;
+}
+
+/* Content area gets left margin to clear the collapsed rail */
+.eq-icon-rail-offset {
+  margin-left: 48px;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+/* ── Logo / home link ── */
+.eq-icon-rail__logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  text-decoration: none;
+  flex-shrink: 0;
+  height: 56px;
+}
+
+.eq-icon-rail__logo:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: -2px;
+}
+
+/* ── Separator ── */
+.eq-icon-rail__sep {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* ── Nav list ── */
+.eq-icon-rail__nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+  overflow: hidden;
+}
+
+/* ── Nav item ── */
+.eq-icon-rail__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  height: 44px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.55);
+  border-left: 3px solid transparent;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.eq-icon-rail__item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.80);
+}
+
+.eq-icon-rail__item:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: -2px;
+}
+
+.eq-icon-rail__item--active {
+  border-left-color: #3DA8D8;
+  color: #3DA8D8;
+  background: rgba(61, 168, 216, 0.10);
+}
+
+.eq-icon-rail__item--active:hover {
+  background: rgba(61, 168, 216, 0.14);
+  color: #3DA8D8;
+}
+
+.eq-icon-rail__item--disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Icon ── */
+.eq-icon-rail__icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+}
+
+/* ── Label — visually hidden at 48px, revealed on rail expand ── */
+.eq-icon-rail__label {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  opacity: 0;
+  transition: opacity 100ms ease 50ms;
+  overflow: hidden;
+}
+
+.eq-icon-rail:hover .eq-icon-rail__label {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eq-icon-rail__label {
+    transition: none;
+  }
+}
+
+/* SR-only — visible to screen readers at all times */
+.eq-icon-rail__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ── Bottom section (settings + user) ── */
+.eq-icon-rail__bottom {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 4px 0;
+}
+
+/* ── User button (logout trigger) ── */
+.eq-icon-rail__user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  height: 52px;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: left;
+  width: 100%;
+  white-space: nowrap;
+  transition: background 100ms ease;
+}
+
+.eq-icon-rail__user:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.eq-icon-rail__user:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: -2px;
+}
+
+/* ── Avatar circle ── */
+.eq-icon-rail__avatar {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #2986B4;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.04em;
+}
+
+.eq-icon-rail__user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  opacity: 0;
+  transition: opacity 100ms ease 50ms;
+}
+
+.eq-icon-rail:hover .eq-icon-rail__user-info {
+  opacity: 1;
+}
+
+.eq-icon-rail__user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.90);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eq-icon-rail__user-action {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ── Mobile bottom tab bar (<768px) ── */
+@media (max-width: 767px) {
+  .eq-icon-rail {
+    display: none;
+  }
+
+  .eq-icon-rail-offset {
+    margin-left: 0;
+    padding-bottom: 56px;
+  }
+
+  .eq-icon-rail-tabs {
+    display: flex;
+  }
+}
+
+@media (min-width: 768px) {
+  .eq-icon-rail-tabs {
+    display: none;
+  }
+}
+
+/* ── Bottom tab bar ── */
+.eq-icon-rail-tabs {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: var(--eq-ink, #1A1A2E);
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  flex-direction: row;
+  align-items: stretch;
+  z-index: 200;
+}
+
+.eq-icon-rail-tabs__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.50);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: color 100ms ease;
+  border-top: 2px solid transparent;
+}
+
+.eq-icon-rail-tabs__item--active {
+  color: #3DA8D8;
+  border-top-color: #3DA8D8;
+}
+
+.eq-icon-rail-tabs__item:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: -2px;
+}

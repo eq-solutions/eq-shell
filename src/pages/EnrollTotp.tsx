@@ -13,6 +13,9 @@ import { Check } from 'lucide-react';
 import { useParams, Link } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 type Step = 'idle' | 'scanning' | 'confirming' | 'done' | 'error';
 
@@ -93,7 +96,7 @@ export default function EnrollTotp() {
   }
 
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <div style={{ maxWidth: 540, margin: '0 auto' }}>
         <p style={{ marginBottom: 16 }}>
           <Link to={`/${tenantSlug ?? ''}`} style={{ fontSize: 13 }}>

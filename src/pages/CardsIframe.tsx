@@ -15,6 +15,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
 import { HubLayout } from '../components/HubLayout';
 import { EqError } from '../components/EqError';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 const CARDS_URL = 'https://cards.eq.solutions/';
 const LOAD_TIMEOUT_MS = 30_000;
@@ -102,7 +105,7 @@ export default function CardsIframe() {
 
   if (phase === 'load-error') {
     return (
-      <HubLayout iframe>
+      <HubLayout iframe sidebarRecords={SIDEBAR_RECORDS}>
         <div className="eq-iframe-error-wrap">
           <EqError
             title="EQ Cards didn't load"
@@ -115,7 +118,7 @@ export default function CardsIframe() {
   }
 
   return (
-    <HubLayout iframe>
+    <HubLayout iframe sidebarRecords={SIDEBAR_RECORDS}>
       {phase === 'loading' && (
         <div className="eq-loading eq-loading--overlay" aria-busy="true">
           Opening EQ Cards…

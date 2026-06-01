@@ -15,6 +15,9 @@ import { Link, useParams } from 'react-router-dom';
 import { useSession } from '../session';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { createSupabaseClient } from '../lib/supabaseJwt';
@@ -70,7 +73,7 @@ function AdminUserListInner() {
   }, []);
 
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
           <div>
             <h1 className="eq-page__title">Users</h1>
@@ -170,7 +173,7 @@ export default function AdminUserList() {
     <Gate
       perm="admin.list_users"
       fallback={
-        <HubLayout>
+        <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
           <div className="eq-empty">
             <p className="eq-empty__title">Not allowed</p>
             <p>Only managers can manage users.</p>

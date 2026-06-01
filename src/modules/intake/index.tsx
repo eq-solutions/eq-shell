@@ -18,6 +18,9 @@ import '@eq/intake-demo/styles.css';
 import { useSession } from '../../session';
 import { Gate } from '../../permissions/Gate';
 import { HubLayout } from '../../components/HubLayout';
+import { defaultSidebarRecords } from '../../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 import { createSupabaseClient } from '../../lib/supabaseJwt';
 
 // IntakeModule's structural SupabaseLikeClient expects insert(row) to
@@ -107,7 +110,7 @@ function IntakePivotBanner() {
 
 export default function ShellIntakeModule() {
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <div className="eq-page__header">
         <h1 className="eq-page__title">Intake</h1>
         <p className="eq-page__lede">

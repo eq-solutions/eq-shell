@@ -17,6 +17,9 @@ import { X } from 'lucide-react';
 import { Button } from '@eq-solutions/ui';
 import { useCan } from '../../permissions';
 import { HubLayout } from '../../components/HubLayout';
+import { defaultSidebarRecords } from '../../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 import { Skeleton } from '../../components/Skeleton';
 import { EqError } from '../../components/EqError';
 
@@ -529,7 +532,7 @@ export default function EquipmentModule() {
 
   if (!canView) {
     return (
-      <HubLayout>
+      <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
         <div className="eq-empty">
           <p className="eq-empty__title">Not allowed</p>
           <p>You don't have access to plant &amp; equipment.</p>
@@ -548,7 +551,7 @@ export default function EquipmentModule() {
   })();
 
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <div className="eq-page__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
         <div>
           <h1 className="eq-page__title">Plant &amp; Equipment</h1>

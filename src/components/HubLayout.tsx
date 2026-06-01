@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSession, moduleEnabled } from '../session';
-import { HubSidebar, HUB_APP_ICONS, type HubApp } from './HubSidebar';
+import { HubSidebar, HUB_APP_ICONS, type HubApp, type RecordLink } from './HubSidebar';
+import { IconRail } from './IconRail';
 
 const HUB_APPS = [
   { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
@@ -49,11 +50,17 @@ export function HubLayout({
   children,
   iframe = false,
   fullWidth = false,
+  hideMainSidebar = false,
+  sidebarRecords,
 }: {
   children: React.ReactNode;
   iframe?: boolean;
   /** Skip the eq-hub-content max-width wrapper. Use for full-bleed dashboard modules. */
   fullWidth?: boolean;
+  /** Hide HubSidebar and render IconRail instead. Use on iframe module pages. */
+  hideMainSidebar?: boolean;
+  /** Records links rendered in HubSidebar. Pass from sidebarConfig for consistency. */
+  sidebarRecords?: RecordLink[];
 }) {
   const { session } = useSession();
   const [liveCounts, setLiveCounts] = useState<DashboardCounts>({
@@ -102,6 +109,20 @@ export function HubLayout({
     }));
 
 
+  // When hideMainSidebar is true, render the IconRail + offset content wrapper
+  // instead of HubSidebar. Used on iframe module pages (Field) so the full
+  // sidebar is suppressed and the narrow icon rail takes its place.
+  if (hideMainSidebar) {
+    return (
+      <>
+        <IconRail />
+        <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 48, minHeight: '100vh' }}>
+          {children}
+        </div>
+      </>
+    );
+  }
+
   return (
     <div className="eq-hub">
       {iframe && sidebarOpen && (
@@ -118,7 +139,7 @@ export function HubLayout({
             : 'eq-hub__sidebar-rail-wrap'
           : undefined
       }>
-        <HubSidebar apps={sidebarApps} />
+        <HubSidebar apps={sidebarApps} records={sidebarRecords} />
       </div>
       {iframe ? (
         <div className="eq-hub__iframe-content">

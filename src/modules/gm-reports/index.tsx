@@ -3,6 +3,9 @@ import { AlertTriangle, Check } from 'lucide-react';
 import { HubLayout } from '../../components/HubLayout';
 import { Gate } from '../../permissions/Gate';
 import { EqTable, type ColDef } from '../../components/EqTable';
+import { defaultSidebarRecords } from '../../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 // ---------------------------------------------------------------------------
 // Types
@@ -872,7 +875,7 @@ export default function GmReportsModule() {
 
   return (
     <Gate perm="reports.view">
-      <HubLayout fullWidth>
+      <HubLayout fullWidth sidebarRecords={SIDEBAR_RECORDS}>
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Page header */}
           <div style={{ background: '#fff', borderBottom: '1px solid #E2EAF0', padding: '0 20px', height: 52, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>

@@ -4,6 +4,9 @@
 
 import { Link, useParams } from 'react-router-dom';
 import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 export interface ComingSoonProps {
   module: string;
@@ -27,7 +30,7 @@ export interface ComingSoonProps {
 export default function ComingSoon({ module, description, features, eta }: ComingSoonProps) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   return (
-    <HubLayout>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
         <div className="eq-page__header">
           <span
             className="eq-pill eq-pill--info"

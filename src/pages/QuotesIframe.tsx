@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
 import { HubLayout } from '../components/HubLayout';
 import { EqError } from '../components/EqError';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 // Embeds EQ Quotes (Flask) as a Shell iframe.
 //
@@ -90,7 +93,7 @@ export default function QuotesIframe() {
   const failed = phase === 'error' || phase === 'timeout';
 
   return (
-    <HubLayout iframe>
+    <HubLayout iframe sidebarRecords={SIDEBAR_RECORDS}>
       <div className="eq-service-frame-wrap">
         {phase === 'loading' && (
           <div className="eq-loading">Loading EQ Quotes…</div>
