@@ -18,6 +18,9 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
+// ?? '' keeps TypeScript happy (process.env values are string|undefined).
+// The empty-string case is caught at call time by sign(), which throws
+// 'EQ_SECRET_SALT is not set'. hasSecretSalt() lets callers probe before use.
 const SECRET_SALT = process.env.EQ_SECRET_SALT ?? '';
 
 // Constant-time HMAC sig comparison. Plain === is vulnerable to

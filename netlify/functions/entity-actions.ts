@@ -112,10 +112,12 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       detail: 'action must be one of: archive, unarchive, delete',
     });
   }
+  // Safe cast — VALID_ACTIONS guard above confirms the value is in the set.
+  const typedAction = action as Action;
 
   // Authorisation: delete is manager/admin only (archive/restore stay open to
   // any authenticated user). Decision routed through the shared perm matrix.
-  if (action === 'delete' && !can(session, 'entity.delete')) {
+  if (typedAction === 'delete' && !can(session, 'entity.delete')) {
     return json(403, {
       ok: false, error: 'forbidden',
       detail: 'Delete requires manager or platform admin role',
@@ -133,23 +135,23 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const db = tenantDb as any;
 
   // Execute action
-  if (action === 'archive' || action === 'unarchive') {
+  if (typedAction === 'archive' || typedAction === 'unarchive') {
     const { error: dbErr } = await db
       .schema('app_data')
       .from(meta.table)
-      .update({ active: action === 'unarchive', updated_at: new Date().toISOString() })
+      .update({ active: typedAction === 'unarchive', updated_at: new Date().toISOString() })
       .eq(meta.pk, id)
       .eq('tenant_id', session.tenant_id);
 
     if (dbErr) {
-      console.error('[entity-actions] update failed', { entity, id, action, error: dbErr.message });
+      console.error('[entity-actions] update failed', { entity, id, action: typedAction, error: dbErr.message });
       return json(500, { ok: false, error: 'db_error', detail: dbErr.message });
     }
 
-    return json(200, { ok: true, entity, id, action });
+    return json(200, { ok: true, entity, id, action: typedAction });
   }
 
-  if (action === 'delete') {
+  if (typedAction === 'delete') {
     const { error: dbErr } = await db
       .schema('app_data')
       .from(meta.table)
