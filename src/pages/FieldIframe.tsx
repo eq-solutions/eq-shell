@@ -128,12 +128,6 @@ export default function FieldIframe() {
     setSelectedTenant(slug);
   };
 
-  const onSwitch = () => {
-    setSrc(null);
-    setState({ phase: 'minting' });
-    setSelectedTenant(null);
-  };
-
   // Mint token + set iframe src once a tenant is chosen.
   useEffect(() => {
     if (!selectedTenant) return;
@@ -300,8 +294,6 @@ export default function FieldIframe() {
       </HubLayout>
     );
   }
-
-  const tenantMeta = TENANT_OPTIONS.find((t) => t.slug === selectedTenant);
 
   if (state.phase === 'minting' || state.phase === 'mint-failed') {
     return (
