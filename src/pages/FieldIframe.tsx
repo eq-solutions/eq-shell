@@ -306,9 +306,8 @@ export default function FieldIframe() {
   if (state.phase === 'minting' || state.phase === 'mint-failed') {
     return (
       <HubLayout iframe>
-        {tenantMeta && <FieldTenantBar tenant={tenantMeta} onSwitch={onSwitch} />}
         {state.phase === 'minting' ? (
-          <div className="eq-field-frame-loading eq-field-frame-loading--with-tenantbar">
+          <div className="eq-field-frame-loading">
             Connecting to EQ Field…
           </div>
         ) : (
@@ -329,11 +328,10 @@ export default function FieldIframe() {
 
   return (
     <HubLayout iframe>
-      {tenantMeta && <FieldTenantBar tenant={tenantMeta} onSwitch={onSwitch} />}
       {src && (
         <iframe
           ref={iframeRef}
-          className="eq-field-frame eq-field-frame--with-tenantbar"
+          className="eq-field-frame"
           style={{ flex: 1, minHeight: 0 }}
           title="EQ Field"
           src={src}
@@ -381,20 +379,6 @@ function TenantPicker({
   );
 }
 
-function FieldTenantBar({ tenant, onSwitch }: { tenant: TenantOption; onSwitch: () => void }) {
-  return (
-    <div className="eq-field-tenantbar" role="status">
-      <div className="eq-field-tenantbar__label">
-        <span className="eq-field-tenantbar__tier">{tenant.tier}</span>
-        <span className="eq-field-tenantbar__name">{tenant.name}</span>
-      </div>
-      <button type="button" className="eq-field-tenantbar__switch" onClick={onSwitch}>
-        Switch workspace
-      </button>
-    </div>
-  );
-}
-
 function HandoffOverlay({ state, cookieMode }: { state: HandoffState; cookieMode: boolean }) {
   if (state.phase === 'accepted') return null;
 
@@ -406,7 +390,7 @@ function HandoffOverlay({ state, cookieMode }: { state: HandoffState; cookieMode
     (state.phase === 'booted' && !state.hasHash && cookieMode)
   ) {
     return (
-      <div className="eq-field-frame-overlay eq-field-frame-overlay--with-tenantbar" aria-busy="true">
+      <div className="eq-field-frame-overlay" aria-busy="true">
         <div className="eq-field-frame-overlay-card">Loading EQ Field…</div>
       </div>
     );
@@ -415,7 +399,7 @@ function HandoffOverlay({ state, cookieMode }: { state: HandoffState; cookieMode
   const msg = overlayMessage(state, cookieMode);
   if (!msg) return null;
   return (
-    <div className="eq-field-frame-overlay eq-field-frame-overlay--with-tenantbar">
+    <div className="eq-field-frame-overlay">
       <div className="eq-field-frame-overlay-card eq-field-frame-overlay-card--error">
         <EqError
           title="EQ Field didn't load"

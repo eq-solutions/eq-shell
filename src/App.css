@@ -410,14 +410,11 @@
 }
 
 /* ──────────────────────────────────────────────────────────────────
- * Field tenant picker + tenant bar  (Wave 5, 2026-05-22)
+ * Field tenant picker  (Wave 5, 2026-05-22)
  *
  * The picker fills the Field content area when the user hasn't
  * chosen a Field tenant yet. Once chosen, the picker is replaced by
- * the iframe and a 36px strip ("tenant bar") sits above the iframe
- * showing the active tenant + a "Switch tenant" button.
- * The --with-tenantbar variants below adjust the iframe / overlay /
- * loading layouts to make room for that strip.
+ * the iframe.
  * ────────────────────────────────────────────────────────────────── */
 
 .eq-field-picker {
@@ -509,59 +506,6 @@
   color: var(--eq-grey);
 }
 
-.eq-field-tenantbar {
-  height: 36px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: var(--eq-bg);
-  border-bottom: 1px solid var(--eq-border);
-  font-size: 12px;
-}
-
-.eq-field-tenantbar__label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--eq-ink);
-}
-
-.eq-field-tenantbar__tier {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--eq-sky);
-}
-
-.eq-field-tenantbar__name {
-  font-weight: 600;
-}
-
-.eq-field-tenantbar__switch {
-  all: unset;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--eq-sky);
-  padding: 4px 10px;
-  border-radius: 6px;
-  transition: background 0.15s;
-}
-
-.eq-field-tenantbar__switch:hover,
-.eq-field-tenantbar__switch:focus-visible {
-  background: var(--eq-ice);
-}
-
-/* --with-tenantbar variants: the tenant bar is now in-flow above the iframe
- * within the flex column, so no height offsets are needed. These classes
- * are kept to avoid breaking existing JSX references but are no-ops. */
-.eq-field-frame--with-tenantbar {}
-.eq-field-frame-loading--with-tenantbar {}
-.eq-field-frame-overlay--with-tenantbar {}
 
 /* ──────────────────────────────────────────────────────────────────
  * Placeholder / loading / error / empty
