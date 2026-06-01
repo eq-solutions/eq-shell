@@ -8,7 +8,7 @@
 // Keep in sync with @eq-solutions/ui/src/index.ts.
 
 declare module '@eq-solutions/ui' {
-  import type { CSSProperties, HTMLAttributes, ButtonHTMLAttributes } from 'react'
+  import type { CSSProperties, HTMLAttributes, ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 
   // ── Button ─────────────────────────────────────────────────────────────────
   export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
@@ -17,10 +17,93 @@ declare module '@eq-solutions/ui' {
     variant?: ButtonVariant
     size?: ButtonSize
     loading?: boolean
+    icon?: ReactNode
   }
   export const Button: React.ForwardRefExoticComponent<
     ButtonProps & React.RefAttributes<HTMLButtonElement>
   >
+
+  // ── FormInput ──────────────────────────────────────────────────────────────
+  export interface FormInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
+    label?: string
+    error?: string
+    hint?: string
+  }
+  export const FormInput: React.ForwardRefExoticComponent<
+    FormInputProps & React.RefAttributes<HTMLInputElement>
+  >
+
+  // ── Modal / ConfirmDialog ──────────────────────────────────────────────────
+  export interface ModalProps {
+    open: boolean
+    onClose: () => void
+    title?: ReactNode
+    description?: ReactNode
+    footer?: ReactNode
+    children?: ReactNode
+  }
+  export function Modal(props: ModalProps): React.ReactElement | null
+
+  export interface ConfirmDialogProps {
+    open: boolean
+    onClose: () => void
+    onConfirm: () => void
+    title: ReactNode
+    description?: ReactNode
+    confirmLabel?: string
+    cancelLabel?: string
+    destructive?: boolean
+    loading?: boolean
+  }
+  export function ConfirmDialog(props: ConfirmDialogProps): React.ReactElement
+
+  // ── StatusBadge ────────────────────────────────────────────────────────────
+  export type StatusKind = 'ok' | 'warn' | 'err' | 'info' | 'neutral'
+  export interface StatusBadgeProps {
+    kind?: StatusKind
+    label: string
+  }
+  export function StatusBadge(props: StatusBadgeProps): React.ReactElement
+
+  // ── KindPill ───────────────────────────────────────────────────────────────
+  export type WorkKind = string
+  export interface KindPillProps {
+    kind: WorkKind
+    label?: string
+  }
+  export function KindPill(props: KindPillProps): React.ReactElement
+
+  // ── Card ───────────────────────────────────────────────────────────────────
+  export interface CardProps extends HTMLAttributes<HTMLDivElement> {
+    children?: ReactNode
+  }
+  export function Card(props: CardProps): React.ReactElement
+
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  export interface TabItem {
+    key: string
+    label: string
+    content?: ReactNode
+  }
+  export interface TabsProps {
+    tabs: TabItem[]
+    activeKey?: string
+    onChange?: (key: string) => void
+  }
+  export function Tabs(props: TabsProps): React.ReactElement
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  export type ToastTone = 'success' | 'error' | 'warning' | 'info'
+  export interface ToastOptions {
+    message: string
+    tone?: ToastTone
+    duration?: number
+  }
+  export interface ToastContextValue {
+    toast: (opts: ToastOptions) => void
+  }
+  export function ToastProvider(props: { children: ReactNode }): React.ReactElement
+  export function useToast(): ToastContextValue
 
   // ── Skeleton ───────────────────────────────────────────────────────────────
   export type SkeletonShape = 'text' | 'line' | 'circle' | 'card'
