@@ -28,18 +28,20 @@
 // Response: { token: string, tenant_slug: string }
 //
 // ─── SERVICE (aud='service') ─────────────────────────────────────────────────
-// Returns a short-lived (60s) ServiceTokenPayload for EQ Service's
-// /.netlify/functions/shell-auth endpoint:
+// Returns a short-lived (60s) BridgeToken for EQ Service's receiver.
 //
-//   { kind: 'service-token', email, name, eq_role, is_platform_admin,
-//     shell_tenant_id, exp }
+// Format: base64url(JSON) + '.' + hex(HMAC-SHA256 with EQ_SHELL_BRIDGE_SECRET)
 //
-// No `tenant_slug` required. Response: { token: string }
+//   { iss: 'eq-shell', aud: 'service', email, tenant_slug, exp }
+//
+// EQ_SHELL_BRIDGE_SECRET must match the same env var on the EQ Service deploy.
+// No `tenant_slug` in the request body required — resolved from session.
+// Response: { token: string }
 
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser } from './_shared/supabase.js';
-import { verifySessionToken, readSessionCookie, signShellToken, signServiceToken, hasSecretSalt } from './_shared/token.js';
+import { verifySessionToken, readSessionCookie, signShellToken, signBridgeToken, hasBridgeSecret, hasSecretSalt } from './_shared/token.js';
 import { withSentry } from './_shared/sentry.js';
 
 const IFRAME_TOKEN_TTL_MS = 60 * 1000;
@@ -81,6 +83,9 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   if (!hasSecretSalt()) {
     return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });
+  }
+  if (!hasBridgeSecret()) {
+    return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SHELL_BRIDGE_SECRET' });
   }
 
   // Auth check FIRST — unauthenticated callers get a flat 401 and
@@ -145,21 +150,28 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   }
 
   if (aud === 'service') {
-    // Ensure the DB user belongs to the session tenant — same guard as
-    // mint-service-iframe-token.ts to stop cross-tenant token forging.
+    // Cross-tenant guard: DB user must belong to the authenticated session tenant.
     if (user.tenant_id !== session.tenant_id) {
       return jsonResponse(401, { valid: false });
     }
-    const serviceToken = signServiceToken({
-      kind: 'service-token',
+    // Resolve the tenant slug — the session cookie carries tenant_id (UUID) but
+    // the bridge token payload uses the human-readable slug (e.g. 'sks').
+    const { data: tenantRow } = await sb
+      .from('tenants')
+      .select('slug')
+      .eq('id', user.tenant_id)
+      .maybeSingle<{ slug: string }>();
+    if (!tenantRow) {
+      return jsonResponse(500, { error: 'Could not resolve tenant slug' });
+    }
+    const bridgeToken = signBridgeToken({
+      iss: 'eq-shell',
+      aud: 'service',
       email: user.email,
-      name: user.name ?? null,
-      eq_role: user.role,
-      is_platform_admin: user.is_platform_admin,
-      shell_tenant_id: user.tenant_id,
+      tenant_slug: tenantRow.slug,
       exp: Date.now() + IFRAME_TOKEN_TTL_MS,
     });
-    return jsonResponse(200, { token: serviceToken });
+    return jsonResponse(200, { token: bridgeToken });
   }
 
   // aud === 'field'
