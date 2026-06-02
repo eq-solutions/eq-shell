@@ -14,9 +14,13 @@
 // the Principal interface and the server-side can() wrapper that handles the
 // is_platform_admin short-circuit and extra_perms extension points.
 
-import { can as _roleCan } from '@eq-solutions/roles';
+// The role→perm matrix lives in ./roles-matrix.ts — a local, bundle-safe copy
+// of @eq-solutions/roles. We can't import the package at function runtime:
+// Netlify externalizes it and ships raw source, so its `.ts`/`.json` entries
+// fail to load (see roles-matrix.ts). Drift is guarded by check-perm-sync.mjs.
 import type { PermKey } from '@eq-solutions/roles';
 export type { PermKey } from '@eq-solutions/roles';
+import { MATRIX } from './roles-matrix.js';
 import type { EqRole } from './supabase.js';
 
 /**
@@ -42,7 +46,7 @@ export function can(principal: Principal, perm: PermKey): boolean {
   if (principal.extra_perms?.includes(perm)) return true;
   const role = principal.role;
   if (!role) return false;
-  return _roleCan(role, perm);
+  return MATRIX[role]?.includes(perm) ?? false;
 }
 
 /**
