@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/check-tenant-drift.mjs
 //
-// Two independent checks in one gate:
+// Three independent checks in one gate:
 //
 //   1. CROSS-TENANT DRIFT  — fingerprints app_data schema (tables, columns,
 //      functions, policies) across every active tenant and fails if any tenant
@@ -14,8 +14,15 @@
 //      sks_quotes_* tables readable/writable by anyone with the anon key). Runs
 //      against fixed infrastructure projects, not just active-tenant app_data.
 //
+//   3. MIGRATION IDENTITY  — compares supabase/tenant-migrations/*.sql repo
+//      files against the _eq_migrations table on each data-plane tenant
+//      (zaap = EQ, ehow = SKS) independently. The two tenants do NOT share a
+//      migration lineage — same number can mean different content on each.
+//      Reports: repo files not applied on a tenant (gaps) and migrations
+//      applied on a tenant with no matching repo file (out-of-band).
+//
 // Usage:
-//   node scripts/check-tenant-drift.mjs                  # both checks
+//   node scripts/check-tenant-drift.mjs                  # all three checks
 //   node scripts/check-tenant-drift.mjs --reference=core # pin drift reference
 //   node scripts/check-tenant-drift.mjs --anon-only      # skip cross-tenant drift
 //   node scripts/check-tenant-drift.mjs --no-anon        # skip anon-grant check
@@ -30,6 +37,9 @@
 // Exit codes: 0 = all clear, 1 = config error, 2 = drift or violation detected.
 
 import { parseArgs } from 'node:util';
+import { readdir } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { mgmtRows, controlRef, requireAccessToken } from './_mgmt.mjs';
 
 const { values: args } = parseArgs({ options: {
@@ -247,10 +257,111 @@ if (!args['no-anon']) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CHECK 3 — Migration identity (repo files vs applied per tenant)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// The two tenants (zaap = EQ, ehow = SKS) have DIVERGED migration histories.
+// The same migration number may represent entirely different content on each
+// tenant (e.g. 0018 = dashboard_counts_asset on zaap, gm_reports on ehow).
+// This check does NOT compare tenants against each other — it compares each
+// tenant independently against the canonical repo file list.
+//
+// Source of truth: supabase/tenant-migrations/*.sql (filename-sorted).
+// Applied record:  _eq_migrations table on each tenant (queried via mgmt API).
+//
+// Each tenant's _eq_migrations table may contain entries keyed by either the
+// full filename (post-2026-05-30 runner) or the basename without .sql (old
+// runner). Both are normalised to the full filename for comparison.
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const MIGRATIONS_DIR = join(__dirname, '..', 'supabase', 'tenant-migrations');
+
+const TENANT_DATA_PLANES = [
+  {
+    envKey: 'CANONICAL_INTERNAL_PROJECT_REF',
+    ref: process.env.CANONICAL_INTERNAL_PROJECT_REF,
+    label: 'zaap (EQ · zaapmfdkgedqupfjtchl)',
+  },
+  {
+    envKey: 'SKS_CANONICAL_PROJECT_REF',
+    ref: process.env.SKS_CANONICAL_PROJECT_REF,
+    label: 'ehow (SKS · ehowgjardagevnrluult)',
+  },
+];
+
+async function checkMigrationIdentity() {
+  // 1. Collect canonical migration filenames from the repo.
+  let repoFiles;
+  try {
+    const entries = await readdir(MIGRATIONS_DIR);
+    repoFiles = entries
+      .filter(f => f.endsWith('.sql'))
+      .sort();
+  } catch (e) {
+    return {
+      error: `cannot read ${MIGRATIONS_DIR}: ${e.message}`,
+      tenants: [],
+    };
+  }
+
+  const repoSet = new Set(repoFiles);
+  const tenantResults = [];
+
+  for (const tenant of TENANT_DATA_PLANES) {
+    if (!tenant.ref) {
+      tenantResults.push({ ...tenant, skipped: true, gaps: [], outOfBand: [] });
+      continue;
+    }
+
+    let appliedRows;
+    try {
+      appliedRows = await mgmtRows(tenant.ref, `
+        SELECT name FROM _eq_migrations ORDER BY name;
+      `);
+    } catch (e) {
+      tenantResults.push({ ...tenant, error: e.message, gaps: [], outOfBand: [] });
+      continue;
+    }
+
+    // Normalise: old runner stored basename without .sql; new runner stores full filename.
+    const appliedNormalised = appliedRows.map(r => {
+      const n = r.name ?? '';
+      return n.endsWith('.sql') ? n : `${n}.sql`;
+    });
+    const appliedSet = new Set(appliedNormalised);
+
+    // Gaps: repo files not recorded in this tenant's _eq_migrations.
+    const gaps = repoFiles.filter(f => !appliedSet.has(f));
+
+    // Out-of-band: migrations recorded on tenant not matching any repo file.
+    const outOfBand = appliedNormalised.filter(n => !repoSet.has(n));
+
+    tenantResults.push({ ...tenant, gaps, outOfBand });
+  }
+
+  return { repoFiles, tenants: tenantResults };
+}
+
+let identityResult = null;
+
+if (!args['anon-only']) {
+  log('');
+  log('running migration-identity check …');
+  identityResult = await checkMigrationIdentity();
+  if (identityResult.error) {
+    log(`  error: ${identityResult.error}`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Output
 // ═══════════════════════════════════════════════════════════════════════════
 
-const anyFailure = driftResult.drift || anonFailed;
+const identityFailed = identityResult != null
+  && !identityResult.error
+  && identityResult.tenants.some(t => !t.skipped && !t.error && (t.gaps.length > 0 || t.outOfBand.length > 0));
+
+const anyFailure = driftResult.drift || anonFailed || identityFailed;
 
 if (args.json) {
   console.log(JSON.stringify({
@@ -265,6 +376,14 @@ if (args.json) {
       failed: anonFailed,
       projects: anonResults,
     },
+    migration_identity: identityResult
+      ? {
+          skip: false,
+          failed: identityFailed,
+          repo_files: identityResult.repoFiles ?? [],
+          tenants: identityResult.tenants,
+        }
+      : { skip: true },
   }, null, 2));
 } else {
   // ── drift output ──
@@ -305,6 +424,39 @@ if (args.json) {
     }
     if (anonResults.length === 0) {
       console.log('  (skipped — no project refs configured)');
+    }
+  }
+
+  // ── migration-identity output ──
+  if (!args['anon-only'] && identityResult) {
+    console.log('\n── Migration identity ──────────────────────────────────────');
+    if (identityResult.error) {
+      console.log(`  ✗ error: ${identityResult.error}`);
+    } else {
+      console.log(`  repo files: ${identityResult.repoFiles.length} (${identityResult.repoFiles[0]} … ${identityResult.repoFiles[identityResult.repoFiles.length - 1]})`);
+      for (const t of identityResult.tenants) {
+        if (t.skipped) {
+          console.log(`  - ${t.label}: skipped (${t.envKey} not set)`);
+          continue;
+        }
+        if (t.error) {
+          console.log(`  ✗ ${t.label}: query error — ${t.error}`);
+          continue;
+        }
+        if (!t.gaps.length && !t.outOfBand.length) {
+          console.log(`  ✓ ${t.label}: all repo migrations applied, no out-of-band entries`);
+        } else {
+          console.log(`  ✗ ${t.label}:`);
+          if (t.gaps.length) {
+            console.log(`      ${t.gaps.length} repo file(s) NOT applied on this tenant:`);
+            for (const g of t.gaps) console.log(`        - ${g}`);
+          }
+          if (t.outOfBand.length) {
+            console.log(`      ${t.outOfBand.length} migration(s) applied on tenant NOT in repo:`);
+            for (const o of t.outOfBand) console.log(`        + ${o}`);
+          }
+        }
+      }
     }
   }
 }
