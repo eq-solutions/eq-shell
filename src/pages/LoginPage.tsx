@@ -30,9 +30,13 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { refresh } = useSession();
 
-  const [mode, setMode] = useState<'email' | 'phone'>('email');
+  const [mode, setMode] = useState<'link' | 'email' | 'phone'>('link');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Magic link state
+  const [linkEmail, setLinkEmail] = useState('');
+  const [linkSent, setLinkSent] = useState(false);
 
   // Email + 4-box PIN
   const [email, setEmail] = useState('');
@@ -55,9 +59,33 @@ export default function LoginPage() {
   const [phoneNormalized, setPhoneNormalized] = useState('');
   const [otp, setOtp] = useState('');
 
-  function switchMode(next: 'email' | 'phone') {
+  function switchMode(next: 'link' | 'email' | 'phone') {
     setMode(next);
     setErr(null);
+    setLinkSent(false);
+  }
+
+  async function onSendLink(e: React.FormEvent) {
+    e.preventDefault();
+    if (!linkEmail) return;
+    setBusy(true);
+    setErr(null);
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    const { error } = await makeAnonClient().auth.signInWithOtp({
+      email: linkEmail,
+      options: { emailRedirectTo: redirectTo, shouldCreateUser: false },
+    });
+    setBusy(false);
+    if (error) {
+      // Supabase returns an error for unknown emails only in certain configurations.
+      // We show a success state regardless to avoid email enumeration.
+      // Genuine misconfig errors (rate limit etc.) are caught here.
+      if (error.status === 429) {
+        setErr('Too many attempts. Wait a minute and try again.');
+        return;
+      }
+    }
+    setLinkSent(true);
   }
 
   // Password managers autofill the whole PIN into a single field. The visible
@@ -272,11 +300,20 @@ export default function LoginPage() {
               <button
                 role="tab"
                 type="button"
+                aria-selected={mode === 'link'}
+                className={`eq-login-tab${mode === 'link' ? ' eq-login-tab--active' : ''}`}
+                onClick={() => switchMode('link')}
+              >
+                Email link
+              </button>
+              <button
+                role="tab"
+                type="button"
                 aria-selected={mode === 'email'}
                 className={`eq-login-tab${mode === 'email' ? ' eq-login-tab--active' : ''}`}
                 onClick={() => switchMode('email')}
               >
-                Email
+                PIN
               </button>
               <button
                 role="tab"
@@ -288,6 +325,54 @@ export default function LoginPage() {
                 Mobile
               </button>
             </div>
+
+            {mode === 'link' && !linkSent && (
+              <form onSubmit={onSendLink}>
+                <p className="eq-login-right__sub" style={{ marginBottom: 20 }}>
+                  Enter your email and we'll send a sign-in link — no password needed.
+                </p>
+                <div className="eq-login-field">
+                  <label htmlFor="link-email" className="eq-login-label">Email</label>
+                  <input
+                    id="link-email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={linkEmail}
+                    onChange={(e) => setLinkEmail(e.target.value)}
+                    className="eq-login-input"
+                    disabled={busy}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="eq-login-submit"
+                  disabled={busy || !linkEmail}
+                >
+                  {busy ? 'Sending…' : 'Send sign-in link'}
+                </button>
+              </form>
+            )}
+
+            {mode === 'link' && linkSent && (
+              <div>
+                <p className="eq-login-right__sub" style={{ marginBottom: 12 }}>
+                  Check your email — we sent a link to <strong>{linkEmail}</strong>.
+                  Click it to sign in.
+                </p>
+                <p style={{ fontSize: 13, color: 'var(--eq-muted)', marginBottom: 16 }}>
+                  No email? Check your spam folder, or{' '}
+                  <button
+                    type="button"
+                    className="eq-login-back-link"
+                    onClick={() => { setLinkSent(false); setErr(null); }}
+                  >
+                    try a different address
+                  </button>
+                  .
+                </p>
+              </div>
+            )}
 
             {mode === 'email' && !showForgotPin && (
               <form onSubmit={onEmailSubmit}>

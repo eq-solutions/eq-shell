@@ -12,6 +12,7 @@ import { seedSupabaseJwtCache } from './lib/supabaseJwt';
 import { BrandProvider } from './brand';
 import { identifyUser, resetUser } from './observability';
 import LoginPage from './pages/LoginPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import TenantHome from './pages/TenantHome';
 import FieldIframe from './pages/FieldIframe';
 import CardsIframe from './pages/CardsIframe';
@@ -464,6 +465,7 @@ function App() {
               the RequireSession wrap — the user clicking the invite
               link doesn't have a session yet; the function sets one
               on success. */}
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/reset-pin" element={<ResetPin />} />
           <Route path="/select-tenant" element={<TenantPicker />} />
