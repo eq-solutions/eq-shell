@@ -86,9 +86,13 @@ const clientGrants = mergeGrants(
   ...moduleFiles.map((f) => parseModuleMatrix(readFile(f))),
 );
 
-// Server grants = roles package matrix (permissions.ts now delegates fully to it)
-const serverGrants = Object.fromEntries(
-  Object.entries(MATRIX).map(([role, perms]) => [role, new Set(perms)]),
+// Server grants = the local, bundle-safe copy the functions actually use
+// (netlify/functions/_shared/roles-matrix.ts). Functions can't import
+// @eq-solutions/roles at runtime — Netlify externalizes it and ships raw
+// source that fails to load — so they mirror the matrix locally. This parses
+// that file and guards it against the package matrix above.
+const serverGrants = parseModuleMatrix(
+  readFile('netlify/functions/_shared/roles-matrix.ts'),
 );
 
 // PermKey sets from each source

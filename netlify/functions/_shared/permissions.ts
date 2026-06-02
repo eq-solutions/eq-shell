@@ -14,19 +14,14 @@
 // the Principal interface and the server-side can() wrapper that handles the
 // is_platform_admin short-circuit and extra_perms extension points.
 
-// Import the resolved permission matrix as DATA (roles.json), not the package's
-// executable entry. @eq-solutions/roles ships a raw `roles.ts` as its main entry;
-// installed from a GitHub tarball it is never compiled to JS, so a bundled
-// Netlify function that imports the package code crashes at load with
-// `ERR_UNKNOWN_FILE_EXTENSION ".ts"` (a 502 before any handler runs). JSON
-// inlines cleanly at bundle time and keeps the matrix single-sourced.
-// Durable fix tracked upstream: have @eq-solutions/roles ship compiled JS.
+// The role→perm matrix lives in ./roles-matrix.ts — a local, bundle-safe copy
+// of @eq-solutions/roles. We can't import the package at function runtime:
+// Netlify externalizes it and ships raw source, so its `.ts`/`.json` entries
+// fail to load (see roles-matrix.ts). Drift is guarded by check-perm-sync.mjs.
 import type { PermKey } from '@eq-solutions/roles';
 export type { PermKey } from '@eq-solutions/roles';
-import rolesModel from '@eq-solutions/roles/roles.json' with { type: 'json' };
+import { MATRIX } from './roles-matrix.js';
 import type { EqRole } from './supabase.js';
-
-const MATRIX = (rolesModel as { matrix: Record<string, readonly string[]> }).matrix;
 
 /**
  * A principal derived from either auth path: the session cookie
