@@ -56,7 +56,7 @@ export default function ServiceIframe() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/.netlify/functions/mint-iframe-token', {
+        const res = await fetch('/.netlify/functions/token-exchange', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -129,7 +129,7 @@ export default function ServiceIframe() {
       if (ev.origin !== expectedOrigin) return;
       const origin = expectedOrigin;
       try {
-        const res = await fetch('/.netlify/functions/mint-iframe-token', {
+        const res = await fetch('/.netlify/functions/token-exchange', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
