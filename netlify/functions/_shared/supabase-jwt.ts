@@ -75,6 +75,7 @@ export interface SupabaseJwtClaims {
     eq_role?: EqRole;
     is_platform_admin?: boolean;
     source_app?: string;
+    email?: string;
   };
   iat: number;
   exp: number;

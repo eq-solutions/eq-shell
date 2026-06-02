@@ -25,6 +25,7 @@
 //   a percentage of sessions through this function for parity logging.
 //   The routing logic lives in FieldIframe.tsx / ServiceIframe.tsx.
 
+import { createHmac } from 'node:crypto';
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser } from './_shared/supabase.js';
@@ -33,6 +34,43 @@ import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js
 import { withSentry } from './_shared/sentry.js';
 
 const IFRAME_TOKEN_TTL_SECONDS = 60;
+
+/**
+ * Inject email into app_metadata of an existing HS256 JWT and re-sign.
+ * Returns the original token unchanged if anything fails.
+ */
+function injectEmailIntoJwt(token: string, email: string): string {
+  try {
+    const secret = process.env.SUPABASE_JWT_SECRET ?? '';
+    if (!secret) return token;
+    const parts = token.split('.');
+    if (parts.length !== 3) return token;
+    const [header, payloadB64, _sig] = parts;
+    // Decode payload
+    const payloadJson = Buffer.from(
+      payloadB64.replace(/-/g, '+').replace(/_/g, '/'),
+      'base64',
+    ).toString('utf8');
+    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+    // Inject email into app_metadata
+    const appMeta = (payload.app_metadata as Record<string, unknown>) ?? {};
+    payload.app_metadata = { ...appMeta, email };
+    // Re-encode payload as base64url
+    const newPayloadB64 = Buffer.from(JSON.stringify(payload))
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    // Re-sign
+    const signingInput = `${header}.${newPayloadB64}`;
+    const newSig = createHmac('sha256', secret)
+      .update(signingInput)
+      .digest('base64url');
+    return `${signingInput}.${newSig}`;
+  } catch {
+    return token;
+  }
+}
 
 const ALLOWED_FIELD_TENANT_SLUGS = ['eq', 'demo-trades', 'melbourne', 'sks'] as const;
 type AllowedFieldTenantSlug = (typeof ALLOWED_FIELD_TENANT_SLUGS)[number];
@@ -91,7 +129,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return jsonResponse(401, { valid: false });
   }
 
-  const { token, exp } = signSupabaseJwt(
+  const { token: rawToken, exp } = signSupabaseJwt(
     user.id,
     user.tenant_id,
     user.role,
@@ -99,6 +137,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     IFRAME_TOKEN_TTL_SECONDS,
     aud === 'field' ? `field:${tenantSlug ?? 'eq'}` : 'service',
   );
+
+  const token = injectEmailIntoJwt(rawToken, user.email);
 
   // Log for parity analysis — helps Phase 2 parity check compare
   // Supabase JWT path vs HMAC path for the same user.

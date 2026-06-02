@@ -143,7 +143,7 @@ export default function FieldIframe() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/.netlify/functions/mint-iframe-token', {
+        const res = await fetch('/.netlify/functions/token-exchange', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -238,7 +238,7 @@ export default function FieldIframe() {
       if (expectedOrigin && ev.origin !== expectedOrigin) return;
       const origin = expectedOrigin ?? ev.origin;
       try {
-        const res = await fetch('/.netlify/functions/mint-iframe-token', {
+        const res = await fetch('/.netlify/functions/token-exchange', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
