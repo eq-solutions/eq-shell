@@ -14,10 +14,19 @@
 // the Principal interface and the server-side can() wrapper that handles the
 // is_platform_admin short-circuit and extra_perms extension points.
 
-import { can as _roleCan } from '@eq-solutions/roles';
+// Import the resolved permission matrix as DATA (roles.json), not the package's
+// executable entry. @eq-solutions/roles ships a raw `roles.ts` as its main entry;
+// installed from a GitHub tarball it is never compiled to JS, so a bundled
+// Netlify function that imports the package code crashes at load with
+// `ERR_UNKNOWN_FILE_EXTENSION ".ts"` (a 502 before any handler runs). JSON
+// inlines cleanly at bundle time and keeps the matrix single-sourced.
+// Durable fix tracked upstream: have @eq-solutions/roles ship compiled JS.
 import type { PermKey } from '@eq-solutions/roles';
 export type { PermKey } from '@eq-solutions/roles';
+import rolesModel from '@eq-solutions/roles/roles.json' with { type: 'json' };
 import type { EqRole } from './supabase.js';
+
+const MATRIX = (rolesModel as { matrix: Record<string, readonly string[]> }).matrix;
 
 /**
  * A principal derived from either auth path: the session cookie
@@ -42,7 +51,7 @@ export function can(principal: Principal, perm: PermKey): boolean {
   if (principal.extra_perms?.includes(perm)) return true;
   const role = principal.role;
   if (!role) return false;
-  return _roleCan(role, perm);
+  return MATRIX[role]?.includes(perm) ?? false;
 }
 
 /**
