@@ -1,5 +1,5 @@
 import { Link, NavLink, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database } from 'lucide-react';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
 import { useDensity } from '../lib/useDensity';
@@ -221,6 +221,22 @@ export function HubSidebar({ apps, records }: Props) {
             >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Settings size={16} aria-hidden="true" /></span>
               <span className="eq-hub-sidebar__nav-label">Settings</span>
+            </NavLink>
+          </nav>
+        </>
+      )}
+
+      {/* ── PLATFORM (platform-admin only) ── */}
+      {session.user.is_platform_admin && (
+        <>
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>PLATFORM</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Platform navigation">
+            <NavLink
+              to={`/${tenantSlug}/admin/tenants`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Database size={16} aria-hidden="true" /></span>
+              <span className="eq-hub-sidebar__nav-label">Tenants</span>
             </NavLink>
           </nav>
         </>
