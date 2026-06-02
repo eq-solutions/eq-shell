@@ -39,6 +39,10 @@ export default function LoginPage() {
   const [pinDigits, setPinDigits] = useState(['', '', '', '']);
   const [staySignedIn, setStaySignedIn] = useState(false);
   const [showForgotPin, setShowForgotPin] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotErr, setForgotErr] = useState<string | null>(null);
   const pinRef0 = useRef<HTMLInputElement>(null);
   const pinRef1 = useRef<HTMLInputElement>(null);
   const pinRef2 = useRef<HTMLInputElement>(null);
@@ -92,6 +96,29 @@ export default function LoginPage() {
   function onPinKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Backspace' && !pinDigits[index] && index > 0) {
       pinRefs[index - 1].current?.focus();
+    }
+  }
+
+  async function onForgotSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!forgotEmail) return;
+    setForgotBusy(true);
+    setForgotErr(null);
+    try {
+      const res = await fetch('/.netlify/functions/shell-request-pin-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      if (!res.ok) {
+        setForgotErr('Something went wrong — please try again.');
+      } else {
+        setForgotSent(true);
+      }
+    } catch {
+      setForgotErr('Network error — please try again.');
+    } finally {
+      setForgotBusy(false);
     }
   }
 
@@ -262,7 +289,7 @@ export default function LoginPage() {
               </button>
             </div>
 
-            {mode === 'email' && (
+            {mode === 'email' && !showForgotPin && (
               <form onSubmit={onEmailSubmit}>
                 <div className="eq-login-field">
                   <label htmlFor="email" className="eq-login-label">Email</label>
@@ -297,16 +324,11 @@ export default function LoginPage() {
                     <button
                       type="button"
                       className="eq-login-pin-forgot"
-                      onClick={() => setShowForgotPin((p) => !p)}
+                      onClick={() => { setForgotEmail(email); setForgotSent(false); setForgotErr(null); setShowForgotPin(true); }}
                     >
                       Forgot PIN?
                     </button>
                   </div>
-                  {showForgotPin && (
-                    <p style={{ fontSize: 12, color: 'var(--gray-500)', margin: '0 0 8px' }}>
-                      Ask your administrator to send you a reset link.
-                    </p>
-                  )}
                   <div className="eq-login-pin-row">
                     {pinRefs.map((ref, i) => (
                       <input
@@ -342,6 +364,53 @@ export default function LoginPage() {
                   disabled={busy || !email || pin.length < 4}
                 >
                   {busy ? 'Signing in…' : 'Sign in →'}
+                </button>
+              </form>
+            )}
+
+            {mode === 'email' && showForgotPin && (
+              <form onSubmit={onForgotSubmit}>
+                <p className="eq-login-hint" style={{ marginBottom: 16 }}>
+                  Enter your email and we'll send a reset link.
+                </p>
+                <div className="eq-login-field">
+                  <label htmlFor="forgot-email" className="eq-login-label">Email</label>
+                  <input
+                    id="forgot-email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="eq-login-input"
+                    disabled={forgotBusy || forgotSent}
+                  />
+                </div>
+                {forgotSent ? (
+                  <p style={{ fontSize: 13, color: '#3DA8D8', margin: '0 0 16px' }}>
+                    Check your email for a reset link.
+                  </p>
+                ) : (
+                  <button
+                    type="submit"
+                    className="eq-login-submit"
+                    disabled={forgotBusy || !forgotEmail}
+                  >
+                    {forgotBusy ? 'Sending…' : 'Send reset link'}
+                  </button>
+                )}
+                {forgotErr && (
+                  <div className="eq-err" role="alert" style={{ marginTop: 12 }}>
+                    {forgotErr}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="eq-login-back-link"
+                  style={{ display: 'block', marginTop: 12 }}
+                  onClick={() => { setShowForgotPin(false); setForgotErr(null); }}
+                >
+                  ← Back to sign in
                 </button>
               </form>
             )}
