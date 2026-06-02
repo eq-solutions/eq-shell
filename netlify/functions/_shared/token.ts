@@ -258,6 +258,62 @@ export function signServiceToken(payload: ServiceTokenPayload): string {
   return Buffer.from(json).toString('base64') + '.' + sig;
 }
 
+// ── Bridge token ─────────────────────────────────────────────────────────────
+//
+// Lightweight cross-app handshake format. Distinct from ServiceTokenPayload in
+// three ways:
+//   1. base64url encoding (URL-safe; safe in hash fragments without encoding)
+//   2. Signed with EQ_SHELL_BRIDGE_SECRET (separate 256-bit hex key, NOT
+//      EQ_SECRET_SALT) — the two apps share this secret, not the whole salt
+//   3. Minimal payload: { iss, aud, email, tenant_slug, exp } only — no PII
+//      beyond email, no role propagation (receiver resolves role locally)
+//
+// Wire format: base64url(JSON) + '.' + hex(HMAC-SHA256)
+// Key:         process.env.EQ_SHELL_BRIDGE_SECRET  (must match on both deploys)
+
+const BRIDGE_SECRET = process.env.EQ_SHELL_BRIDGE_SECRET ?? '';
+
+function signBridge(payloadJson: string): string {
+  if (!BRIDGE_SECRET) throw new Error('EQ_SHELL_BRIDGE_SECRET is not set — server misconfigured');
+  return createHmac('sha256', BRIDGE_SECRET).update(payloadJson).digest('hex');
+}
+
+export function hasBridgeSecret(): boolean {
+  return !!BRIDGE_SECRET;
+}
+
+export interface BridgeTokenPayload {
+  iss: 'eq-shell';
+  aud: 'service';
+  email: string;
+  tenant_slug: string;
+  exp: number;
+}
+
+export function signBridgeToken(payload: BridgeTokenPayload): string {
+  const json = JSON.stringify(payload);
+  const sig = signBridge(json);
+  return Buffer.from(json).toString('base64url') + '.' + sig;
+}
+
+export function verifyBridgeToken(token: string | null | undefined): BridgeTokenPayload | null {
+  if (!token) return null;
+  try {
+    const [b64url, sig] = token.split('.');
+    if (!b64url || !sig) return null;
+    const json = Buffer.from(b64url, 'base64url').toString();
+    const expected = signBridge(json);
+    if (!sigsEqual(expected, sig)) return null;
+    const data = JSON.parse(json) as BridgeTokenPayload;
+    if (data.iss !== 'eq-shell' || data.aud !== 'service') return null;
+    if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
+    if (!data.email || !data.tenant_slug) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Short-lived token returned by shell-login when the user belongs to
  * more than one tenant. Carried by the client back to select-tenant so
