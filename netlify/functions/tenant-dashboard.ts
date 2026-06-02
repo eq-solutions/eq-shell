@@ -17,6 +17,7 @@ import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import {
   getTenantDataClientById,
+  getTenantRpcClientById,
   TenantNotFoundError,
   TenantNotActiveError,
   TenantRoutingMisconfiguredError,
@@ -69,23 +70,29 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     20,
   );
 
-  let tenantDb;
+  // Two clients per tenant data plane: a public-default one for the counts
+  // RPC, and an app_data-default one for the canonical_events feed. They must
+  // be separate — switching schema on .rpc() (e.g. an app_data client calling
+  // .schema('public').rpc(...)) silently drops the args body on supabase-js
+  // 2.106, so the counts query fails and the dashboard 500s. cards-api uses the
+  // same split. See _shared/tenant-routing.ts.
+  let tenantRpc;
+  let tenantData;
   try {
-    tenantDb = await getTenantDataClientById(tenantId);
+    [tenantRpc, tenantData] = await Promise.all([
+      getTenantRpcClientById(tenantId),
+      getTenantDataClientById(tenantId),
+    ]);
   } catch (e) {
     return tenantRoutingError(e);
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tenantAny = tenantDb as any;
   const shared = getServiceClient();
 
   const [countsRes, eventsRes, feedRes] = await Promise.all([
     // Counts come from the tenant data plane. Service-role calls don't
     // carry a JWT, so the RPC takes tenant_id as a parameter instead of
     // reading auth.jwt() (see supabase/tenant-migrations/0003_dashboard_rpcs.sql).
-    tenantAny
-      .schema('public')
-      .rpc('eq_tenant_dashboard_counts', { p_tenant_id: tenantId }),
+    tenantRpc.rpc('eq_tenant_dashboard_counts', { p_tenant_id: tenantId }),
     // Intake events stay on the control plane (cross-tenant audit table).
     // Direct SELECT — no RPC needed; service-role bypasses RLS, we filter
     // explicitly.
@@ -97,8 +104,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .limit(eventLimit),
     // Canonical events from the tenant data plane — cross-app activity log
     // written by EQ Quotes, EQ Service, etc. via canonical-api POST /events.
-    tenantAny
-      .schema('app_data')
+    // tenantData already defaults to the app_data schema.
+    tenantData
       .from('canonical_events')
       .select('id, app_source, event, payload, occurred_at')
       .order('occurred_at', { ascending: false })
