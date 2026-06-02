@@ -43,14 +43,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const { data, error } = await sb
     .from('tenant_routing')
-    .select('status, last_error, last_error_at, supabase_url, updated_at')
+    .select('status, last_error, last_error_at, supabase_url, status_changed_at')
     .eq('tenant_id', tenantId)
     .maybeSingle<{
       status: string;
       last_error: string | null;
       last_error_at: string | null;
       supabase_url: string | null;
-      updated_at: string | null;
+      status_changed_at: string | null;
     }>();
 
   if (error) return jsonResponse(500, { error: error.message });
@@ -58,7 +58,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   return jsonResponse(200, {
     status: data.status,
-    status_changed_at: data.updated_at,
+    status_changed_at: data.status_changed_at,
     last_error: data.last_error,
     last_error_at: data.last_error_at,
     supabase_url: data.supabase_url,
