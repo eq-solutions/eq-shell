@@ -13,7 +13,8 @@
 import type { Context } from '@netlify/functions';
 import { getServiceClient, getUserMemberships, getEnrichedMemberships, getUserSecurityGroupPerms } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
-import { verifySessionToken, signSessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
+import { verifySessionToken, signSessionToken, readSessionCookie, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
+import type { TenantConfig } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
 import { withSentry } from './_shared/sentry.js';
@@ -80,7 +81,9 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const [
     { data: tenant, error: tenantErr },
-    { data: entitlements },
+    { data: allEntitlements },
+    { data: tenantConfigRow },
+    { data: routingRow },
   ] = await Promise.all([
     sb
       .from('tenants')
@@ -92,11 +95,34 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       .select('module, enabled')
       .eq('tenant_id', session.active_tenant_id)
       .returns<CanonicalEntitlement[]>(),
+    sb
+      .from('tenant_config')
+      .select('feature_flags, field_settings')
+      .eq('tenant_id', session.active_tenant_id)
+      .maybeSingle<{ feature_flags: Record<string, Record<string, unknown>>; field_settings: { timezone: string; currency: string; week_start: 'monday' | 'sunday' } }>(),
+    sb
+      .from('tenant_routing')
+      .select('status')
+      .eq('tenant_id', session.active_tenant_id)
+      .maybeSingle<{ status: string }>(),
   ]);
 
   if (tenantErr || !tenant || !tenant.active) {
     return jsonResponse(401, { valid: false });
   }
+
+  const config: TenantConfig = tenantConfigRow ?? DEFAULT_TENANT_CONFIG;
+  const routingStatus = (routingRow?.status ?? null) as 'active' | null;
+
+  // Data-plane modules (field, service, intake) require an active tenant_routing
+  // row. Tenants without a provisioned data plane have no routing row, so their
+  // data-plane modules are hidden until provisioning completes.
+  const DATA_PLANE_MODULES = new Set(['field', 'service', 'intake']);
+  const entitlements = (allEntitlements ?? []).filter((m) => {
+    if (!m.enabled) return false;
+    if (DATA_PLANE_MODULES.has(m.module)) return routingStatus === 'active';
+    return true;
+  });
 
   const supabaseJwt = signSupabaseJwt(
     user.id,
@@ -120,7 +146,8 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     valid: true,
     user: userForResponse,
     tenant,
-    entitlements: entitlements ?? [],
+    entitlements,
+    config,
     memberships: await getEnrichedMemberships(user.id).catch(() => memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role }))),
     supabase_jwt: supabaseJwt,
   };
@@ -128,11 +155,12 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Transparently upgrade pre-2026-05-28 cookies that lack email/name.
   // Those fields are needed for cookie-based cross-app SSO (Service, Field).
   // We already fetched user.email and user.name above, so re-issuing is free.
-  if (!session.email) {
+  if (!session.email || !session.config) {
     const upgraded = signSessionToken({
       ...session,
       email: user.email,
       name: user.name ?? null,
+      config,
     });
     const upgradedCookie = buildSessionCookie(req, upgraded, {
       maxAgeSeconds: Math.max(0, Math.floor((session.exp - Date.now()) / 1000)),

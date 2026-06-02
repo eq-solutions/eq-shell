@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
 import type { Context } from '@netlify/functions';
 import { getServiceClient, getUserMemberships } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
-import { signSessionToken, hasSecretSalt } from './_shared/token.js';
+import { signSessionToken, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
 import { withSentry } from './_shared/sentry.js';
@@ -168,6 +168,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     role: activeMembership.role,
     is_platform_admin: user.is_platform_admin,
     memberships: memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
+    config: DEFAULT_TENANT_CONFIG,
     exp,
   });
   const cookie = buildSessionCookie(req, cookieValue, { maxAgeSeconds: SESSION_TTL_MS / 1000 });

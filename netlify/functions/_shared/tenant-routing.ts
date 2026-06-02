@@ -31,7 +31,7 @@ interface CachedRouting {
   cached_at: number;                // epoch ms
 }
 
-export type TenantRoutingStatus = 'provisioning' | 'active' | 'suspended' | 'archived';
+export type TenantRoutingStatus = 'provisioning' | 'provisioning_failed' | 'active' | 'suspended' | 'archived';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -94,6 +94,7 @@ function putInCache(entry: CachedRouting): void {
 
 interface TenantRoutingRow {
   tenant_id: string;
+  supabase_project_ref: string | null;
   supabase_url: string;
   supabase_anon_key: string;
   service_role_key_ciphertext: string;
@@ -101,6 +102,8 @@ interface TenantRoutingRow {
   service_role_key_tag: string;
   region: string;
   status: TenantRoutingStatus;
+  last_error: string | null;
+  last_error_at: string | null;
   tenants: { slug: string } | null;
 }
 

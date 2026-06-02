@@ -32,6 +32,7 @@ import {
   signSessionToken,
   verifyTotpChallengeToken,
   hasSecretSalt,
+  DEFAULT_TENANT_CONFIG,
 } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
@@ -179,6 +180,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     memberships: memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
     email: user.email,
     name: user.name ?? null,
+    config: DEFAULT_TENANT_CONFIG,
     exp,
   });
   const cookie = buildSessionCookie(req, cookieValue, {

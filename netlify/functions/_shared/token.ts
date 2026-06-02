@@ -44,6 +44,29 @@ export interface SessionMembership {
   role: EqRole;
 }
 
+/**
+ * Per-tenant runtime config. Stored in shell_control.tenant_config and
+ * embedded in the session token so all four session-minting functions can
+ * expose it to downstream functions without an extra DB round-trip.
+ */
+export interface TenantConfig {
+  feature_flags: Record<string, Record<string, unknown>>;
+  field_settings: {
+    timezone: string;
+    currency: string;
+    week_start: 'monday' | 'sunday';
+  };
+}
+
+export const DEFAULT_TENANT_CONFIG: TenantConfig = {
+  feature_flags: {},
+  field_settings: {
+    timezone: 'Australia/Sydney',
+    currency: 'AUD',
+    week_start: 'monday',
+  },
+};
+
 export interface SessionPayload {
   user_id: string;
   /**
@@ -77,6 +100,11 @@ export interface SessionPayload {
    * verify-shell-session re-fetches and upgrades them transparently.
    */
   extra_perms?: string[];
+  /**
+   * Per-tenant runtime config. Absent on pre-provisioning-layer cookies —
+   * verify-shell-session fills in DEFAULT_TENANT_CONFIG transparently.
+   */
+  config: TenantConfig;
   exp: number;
 }
 
@@ -188,6 +216,11 @@ export function verifySessionToken(token: string | null | undefined): SessionPay
     if (!data.active_tenant_id) data.active_tenant_id = data.tenant_id;
     if (!Array.isArray(data.memberships)) {
       data.memberships = [{ tenant_id: data.tenant_id, role: data.role }];
+    }
+    // Pre-provisioning-layer cookies lack config — fill in the safe default so
+    // all downstream callers can read config.field_settings etc. without guards.
+    if (!data.config) {
+      data.config = DEFAULT_TENANT_CONFIG;
     }
     return data;
   } catch {

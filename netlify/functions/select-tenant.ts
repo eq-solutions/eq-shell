@@ -12,7 +12,9 @@ import {
   signSessionToken,
   verifyTenantSelectionToken,
   hasSecretSalt,
+  DEFAULT_TENANT_CONFIG,
 } from './_shared/token.js';
+import type { TenantConfig } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
 import { withSentry } from './_shared/sentry.js';
@@ -94,11 +96,24 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return jsonResponse(403, { valid: false, error: 'tenant-unavailable' });
   }
 
-  const { data: entitlements } = await sb
-    .from('module_entitlements')
-    .select('module, enabled')
-    .eq('tenant_id', tenant.id)
-    .returns<CanonicalEntitlement[]>();
+  const [
+    { data: allEntitlements },
+    { data: tenantConfigRow },
+    { data: routingRow },
+  ] = await Promise.all([
+    sb.from('module_entitlements').select('module, enabled').eq('tenant_id', tenant.id).returns<CanonicalEntitlement[]>(),
+    sb.from('tenant_config').select('feature_flags, field_settings').eq('tenant_id', tenant.id).maybeSingle<{ feature_flags: Record<string, Record<string, unknown>>; field_settings: { timezone: string; currency: string; week_start: 'monday' | 'sunday' } }>(),
+    sb.from('tenant_routing').select('status').eq('tenant_id', tenant.id).maybeSingle<{ status: string }>(),
+  ]);
+
+  const config: TenantConfig = tenantConfigRow ?? DEFAULT_TENANT_CONFIG;
+  const routingStatus = (routingRow?.status ?? null) as 'active' | null;
+  const DATA_PLANE_MODULES = new Set(['field', 'service', 'intake']);
+  const entitlements = (allEntitlements ?? []).filter((m) => {
+    if (!m.enabled) return false;
+    if (DATA_PLANE_MODULES.has(m.module)) return routingStatus === 'active';
+    return true;
+  });
 
   void sb
     .from('users')
@@ -126,6 +141,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     memberships: memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
     email: user.email,
     name: user.name ?? null,
+    config,
     exp,
   });
   const cookie = buildSessionCookie(req, cookieValue, { maxAgeSeconds: SESSION_TTL_MS / 1000 });
@@ -148,7 +164,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       valid: true,
       user: userSafe,
       tenant,
-      entitlements: entitlements ?? [],
+      entitlements,
+      config,
       memberships: await getEnrichedMemberships(user.id).catch(() => memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role }))),
       supabase_jwt: supabaseJwt,
     },

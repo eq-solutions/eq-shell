@@ -28,7 +28,8 @@ import bcrypt from 'bcryptjs';
 import type { Context } from '@netlify/functions';
 import { getServiceClient, getUserMemberships, getEnrichedMemberships, getUserSecurityGroupPerms } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement, UserTenantMembership } from './_shared/supabase.js';
-import { signSessionToken, signTenantSelectionToken, signTotpChallengeToken, hasSecretSalt } from './_shared/token.js';
+import { signSessionToken, signTenantSelectionToken, signTotpChallengeToken, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
+import type { TenantConfig } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
 import { withSentry } from './_shared/sentry.js';
@@ -247,11 +248,24 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(200, { valid: false });
   }
 
-  const { data: entitlements } = await sb
-    .from('module_entitlements')
-    .select('module, enabled')
-    .eq('tenant_id', tenant.id)
-    .returns<CanonicalEntitlement[]>();
+  const [
+    { data: allEntitlements },
+    { data: tenantConfigRow },
+    { data: routingRow },
+  ] = await Promise.all([
+    sb.from('module_entitlements').select('module, enabled').eq('tenant_id', tenant.id).returns<CanonicalEntitlement[]>(),
+    sb.from('tenant_config').select('feature_flags, field_settings').eq('tenant_id', tenant.id).maybeSingle<{ feature_flags: Record<string, Record<string, unknown>>; field_settings: { timezone: string; currency: string; week_start: 'monday' | 'sunday' } }>(),
+    sb.from('tenant_routing').select('status').eq('tenant_id', tenant.id).maybeSingle<{ status: string }>(),
+  ]);
+
+  const config: TenantConfig = tenantConfigRow ?? DEFAULT_TENANT_CONFIG;
+  const routingStatus = (routingRow?.status ?? null) as 'active' | null;
+  const DATA_PLANE_MODULES = new Set(['field', 'service', 'intake']);
+  const entitlements = (allEntitlements ?? []).filter((m) => {
+    if (!m.enabled) return false;
+    if (DATA_PLANE_MODULES.has(m.module)) return routingStatus === 'active';
+    return true;
+  });
 
   // Best-effort last_login_at bump. Non-blocking: if the update fails
   // (Supabase blip, RLS regression, etc.) the user still gets their
@@ -283,6 +297,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     email: user.email,
     name: user.name ?? null,
     ...(extra_perms.length > 0 ? { extra_perms } : {}),
+    config,
     exp,
   });
   // Domain scoping handled by buildSessionCookie — set to .eq.solutions
@@ -315,7 +330,8 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       valid: true,
       user: userSafeWithActiveRole,
       tenant,
-      entitlements: entitlements ?? [],
+      entitlements,
+      config,
       memberships: await getEnrichedMemberships(user.id).catch(() => memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role }))),
       supabase_jwt: supabaseJwt,
     },

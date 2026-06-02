@@ -13,6 +13,21 @@ export type { EqRole };
 
 export type EqTier = 'trial' | 'standard' | 'advanced' | 'enterprise';
 
+/** Per-tenant runtime config — mirrors TenantConfig in netlify/functions/_shared/token.ts. */
+export interface TenantConfig {
+  feature_flags: Record<string, Record<string, unknown>>;
+  field_settings: {
+    timezone: string;
+    currency: string;
+    week_start: 'monday' | 'sunday';
+  };
+}
+
+export const DEFAULT_TENANT_CONFIG: TenantConfig = {
+  feature_flags: {},
+  field_settings: { timezone: 'Australia/Sydney', currency: 'AUD', week_start: 'monday' },
+};
+
 export interface Tenant {
   id: string;
   slug: string;
@@ -75,6 +90,8 @@ export interface ShellSession {
    * RLS. Re-issued (1h TTL) on every verify-shell-session call.
    */
   supabase_jwt: string;
+  /** Per-tenant runtime config. Always present; pre-provisioning responses default to DEFAULT_TENANT_CONFIG. */
+  config: TenantConfig;
 }
 
 export interface SessionContextValue {

@@ -7,7 +7,7 @@ import {
   useLocation,
   useParams,
 } from 'react-router-dom';
-import { SessionContext, useSession, type ShellSession, moduleEnabled } from './session';
+import { SessionContext, useSession, type ShellSession, moduleEnabled, DEFAULT_TENANT_CONFIG } from './session';
 import { seedSupabaseJwtCache } from './lib/supabaseJwt';
 import { BrandProvider } from './brand';
 import { identifyUser, resetUser } from './observability';
@@ -27,6 +27,7 @@ import AdminAuditPage from './pages/AdminAuditPage';
 import SecurityGroupsPage from './pages/SecurityGroupsPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
+import AdminTenantsPage from './pages/AdminTenantsPage';
 import EntityBrowserPage from './pages/EntityBrowserPage';
 import ServiceIframe from './pages/ServiceIframe';
 import QuotesIframe from './pages/QuotesIframe';
@@ -132,8 +133,8 @@ function SessionProvider({ children }: { children: ReactNode }) {
       });
       if (res.ok) {
         const body = (await res.json()) as ShellSession & { valid: true };
-        const { user, tenant, entitlements, supabase_jwt, memberships } = body;
-        const s = { user, tenant, entitlements, supabase_jwt, memberships: memberships ?? [{ tenant_id: tenant.id, role: user.role }] };
+        const { user, tenant, entitlements, supabase_jwt, memberships, config } = body;
+        const s = { user, tenant, entitlements, supabase_jwt, memberships: memberships ?? [{ tenant_id: tenant.id, role: user.role }], config: config ?? DEFAULT_TENANT_CONFIG };
         setSession(s);
         writeStoredSession(s);
         seedSupabaseJwtCache(supabase_jwt);
@@ -407,6 +408,8 @@ function TenantTree() {
             route is reachable to any signed-in tenant user, but the
             UI shows "Not allowed" when the role doesn't grant it.
             Order matters: 'invite' (static) before ':userId' (param). */}
+        {/* Platform-admin: tenant provisioning dashboard */}
+        <Route path="admin/tenants" element={<AdminTenantsPage />} />
         <Route path="admin/users" element={<AdminUserList />} />
         <Route path="admin/users/invite" element={<AdminInviteUser />} />
         <Route path="admin/users/:userId" element={<AdminEditUser />} />
