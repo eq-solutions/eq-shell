@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, RefreshCw, Plus, ChevronUp, Database } from 'lucide-react';
+import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { HubLayout } from '../components/HubLayout';
 import { EqError } from '../components/EqError';
@@ -194,16 +195,17 @@ export default function AdminTenantsPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <h1 className="eq-page__title" style={{ margin: 0 }}>Tenants</h1>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="eq-btn eq-btn--ghost eq-btn--sm" onClick={() => void loadTenants()} title="Refresh">
+            <Button variant="ghost" onClick={() => void loadTenants()} title="Refresh" style={{ padding: '0 8px', minWidth: 32 }}>
               <RefreshCw size={14} />
-            </button>
-            <button
-              className="eq-btn eq-btn--primary eq-btn--sm"
+            </Button>
+            <Button
+              variant="primary"
               onClick={() => setShowAddForm((v) => !v)}
+              style={{ gap: 6 }}
             >
               {showAddForm ? <ChevronUp size={14} /> : <Plus size={14} />}
               {showAddForm ? 'Cancel' : 'Add tenant'}
-            </button>
+            </Button>
           </div>
         </div>
         <p className="eq-page__lede" style={{ marginTop: 4 }}>
@@ -267,14 +269,15 @@ export default function AdminTenantsPage() {
             </div>
           </fieldset>
           {addErr && <p style={{ color: 'var(--eq-err)', fontSize: 13, marginBottom: 12 }}>{addErr}</p>}
-          <button
-            className="eq-btn eq-btn--primary eq-btn--sm"
+          <Button
+            variant="primary"
             onClick={() => void handleAddTenant()}
             disabled={addLoading || !newSlug || !newName}
+            style={{ gap: 6 }}
           >
             {addLoading ? <Loader2 size={14} className="eq-spin" /> : null}
             {addLoading ? 'Creating…' : 'Create tenant'}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -334,15 +337,16 @@ export default function AdminTenantsPage() {
                         <Loader2 size={13} className="eq-spin" /> Provisioning…
                       </span>
                     ) : canProvision ? (
-                      <button
-                        className="eq-btn eq-btn--ghost eq-btn--sm"
+                      <Button
+                        variant="ghost"
                         onClick={() => void provision(t.id)}
                         title={routingStatus === 'provisioning_failed' ? 'Retry provisioning' : 'Provision data plane'}
+                        style={{ gap: 6 }}
                       >
                         {routingStatus === 'provisioning_failed'
                           ? <><RefreshCw size={13} /> Retry</>
                           : <><Database size={13} /> Provision</>}
-                      </button>
+                      </Button>
                     ) : null}
                   </td>
                 </tr>
