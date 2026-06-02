@@ -56,10 +56,11 @@ export default function ServiceIframe() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/.netlify/functions/mint-service-iframe-token', {
+        const res = await fetch('/.netlify/functions/mint-iframe-token', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ aud: 'service' }),
         });
         if (!res.ok) {
           if (!cancelled) setState({ phase: 'error', msg: 'Could not authorise EQ Service. Sign out and back in.' });
@@ -128,10 +129,11 @@ export default function ServiceIframe() {
       if (ev.origin !== expectedOrigin) return;
       const origin = expectedOrigin;
       try {
-        const res = await fetch('/.netlify/functions/mint-service-iframe-token', {
+        const res = await fetch('/.netlify/functions/mint-iframe-token', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ aud: 'service' }),
         });
         if (!res.ok) {
           iframeRef.current?.contentWindow?.postMessage(
