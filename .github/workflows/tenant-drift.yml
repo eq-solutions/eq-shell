@@ -1,6 +1,9 @@
 name: Tenant drift + anon-grant check
 
 on:
+  pull_request:
+    branches:
+      - main
   schedule:
     # Monday 08:00 AEST (UTC+10 standard time) = Sunday 22:00 UTC
     - cron: '0 22 * * 0'

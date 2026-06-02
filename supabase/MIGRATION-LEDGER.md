@@ -41,7 +41,7 @@ The runner tracks by **full filename** (e.g. `0017_assets_cert_url.sql`). Older 
 | `0025_briefing.sql` | AI briefing — `briefing_cache` + `briefing_actions` with `tenant_id NOT NULL` | ⚠️ tables exist (out-of-band + reshaped 2026-06-01); apply via runner to register | ⚪ not applied |
 | `0026_briefing_cache_and_actions.sql` | Same tables, older nullable shape + `ADD COLUMN IF NOT EXISTS tenant_id` safety net | ⚪ will be no-op after 0025 | ⚪ will be no-op after 0025 |
 | `0027_drop_intake_vestiges.sql` | Drop orphaned `eq_intake_*` tables | ⚠️ tables already dropped (2026-06-01 direct SQL); runner apply will no-op | ⚪ not applied |
-| `0028_contact_customer_links.sql` | Contact ↔ customer links table | ⚪ not applied | ⚪ not applied |
+| `0028_contact_customer_links.sql` | Contact ↔ customer links table | ⚠️ MISSING — not yet applied | ✅ applied as `v20260530113714` (`contact_customer_links`) |
 
 ## Out-of-band migrations (direct SQL, not runner-tracked)
 
@@ -65,11 +65,12 @@ Run: `node scripts/migrate-tenants.mjs --slug=sks --dry-run` to preview first.
 ## Pending catch-up (zaap EQ)
 
 Missing in `_eq_migrations`:
-`0012`, `0013`, `0023`, `0024`, `0025`, `0026`, `0027`, `0028`
+`0012`, `0013`, `0023`, `0024`, `0025`, `0026`, `0027`
 
 Run: `node scripts/migrate-tenants.mjs --slug=core --dry-run` to preview first.
 
 ## Notes
 
+- **The two tenants do not share a migration lineage.** zaap (EQ) and ehow (SKS) diverged early; the same migration number can represent entirely different content on each tenant (e.g. `0018` = `dashboard_counts_asset` on zaap, `gm_reports` on ehow). Never assume parity by number alone — always verify by name.
 - The migration runner (post-2026-05-30 rewrite) tracks by full filename with `.sql` extension; the old runner embedded `INSERT INTO _eq_migrations` inside the SQL using the basename without extension. Both are in the table — the runner handles the key mismatch gracefully (re-applies with new key, idempotent SQL).
 - `0026` was previously named `0017_briefing_cache_and_actions.sql` (duplicate prefix, wrong slot). Renamed in PR #121.
