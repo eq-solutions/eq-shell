@@ -1,38 +1,45 @@
 // POST /.netlify/functions/mint-iframe-token
 //
-// Requires a valid eq_shell_session cookie. Returns a short-lived
-// (60s) HMAC token in the EXACT shape EQ Field's verifyShellToken()
-// expects (Phase 1.C, PR #106 on eq-field-app/demo):
+// Unified iframe-token minting endpoint. Requires a valid eq_shell_session
+// cookie. Dispatches on the optional `aud` field in the JSON body:
+//
+//   aud = 'field'   (default) — mints a ShellTokenPayload for EQ Field.
+//   aud = 'service'           — mints a ServiceTokenPayload for EQ Service.
+//
+// ─── FIELD (aud='field' or omitted) ─────────────────────────────────────────
+// Returns a short-lived (60s) HMAC token in the EXACT shape EQ Field's
+// verifyShellToken() expects (Phase 1.C, PR #106 on eq-field-app/demo):
 //
 //   { kind: 'shell-token', name: string, role: 'staff'|'supervisor', exp: number }
 //
-// The token is signed with the SAME EQ_SECRET_SALT both deploys
-// share — that's how the cross-domain handshake works without a
-// shared cookie. The shell embeds Field as
-//
-//   <iframe src="https://eq-solves-field.netlify.app/#sh=<token>">
+// The shell embeds Field as:
+//   <iframe src="https://eq-solves-field.netlify.app/?tenant=<slug>#sh=<token>">
 //
 // Field reads the hash on boot, calls its own
 // /.netlify/functions/verify-pin with action="verify-shell-token",
 // gets back a 7d Field session, skips the PIN gate.
 //
-// Role mapping from canonical (post Phase 1.F) → Field's two-tier gate
-// (per IDENTITY-MODEL.md §7.1):
+// Role mapping canonical → Field two-tier gate (IDENTITY-MODEL.md §7.1):
 //   manager / is_platform_admin = true   → Field 'supervisor'
 //   supervisor                            → Field 'supervisor'
 //   employee / apprentice / labour_hire   → Field 'staff'
 //
-// The canonical taxonomy is intentionally richer than Field's binary
-// gate; the collapse is lossy. When Field's role system catches up
-// (separate Milmlow/eq-field-app PR — tracked but not in scope here),
-// the iframe token will carry the full eq_role + is_platform_admin
-// alongside the legacy staff|supervisor field, and Field will start
-// honouring them. For now Field only consumes staff|supervisor.
+// Caller must also supply `tenant_slug` (validated against ALLOWED_FIELD_TENANT_SLUGS).
+// Response: { token: string, tenant_slug: string }
+//
+// ─── SERVICE (aud='service') ─────────────────────────────────────────────────
+// Returns a short-lived (60s) ServiceTokenPayload for EQ Service's
+// /.netlify/functions/shell-auth endpoint:
+//
+//   { kind: 'service-token', email, name, eq_role, is_platform_admin,
+//     shell_tenant_id, exp }
+//
+// No `tenant_slug` required. Response: { token: string }
 
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser } from './_shared/supabase.js';
-import { verifySessionToken, readSessionCookie, signShellToken, hasSecretSalt } from './_shared/token.js';
+import { verifySessionToken, readSessionCookie, signShellToken, signServiceToken, hasSecretSalt } from './_shared/token.js';
 import { withSentry } from './_shared/sentry.js';
 
 const IFRAME_TOKEN_TTL_MS = 60 * 1000;
@@ -85,24 +92,36 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(401, { valid: false });
   }
 
-  // 2026-05-22 — Wave 5: chosen Field tenant slug arrives in the
-  // request body from the shell-side picker. Validated against the
-  // hardcoded allow-list above; anything else is rejected. The
-  // `allowed` array is fine to return here because the caller is
-  // authenticated and already knows which tenants the picker UI
-  // shows them.
   let body: unknown;
   try {
     body = await req.json();
   } catch {
     return jsonResponse(400, { error: 'Invalid JSON body' });
   }
-  const tenantSlug = (body as { tenant_slug?: unknown } | null)?.tenant_slug;
-  if (!isAllowedFieldTenantSlug(tenantSlug)) {
-    return jsonResponse(400, {
-      error: 'Invalid or missing tenant_slug',
-      allowed: ALLOWED_FIELD_TENANT_SLUGS,
-    });
+
+  const aud = (body as { aud?: unknown } | null)?.aud ?? 'field';
+  if (aud !== 'field' && aud !== 'service') {
+    return jsonResponse(400, { error: 'Invalid aud — expected "field" or "service"' });
+  }
+
+  // For field: validate tenant_slug before the DB call to avoid a
+  // wasted round-trip on invalid picker input.
+  let tenantSlug: AllowedFieldTenantSlug | undefined;
+  if (aud === 'field') {
+    // 2026-05-22 — Wave 5: chosen Field tenant slug arrives in the
+    // request body from the shell-side picker. Validated against the
+    // hardcoded allow-list above; anything else is rejected. The
+    // `allowed` array is fine to return here because the caller is
+    // authenticated and already knows which tenants the picker UI
+    // shows them.
+    const raw = (body as { tenant_slug?: unknown } | null)?.tenant_slug;
+    if (!isAllowedFieldTenantSlug(raw)) {
+      return jsonResponse(400, {
+        error: 'Invalid or missing tenant_slug',
+        allowed: ALLOWED_FIELD_TENANT_SLUGS,
+      });
+    }
+    tenantSlug = raw;
   }
 
   let sb;
@@ -124,6 +143,26 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   if (error || !user) {
     return jsonResponse(401, { valid: false });
   }
+
+  if (aud === 'service') {
+    // Ensure the DB user belongs to the session tenant — same guard as
+    // mint-service-iframe-token.ts to stop cross-tenant token forging.
+    if (user.tenant_id !== session.tenant_id) {
+      return jsonResponse(401, { valid: false });
+    }
+    const serviceToken = signServiceToken({
+      kind: 'service-token',
+      email: user.email,
+      name: user.name ?? null,
+      eq_role: user.role,
+      is_platform_admin: user.is_platform_admin,
+      shell_tenant_id: user.tenant_id,
+      exp: Date.now() + IFRAME_TOKEN_TTL_MS,
+    });
+    return jsonResponse(200, { token: serviceToken });
+  }
+
+  // aud === 'field'
 
   // Phase 1.F: derive Field's two-tier role from the 5-tier canonical
   // role + platform_admin flag.
@@ -154,7 +193,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     // from the response below) and rejects on mismatch. Prevents a
     // confused-deputy where a token minted for tenant A is replayed
     // against tenant B's URL.
-    tenant_slug: tenantSlug,
+    tenant_slug: tenantSlug!,
     exp: Date.now() + IFRAME_TOKEN_TTL_MS,
   });
 
