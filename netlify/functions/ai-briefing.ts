@@ -341,10 +341,17 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   ]);
 
   if (eventsRes.error) {
-    console.warn('[ai-briefing] canonical events query failed', { tenantId, error: eventsRes.error.message });
+    console.error('[ai-briefing] canonical events query failed', { tenantId, error: eventsRes.error.message });
+    captureServerError(eventsRes.error, { context: 'ai-briefing:events', tenantId });
+    return json(500, { ok: false, error: 'db_error', detail: eventsRes.error.message });
   }
 
   const events  = (eventsRes.data ?? [])   as CanonicalEvent[];
+
+  if (actionedRes.error) {
+    // Non-fatal: actioned list only prevents re-surfacing dismissed items; proceed without it.
+    console.warn('[ai-briefing] briefing_actions query failed', { tenantId, error: actionedRes.error.message });
+  }
   const actioned = (actionedRes.data ?? []) as BriefingAction[];
 
   const contributing_sources = [
@@ -364,9 +371,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.info('[ai-briefing] ANTHROPIC_API_KEY not set');
-    await writeCache(tenantAny, tenantId, userId, emptyResponse);
-    return json(200, emptyResponse);
+    console.error('[ai-briefing] ANTHROPIC_API_KEY not configured — cannot generate briefing');
+    return json(503, { ok: false, error: 'ai_not_configured' });
   }
 
   // ── Claude synthesis ───────────────────────────────────────────────────
@@ -416,9 +422,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   } catch (e) {
     captureServerError(e, { context: 'ai-briefing', tenantId });
-    console.warn('[ai-briefing] synthesis failed:', (e as Error).message);
-    await writeCache(tenantAny, tenantId, userId, emptyResponse);
-    return json(200, emptyResponse);
+    console.error('[ai-briefing] synthesis failed:', (e as Error).message);
+    return json(500, { ok: false, error: 'synthesis_failed', detail: (e as Error).message });
   }
 });
 
