@@ -23,6 +23,16 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 // 'EQ_SECRET_SALT is not set'. hasSecretSalt() lets callers probe before use.
 const SECRET_SALT = process.env.EQ_SECRET_SALT ?? '';
 
+// Optional verify-only fallback for zero-downtime HMAC key rotation (Option A).
+// Two-step rotation:
+//   Step 1 — set EQ_SECRET_SALT_NEXT = <new key> on all sites and redeploy; every
+//             site now accepts tokens signed with the old OR new key.
+//   Step 2 — promote: set EQ_SECRET_SALT = <new key>, clear EQ_SECRET_SALT_NEXT
+//             on all sites and redeploy. Done — no forced re-login, no handoff gap.
+// Absent in production until rotation is explicitly initiated. Never used for signing.
+// Ref: eq-context/security-secret-rotation-runbook-2026-05-31.md
+const SECRET_SALT_NEXT = process.env.EQ_SECRET_SALT_NEXT ?? null;
+
 // Constant-time HMAC sig comparison. Plain === is vulnerable to
 // timing-based byte-by-byte sig recovery; timingSafeEqual short-
 // circuits on length mismatch but otherwise runs in constant time
@@ -157,6 +167,11 @@ function sign(payloadJson: string): string {
   return createHmac('sha256', SECRET_SALT).update(payloadJson).digest('hex');
 }
 
+/** Compute HMAC-SHA256 with an explicit key (used by the fallback verifier path). */
+function signWithKey(payloadJson: string, key: string): string {
+  return createHmac('sha256', key).update(payloadJson).digest('hex');
+}
+
 /**
  * Shared verifier for the short-lived, "kind"-tagged exchange tokens
  * (tenant-selection, quotes-token, totp-challenge). Those three verifiers were
@@ -178,8 +193,12 @@ function verifyKindToken<T extends { kind: string; exp: number }>(
     const [b64, sig] = token.split('.');
     if (!b64 || !sig) return null;
     const json = Buffer.from(b64, 'base64').toString();
-    const expected = sign(json);
-    if (!sigsEqual(expected, sig)) return null;
+    // Primary key check.
+    const primaryOk = sigsEqual(sign(json), sig);
+    // Fallback: retry with SECRET_SALT_NEXT if primary fails and _NEXT is configured.
+    if (!primaryOk) {
+      if (!SECRET_SALT_NEXT || !sigsEqual(signWithKey(json, SECRET_SALT_NEXT), sig)) return null;
+    }
     const data = JSON.parse(json) as T;
     if (data.kind !== kind) return null;
     if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
@@ -202,8 +221,12 @@ export function verifySessionToken(token: string | null | undefined): SessionPay
     const [b64, sig] = token.split('.');
     if (!b64 || !sig) return null;
     const json = Buffer.from(b64, 'base64').toString();
-    const expected = sign(json);
-    if (!sigsEqual(expected, sig)) return null;
+    // Primary key check.
+    const primaryOk = sigsEqual(sign(json), sig);
+    // Fallback: retry with SECRET_SALT_NEXT if primary fails and _NEXT is configured.
+    if (!primaryOk) {
+      if (!SECRET_SALT_NEXT || !sigsEqual(signWithKey(json, SECRET_SALT_NEXT), sig)) return null;
+    }
     const data = JSON.parse(json) as SessionPayload;
     if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
     if (!data.user_id || !data.tenant_id) return null;
