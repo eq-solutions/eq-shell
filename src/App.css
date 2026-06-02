@@ -2693,3 +2693,364 @@
     border-right: 1px solid #1E2130;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────
+ * TenantHome dashboard — AI briefing / ranked actions / shift panels.
+ * These rules were dropped by #127's App.css reorg while the markup in
+ * src/pages/TenantHome.tsx was left intact, so the section rendered
+ * unstyled (only visible after "Load AI briefing"). Restored verbatim
+ * from 0bd284e~1. See also the .eq-hub-drawer restore.
+ * ────────────────────────────────────────────────────────────────── */
+/* ── AI Brief container ────────────────────────────────────── */
+.eq-hub-ai {
+  margin-bottom: 2rem;
+}
+
+.eq-hub-ai__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.eq-hub-ai__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #2986B4;
+  background: #EAF5FB;
+  border: 1px solid #B8DFF0;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+.eq-hub-ai__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #9CA3AF;
+}
+
+.eq-hub-ai__regen {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.75rem;
+  color: #3DA8D8;
+  cursor: pointer;
+  font-family: inherit;
+}
+.eq-hub-ai__regen:hover { text-decoration: underline; }
+.eq-hub-ai__regen:disabled { color: #9CA3AF; cursor: default; text-decoration: none; }
+
+/* ── Ranked actions panel ──────────────────────────────────── */
+.eq-hub-actions {
+  margin-top: 1.25rem;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.eq-hub-actions__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #E5E7EB;
+  background: #F9FAFB;
+}
+
+.eq-hub-actions__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6B7280;
+}
+
+.eq-hub-actions__count {
+  font-size: 0.75rem;
+  color: #9CA3AF;
+}
+
+.eq-hub-actions__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.eq-hub-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #F3F4F6;
+  cursor: default;
+  transition: background 0.1s;
+}
+.eq-hub-action:last-child { border-bottom: none; }
+.eq-hub-action:hover { background: #F9FAFB; }
+
+.eq-hub-action__rank {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  background: #9CA3AF;
+}
+.eq-hub-action--critical .eq-hub-action__rank { background: #EF4444; }
+.eq-hub-action--high     .eq-hub-action__rank { background: #F97316; }
+.eq-hub-action--normal   .eq-hub-action__rank { background: #9CA3AF; }
+
+.eq-hub-action__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.eq-hub-action__title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--eq-ink);
+  margin: 0 0 2px;
+  line-height: 1.3;
+}
+
+.eq-hub-action__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eq-hub-action__source {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9CA3AF;
+}
+
+.eq-hub-action__deadline {
+  font-size: 0.6875rem;
+  color: #F97316;
+  font-weight: 500;
+}
+.eq-hub-action--critical .eq-hub-action__deadline { color: #EF4444; }
+
+.eq-hub-action__arrow {
+  flex-shrink: 0;
+  color: #D1D5DB;
+  font-size: 0.875rem;
+}
+
+/* ── Side panels row ───────────────────────────────────────── */
+.eq-hub-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 1rem;
+}
+
+.eq-hub-panel {
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.eq-hub-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #E5E7EB;
+  background: #F9FAFB;
+}
+
+.eq-hub-panel__title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6B7280;
+}
+
+.eq-hub-panel__count {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #3DA8D8;
+}
+
+.eq-hub-panel__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #F3F4F6;
+}
+.eq-hub-panel__item:last-of-type { border-bottom: none; }
+
+.eq-hub-panel__avatar {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #3DA8D8;
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+}
+
+.eq-hub-panel__info {
+  min-width: 0;
+}
+
+.eq-hub-panel__name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--eq-ink);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eq-hub-panel__sub {
+  font-size: 0.6875rem;
+  color: #9CA3AF;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Upcoming panel */
+.eq-hub-panel__item--upcoming {
+  gap: 8px;
+}
+
+.eq-hub-panel__when {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 36px;
+}
+
+.eq-hub-panel__day {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #9CA3AF;
+  text-transform: uppercase;
+}
+
+.eq-hub-panel__time {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--eq-ink);
+}
+
+/* Pipeline panel stage dots */
+.eq-hub-panel__stage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #D1D5DB;
+}
+.eq-hub-panel__stage-dot--watch     { background: #FCD34D; }
+.eq-hub-panel__stage-dot--likely    { background: #60A5FA; }
+.eq-hub-panel__stage-dot--won       { background: #34D399; }
+.eq-hub-panel__stage-dot--confirmed { background: #3DA8D8; }
+
+/* Pipeline capacity footer */
+.eq-hub-panel__capacity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 8px;
+  font-size: 0.6875rem;
+  color: #6B7280;
+  border-top: 1px solid #E5E7EB;
+}
+
+.eq-hub-panel__capacity-sep { color: #D1D5DB; }
+
+/* ── Coverage indicator ────────────────────────────────────── */
+.eq-hub-ai__coverage {
+  font-size: 0.6875rem;
+  color: #9CA3AF;
+  margin: 2px 0 0;
+}
+
+/* ── Action title as link ──────────────────────────────────── */
+.eq-hub-action__title-link {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--eq-ink);
+  text-decoration: none;
+  margin: 0 0 2px;
+  line-height: 1.3;
+}
+.eq-hub-action__title-link:hover {
+  color: #2986B4;
+  text-decoration: underline;
+}
+
+/* ── Action feedback buttons ───────────────────────────────── */
+.eq-hub-action__feedback {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+}
+
+.eq-hub-action__btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid #E5E7EB;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9CA3AF;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  font-family: inherit;
+}
+
+.eq-hub-action__btn--done:hover {
+  background: #F0FDF4;
+  border-color: #86EFAC;
+  color: #16A34A;
+}
+
+.eq-hub-action__btn--dismiss:hover {
+  background: #FEF2F2;
+  border-color: #FCA5A5;
+  color: #DC2626;
+}
+
+/* Mobile overrides for the restored AI section (the other 640px rules
+ * for content/kpi/tiles/activity already live above). */
+@media (max-width: 640px) {
+  .eq-hub-panels { grid-template-columns: 1fr; }
+  .eq-hub-action { padding: 10px 12px; }
+  .eq-hub-action__btn { width: 32px; height: 32px; }
+}
