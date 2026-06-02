@@ -280,7 +280,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   }
 
   logShellLogin(req, email, 'success');
-  void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.success', p_actor_id: user.id, p_tenant_id: tenant.id, p_ip: ip, p_detail: { role: activeRole } });
+  void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.success', p_actor_id: user.id, p_tenant_id: tenant.id, p_ip: ip, p_detail: { role: activeRole, method: 'pin' } });
 
   // Best-effort security group perm fetch. Non-blocking: if the table
   // doesn't exist yet (pre-migration deploy) the helper logs and returns [].
