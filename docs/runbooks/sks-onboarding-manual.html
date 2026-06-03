@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Getting started with EQ — SKS staff guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root{
+    --sky:#3DA8D8; --deep:#2986B4; --ice:#EAF5FB; --ink:#1A1A2E;
+    --line:#E3E8EF; --muted:#5A6072; --paper:#FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;}
+  body{
+    margin:0; background:#F4F6FA; color:var(--ink);
+    font-family:"Plus Jakarta Sans",system-ui,sans-serif;
+    line-height:1.55; font-size:16px;
+  }
+  .page{
+    max-width:860px; margin:32px auto; background:var(--paper);
+    border:1px solid var(--line); border-radius:16px; overflow:hidden;
+  }
+  /* Cover */
+  .cover{ background:var(--ink); color:#fff; padding:48px 56px 44px; }
+  .wordmark{ display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:-.02em; font-size:20px; }
+  .wordmark .dot{ width:22px; height:22px; border-radius:6px; background:var(--sky); display:inline-block; }
+  .cover h1{ font-size:38px; line-height:1.1; margin:28px 0 10px; font-weight:800; letter-spacing:-.02em; }
+  .cover p{ font-size:17px; color:#C9D4E2; margin:0; max-width:48ch; }
+  .cover .meta{ margin-top:26px; display:flex; gap:10px; flex-wrap:wrap; }
+  .tag{ font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:999px; border:1px solid rgba(255,255,255,.22); color:#DCE6F1; }
+  /* Body */
+  .body{ padding:44px 56px 52px; }
+  .lede{ font-size:18px; color:var(--ink); border-left:3px solid var(--sky); padding:2px 0 2px 18px; margin:0 0 8px; font-weight:500; }
+  /* Audience nav */
+  .doors{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:32px 0 8px; }
+  .door{ border:1px solid var(--line); border-radius:12px; padding:16px; background:var(--paper); }
+  .door .ic{ color:var(--deep); }
+  .door h4{ margin:10px 0 4px; font-size:14.5px; }
+  .door p{ margin:0; font-size:13px; color:var(--muted); }
+  /* Section */
+  .section{ margin-top:48px; }
+  .kicker{ display:flex; align-items:center; gap:9px; color:var(--deep); font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:.06em; }
+  h2{ font-size:25px; letter-spacing:-.02em; margin:8px 0 4px; font-weight:800; }
+  .sub{ color:var(--muted); margin:0 0 22px; font-size:15px; }
+  /* Steps */
+  .step{ display:flex; gap:16px; padding:16px 0; border-top:1px solid var(--line); }
+  .step:first-of-type{ border-top:none; }
+  .num{ flex:0 0 auto; width:30px; height:30px; border-radius:50%; background:var(--deep); color:#fff; font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center; }
+  .step h3{ margin:3px 0 3px; font-size:16px; }
+  .step p{ margin:0; color:var(--muted); font-size:14.5px; }
+  /* Phone + email mock */
+  .mocks{ display:grid; grid-template-columns:268px 1fr; gap:22px; align-items:start; margin-top:8px; }
+  .phone{ border:1px solid var(--line); border-radius:26px; padding:14px 12px 18px; background:var(--ice); }
+  .phone .notch{ width:74px; height:5px; border-radius:999px; background:#C2D2E2; margin:2px auto 14px; }
+  .bubble{ background:#fff; border:1px solid var(--line); border-radius:14px 14px 14px 4px; padding:12px 13px; font-size:13.5px; }
+  .bubble .from{ font-size:11px; font-weight:700; color:var(--deep); margin-bottom:5px; letter-spacing:.02em; }
+  .bubble .link{ color:var(--deep); text-decoration:underline; word-break:break-all; }
+  .sms-cta{ margin-top:11px; text-align:center; font-size:11px; color:var(--muted); }
+  .email{ border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .email .hd{ background:var(--ice); padding:13px 16px; border-bottom:1px solid var(--line); }
+  .email .subj{ font-weight:700; font-size:14.5px; }
+  .email .addr{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .email .bd{ padding:16px; font-size:14px; color:var(--ink); }
+  .email .bd p{ margin:0 0 11px; }
+  .btn{ display:inline-block; background:var(--deep); color:#fff !important; text-decoration:none; font-weight:600; font-size:13.5px; padding:10px 18px; border-radius:9px; }
+  .small{ font-size:12.5px; color:var(--muted); }
+  /* Callout */
+  .callout{ display:flex; gap:13px; background:var(--ice); border:1px solid #CFE4F2; border-radius:12px; padding:15px 17px; margin-top:22px; }
+  .callout .ic{ color:var(--deep); flex:0 0 auto; }
+  .callout h4{ margin:0 0 3px; font-size:14.5px; }
+  .callout p{ margin:0; font-size:13.5px; color:var(--muted); }
+  /* Divider band */
+  .band{ background:var(--ink); color:#fff; margin:52px -56px 0; padding:34px 56px; }
+  .band .kicker{ color:var(--sky); }
+  .band h2{ color:#fff; margin-top:8px; }
+  .band .sub{ color:#C9D4E2; }
+  /* Table */
+  table{ width:100%; border-collapse:collapse; margin-top:14px; font-size:14px; }
+  th,td{ text-align:left; padding:11px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th{ font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
+  .role{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; background:var(--ice); border:1px solid var(--line); border-radius:6px; padding:2px 7px; white-space:nowrap; }
+  /* Rollout list */
+  .rollout{ counter-reset:r; margin-top:16px; padding:0; list-style:none; }
+  .rollout li{ counter-increment:r; position:relative; padding:12px 0 12px 42px; border-top:1px solid var(--line); font-size:14.5px; }
+  .rollout li:first-child{ border-top:none; }
+  .rollout li::before{ content:counter(r); position:absolute; left:0; top:11px; width:26px; height:26px; border-radius:8px; background:var(--ice); border:1px solid var(--line); color:var(--deep); font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; }
+  .rollout b{ font-weight:700; }
+  .rollout .small{ display:block; margin-top:2px; }
+  /* Safety grid */
+  .safe{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:18px; }
+  .safe .item{ display:flex; gap:12px; }
+  .safe .ic{ color:var(--sky); flex:0 0 auto; margin-top:1px; }
+  .safe h4{ margin:0 0 2px; font-size:14.5px; color:#fff; }
+  .safe p{ margin:0; font-size:13px; color:#C9D4E2; }
+  /* Footer */
+  .foot{ padding:26px 56px 38px; color:var(--muted); font-size:12.5px; border-top:1px solid var(--line); display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .draftbar{ background:#FFF6E5; border:1px solid #F2D98A; color:#7A5B00; font-size:12.5px; font-weight:600; text-align:center; padding:8px 16px; }
+  @media (max-width:680px){
+    .cover,.body,.band,.foot{ padding-left:26px; padding-right:26px; }
+    .band{ margin-left:-26px; margin-right:-26px; }
+    .doors,.safe,.mocks{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="draftbar">DRAFT — example instruction manual · EQ × SKS Technologies · not yet published</div>
+
+  <!-- Cover -->
+  <div class="cover">
+    <div class="wordmark"><span class="dot"></span> EQ Solutions</div>
+    <h1>Getting started with EQ</h1>
+    <p>A two-minute setup guide for SKS staff — your details, your licences and your jobs, all in one place.</p>
+    <div class="meta">
+      <span class="tag">For SKS Technologies</span>
+      <span class="tag">Works on any phone</span>
+      <span class="tag">No download needed</span>
+    </div>
+  </div>
+
+  <div class="body">
+    <p class="lede">One login. Set up in two minutes. As simple as a text, as safe as your banking app.</p>
+
+    <!-- Doors -->
+    <div class="doors">
+      <div class="door"><span class="ic" data-lucide="hard-hat"></span><h4>I've been invited</h4><p>Jump to “Your first 2 minutes”.</p></div>
+      <div class="door"><span class="ic" data-lucide="clipboard-list"></span><h4>I'm running the rollout</h4><p>See “Setting up your team”.</p></div>
+      <div class="door"><span class="ic" data-lucide="shield-check"></span><h4>I need to know it's safe</h4><p>See “Why this is safe”.</p></div>
+    </div>
+
+    <!-- Section 1: first 2 minutes -->
+    <div class="section">
+      <div class="kicker"><span data-lucide="smartphone"></span> For everyone</div>
+      <h2>Your first 2 minutes</h2>
+      <p class="sub">This is the whole thing. No accounts to create, no passwords to invent.</p>
+
+      <div class="step"><div class="num">1</div><div><h3>A message arrives from SKS</h3><p>A text or email with one link: “Set up your login — takes 2 minutes.”</p></div></div>
+      <div class="step"><div class="num">2</div><div><h3>Tap the link</h3><p>It opens your EQ login. No app to download — it works in your phone’s browser.</p></div></div>
+      <div class="step"><div class="num">3</div><div><h3>Pick a PIN</h3><p>Something you’ll remember — 4 to 12 characters, a number or a short word, your choice.</p></div></div>
+      <div class="step"><div class="num">4</div><div><h3>You’re in</h3><p>Straight to your SKS apps — your details, your licences, your jobs.</p></div></div>
+      <div class="step"><div class="num">5</div><div><h3>Add a second step (managers &amp; supervisors first)</h3><p>Soon after, we’ll ask you to add a second sign-in step — the same idea as your banking app. 30 seconds, then it’s automatic.</p></div></div>
+
+      <div class="callout">
+        <span class="ic" data-lucide="rotate-ccw"></span>
+        <div><h4>Forgot your PIN later?</h4><p>Tap “Forgot PIN” on the sign-in screen, or ask your manager for a reset link. Set a new PIN — your old one stops working straight away.</p></div>
+      </div>
+    </div>
+
+    <!-- Section 2: the message -->
+    <div class="section">
+      <div class="kicker"><span data-lucide="message-square-text"></span> What you'll receive</div>
+      <h2>The message that gets you started</h2>
+      <p class="sub">Plain English, one tap. Here’s exactly what lands.</p>
+
+      <div class="mocks">
+        <div class="phone">
+          <div class="notch"></div>
+          <div class="bubble">
+            <div class="from">SKS</div>
+            Hi Mark, SKS is moving onto EQ for your details, licences and jobs. Set up your login here (about 2 min): <span class="link">eq.solutions/start</span> — works for 7 days.
+          </div>
+          <div class="sms-cta">Text message · the main way field staff get started</div>
+        </div>
+
+        <div class="email">
+          <div class="hd">
+            <div class="subj">Set up your SKS login — about 2 minutes</div>
+            <div class="addr">from The team at SKS</div>
+          </div>
+          <div class="bd">
+            <p>Hi Mark,</p>
+            <p>SKS now uses EQ to keep your details, licences and job info in one place — on your phone or computer.</p>
+            <p>To get started, just set a PIN:</p>
+            <p><a class="btn" href="#">Set up my login</a></p>
+            <p class="small">That’s it — you’ll be straight in. The link works for 7 days. If you weren’t expecting this, you can ignore it; nothing happens until you tap the link.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BAND: operator -->
+    <div class="band">
+      <div class="kicker"><span data-lucide="clipboard-list"></span> For the office</div>
+      <h2>Setting up your team</h2>
+      <p class="sub">End to end, a morning’s work plus a short pilot. You never see or handle anyone’s PIN.</p>
+
+      <table>
+        <tr><th>SKS title / band</th><th>Role</th><th>What it grants</th></tr>
+        <tr><td>Directors, GM, Operations &amp; Project / Contracts Managers, office &amp; contracts <b>leads</b></td><td><span class="role">manager</span></td><td>Everything, plus inviting and managing people</td></tr>
+        <tr><td>Site Supervisors, Foremen, Leading Hands</td><td><span class="role">supervisor</span></td><td>Team oversight; can’t manage logins</td></tr>
+        <tr><td>Electricians, Technicians, Installers, Estimators, general Office / Admin</td><td><span class="role">employee</span></td><td>Standard day-to-day access</td></tr>
+        <tr><td>Apprentices, Trainees</td><td><span class="role">apprentice</span></td><td>Standard access, flagged as developing</td></tr>
+        <tr><td>Labour hire, subcontractors, casuals</td><td><span class="role">labour_hire</span></td><td>Lowest access, meant to be time-bound</td></tr>
+      </table>
+      <p class="sub" style="margin-top:14px;">Rule of thumb: role follows job title. The only judgement call is “is this person a lead?” — if yes, <span class="role">manager</span>; if no, <span class="role">employee</span>.</p>
+
+      <ol class="rollout" style="color:#fff;">
+        <li><b>Build the staff list.</b> One row per person: email, first name, role, which apps.<span class="small" style="color:#C9D4E2;">Most field staff just need Field + Cards.</span></li>
+        <li><b>Send invites in bulk.</b> Paste the list into the bulk-invite screen. Each person gets a one-time, 7-day link.</li>
+        <li><b>Pilot with ~5 people first.</b> A manager, a supervisor, a couple of field staff. Confirm they get in cleanly.</li>
+        <li><b>Switch on automatic emails.</b> After the pilot, invites and reset links send themselves.</li>
+        <li><b>Roll out to everyone.</b> Run the full list; re-send a reminder to anyone who hasn’t set up.</li>
+        <li><b>When someone leaves: deactivate.</b> Access stops on their next click, company-wide. Their record stays for history.</li>
+      </ol>
+    </div>
+
+    <!-- Section: safety (light) -->
+    <div class="section">
+      <div class="kicker"><span data-lucide="shield-check"></span> For decision-makers</div>
+      <h2>Why this is safe</h2>
+      <p class="sub">The same simplicity that helps a tradie is what makes it defensible.</p>
+    </div>
+
+    <div class="band" style="margin-top:8px; border-radius:14px;">
+      <div class="safe">
+        <div class="item"><span class="ic" data-lucide="mail-x"></span><div><h4>No emailed passwords, ever</h4><p>Everyone sets their own PIN via a one-time, time-limited link. Nothing secret to intercept.</p></div></div>
+        <div class="item"><span class="ic" data-lucide="key-round"></span><div><h4>A second lock where it counts</h4><p>Managers and supervisors use a second sign-in step — on by policy, with a humane runway.</p></div></div>
+        <div class="item"><span class="ic" data-lucide="user-x"></span><div><h4>Instant offboarding</h4><p>A departing staff member loses access on their next click — not at the end of the day.</p></div></div>
+        <div class="item"><span class="ic" data-lucide="scroll-text"></span><div><h4>Everything is recorded</h4><p>Sign-ins, invites, resets and role changes are written to an audit trail.</p></div></div>
+        <div class="item"><span class="ic" data-lucide="lock"></span><div><h4>Locked to SKS</h4><p>People only ever see SKS information — no chance of straying into another company’s data.</p></div></div>
+        <div class="item"><span class="ic" data-lucide="shield-alert"></span><div><h4>Brute-force resistant</h4><p>Repeated bad sign-in attempts are automatically slowed and blocked.</p></div></div>
+      </div>
+    </div>
+
+    <!-- Troubleshooting -->
+    <div class="section">
+      <div class="kicker"><span data-lucide="life-buoy"></span> If something's off</div>
+      <h2>Quick fixes</h2>
+      <table>
+        <tr><th>What you see</th><th>Fix</th></tr>
+        <tr><td>“This link doesn’t work”</td><td>Link expired, used, or mistyped — ask for a fresh invite.</td></tr>
+        <tr><td>Can’t see an app after signing in</td><td>That app wasn’t switched on for you — your manager adds it, then you sign out and back in.</td></tr>
+        <tr><td>“Too many attempts”</td><td>Wait a few minutes; if it’s really you, ask for a PIN reset.</td></tr>
+        <tr><td>Not asked for the second step yet</td><td>You’re still inside the 14-day runway — it’ll prompt you soon.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div>EQ Solutions · Getting started guide · v0.1 draft</div>
+    <div>Questions? Ask your SKS manager.</div>
+  </div>
+</div>
+<script>lucide.createIcons();</script>
+</body>
+</html>
