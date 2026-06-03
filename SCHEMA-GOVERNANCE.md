@@ -88,17 +88,24 @@ Bounded — not a 55-table rewrite.
 
 ### Column level — SETTLED (all legit, purely additive, zero data loss)
 The sks↔internal differences are all real features that just didn't propagate. Canonical
-v1.0 = the **union**:
+v1.0 = the **union**.
 
-| Tenant gains | Columns / table | What it is |
+> ⚠️ **Direction corrected 2026-06-03** by reading both live tenants directly: the original
+> memo had every delta BACKWARDS. The verified picture is below. (Lesson: verify deltas
+> against live DBs, never author from the memo.)
+
+| Who HAS it / who LACKS it | Columns / table | What it is |
 |---|---|---|
-| **eq-internal** | `licences.cards_credential_id`, `licences.confirmed_by`, `licences.confirmed_at` | EQ Cards compliance link (Rung 3) |
-| **eq-internal** | `staff.cards_worker_id` | Cards worker link |
-| **eq-internal** | `prestart_checks.status`, `toolbox_talks.status` (+ enum types) | draft/submitted state |
-| **sks** | `eq_intake_rate_limits` table | intake-API rate limiting |
+| **SKS has · EQ lacks** | `licences.cards_credential_id`, `licences.confirmed_at`, `licences.confirmed_by` | EQ Cards compliance link (Rung 3) |
+| **SKS has · EQ lacks** | `staff.cards_worker_id` | Cards worker link |
+| **SKS has · EQ lacks** | `prestart_checks.status`, `toolbox_talks.status` (+ `public.safety_record_status` enum = `draft/submitted/approved/rejected`) | draft/submitted state |
+| **EQ has · SKS lacks** | `eq_intake_rate_limits` table **(+ the two RPCs it needs)** | intake-API rate limiting |
 
-> Open question for Royce: confirm `eq_intake_rate_limits` belongs on every tenant
-> (the only "infra, not feature" item; the other six are clearly keepers).
+> **Resolved:** `eq_intake_rate_limits` belongs on every tenant. It is live intake infra
+> (the api-intake edge function calls `eq_check/eq_increment_intake_rate_limit` around every
+> commit), it is additive + zero-data (empty even where present), and SKS already carries the
+> two RPCs but not the table — so adding it FIXES a latent break rather than propagating a
+> nicety. Latent, not active: the public api-intake endpoint has 0 calls on any tenant today.
 
 ### Plumbing level — the REAL cleanup (needs judgment)
 - Duplicate `_eq_migrations` ledger rows (`NNN` *and* `NNN.sql` — two runners).
@@ -109,7 +116,8 @@ v1.0 = the **union**:
 ---
 
 ## Next steps (in order)
-1. **Royce eyeball:** does `eq_intake_rate_limits` belong on all tenants? (last open column question)
+1. ✅ **Resolved:** `eq_intake_rate_limits` belongs on every tenant (see the column table
+   above — live intake infra; SKS missing only the table; latent, not active).
 2. ✅ **Fleet-runner is the One Pipe.** `scripts/migrate-tenants.mjs` applies every pending
    migration to every tenant in `tenant_routing` via the Management API (no `exec_sql`
    backdoor), checksum-aware, bounded concurrency, exit 2 on any failure. `provision-tenant.mjs`
@@ -122,7 +130,11 @@ v1.0 = the **union**:
    (`check-tenant-drift.mjs`, name-independent so `_fk`/`_fkey` naming isn't false
    drift). Validated read-only against both live tenants: zaap (EQ) and ehow (SKS)
    return an identical FK signature hash — already aligned, now held in place.
-4. **Write additive catch-up migrations** for the deltas above; apply via the runner only.
+4. 🟡 **Catch-up migrations authored** (`0032_canonical_union_columns.sql`,
+   `0033_fold_intake_rate_limiting.sql`) — additive + idempotent, grounded in the live
+   (corrected) deltas. 0033 also folds eq-intake's out-of-band `029` rate-limit infra into
+   the spine so fresh tenants get table **and** RPCs. **Not yet applied** — awaiting a gated
+   runner run (`--plan` → approve). Apply via the runner only.
 5. **Clean the `_eq_migrations` ledger** (dedupe `NNN` vs `NNN.sql`) + fold in 048.
 6. **Generate canonical snapshot v1.0**; flip the guard to a **required/blocking** PR check.
 
