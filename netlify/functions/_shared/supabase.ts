@@ -152,7 +152,11 @@ export async function getUserSecurityGroupPerms(userId: string, tenantId: string
   const { data, error } = await client
     .schema('shell_control')
     .from('user_security_groups')
-    .select('group_id, security_groups!inner(tenant_id), security_group_perms!inner(perm_key)')
+    // security_group_perms has no FK to user_security_groups — both reference
+    // security_groups via group_id. Embed perms THROUGH security_groups (which
+    // owns the FK); embedding them directly 400s with PostgREST
+    // "could not find a relationship".
+    .select('group_id, security_groups!inner(tenant_id, security_group_perms(perm_key))')
     .eq('user_id', userId)
     .eq('security_groups.tenant_id', tenantId);
   if (error) {
@@ -161,9 +165,18 @@ export async function getUserSecurityGroupPerms(userId: string, tenantId: string
     return [];
   }
   const perms = new Set<string>();
-  for (const row of (data ?? []) as Array<{ security_group_perms: { perm_key: string }[] }>) {
-    for (const p of row.security_group_perms ?? []) {
-      perms.add(p.perm_key);
+  type PermGroup = { security_group_perms?: { perm_key: string }[] };
+  for (const row of (data ?? []) as unknown as Array<{
+    security_groups?: PermGroup | PermGroup[] | null;
+  }>) {
+    // PostgREST may return the to-one embed as an object or a single-element
+    // array depending on relationship detection — normalise to an array.
+    const sg = row.security_groups;
+    const groups: PermGroup[] = Array.isArray(sg) ? sg : sg ? [sg] : [];
+    for (const g of groups) {
+      for (const p of g.security_group_perms ?? []) {
+        perms.add(p.perm_key);
+      }
     }
   }
   return [...perms];
