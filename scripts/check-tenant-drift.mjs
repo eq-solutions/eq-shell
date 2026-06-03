@@ -151,13 +151,52 @@ const FINGERPRINT_SQL = `
         where c.contype = 'f'
           and srcns.nspname = 'app_data'
       ) fk
+    ),
+    'effective_rls', (
+      -- SEMANTIC RLS signature: per table, the EFFECTIVE access control, not the
+      -- policy names/decomposition. Two tenants that express the same isolation
+      -- differently (one ALL policy vs four per-command policies with the same
+      -- gate) produce the SAME signature, so cosmetic decomposition is not drift —
+      -- the same name-independence the FK signature already has. Captures:
+      --   rls=<on/off>  · open=<true if any permissive USING(true) policy exists>
+      --   gates=[distinct normalised tenant-scoped USING/WITH CHECK expressions]
+      -- A genuinely open table (open=true / rls=off) or a different gate IS drift.
+      select coalesce(jsonb_agg(sig order by sig), '[]'::jsonb) from (
+        select t.tablename
+          || ' rls=' || c.relrowsecurity
+          || ' open=' || coalesce(bool_or(p.permissive = 'PERMISSIVE' and btrim(coalesce(p.qual, '')) = 'true'), false)
+          || ' gates=[' || coalesce((
+               -- Distinct SET of tenant-scoped gate expressions across all permissive
+               -- policies on the table — each USING and each WITH CHECK collected
+               -- SEPARATELY (not paired per policy), so one ALL policy and many
+               -- per-command policies carrying the same expression collapse to the
+               -- same set. Decomposition-independent; still expression-sensitive.
+               select string_agg(distinct g, '; ' order by g) from (
+                 select regexp_replace(p2.qual, '\\s+', ' ', 'g') as g
+                 from pg_policies p2
+                 where p2.schemaname = 'app_data' and p2.tablename = t.tablename
+                   and p2.permissive = 'PERMISSIVE' and p2.qual is not null and p2.qual ~ 'tenant_id'
+                 union
+                 select regexp_replace(p2.with_check, '\\s+', ' ', 'g')
+                 from pg_policies p2
+                 where p2.schemaname = 'app_data' and p2.tablename = t.tablename
+                   and p2.permissive = 'PERMISSIVE' and p2.with_check is not null and p2.with_check ~ 'tenant_id'
+               ) gg
+             ), '') || ']' as sig
+        from pg_tables t
+        join pg_class     c on c.relname = t.tablename
+        join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'app_data'
+        left join pg_policies p on p.schemaname = 'app_data' and p.tablename = t.tablename
+        where t.schemaname = 'app_data'
+        group by t.tablename, c.relrowsecurity
+      ) er
     )
   ) as fp;
 `;
 
 async function fingerprint(ref) {
   const rows = await mgmtRows(ref, FINGERPRINT_SQL);
-  return rows?.[0]?.fp ?? { tables: [], columns: [], functions: [], policies: [], foreign_keys: [] };
+  return rows?.[0]?.fp ?? { tables: [], columns: [], functions: [], policies: [], foreign_keys: [], effective_rls: [] };
 }
 
 // ─── load tenants ───────────────────────────────────────────────────────────
@@ -193,7 +232,10 @@ if (!args['anon-only']) {
   const spineTables = await loadSpineTables();
   log(`spine = ${spineTables.size} tables created by the canonical migrations`);
 
-  const CATS = ['tables', 'columns', 'functions', 'policies', 'foreign_keys'];
+  // 'effective_rls' is the SEMANTIC isolation dimension used for spine enforcement;
+  // 'policies' is kept for raw visibility but is informational only (its name/
+  // decomposition differences are cosmetic — see tag() below).
+  const CATS = ['tables', 'columns', 'functions', 'policies', 'foreign_keys', 'effective_rls'];
   const report = {};
   let drift = false;       // any cross-tenant difference (informational umbrella)
   let spineDrift = false;  // a difference that touches a SPINE table (blocking surface)
@@ -211,7 +253,9 @@ if (!args['anon-only']) {
       // Classify each diff by the table it belongs to: spine vs non-spine.
       const tag = (items) => items.map(sig => {
         const tbl = diffTable(cat, sig);
-        const isSpine = tbl != null && spineTables.has(tbl);
+        // Raw 'policies' never gates the spine — its name/decomposition differences
+        // are cosmetic; 'effective_rls' is the semantic isolation signal instead.
+        const isSpine = cat !== 'policies' && tbl != null && spineTables.has(tbl);
         if (isSpine) spineDrift = true;
         return { sig, spine: isSpine };
       });
@@ -659,6 +703,7 @@ function diffTable(cat, sig) {
     case 'columns':      return sig.split('.')[0].trim().toLowerCase();          // "table.col type …"
     case 'policies':     return sig.split('.')[0].trim().toLowerCase();          // "table.policy cmd …"
     case 'foreign_keys': { const m = sig.match(/^app_data\.([a-z0-9_]+)\s*\(/i); return m ? m[1].toLowerCase() : null; }
+    case 'effective_rls': return sig.split(' ')[0].trim().toLowerCase();         // "<table> rls=… open=… gates=[…]"
     default:             return null;                                            // functions: not table-scoped
   }
 }
