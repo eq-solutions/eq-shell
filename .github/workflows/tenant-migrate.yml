@@ -5,19 +5,23 @@
 #
 #   PR to main   → `plan` job: READ-ONLY matrix of what would apply, posted to the
 #                  job summary. Never touches a tenant.
-#   push to main → `apply` job: runs the real runner against every tenant in
+#   dispatch     → `apply` job: runs the real runner against every tenant in
 #                  shell_control.tenant_routing. Gated behind the `production`
 #                  GitHub Environment so it PAUSES for a human approve click
-#                  before any live DDL (honours "never deploy without explicit
-#                  instruction").
-#   manual       → workflow_dispatch also runs the gated apply (e.g. right after
-#                  provisioning a new tenant).
+#                  before any live DDL.
+#   dispatch + reconcile_ledger=true → `reconcile` job: one-time ledger normaliser
+#                  (rename/dedupe/re-checksum app_data._eq_migrations; no schema or
+#                  data change). Same `production` gate.
 #
-# ── ONE-TIME SETUP (cannot be done from code) ────────────────────────────────
-#   GitHub → repo Settings → Environments → New environment: `production`
-#     • Required reviewers: Royce
-#   Until that environment + reviewer exists, the apply job runs UNGATED. The
-#   approval gate IS the protection rule — create it before relying on this.
+# WHY APPLY IS DISPATCH-ONLY (not push-on-merge): every live multi-tenant DDL run
+# is an explicit, deliberate action ("never deploy without explicit instruction"),
+# and it lets the one-time ledger reconcile run BEFORE the first apply without a
+# merge-triggered apply racing it. Merging a migration is therefore inert until a
+# human dispatches the apply.
+#
+# ── ONE-TIME SETUP ───────────────────────────────────────────────────────────
+#   `production` environment with Royce as required reviewer — CREATED 2026-06-03.
+#   The approval gate IS the protection rule; both apply and reconcile inherit it.
 #
 # Secrets (already configured for tenant-drift.yml):
 #   SUPABASE_ACCESS_TOKEN  — Management API token (runs DDL as postgres)
@@ -33,16 +37,17 @@ on:
       - 'supabase/tenant-migrations/**'
       - 'scripts/migrate-tenants.mjs'
       - 'scripts/_mgmt.mjs'
-  push:
-    branches: [main]
-    paths:
-      - 'supabase/tenant-migrations/**'
   workflow_dispatch:
     inputs:
       slug:
         description: 'Limit to a single tenant slug (blank = whole fleet)'
         type: string
         required: false
+      reconcile_ledger:
+        description: 'Run the one-time ledger reconcile instead of apply'
+        type: boolean
+        required: false
+        default: false
 
 # Never let two applies overlap; never cancel an in-flight apply.
 concurrency:
@@ -68,7 +73,7 @@ jobs:
           {
             echo '### Tenant migration plan'
             echo ''
-            echo 'What a real run (push to main) would apply. Read-only — no tenant was touched.'
+            echo 'What a real run (dispatch) would apply. Read-only — no tenant was touched.'
             echo ''
             echo '```'
             cat plan.txt
@@ -78,12 +83,33 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}
 
+  reconcile:
+    name: Reconcile tenant ledgers
+    if: github.event_name == 'workflow_dispatch' && inputs.reconcile_ledger
+    runs-on: ubuntu-latest
+    environment: production   # same human-approval gate as apply
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Reconcile _eq_migrations ledgers
+        run: |
+          SLUG_FLAG=""
+          if [ -n "$INPUT_SLUG" ]; then
+            SLUG_FLAG="--slug=$INPUT_SLUG"
+          fi
+          node scripts/migrate-tenants.mjs --reconcile-ledger $SLUG_FLAG
+        env:
+          INPUT_SLUG: ${{ inputs.slug }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}
+
   apply:
     name: Apply to all tenants
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch' && !inputs.reconcile_ledger
     runs-on: ubuntu-latest
-    # The approval gate. Requires the `production` environment to exist with a
-    # required reviewer (see header). Until then this runs without pausing.
+    # The approval gate — `production` environment with a required reviewer.
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -98,6 +124,6 @@ jobs:
           fi
           node scripts/migrate-tenants.mjs $SLUG_FLAG
         env:
-          INPUT_SLUG: ${{ github.event.inputs.slug }}
+          INPUT_SLUG: ${{ inputs.slug }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}

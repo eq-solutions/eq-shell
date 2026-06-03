@@ -122,10 +122,11 @@ v1.0 = the **union**.
    migration to every tenant in `tenant_routing` via the Management API (no `exec_sql`
    backdoor), checksum-aware, bounded concurrency, exit 2 on any failure. `provision-tenant.mjs`
    delegates to it, so new tenants are born uniform. CI wires it as the apply path
-   (`.github/workflows/tenant-migrate.yml`): PR → read-only `--plan` matrix; push to main →
-   gated apply behind the `production` GitHub Environment (one human approve before live DDL).
-   **One-time setup owed by Royce:** create the `production` environment with himself as a
-   required reviewer, or the apply job runs ungated.
+   (`.github/workflows/tenant-migrate.yml`): PR → read-only `--plan` matrix; **dispatch →
+   gated apply** behind the `production` GitHub Environment (one human approve before live DDL).
+   Apply is **dispatch-only** (not push-on-merge) so every live DDL run is deliberate and the
+   one-time ledger reconcile can run before the first apply. ✅ **`production` environment +
+   required reviewer (Royce) created 2026-06-03.**
 3. ✅ **Drift-guard fingerprint now covers FK + ON DELETE/ON UPDATE**
    (`check-tenant-drift.mjs`, name-independent so `_fk`/`_fkey` naming isn't false
    drift). Validated read-only against both live tenants: zaap (EQ) and ehow (SKS)
@@ -133,9 +134,26 @@ v1.0 = the **union**.
 4. 🟡 **Catch-up migrations authored** (`0032_canonical_union_columns.sql`,
    `0033_fold_intake_rate_limiting.sql`) — additive + idempotent, grounded in the live
    (corrected) deltas. 0033 also folds eq-intake's out-of-band `029` rate-limit infra into
-   the spine so fresh tenants get table **and** RPCs. **Not yet applied** — awaiting a gated
-   runner run (`--plan` → approve). Apply via the runner only.
-5. **Clean the `_eq_migrations` ledger** (dedupe `NNN` vs `NNN.sql`) + fold in 048.
+   the spine so fresh tenants get table **and** RPCs. **Not yet applied** — blocked on Step 5
+   ledger reconcile (below); a raw apply would re-run 24 falsely-pending migrations on SKS and
+   hard-fail at `0023` (bare `CREATE POLICY` on an existing policy). Apply via the runner only.
+5. 🟡 **Ledger reconcile — tooling built, run pending.** Two root causes found 2026-06-03 by
+   reading both live ledgers:
+   - **Naming split** (`NNN` vs `NNN.sql`): the two historical runners recorded different
+     name forms, so canonical files show as falsely pending and duplicate rows accumulated.
+     SKS also still carries 24 rows from the out-of-band eq-intake lineage (`013…048`).
+   - **CRLF/LF checksum nondeterminism**: migrations applied from a Windows checkout recorded
+     CRLF hashes; CI (LF) recomputes different hashes → *phantom* drift (the schema is fine —
+     the guard confirms zaap≡ehow). **Not edited files.**
+   Fix shipped here: (a) `*.sql text eol=lf` in `.gitattributes`; (b) the runner LF-normalises
+   before hashing; (c) **`migrate-tenants.mjs --reconcile-ledger`** — a gated, idempotent,
+   dry-run-able normaliser that renames un-suffixed rows → `.sql`, de-dupes, re-stamps the
+   LF checksum, and drops the legacy eq-intake rows. Touches only `app_data._eq_migrations`.
+   Dry-run verified: ehow → 28 rows reconciled (+5 to apply), zaap → 29 (+4 to apply); both
+   land on the canonical 33. **Run order:** merge → dispatch `reconcile_ledger=true` (approve)
+   → dispatch apply (approve). **Still owed:** fold migration `048` (spine ON-DELETE
+   normalisation) into the lineage so fresh tenants get it — the upgraded guard now fingerprints
+   FK/ON-DELETE, so it can't silently regress meanwhile.
 6. **Generate canonical snapshot v1.0**; flip the guard to a **required/blocking** PR check.
 
 ---
