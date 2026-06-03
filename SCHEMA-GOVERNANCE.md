@@ -88,17 +88,24 @@ Bounded — not a 55-table rewrite.
 
 ### Column level — SETTLED (all legit, purely additive, zero data loss)
 The sks↔internal differences are all real features that just didn't propagate. Canonical
-v1.0 = the **union**:
+v1.0 = the **union**.
 
-| Tenant gains | Columns / table | What it is |
+> ⚠️ **Direction corrected 2026-06-03** by reading both live tenants directly: the original
+> memo had every delta BACKWARDS. The verified picture is below. (Lesson: verify deltas
+> against live DBs, never author from the memo.)
+
+| Who HAS it / who LACKS it | Columns / table | What it is |
 |---|---|---|
-| **eq-internal** | `licences.cards_credential_id`, `licences.confirmed_by`, `licences.confirmed_at` | EQ Cards compliance link (Rung 3) |
-| **eq-internal** | `staff.cards_worker_id` | Cards worker link |
-| **eq-internal** | `prestart_checks.status`, `toolbox_talks.status` (+ enum types) | draft/submitted state |
-| **sks** | `eq_intake_rate_limits` table | intake-API rate limiting |
+| **SKS has · EQ lacks** | `licences.cards_credential_id`, `licences.confirmed_at`, `licences.confirmed_by` | EQ Cards compliance link (Rung 3) |
+| **SKS has · EQ lacks** | `staff.cards_worker_id` | Cards worker link |
+| **SKS has · EQ lacks** | `prestart_checks.status`, `toolbox_talks.status` (+ `public.safety_record_status` enum = `draft/submitted/approved/rejected`) | draft/submitted state |
+| **EQ has · SKS lacks** | `eq_intake_rate_limits` table **(+ the two RPCs it needs)** | intake-API rate limiting |
 
-> Open question for Royce: confirm `eq_intake_rate_limits` belongs on every tenant
-> (the only "infra, not feature" item; the other six are clearly keepers).
+> **Resolved:** `eq_intake_rate_limits` belongs on every tenant. It is live intake infra
+> (the api-intake edge function calls `eq_check/eq_increment_intake_rate_limit` around every
+> commit), it is additive + zero-data (empty even where present), and SKS already carries the
+> two RPCs but not the table — so adding it FIXES a latent break rather than propagating a
+> nicety. Latent, not active: the public api-intake endpoint has 0 calls on any tenant today.
 
 ### Plumbing level — the REAL cleanup (needs judgment)
 - Duplicate `_eq_migrations` ledger rows (`NNN` *and* `NNN.sql` — two runners).
@@ -109,12 +116,44 @@ v1.0 = the **union**:
 ---
 
 ## Next steps (in order)
-1. **Royce eyeball:** does `eq_intake_rate_limits` belong on all tenants? (last open column question)
-2. **Verify/finish the fleet-runner** in eq-shell (applies to every tenant in `tenant_routing`;
-   per-tenant txn; halt-on-failure; doubles as new-tenant provisioning).
-3. **Upgrade the drift-guard fingerprint** to include FK + ON DELETE.
-4. **Write additive catch-up migrations** for the deltas above; apply via the runner only.
-5. **Clean the `_eq_migrations` ledger** (dedupe `NNN` vs `NNN.sql`) + fold in 048.
+1. ✅ **Resolved:** `eq_intake_rate_limits` belongs on every tenant (see the column table
+   above — live intake infra; SKS missing only the table; latent, not active).
+2. ✅ **Fleet-runner is the One Pipe.** `scripts/migrate-tenants.mjs` applies every pending
+   migration to every tenant in `tenant_routing` via the Management API (no `exec_sql`
+   backdoor), checksum-aware, bounded concurrency, exit 2 on any failure. `provision-tenant.mjs`
+   delegates to it, so new tenants are born uniform. CI wires it as the apply path
+   (`.github/workflows/tenant-migrate.yml`): PR → read-only `--plan` matrix; **dispatch →
+   gated apply** behind the `production` GitHub Environment (one human approve before live DDL).
+   Apply is **dispatch-only** (not push-on-merge) so every live DDL run is deliberate and the
+   one-time ledger reconcile can run before the first apply. ✅ **`production` environment +
+   required reviewer (Royce) created 2026-06-03.**
+3. ✅ **Drift-guard fingerprint now covers FK + ON DELETE/ON UPDATE**
+   (`check-tenant-drift.mjs`, name-independent so `_fk`/`_fkey` naming isn't false
+   drift). Validated read-only against both live tenants: zaap (EQ) and ehow (SKS)
+   return an identical FK signature hash — already aligned, now held in place.
+4. 🟡 **Catch-up migrations authored** (`0032_canonical_union_columns.sql`,
+   `0033_fold_intake_rate_limiting.sql`) — additive + idempotent, grounded in the live
+   (corrected) deltas. 0033 also folds eq-intake's out-of-band `029` rate-limit infra into
+   the spine so fresh tenants get table **and** RPCs. **Not yet applied** — blocked on Step 5
+   ledger reconcile (below); a raw apply would re-run 24 falsely-pending migrations on SKS and
+   hard-fail at `0023` (bare `CREATE POLICY` on an existing policy). Apply via the runner only.
+5. 🟡 **Ledger reconcile — tooling built, run pending.** Two root causes found 2026-06-03 by
+   reading both live ledgers:
+   - **Naming split** (`NNN` vs `NNN.sql`): the two historical runners recorded different
+     name forms, so canonical files show as falsely pending and duplicate rows accumulated.
+     SKS also still carries 24 rows from the out-of-band eq-intake lineage (`013…048`).
+   - **CRLF/LF checksum nondeterminism**: migrations applied from a Windows checkout recorded
+     CRLF hashes; CI (LF) recomputes different hashes → *phantom* drift (the schema is fine —
+     the guard confirms zaap≡ehow). **Not edited files.**
+   Fix shipped here: (a) `*.sql text eol=lf` in `.gitattributes`; (b) the runner LF-normalises
+   before hashing; (c) **`migrate-tenants.mjs --reconcile-ledger`** — a gated, idempotent,
+   dry-run-able normaliser that renames un-suffixed rows → `.sql`, de-dupes, re-stamps the
+   LF checksum, and drops the legacy eq-intake rows. Touches only `app_data._eq_migrations`.
+   Dry-run verified: ehow → 28 rows reconciled (+5 to apply), zaap → 29 (+4 to apply); both
+   land on the canonical 33. **Run order:** merge → dispatch `reconcile_ledger=true` (approve)
+   → dispatch apply (approve). **Still owed:** fold migration `048` (spine ON-DELETE
+   normalisation) into the lineage so fresh tenants get it — the upgraded guard now fingerprints
+   FK/ON-DELETE, so it can't silently regress meanwhile.
 6. **Generate canonical snapshot v1.0**; flip the guard to a **required/blocking** PR check.
 
 ---

@@ -1,3 +1,10 @@
 # Generated token file — always LF so regeneration produces a stable diff
 # and the committed copy never shows CRLF churn against the build output.
 public/eq-tokens.css text eol=lf
+
+# Tenant migrations are content-hashed by the One Pipe runner. Force LF on every
+# checkout (Windows included) so a migration applied locally and one applied in
+# CI produce the SAME checksum — otherwise CRLF vs LF yields phantom drift in
+# app_data._eq_migrations. The runner also LF-normalises before hashing as a
+# belt-and-suspenders, but pinning EOL here keeps the working tree honest too.
+supabase/tenant-migrations/*.sql text eol=lf
