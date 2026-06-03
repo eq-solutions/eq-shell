@@ -159,29 +159,46 @@ const INTENTIONAL_ANON_READS = {
   ]),
 };
 
-// Returns rows: { grantee, table_schema, table_name, privileges, scoped_policy_count }
-// scoped_policy_count = number of RLS policies on this table with a non-trivial
-// USING clause (not just the bare literal `true`). A table with anon/authenticated
-// grants and scoped_policy_count = 0 is flagged.
+// Returns rows: { grantee, table_schema, table_name, privileges, rls_enabled, open_policy_count }
+//
+// A grant to anon/authenticated is only *reachable* — and therefore a real
+// exposure — if either:
+//   • RLS is disabled on the table (grants apply directly), or
+//   • a PERMISSIVE policy applies to the grantee (or `public`) whose gating
+//     expression is the bare literal `true`, i.e. unconditional.
+// Predicates that reference auth.uid()/auth.jwt() evaluate to NULL → deny for
+// an anon request (no JWT), so an identity-gated policy is NOT reachable and
+// must not be flagged. open_policy_count counts unconditional policies on the
+// USING side (SELECT/UPDATE/DELETE/ALL) and the WITH CHECK side (INSERT/UPDATE/
+// ALL). Supabase-managed platform schemas are excluded.
 const ANON_GRANT_SQL = `
   SELECT
     rtg.grantee,
     rtg.table_schema,
     rtg.table_name,
-    array_agg(DISTINCT rtg.privilege_type ORDER BY rtg.privilege_type) AS privileges,
+    array_to_string(array_agg(DISTINCT rtg.privilege_type ORDER BY rtg.privilege_type), ',') AS privileges,
+    bool_or(c.relrowsecurity) AS rls_enabled,
     (
       SELECT count(*)::int
       FROM pg_policies p
       WHERE p.schemaname = rtg.table_schema
         AND p.tablename  = rtg.table_name
-        AND p.qual IS NOT NULL
-        AND trim(p.qual) NOT IN ('true', '')
-    ) AS scoped_policy_count
+        AND p.permissive = 'PERMISSIVE'
+        AND (p.roles @> ARRAY[rtg.grantee]::name[] OR p.roles @> ARRAY['public']::name[])
+        AND (
+          (p.cmd IN ('SELECT','UPDATE','DELETE','ALL') AND trim(coalesce(p.qual, '')) = 'true')
+          OR (p.cmd IN ('INSERT','UPDATE','ALL') AND trim(coalesce(p.with_check, '')) = 'true')
+        )
+    ) AS open_policy_count
   FROM information_schema.role_table_grants rtg
+  JOIN pg_namespace n ON n.nspname = rtg.table_schema
+  JOIN pg_class c     ON c.relname = rtg.table_name AND c.relnamespace = n.oid
   WHERE rtg.grantee IN ('anon', 'authenticated')
     AND rtg.table_schema NOT IN (
-      'pg_catalog', 'information_schema', 'pg_toast',
-      'pg_temp_1', 'pg_toast_temp_1'
+      'pg_catalog', 'information_schema', 'pg_toast', 'pg_temp_1', 'pg_toast_temp_1',
+      'realtime', 'storage', 'vault', 'graphql', 'graphql_public', 'pgsodium',
+      'pgbouncer', 'cron', 'net', 'supabase_functions', 'supabase_migrations',
+      'extensions', '_realtime', '_analytics'
     )
   GROUP BY rtg.grantee, rtg.table_schema, rtg.table_name
   HAVING count(*) > 0
@@ -202,15 +219,18 @@ async function checkAnonGrants(ref, label) {
 
   for (const row of rows) {
     const key = `${row.table_schema}.${row.table_name}`;
+    // Reachable by this grantee = RLS off (grants apply directly) OR an
+    // unconditional permissive policy exists. Identity-gated policies are not
+    // reachable by an anon request, so they are intentionally not flagged.
+    const reachable = row.rls_enabled === false || row.open_policy_count > 0;
+    if (!reachable) continue;
+    row.reason = row.rls_enabled === false ? 'rls-disabled' : 'open-policy';
     if (exclusions.has(key)) {
-      // Only log intentional if it's actually safe (scoped_policy_count may still be 0
-      // for deliberately open bootstrap tables — that's acceptable and documented).
+      // Deliberate, documented bootstrap reads (login page org lookup, etc.).
       intentional.push({ ...row, key });
       continue;
     }
-    if (row.scoped_policy_count === 0) {
-      violations.push({ ...row, key });
-    }
+    violations.push({ ...row, key });
   }
 
   return { ref, label, violations, intentional };
@@ -418,7 +438,7 @@ if (args.json) {
       } else {
         console.log(`  ✗ ${r.label}: ${r.violations.length} table${r.violations.length > 1 ? 's' : ''} with unconstrained anon access`);
         for (const v of r.violations) {
-          console.log(`      ${v.key}  grantee=${v.grantee}  privs=${v.privileges.join(',')}  scoped_policies=0`);
+          console.log(`      ${v.key}  grantee=${v.grantee}  privs=${v.privileges}  reason=${v.reason}`);
         }
       }
     }
