@@ -1,0 +1,103 @@
+# Tenant migrations — the "One Pipe" apply path (see SCHEMA-GOVERNANCE.md).
+#
+# This is the ONLY sanctioned way tenant schema reaches a live tenant DB. No
+# hand-applied single-tenant SQL, ever (the rule that kills drift by construction).
+#
+#   PR to main   → `plan` job: READ-ONLY matrix of what would apply, posted to the
+#                  job summary. Never touches a tenant.
+#   push to main → `apply` job: runs the real runner against every tenant in
+#                  shell_control.tenant_routing. Gated behind the `production`
+#                  GitHub Environment so it PAUSES for a human approve click
+#                  before any live DDL (honours "never deploy without explicit
+#                  instruction").
+#   manual       → workflow_dispatch also runs the gated apply (e.g. right after
+#                  provisioning a new tenant).
+#
+# ── ONE-TIME SETUP (cannot be done from code) ────────────────────────────────
+#   GitHub → repo Settings → Environments → New environment: `production`
+#     • Required reviewers: Royce
+#   Until that environment + reviewer exists, the apply job runs UNGATED. The
+#   approval gate IS the protection rule — create it before relying on this.
+#
+# Secrets (already configured for tenant-drift.yml):
+#   SUPABASE_ACCESS_TOKEN  — Management API token (runs DDL as postgres)
+#   CONTROL_PROJECT_REF    — control-plane ref (jvkn…); the runner reads
+#                            tenant_routing from here to find every tenant.
+
+name: Tenant migrations (One Pipe)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/tenant-migrations/**'
+      - 'scripts/migrate-tenants.mjs'
+      - 'scripts/_mgmt.mjs'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/tenant-migrations/**'
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: 'Limit to a single tenant slug (blank = whole fleet)'
+        type: string
+        required: false
+
+# Never let two applies overlap; never cancel an in-flight apply.
+concurrency:
+  group: tenant-migrate-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan (read-only)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Compute apply plan
+        run: |
+          node scripts/migrate-tenants.mjs --plan | tee plan.txt
+          {
+            echo '### Tenant migration plan'
+            echo ''
+            echo 'What a real run (push to main) would apply. Read-only — no tenant was touched.'
+            echo ''
+            echo '```'
+            cat plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}
+
+  apply:
+    name: Apply to all tenants
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # The approval gate. Requires the `production` environment to exist with a
+    # required reviewer (see header). Until then this runs without pausing.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Apply pending migrations
+        run: |
+          SLUG_FLAG=""
+          if [ -n "$INPUT_SLUG" ]; then
+            SLUG_FLAG="--slug=$INPUT_SLUG"
+          fi
+          node scripts/migrate-tenants.mjs $SLUG_FLAG
+        env:
+          INPUT_SLUG: ${{ github.event.inputs.slug }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}

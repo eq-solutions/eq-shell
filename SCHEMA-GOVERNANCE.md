@@ -110,8 +110,14 @@ v1.0 = the **union**:
 
 ## Next steps (in order)
 1. **Royce eyeball:** does `eq_intake_rate_limits` belong on all tenants? (last open column question)
-2. **Verify/finish the fleet-runner** in eq-shell (applies to every tenant in `tenant_routing`;
-   per-tenant txn; halt-on-failure; doubles as new-tenant provisioning).
+2. ✅ **Fleet-runner is the One Pipe.** `scripts/migrate-tenants.mjs` applies every pending
+   migration to every tenant in `tenant_routing` via the Management API (no `exec_sql`
+   backdoor), checksum-aware, bounded concurrency, exit 2 on any failure. `provision-tenant.mjs`
+   delegates to it, so new tenants are born uniform. CI wires it as the apply path
+   (`.github/workflows/tenant-migrate.yml`): PR → read-only `--plan` matrix; push to main →
+   gated apply behind the `production` GitHub Environment (one human approve before live DDL).
+   **One-time setup owed by Royce:** create the `production` environment with himself as a
+   required reviewer, or the apply job runs ungated.
 3. **Upgrade the drift-guard fingerprint** to include FK + ON DELETE.
 4. **Write additive catch-up migrations** for the deltas above; apply via the runner only.
 5. **Clean the `_eq_migrations` ledger** (dedupe `NNN` vs `NNN.sql`) + fold in 048.
