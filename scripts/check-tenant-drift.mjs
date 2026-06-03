@@ -4,8 +4,12 @@
 // Three independent checks in one gate:
 //
 //   1. CROSS-TENANT DRIFT  — fingerprints app_data schema (tables, columns,
-//      functions, policies) across every active tenant and reports where a
-//      tenant differs from the reference. INFORMATIONAL by default: the EQ and
+//      functions, policies, foreign keys + ON DELETE/ON UPDATE) across every
+//      active tenant and reports where a tenant differs from the reference. The
+//      FK signature is name-independent (source/target table + ordered columns +
+//      referential action, NOT the constraint name) so the _fk/_fkey naming
+//      inconsistency is not false drift, but an ON DELETE change (e.g. migration
+//      048) is caught. INFORMATIONAL by default: the EQ and
 //      SKS tenants diverge by design (different apps, independent migration
 //      lineages), so tenant-vs-tenant equality is not a pass/fail gate. Pass
 //      --strict-drift to make drift fail (e.g. comparing same-app tenants).
@@ -103,13 +107,47 @@ const FINGERPRINT_SQL = `
                || ' USING ' || coalesce(qual, '-') as sig
         from pg_policies where schemaname = 'app_data'
       ) pol
+    ),
+    'foreign_keys', (
+      -- NAME-INDEPENDENT FK signature: source table + ordered source columns ->
+      -- referenced table + ordered referenced columns + ON DELETE/ON UPDATE
+      -- action. Deliberately excludes the constraint NAME so the known _fk vs
+      -- _fkey naming inconsistency does not register as drift — only a real
+      -- structural or referential-action difference does. This is the gap that
+      -- let migration 048 (spine ON DELETE normalisation) slip past the guard.
+      select coalesce(jsonb_agg(sig order by sig), '[]'::jsonb) from (
+        select
+          srcns.nspname || '.' || srcrel.relname || ' ('
+          || (select string_agg(a.attname, ',' order by k.ord)
+                from unnest(c.conkey) with ordinality as k(attnum, ord)
+                join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum)
+          || ') -> '
+          || tgtns.nspname || '.' || tgtrel.relname || ' ('
+          || (select string_agg(a.attname, ',' order by k.ord)
+                from unnest(c.confkey) with ordinality as k(attnum, ord)
+                join pg_attribute a on a.attrelid = c.confrelid and a.attnum = k.attnum)
+          || ')'
+          || ' ON DELETE ' || (case c.confdeltype
+                when 'a' then 'NO ACTION' when 'r' then 'RESTRICT' when 'c' then 'CASCADE'
+                when 'n' then 'SET NULL' when 'd' then 'SET DEFAULT' else c.confdeltype::text end)
+          || ' ON UPDATE ' || (case c.confupdtype
+                when 'a' then 'NO ACTION' when 'r' then 'RESTRICT' when 'c' then 'CASCADE'
+                when 'n' then 'SET NULL' when 'd' then 'SET DEFAULT' else c.confupdtype::text end) as sig
+        from pg_constraint c
+        join pg_class     srcrel on srcrel.oid = c.conrelid
+        join pg_namespace srcns  on srcns.oid  = srcrel.relnamespace
+        join pg_class     tgtrel on tgtrel.oid = c.confrelid
+        join pg_namespace tgtns  on tgtns.oid  = tgtrel.relnamespace
+        where c.contype = 'f'
+          and srcns.nspname = 'app_data'
+      ) fk
     )
   ) as fp;
 `;
 
 async function fingerprint(ref) {
   const rows = await mgmtRows(ref, FINGERPRINT_SQL);
-  return rows?.[0]?.fp ?? { tables: [], columns: [], functions: [], policies: [] };
+  return rows?.[0]?.fp ?? { tables: [], columns: [], functions: [], policies: [], foreign_keys: [] };
 }
 
 // ─── load tenants ───────────────────────────────────────────────────────────
@@ -139,7 +177,7 @@ if (!args['anon-only']) {
   const refSlug = args.reference ?? tenants[0].slug;
   if (!fps[refSlug]) fail(1, `reference '${refSlug}' not among ${tenants.map(t => t.slug).join(', ')}`);
 
-  const CATS = ['tables', 'columns', 'functions', 'policies'];
+  const CATS = ['tables', 'columns', 'functions', 'policies', 'foreign_keys'];
   const report = {};
   let drift = false;
 
