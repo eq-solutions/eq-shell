@@ -151,10 +151,33 @@ v1.0 = the **union**.
    LF checksum, and drops the legacy eq-intake rows. Touches only `app_data._eq_migrations`.
    Dry-run verified: ehow → 28 rows reconciled (+5 to apply), zaap → 29 (+4 to apply); both
    land on the canonical 33. **Run order:** merge → dispatch `reconcile_ledger=true` (approve)
-   → dispatch apply (approve). **Still owed:** fold migration `048` (spine ON-DELETE
-   normalisation) into the lineage so fresh tenants get it — the upgraded guard now fingerprints
-   FK/ON-DELETE, so it can't silently regress meanwhile.
-6. **Generate canonical snapshot v1.0**; flip the guard to a **required/blocking** PR check.
+   → dispatch apply (approve). ✅ **Reconcile + apply DONE 2026-06-03** — both tenants at the
+   canonical 33; `0033` created the previously-missing `eq_intake_rate_limits` table on SKS.
+   ✅ **`048` folded** into the lineage as `0034_fold_048_spine_ondelete.sql` (RESTRICT on
+   `licences.staff_id` + `contacts.customer_id`; verified both tenants already carry it, so it's
+   a no-op there and exists for fresh tenants).
+6. 🟡 **Scope-aware guard built; blocking flip GATED on a now-precise worklist.**
+   `check-tenant-drift.mjs` gained `--strict-spine`: the **spine** (the 56 tables CREATEd by the
+   canonical migrations, derived from the files) is the enforced surface; module/legacy layers
+   (`field_*`, the SKS labour/quotes tables) are reported informational. Running it surfaced the
+   exact gap between today and an enforceable spine — **175 spine-scoped diffs**, of which:
+   - **~165 are RLS policies** the EQ tenant LACKS that SKS has (`tenant_isolation` on nearly
+     every spine table). This is the **EQ Field anon-model security debt** (see `KNOWN_LEGACY_ANON`
+     / eq-solves-field SECURITY-REMEDIATION) viewed cross-tenant — EQ Field runs as `anon` with
+     `USING(true)` instead of per-identity RLS. Closing it = the EQ Field RLS remediation.
+   - **5 are real column diffs**: `briefing_actions/briefing_cache/gm_report_periods.tenant_id`
+     are `text` on core but `uuid` on SKS (type mismatch); `contacts.customer_id` and
+     `licences.licence_number` differ in nullability.
+   **The guard ships in informational mode now.** Do NOT flip `--strict-spine` to a required CI
+   gate until: (a) the 5 spine column diffs are reconciled (pick canonical type/nullability,
+   forward-migrate), and (b) the EQ Field RLS remediation lands so core's spine tables carry the
+   same tenant-isolation policies. Then flip to blocking and add the declarative snapshot.
+
+   **North star (Royce, 2026-06-03):** EQ Field is *meant* to run on the SKS tenant. So the
+   `field_*` layer is a **provisioning gap to close**, not by-design divergence: perfect EQ Field's
+   schema (resolve its own half-migration — old un-prefixed ↔ new `field_*`, live data on both),
+   bring it into the spine/module lineage, roll it to the SKS tenant via the One Pipe, then cut
+   SKS live. The guard's module-layer reporting becomes the checklist for that rollout.
 
 ---
 
