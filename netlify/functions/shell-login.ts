@@ -32,6 +32,7 @@ import { signSessionToken, signTenantSelectionToken, signTotpChallengeToken, has
 import type { TenantConfig } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
+import { totpEnrollmentDue } from './_shared/totp.js';
 import { withSentry } from './_shared/sentry.js';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -126,7 +127,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Supabase JWT both carry them.
   const { data: user, error: userErr } = await sb
     .from('users')
-    .select('id, email, name, tenant_id, role, is_platform_admin, active, pin_hash, last_login_at, last_active_tenant_id, totp_secret, totp_enrolled_at')
+    .select('id, email, name, tenant_id, role, is_platform_admin, active, pin_hash, last_login_at, last_active_tenant_id, totp_secret, totp_enrolled_at, created_at')
     .eq('email', email)
     .eq('active', true)
     .maybeSingle<CanonicalUser>();
@@ -324,6 +325,17 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const userSafeWithActiveRole = { ...userSafe, role: activeRole, tenant_id: tenant.id };
 
+  // Forced-enrolment signal: managers/supervisors/platform-admins past
+  // their grace runway must set up a second sign-in step. The shell
+  // routes them to /settings/2fa. (User has no TOTP here — enrolled
+  // users returned early above via the challenge branch.)
+  const requires_totp_enrollment = totpEnrollmentDue({
+    role: activeRole,
+    isPlatformAdmin: user.is_platform_admin,
+    totpEnrolledAt: user.totp_enrolled_at,
+    createdAt: user.created_at,
+  });
+
   return jsonResponse(
     200,
     {
@@ -334,6 +346,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       config,
       memberships: await getEnrichedMemberships(user.id).catch(() => memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role }))),
       supabase_jwt: supabaseJwt,
+      requires_totp_enrollment,
     },
     { 'Set-Cookie': cookie }
   );
