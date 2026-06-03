@@ -6,6 +6,44 @@
 
 import { createHmac, randomBytes } from 'node:crypto';
 
+// ── Enrolment policy ──────────────────────────────────────────────────
+// Single source of truth for "must this user set up a second sign-in
+// step now?", shared by shell-login, select-tenant and
+// verify-shell-session so the three can never disagree.
+
+/** Roles for which the second sign-in step is mandatory once the grace
+ *  window passes. Field / apprentice / labour-hire are never forced —
+ *  we don't block site staff at a login prompt. */
+const TOTP_ENFORCED_ROLES = new Set<string>(['manager', 'supervisor']);
+
+/** Grace runway before enrolment is forced, measured from account
+ *  creation (= first sign-in for invited users). Per the SKS onboarding
+ *  decision: 14 days, per-user. */
+export const TOTP_GRACE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * Whether this user must enrol a second sign-in step (TOTP) right now.
+ * True when they hold an access-bearing role (manager/supervisor) or are
+ * a platform admin, have NOT yet enrolled, and their grace runway from
+ * `createdAt` has elapsed.
+ *
+ * Fail-OPEN on missing/invalid `createdAt`: a data gap must never lock a
+ * user out — better to under-enforce than to wedge someone at a gate.
+ */
+export function totpEnrollmentDue(opts: {
+  role: string;
+  isPlatformAdmin: boolean;
+  totpEnrolledAt: string | null;
+  createdAt: string | null;
+}): boolean {
+  if (opts.totpEnrolledAt) return false;
+  if (!TOTP_ENFORCED_ROLES.has(opts.role) && !opts.isPlatformAdmin) return false;
+  if (!opts.createdAt) return false;
+  const created = new Date(opts.createdAt).getTime();
+  if (Number.isNaN(created)) return false;
+  return Date.now() - created > TOTP_GRACE_MS;
+}
+
 // RFC 4648 §6 base32 alphabet (uppercase, no padding variant here).
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 

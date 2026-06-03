@@ -17,6 +17,7 @@ import {
 import type { TenantConfig } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
+import { totpEnrollmentDue } from './_shared/totp.js';
 import { withSentry } from './_shared/sentry.js';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -65,7 +66,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const { data: user } = await sb
     .from('users')
-    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at, last_active_tenant_id')
+    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at, last_active_tenant_id, totp_enrolled_at, created_at')
     .eq('id', userId)
     .eq('active', true)
     .maybeSingle<Omit<CanonicalUser, 'pin_hash' | 'phone'>>();
@@ -158,6 +159,13 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     last_login_at: user.last_login_at,
   };
 
+  const requires_totp_enrollment = totpEnrollmentDue({
+    role: chosen.role,
+    isPlatformAdmin: user.is_platform_admin,
+    totpEnrolledAt: user.totp_enrolled_at,
+    createdAt: user.created_at,
+  });
+
   return jsonResponse(
     200,
     {
@@ -168,6 +176,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       config,
       memberships: await getEnrichedMemberships(user.id).catch(() => memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role }))),
       supabase_jwt: supabaseJwt,
+      requires_totp_enrollment,
     },
     { 'Set-Cookie': cookie },
   );

@@ -14,6 +14,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
+import { useSession } from '../session';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
@@ -32,6 +33,7 @@ function qrSrc(otpauthUri: string): string {
 
 export default function EnrollTotp() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
+  const { refresh } = useSession();
 
   const [step, setStep] = useState<Step>('idle');
   const [enrollData, setEnrollData] = useState<EnrollData | null>(null);
@@ -88,6 +90,9 @@ export default function EnrollTotp() {
         setBusy(false);
         return;
       }
+      // Re-hydrate the session so a forced-enrolment gate (requires_totp_enrollment)
+      // clears immediately — otherwise "Back to hub" would bounce straight back here.
+      await refresh();
       setStep('done');
     } catch {
       setErr('Network error — check your connection and try again.');

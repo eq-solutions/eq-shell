@@ -77,6 +77,7 @@ export interface CanonicalUser {
   last_active_tenant_id: string | null;
   totp_secret: string | null;
   totp_enrolled_at: string | null;
+  created_at: string | null;
 }
 
 export interface UserTenantMembership {
