@@ -4,9 +4,11 @@
 // Three independent checks in one gate:
 //
 //   1. CROSS-TENANT DRIFT  — fingerprints app_data schema (tables, columns,
-//      functions, policies) across every active tenant and fails if any tenant
-//      differs from the reference. Catches structural drift AND security
-//      regressions (anon-exec fns, USING(true) policies, user_metadata RLS).
+//      functions, policies) across every active tenant and reports where a
+//      tenant differs from the reference. INFORMATIONAL by default: the EQ and
+//      SKS tenants diverge by design (different apps, independent migration
+//      lineages), so tenant-vs-tenant equality is not a pass/fail gate. Pass
+//      --strict-drift to make drift fail (e.g. comparing same-app tenants).
 //
 //   2. ANON-GRANT INVARIANT — scans all three canonical Supabase projects for
 //      tables reachable by the anon or authenticated role with no caller-scoped
@@ -26,6 +28,7 @@
 //   node scripts/check-tenant-drift.mjs --reference=core # pin drift reference
 //   node scripts/check-tenant-drift.mjs --anon-only      # skip cross-tenant drift
 //   node scripts/check-tenant-drift.mjs --no-anon        # skip anon-grant check
+//   node scripts/check-tenant-drift.mjs --strict-drift   # make cross-tenant drift fail
 //   node scripts/check-tenant-drift.mjs --json           # machine-readable output
 //
 // Required env:
@@ -34,7 +37,11 @@
 //   CANONICAL_INTERNAL_PROJECT_REF   EQ internal tenant ref (zaapmfdkgedqupfjtchl)
 //   SKS_CANONICAL_PROJECT_REF        SKS tenant ref (ehowgjardagevnrluult)
 //
-// Exit codes: 0 = all clear, 1 = config error, 2 = drift or violation detected.
+// Exit codes: 0 = all clear, 1 = config error, 2 = failure detected.
+// What fails the build (exit 2): a NEW anon-grant violation (not intentional/
+// known-legacy), or a migration-identity query error. Cross-tenant drift and
+// migration gaps/out-of-band are informational unless --strict-drift /
+// --strict-identity are passed.
 
 import { parseArgs } from 'node:util';
 import { readdir } from 'node:fs/promises';
@@ -47,6 +54,14 @@ const { values: args } = parseArgs({ options: {
   json:       { type: 'boolean', default: false },
   'anon-only':{ type: 'boolean', default: false },
   'no-anon':  { type: 'boolean', default: false },
+  // Cross-tenant structural drift is INFORMATIONAL by default: the EQ and SKS
+  // tenants diverge by design (different apps, independent migration lineages),
+  // so tenant-vs-tenant equality is not a meaningful pass/fail gate. Pass
+  // --strict-drift to make drift fail the build (e.g. comparing same-app tenants).
+  'strict-drift': { type: 'boolean', default: false },
+  // Migration-identity gaps / out-of-band are likewise informational by default
+  // (divergent lineages). --strict-identity makes them fail. Query errors always fail.
+  'strict-identity': { type: 'boolean', default: false },
 }});
 
 requireAccessToken();
@@ -149,13 +164,43 @@ if (!args['anon-only']) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Tables that intentionally allow anon reads for pre-auth bootstrap (login page,
-// org lookup, schema registry). Only on the control plane (jvkn). Do NOT add
-// entries here for data tables — bootstrap reads belong in service_role functions.
+// org lookup, schema registry). Low-sensitivity, deliberate, permanent. Do NOT
+// add data tables here — bootstrap reads belong in service_role functions.
 const INTENTIONAL_ANON_READS = {
-  jvknxcmbtrfnxfrwfimn: new Set([
+  jvknxcmbtrfnxfrwfimn: new Set([          // control plane
     'public.organisations',
     'public.module_entitlements',
     'shell_control.eq_schema_registry',
+  ]),
+  ehowgjardagevnrluult: new Set([          // SKS tenant — same schema-version discovery read
+    'shell_control.eq_schema_registry',
+  ]),
+};
+
+// KNOWN-LEGACY anon exposure — accepted as TRACKED DEBT, not approval to keep.
+// zaap (eq-canonical-internal) carries EQ Field's pre-canonical access model:
+// Field runs purely as the anon role (PIN-gated client-side, no Supabase Auth /
+// auth.uid()), so these public.* tables have USING(true) anon policies and most
+// are anon-writable. Confirmed 2026-06-03 that revoking them breaks EQ Field
+// (eq / demo-trades / melbourne tenants) until its read/write path moves behind
+// an authenticated identity (server-side proxy or per-user JWT + rewritten RLS).
+// See eq-solves-field SECURITY-REMEDIATION-HANDOFF.md (finding #4) / SKS-CUTOVER.
+// This baseline keeps the debt VISIBLE while letting the gate FAIL on any anon-
+// open table that is NOT already listed here (i.e. new regressions still block).
+const KNOWN_LEGACY_ANON = {
+  zaapmfdkgedqupfjtchl: new Set([
+    'public.app_config', 'public.apprentice_journal', 'public.apprentice_profiles',
+    'public.audit_log', 'public.buddy_checkins', 'public.checkins',
+    'public.competencies', 'public.engagement_log', 'public.feedback_entries',
+    'public.feedback_requests', 'public.field_customers', 'public.field_waitlist',
+    'public.job_numbers', 'public.leave_balances', 'public.leave_requests',
+    'public.managers', 'public.organisations', 'public.people', 'public.prestarts',
+    'public.project_targets', 'public.projects', 'public.qualifications',
+    'public.quarterly_reviews', 'public.rate_limits', 'public.regions',
+    'public.roster_presence', 'public.rotations', 'public.schedule',
+    'public.site_diaries', 'public.sites', 'public.skills_ratings',
+    'public.staff_availability', 'public.timesheet_locks', 'public.timesheets',
+    'public.toolbox_talks', 'public.unavailability',
   ]),
 };
 
@@ -210,12 +255,14 @@ async function checkAnonGrants(ref, label) {
   try {
     rows = await mgmtRows(ref, ANON_GRANT_SQL);
   } catch (e) {
-    return { ref, label, error: e.message, violations: [], intentional: [] };
+    return { ref, label, error: e.message, violations: [], intentional: [], knownLegacy: [] };
   }
 
   const exclusions = INTENTIONAL_ANON_READS[ref] ?? new Set();
+  const legacy     = KNOWN_LEGACY_ANON[ref] ?? new Set();
   const violations = [];
   const intentional = [];
+  const knownLegacy = [];
 
   for (const row of rows) {
     const key = `${row.table_schema}.${row.table_name}`;
@@ -225,6 +272,11 @@ async function checkAnonGrants(ref, label) {
     const reachable = row.rls_enabled === false || row.open_policy_count > 0;
     if (!reachable) continue;
     row.reason = row.rls_enabled === false ? 'rls-disabled' : 'open-policy';
+    if (legacy.has(key)) {
+      // Tracked legacy debt — surfaced but does not fail the gate.
+      knownLegacy.push({ ...row, key });
+      continue;
+    }
     if (exclusions.has(key)) {
       // Deliberate, documented bootstrap reads (login page org lookup, etc.).
       intentional.push({ ...row, key });
@@ -233,7 +285,7 @@ async function checkAnonGrants(ref, label) {
     violations.push({ ...row, key });
   }
 
-  return { ref, label, violations, intentional };
+  return { ref, label, violations, intentional, knownLegacy };
 }
 
 const CANONICAL_PROJECTS = [
@@ -336,7 +388,7 @@ async function checkMigrationIdentity() {
     let appliedRows;
     try {
       appliedRows = await mgmtRows(tenant.ref, `
-        SELECT name FROM _eq_migrations ORDER BY name;
+        SELECT name FROM app_data._eq_migrations ORDER BY name;
       `);
     } catch (e) {
       tenantResults.push({ ...tenant, error: e.message, gaps: [], outOfBand: [] });
@@ -377,11 +429,20 @@ if (!args['anon-only']) {
 // Output
 // ═══════════════════════════════════════════════════════════════════════════
 
-const identityFailed = identityResult != null
-  && !identityResult.error
+// A real error (couldn't query a tenant) always fails. Gaps / out-of-band are
+// INFORMATIONAL by default — the EQ and SKS tenants run divergent migration
+// lineages by design, so comparing both against the single EQ repo is noisy.
+// Pass --strict-identity to enforce (e.g. for same-lineage tenants).
+const identityError = identityResult != null && (
+  !!identityResult.error ||
+  identityResult.tenants.some(t => !t.skipped && t.error)
+);
+const identityDrift = identityResult != null && !identityResult.error
   && identityResult.tenants.some(t => !t.skipped && !t.error && (t.gaps.length > 0 || t.outOfBand.length > 0));
+const identityFailed = identityError || (identityDrift && args['strict-identity']);
 
-const anyFailure = driftResult.drift || anonFailed || identityFailed;
+const driftFails = driftResult.drift && args['strict-drift'];
+const anyFailure = driftFails || anonFailed || identityFailed;
 
 if (args.json) {
   console.log(JSON.stringify({
@@ -409,7 +470,9 @@ if (args.json) {
   // ── drift output ──
   if (!args['anon-only']) {
     if (driftResult.drift) {
-      console.log(`\nReference tenant: ${driftResult.refSlug}`);
+      const tag = args['strict-drift'] ? 'FAIL' : 'informational — EQ/SKS tenants diverge by design; use --strict-drift to enforce';
+      console.log(`\n── Cross-tenant drift (${tag}) ──────────────────────────────`);
+      console.log(`Reference tenant: ${driftResult.refSlug}`);
       for (const [slug, cats] of Object.entries(driftResult.report)) {
         console.log(`\n✗ ${slug} differs:`);
         for (const [cat, diff] of Object.entries(cats)) {
@@ -430,16 +493,22 @@ if (args.json) {
         console.log(`  ✗ ${r.label}: query error — ${r.error}`);
         continue;
       }
+      const notes = [];
+      if (r.intentional.length) notes.push(`${r.intentional.length} deliberate read${r.intentional.length > 1 ? 's' : ''}`);
+      if (r.knownLegacy.length) notes.push(`${r.knownLegacy.length} known-legacy (tracked)`);
+      const note = notes.length ? ` (${notes.join(', ')} excluded)` : '';
       if (!r.violations.length) {
-        const note = r.intentional.length
-          ? ` (${r.intentional.length} deliberate anon read${r.intentional.length > 1 ? 's' : ''} excluded)`
-          : '';
         console.log(`  ✓ ${r.label}: clean${note}`);
       } else {
-        console.log(`  ✗ ${r.label}: ${r.violations.length} table${r.violations.length > 1 ? 's' : ''} with unconstrained anon access`);
+        console.log(`  ✗ ${r.label}: ${r.violations.length} NEW table${r.violations.length > 1 ? 's' : ''} with unconstrained anon access${note}`);
         for (const v of r.violations) {
           console.log(`      ${v.key}  grantee=${v.grantee}  privs=${v.privileges}  reason=${v.reason}`);
         }
+      }
+      // Surface tracked legacy debt every run so it stays visible.
+      if (r.knownLegacy.length) {
+        const tbls = [...new Set(r.knownLegacy.map(v => v.key))];
+        console.log(`    ↳ known-legacy anon access (EQ Field, tracked — see KNOWN_LEGACY_ANON): ${tbls.length} tables`);
       }
     }
     if (anonResults.length === 0) {
@@ -449,7 +518,8 @@ if (args.json) {
 
   // ── migration-identity output ──
   if (!args['anon-only'] && identityResult) {
-    console.log('\n── Migration identity ──────────────────────────────────────');
+    const itag = args['strict-identity'] ? 'strict' : 'informational — divergent lineages; use --strict-identity to enforce';
+    console.log(`\n── Migration identity (${itag}) ─────────────────────────────`);
     if (identityResult.error) {
       console.log(`  ✗ error: ${identityResult.error}`);
     } else {
@@ -466,7 +536,7 @@ if (args.json) {
         if (!t.gaps.length && !t.outOfBand.length) {
           console.log(`  ✓ ${t.label}: all repo migrations applied, no out-of-band entries`);
         } else {
-          console.log(`  ✗ ${t.label}:`);
+          console.log(`  ${args['strict-identity'] ? '✗' : '⚠'} ${t.label}:`);
           if (t.gaps.length) {
             console.log(`      ${t.gaps.length} repo file(s) NOT applied on this tenant:`);
             for (const g of t.gaps) console.log(`        - ${g}`);
