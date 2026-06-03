@@ -118,7 +118,10 @@ v1.0 = the **union**:
    gated apply behind the `production` GitHub Environment (one human approve before live DDL).
    **One-time setup owed by Royce:** create the `production` environment with himself as a
    required reviewer, or the apply job runs ungated.
-3. **Upgrade the drift-guard fingerprint** to include FK + ON DELETE.
+3. ✅ **Drift-guard fingerprint now covers FK + ON DELETE/ON UPDATE**
+   (`check-tenant-drift.mjs`, name-independent so `_fk`/`_fkey` naming isn't false
+   drift). Validated read-only against both live tenants: zaap (EQ) and ehow (SKS)
+   return an identical FK signature hash — already aligned, now held in place.
 4. **Write additive catch-up migrations** for the deltas above; apply via the runner only.
 5. **Clean the `_eq_migrations` ledger** (dedupe `NNN` vs `NNN.sql`) + fold in 048.
 6. **Generate canonical snapshot v1.0**; flip the guard to a **required/blocking** PR check.
