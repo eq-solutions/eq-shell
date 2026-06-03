@@ -160,7 +160,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     .select('job_manager, job_code, job_description, contract_valuation, jtd_invoicing, jtd_cost_val, gross_profit, outstanding_pos, cash_gap, is_cash_negative, is_forecast_loss, is_overhead')
     .eq('period_id', period_id);
 
-  if (jErr || !jobs) return json(500, { error: 'db_error', detail: jErr?.message });
+  if (jErr) {
+    console.error('[generate-gm-briefing] jobs query failed', { period_id, detail: jErr.message });
+    return json(500, { error: 'db_error', detail: jErr.message });
+  }
+  if (!jobs) return json(500, { error: 'db_error', detail: 'jobs query returned null' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return json(503, { error: 'ai_not_configured' });
@@ -250,10 +254,16 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
     const briefing = toolBlock.input;
 
-    await db
+    const { error: saveErr } = await db
       .from('gm_report_periods')
       .update({ briefing, briefing_generated_at: new Date().toISOString() })
       .eq('id', period_id);
+
+    if (saveErr) {
+      console.error('[generate-gm-briefing] failed to save briefing', { period_id, detail: saveErr.message });
+      captureServerError(saveErr, { context: 'generate-gm-briefing:save', tenant_id: session.tenant_id });
+      return json(500, { error: 'save_failed', detail: saveErr.message });
+    }
 
     return json(200, { ok: true, briefing });
   } catch (e) {
