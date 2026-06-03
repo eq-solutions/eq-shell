@@ -48,10 +48,12 @@
 // --strict-identity are passed.
 
 import { parseArgs } from 'node:util';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mgmtRows, controlRef, requireAccessToken } from './_mgmt.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const { values: args } = parseArgs({ options: {
   reference:  { type: 'string' },
@@ -63,6 +65,14 @@ const { values: args } = parseArgs({ options: {
   // so tenant-vs-tenant equality is not a meaningful pass/fail gate. Pass
   // --strict-drift to make drift fail the build (e.g. comparing same-app tenants).
   'strict-drift': { type: 'boolean', default: false },
+  // SPINE-SCOPED enforcement: the canonical spine (tables CREATEd by
+  // supabase/tenant-migrations/*.sql) MUST be identical on every tenant — that's
+  // the governed surface the One Pipe rolls out. --strict-spine fails the build
+  // on drift that touches a SPINE table (its columns, policies, or FKs), while
+  // non-spine tables (module layers like field_*, and legacy app tables) stay
+  // informational. This is the CI default for the blocking gate: enforce the core
+  // without drowning in the by-design app-layer differences.
+  'strict-spine': { type: 'boolean', default: false },
   // Migration-identity gaps / out-of-band are likewise informational by default
   // (divergent lineages). --strict-identity makes them fail. Query errors always fail.
   'strict-identity': { type: 'boolean', default: false },
@@ -177,9 +187,16 @@ if (!args['anon-only']) {
   const refSlug = args.reference ?? tenants[0].slug;
   if (!fps[refSlug]) fail(1, `reference '${refSlug}' not among ${tenants.map(t => t.slug).join(', ')}`);
 
+  // The SPINE = every table CREATEd by the canonical migrations. Drift on these
+  // is the blocking surface under --strict-spine; everything else (module layers,
+  // legacy app tables) is informational.
+  const spineTables = await loadSpineTables();
+  log(`spine = ${spineTables.size} tables created by the canonical migrations`);
+
   const CATS = ['tables', 'columns', 'functions', 'policies', 'foreign_keys'];
   const report = {};
-  let drift = false;
+  let drift = false;       // any cross-tenant difference (informational umbrella)
+  let spineDrift = false;  // a difference that touches a SPINE table (blocking surface)
 
   for (const t of tenants) {
     if (t.slug === refSlug) continue;
@@ -189,12 +206,21 @@ if (!args['anon-only']) {
       const curSet = new Set(fps[t.slug][cat]);
       const missing = [...refSet].filter(x => !curSet.has(x));
       const extra   = [...curSet].filter(x => !refSet.has(x));
-      if (missing.length || extra.length) { drift = true; cats[cat] = { missing, extra }; }
+      if (!missing.length && !extra.length) continue;
+      drift = true;
+      // Classify each diff by the table it belongs to: spine vs non-spine.
+      const tag = (items) => items.map(sig => {
+        const tbl = diffTable(cat, sig);
+        const isSpine = tbl != null && spineTables.has(tbl);
+        if (isSpine) spineDrift = true;
+        return { sig, spine: isSpine };
+      });
+      cats[cat] = { missing: tag(missing), extra: tag(extra) };
     }
     if (Object.keys(cats).length) report[t.slug] = cats;
   }
 
-  driftResult = { skip: false, drift, report, refSlug };
+  driftResult = { skip: false, drift, spineDrift, report, refSlug, spineCount: spineTables.size };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -383,7 +409,6 @@ if (!args['no-anon']) {
 // full filename (post-2026-05-30 runner) or the basename without .sql (old
 // runner). Both are normalised to the full filename for comparison.
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, '..', 'supabase', 'tenant-migrations');
 
 const TENANT_DATA_PLANES = [
@@ -480,13 +505,16 @@ const identityDrift = identityResult != null && !identityResult.error
 const identityFailed = identityError || (identityDrift && args['strict-identity']);
 
 const driftFails = driftResult.drift && args['strict-drift'];
-const anyFailure = driftFails || anonFailed || identityFailed;
+const spineFails = driftResult.spineDrift && args['strict-spine'];
+const anyFailure = driftFails || spineFails || anonFailed || identityFailed;
 
 if (args.json) {
   console.log(JSON.stringify({
     drift: {
       skip: driftResult.skip,
       detected: driftResult.drift,
+      spine_drift: driftResult.spineDrift,
+      spine_table_count: driftResult.spineCount,
       reference: driftResult.refSlug,
       report: driftResult.report,
     },
@@ -508,16 +536,28 @@ if (args.json) {
   // ── drift output ──
   if (!args['anon-only']) {
     if (driftResult.drift) {
-      const tag = args['strict-drift'] ? 'FAIL' : 'informational — EQ/SKS tenants diverge by design; use --strict-drift to enforce';
-      console.log(`\n── Cross-tenant drift (${tag}) ──────────────────────────────`);
-      console.log(`Reference tenant: ${driftResult.refSlug}`);
+      const spineTag = args['strict-spine'] ? 'BLOCKING' : 'informational — use --strict-spine to enforce';
+      console.log(`\n── Cross-tenant drift ───────────────────────────────────────`);
+      console.log(`Reference: ${driftResult.refSlug}   ·   spine = ${driftResult.spineCount} governed tables`);
       for (const [slug, cats] of Object.entries(driftResult.report)) {
-        console.log(`\n✗ ${slug} differs:`);
+        const spineLines = [];
+        let nonSpine = 0;
         for (const [cat, diff] of Object.entries(cats)) {
-          for (const m of diff.missing) console.log(`    - [${cat}] MISSING here: ${m}`);
-          for (const e of diff.extra)   console.log(`    + [${cat}] EXTRA here:   ${e}`);
+          for (const m of diff.missing) m.spine ? spineLines.push(`      - [${cat}] MISSING here: ${m.sig}`) : nonSpine++;
+          for (const e of diff.extra)   e.spine ? spineLines.push(`      + [${cat}] EXTRA here:   ${e.sig}`) : nonSpine++;
         }
+        console.log(`\n  ${slug}:`);
+        if (spineLines.length) {
+          console.log(`    ✗ SPINE drift (${spineTag}) — ${spineLines.length} item(s):`);
+          for (const l of spineLines) console.log(l);
+        } else {
+          console.log(`    ✓ spine clean`);
+        }
+        if (nonSpine) console.log(`    ℹ ${nonSpine} non-spine difference(s) — module/legacy layer, informational`);
       }
+      console.log(driftResult.spineDrift
+        ? `\n✗ Spine drift detected${args['strict-spine'] ? ' — FAILING build (--strict-spine)' : ' (informational)'}.`
+        : `\n✓ SPINE identical across all tenants — the governed surface is aligned.`);
     } else if (!driftResult.skip) {
       console.log(`\n✓ Cross-tenant drift: all tenants match '${driftResult.refSlug}'.`);
     }
@@ -594,3 +634,31 @@ process.exit(anyFailure ? 2 : 0);
 // ── helpers ──────────────────────────────────────────────────────────────
 function log(m) { if (!args.json) console.log(`[drift] ${m}`); }
 function fail(code, m) { console.error(`ERROR: ${m}`); process.exit(code); }
+
+// The spine table set = every app_data table CREATEd by a canonical migration.
+// Derived from the files so it stays correct as migrations are added — no
+// hand-maintained allowlist to fall out of date.
+async function loadSpineTables() {
+  const dir = join(__dirname, '..', 'supabase', 'tenant-migrations');
+  const files = (await readdir(dir)).filter(f => f.endsWith('.sql')).sort();
+  const spine = new Set();
+  const re = /create\s+table\s+(?:if\s+not\s+exists\s+)?app_data\.([a-z0-9_]+)/gi;
+  for (const f of files) {
+    const sql = await readFile(join(dir, f), 'utf8');
+    let m;
+    while ((m = re.exec(sql))) spine.add(m[1].toLowerCase());
+  }
+  return spine;
+}
+
+// Which table a drift signature belongs to (null = not table-scoped, e.g. a
+// free function — treated as non-spine / informational in this version).
+function diffTable(cat, sig) {
+  switch (cat) {
+    case 'tables':       return sig.trim().toLowerCase();
+    case 'columns':      return sig.split('.')[0].trim().toLowerCase();          // "table.col type …"
+    case 'policies':     return sig.split('.')[0].trim().toLowerCase();          // "table.policy cmd …"
+    case 'foreign_keys': { const m = sig.match(/^app_data\.([a-z0-9_]+)\s*\(/i); return m ? m[1].toLowerCase() : null; }
+    default:             return null;                                            // functions: not table-scoped
+  }
+}
