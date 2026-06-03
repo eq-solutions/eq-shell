@@ -187,20 +187,20 @@ const INTENTIONAL_ANON_READS = {
 // See eq-solves-field SECURITY-REMEDIATION-HANDOFF.md (finding #4) / SKS-CUTOVER.
 // This baseline keeps the debt VISIBLE while letting the gate FAIL on any anon-
 // open table that is NOT already listed here (i.e. new regressions still block).
+// Burn-down: started at 36 (2026-06-03). Removed 11 Field-UNUSED tables after revoking
+// anon on zaap (verified anon has no privilege) — they must now HARD-FAIL if anon access
+// ever returns. Remaining 25 are the tables EQ Field actively uses; they leave the baseline
+// one at a time as each surface cuts over to canonical app_data (see remediation sprint).
 const KNOWN_LEGACY_ANON = {
   zaapmfdkgedqupfjtchl: new Set([
     'public.app_config', 'public.apprentice_journal', 'public.apprentice_profiles',
-    'public.audit_log', 'public.buddy_checkins', 'public.checkins',
-    'public.competencies', 'public.engagement_log', 'public.feedback_entries',
-    'public.feedback_requests', 'public.field_customers', 'public.field_waitlist',
-    'public.job_numbers', 'public.leave_balances', 'public.leave_requests',
+    'public.audit_log', 'public.competencies', 'public.feedback_entries',
+    'public.feedback_requests', 'public.job_numbers', 'public.leave_requests',
     'public.managers', 'public.organisations', 'public.people', 'public.prestarts',
-    'public.project_targets', 'public.projects', 'public.qualifications',
-    'public.quarterly_reviews', 'public.rate_limits', 'public.regions',
+    'public.project_targets', 'public.projects', 'public.regions',
     'public.roster_presence', 'public.rotations', 'public.schedule',
     'public.site_diaries', 'public.sites', 'public.skills_ratings',
-    'public.staff_availability', 'public.timesheet_locks', 'public.timesheets',
-    'public.toolbox_talks', 'public.unavailability',
+    'public.timesheet_locks', 'public.timesheets', 'public.toolbox_talks',
   ]),
 };
 
