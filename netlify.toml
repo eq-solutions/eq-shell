@@ -3,7 +3,7 @@
 
 [build]
   publish = "dist"
-  command = "corepack enable && corepack prepare pnpm@9.15.9 --activate && pnpm run check:perms && pnpm run build"
+  command = "corepack enable && corepack prepare pnpm@9.15.9 --activate && pnpm run check:perms && pnpm run check:css && pnpm run build"
 
 [build.environment]
   # Lock pnpm to match packageManager field in package.json.

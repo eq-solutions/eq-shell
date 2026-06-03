@@ -3054,3 +3054,41 @@
   .eq-hub-action { padding: 10px 12px; }
   .eq-hub-action__btn { width: 32px; height: 32px; }
 }
+
+/* ──────────────────────────────────────────────────────────────────
+ * Audit follow-up (2026-06-03): classes referenced in JSX that had no
+ * rule. Surfaced by scripts/check-css-coverage.mjs. The page-specific
+ * design backlog (login hero, form primitives) is tracked in that lint's
+ * ALLOW list; these are the quick/high-traffic wins.
+ * ────────────────────────────────────────────────────────────────── */
+.eq-hub-briefing-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--eq-sky, #3DA8D8);
+  background: #fff;
+  border: 1px solid var(--eq-sky, #3DA8D8);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.eq-hub-briefing-load:hover { background: var(--eq-ice, #EAF5FB); }
+.eq-hub-briefing-load:disabled { opacity: 0.6; cursor: default; }
+
+.eq-hub-alert__text { flex: 1; min-width: 0; line-height: 1.45; }
+
+.eq-muted { color: #6B7280; }
+
+.eq-page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100svh;
+  color: #6B7280;
+}
+
+@keyframes eq-spin { to { transform: rotate(360deg); } }
+.eq-spin { animation: eq-spin 0.8s linear infinite; }
