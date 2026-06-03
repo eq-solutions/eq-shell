@@ -11,7 +11,8 @@
     "check:perms": "node scripts/check-perm-sync.mjs",
     "build": "pnpm run build:packages && pnpm run build:tokens && tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke": "node scripts/smoke-functions.mjs"
   },
   "dependencies": {
     "@eq-solutions/roles": "github:eq-solutions/eq-roles#v1.3.0",

@@ -1,0 +1,44 @@
+name: Function smoke
+
+# GETs every Netlify function and fails if any CRASHES on load (HTTP 502/504 or
+# a Lambda error envelope). Catches the class of outage where a green build
+# still ships a function that throws at import time — e.g. the
+# @eq-solutions/roles ".ts" bundling 502 that took down 18 functions
+# (2026-06-02) while `pnpm run build` stayed green.
+
+on:
+  # Fires after every Netlify deploy finishes — preview (per-PR) AND production.
+  # Runs the workflow from the default branch, so this gates previews too.
+  deployment_status:
+  # Manual run against any base URL (defaults to production).
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Base URL to smoke
+        default: https://core.eq.solutions
+  # Ongoing synthetic monitor of production (off the :00 mark, per fleet hygiene).
+  schedule:
+    - cron: '17 * * * *'
+
+jobs:
+  smoke:
+    name: GET every function, fail on any 502
+    # For deploy events, only run on the final successful deploy (skip
+    # pending/building/failure/inactive). Schedule + manual always run.
+    if: ${{ github.event_name != 'deployment_status' || github.event.deployment_status.state == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Resolve target URL
+        id: target
+        run: |
+          URL="${{ github.event.deployment_status.target_url }}"
+          [ -z "$URL" ] && URL="${{ github.event.inputs.url }}"
+          [ -z "$URL" ] && URL="https://core.eq.solutions"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Smoking $URL"
+      - name: Smoke functions
+        run: node scripts/smoke-functions.mjs "${{ steps.target.outputs.url }}"
