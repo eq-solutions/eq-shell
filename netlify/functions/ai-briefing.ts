@@ -38,7 +38,10 @@ import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
 
 const ANTHROPIC_API_VERSION = '2023-06-01';
-const BRIEF_MODEL            = 'claude-sonnet-4-6';
+// Haiku — the dashboard brief is a short, structured (tool_use) summary, so
+// Haiku is plenty and roughly halves the generation time vs Sonnet. Matches
+// generate-gm-briefing. Bump back to sonnet-4-6 if brief quality regresses.
+const BRIEF_MODEL            = 'claude-haiku-4-5';
 const BRIEF_MAX_TOKENS       = 1024;
 const CACHE_TTL_MS           = 10 * 60 * 1000; // 10 minutes
 
