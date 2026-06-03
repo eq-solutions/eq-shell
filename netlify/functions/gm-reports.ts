@@ -67,9 +67,9 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const { data: jobs, error: jErr } = await db
     .from('gm_report_jobs')
     .select(
-      'id, job_manager, job_code, job_description, wip_code, contract_valuation, ' +
-      'jtd_invoicing, jtd_cost_val, gross_profit, gp_pct, outstanding_pos, ' +
-      'cash_gap, is_cash_negative, is_forecast_loss, is_overhead',
+      'id, job_manager, job_code, job_description, wip_code, last_forecast_period, ' +
+      'contract_valuation, jtd_invoicing, jtd_cost_val, gross_profit, gp_pct, ' +
+      'outstanding_pos, cash_gap, is_cash_negative, is_forecast_loss, is_overhead',
     )
     .eq('period_id', periodId)
     .order('cash_gap', { ascending: false });

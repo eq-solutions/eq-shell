@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { AlertTriangle, Check } from 'lucide-react';
 import { HubLayout } from '../../components/HubLayout';
+import { useSession } from '../../session';
 import { Gate } from '../../permissions/Gate';
 import { EqTable, type ColDef } from '../../components/EqTable';
 import { defaultSidebarRecords } from '../../lib/sidebarConfig';
@@ -33,6 +34,7 @@ interface Job {
   job_code:         string;
   job_description:  string;
   wip_code:         string | null;
+  last_forecast_period: string | null;
   contract_valuation: number;
   jtd_invoicing:    number;
   jtd_cost_val:     number;
@@ -301,6 +303,144 @@ function ChatPanel({ periodId, briefing }: { periodId: string; briefing: Briefin
 }
 
 // ---------------------------------------------------------------------------
+// Forecast tracker view — who has completed their monthly Workbench forecast
+//
+// A job needs a forecast when its WIP code is FR or FRPC. It's "done" for the
+// period when its Last Forecast Period equals the report's period code; any
+// older period (or 0000/000 = never) is outstanding. No new data needed —
+// this is a second lens over the jobs already parsed from the upload.
+// ---------------------------------------------------------------------------
+
+const FORECAST_WIP = new Set(['FR', 'FRPC']);
+
+interface PmForecast {
+  name: string;
+  total: number;
+  done: number;
+  outstanding: Job[];
+}
+
+function ForecastView({ jobs, periodCode, loading }: { jobs: Job[]; periodCode: string; loading: boolean }) {
+  const { session } = useSession();
+  const myName = session?.user.name ?? null;
+  const [mineOnly, setMineOnly] = useState(false);
+
+  const frJobs = jobs.filter(j => j.wip_code !== null && FORECAST_WIP.has(j.wip_code));
+
+  // Group by job manager
+  const byPm = new Map<string, PmForecast>();
+  for (const j of frJobs) {
+    const name = j.job_manager || 'Unassigned';
+    let pm = byPm.get(name);
+    if (!pm) { pm = { name, total: 0, done: 0, outstanding: [] }; byPm.set(name, pm); }
+    pm.total++;
+    if (j.last_forecast_period === periodCode) pm.done++;
+    else pm.outstanding.push(j);
+  }
+
+  let pms = [...byPm.values()];
+  if (mineOnly && myName) pms = pms.filter(p => p.name === myName);
+  // Worst first: most outstanding, then biggest list
+  pms.sort((a, b) => (b.total - b.done) - (a.total - a.done) || b.total - a.total);
+
+  const totalOutstanding = pms.reduce((s, p) => s + (p.total - p.done), 0);
+  const pmsComplete = pms.filter(p => p.total - p.done === 0).length;
+  const iAmInList = !!myName && byPm.has(myName);
+
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><span className="eq-skeleton eq-skeleton--text" style={{ width: 160 }} /></div>;
+  }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+
+      {/* Summary strip */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 24 }}>
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: totalOutstanding > 0 ? '#C0392B' : '#1E7E4A', lineHeight: 1 }}>{totalOutstanding}</div>
+            <div style={{ fontSize: 10, color: '#6B7A99', textTransform: 'uppercase', letterSpacing: '0.6px', marginTop: 4 }}>Forecasts outstanding</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--eq-ink, #1A1A2E)', lineHeight: 1 }}>{pmsComplete}<span style={{ fontSize: 15, color: '#9AA5BC' }}> / {pms.length}</span></div>
+            <div style={{ fontSize: 10, color: '#6B7A99', textTransform: 'uppercase', letterSpacing: '0.6px', marginTop: 4 }}>PMs complete</div>
+          </div>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          {iAmInList && (
+            <>
+              <button className={!mineOnly ? 'gm-chip gm-chip--active' : 'gm-chip'} onClick={() => setMineOnly(false)}>Everyone</button>
+              <button className={mineOnly ? 'gm-chip gm-chip--active' : 'gm-chip'} onClick={() => setMineOnly(true)}>Just mine</button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {pms.length === 0 && (
+        <div style={{ textAlign: 'center', color: '#6B7A99', padding: '32px 0', fontSize: 13 }}>
+          {mineOnly ? 'You have no forecast jobs this period.' : 'No forecast jobs (FR / FRPC) in this period.'}
+        </div>
+      )}
+
+      {/* Per-PM cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {pms.map(pm => {
+          const outstanding = pm.total - pm.done;
+          const complete = outstanding === 0;
+          const isMe = pm.name === myName;
+          const pct = pm.total > 0 ? pm.done / pm.total : 1;
+          const accent = complete ? '#1E7E4A' : outstanding >= 5 ? '#C0392B' : '#B7770D';
+          return (
+            <div key={pm.name} style={{ border: '1px solid #E2EAF0', borderLeft: `3px solid ${accent}`, borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
+              {/* Card header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: complete ? '#F6FBF8' : '#fff' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--eq-ink, #1A1A2E)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {pm.name}
+                    {isMe && <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--eq-sky, #3DA8D8)', background: 'var(--eq-ice, #EAF5FB)', padding: '2px 7px', borderRadius: 10, letterSpacing: '0.5px' }}>YOU</span>}
+                  </div>
+                  {/* Progress bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                    <div style={{ flex: 1, maxWidth: 220, height: 5, borderRadius: 3, background: '#EEF2F7', overflow: 'hidden' }}>
+                      <div style={{ width: `${pct * 100}%`, height: '100%', background: accent, borderRadius: 3 }} />
+                    </div>
+                    <span style={{ fontSize: 11, color: '#6B7A99', fontWeight: 500 }}>{pm.done} of {pm.total} done</span>
+                  </div>
+                </div>
+                {complete ? (
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#1E7E4A', display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                    <Check size={15} aria-hidden="true" /> All done
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 13, fontWeight: 700, color: accent, display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                    <AlertTriangle size={14} aria-hidden="true" /> {outstanding} to do
+                  </span>
+                )}
+              </div>
+              {/* Outstanding job list */}
+              {outstanding > 0 && (
+                <div style={{ borderTop: '1px solid #EEF2F7' }}>
+                  {pm.outstanding.map(j => {
+                    const last = !j.last_forecast_period || j.last_forecast_period === '0000/000' ? 'never forecast' : `last: ${j.last_forecast_period}`;
+                    return (
+                      <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px', borderTop: '1px solid #F4F7FA', fontSize: 12 }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--eq-ink, #1A1A2E)', flexShrink: 0, width: 56 }}>{j.job_code}</span>
+                        <span style={{ flex: 1, minWidth: 0, color: '#4A5568', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.job_description}</span>
+                        <span style={{ fontSize: 10, color: '#9AA5BC', flexShrink: 0 }}>{last}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Period detail view
 // ---------------------------------------------------------------------------
 
@@ -313,6 +453,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
   const [selectedPMs, setSelectedPMs] = useState<string[]>([]);
   const [selectedWip, setSelectedWip] = useState<string | null>(null);
   const [jobsError, setJobsError] = useState<string | null>(null);
+  const [view, setView] = useState<'financials' | 'forecasts'>('financials');
 
   useEffect(() => {
     void (async () => {
@@ -404,26 +545,38 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         <span style={{ fontSize: 12, color: '#6B7A99' }}>
           {new Date(period.uploaded_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
         </span>
+
+        {/* View tabs */}
+        <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
+          {(['financials', 'forecasts'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={view === v ? 'gm-chip gm-chip--active' : 'gm-chip'}
+              style={{ textTransform: 'capitalize' }}>
+              {v === 'forecasts' ? 'Forecasts' : 'Financials'}
+            </button>
+          ))}
+        </div>
+
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          {briefingError && (
+          {view === 'financials' && briefingError && (
             <span style={{ fontSize: 11, color: '#C0392B', background: '#FDECEA', padding: '4px 10px', borderRadius: 20, maxWidth: 260, display: 'inline-flex', alignItems: 'center', gap: 4 }} title={briefingError}>
               <AlertTriangle size={12} aria-hidden="true" style={{ flexShrink: 0 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{briefingError}</span>
             </span>
           )}
-          {!briefing && (
+          {view === 'financials' && !briefing && (
             <button onClick={generateBriefing} disabled={generatingBriefing}
               style={{ background: 'var(--eq-sky, #3DA8D8)', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: generatingBriefing ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
               {generatingBriefing && <span style={{ width: 12, height: 12, border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'gm-spin 0.7s linear infinite', flexShrink: 0 }} />}
               {generatingBriefing ? 'Generating…' : briefingError ? 'Retry' : 'Generate AI briefing'}
             </button>
           )}
-          {briefing && <span style={{ fontSize: 11, color: '#1E7E4A', background: '#EAF5EE', padding: '4px 10px', borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Check size={12} aria-hidden="true" />Briefing ready</span>}
+          {view === 'financials' && briefing && <span style={{ fontSize: 11, color: '#1E7E4A', background: '#EAF5EE', padding: '4px 10px', borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Check size={12} aria-hidden="true" />Briefing ready</span>}
         </div>
       </div>
 
       {/* Filter bar — WIP only; PM is now handled via the right-rail scorecard */}
-      {(allWips.length > 1 || isFiltered) && (
+      {view === 'financials' && (allWips.length > 1 || isFiltered) && (
         <div style={{ flexShrink: 0, borderBottom: '1px solid #E2EAF0', background: '#fff', padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 12, overflowX: 'auto' }}>
           {allWips.length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -452,7 +605,13 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
         </div>
       )}
 
+      {/* Forecast tracker view */}
+      {view === 'forecasts' && (
+        <ForecastView jobs={jobs} periodCode={period.period_code} loading={loadingJobs} />
+      )}
+
       {/* Body: left scrolls, right chat is fixed */}
+      {view === 'financials' && (
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
 
         {/* Left column — scrolls */}
@@ -611,6 +770,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           <ChatPanel periodId={period.id} briefing={briefing} />
         </div>
       </div>
+      )}
 
     </div>
   );
