@@ -108,6 +108,7 @@ export function signSupabaseJwt(
   isPlatformAdmin: boolean,
   ttlSeconds: number = SUPABASE_JWT_TTL_SECONDS,
   sourceApp: string = 'shell',
+  email?: string,
 ): MintedJwt {
   if (!JWT_SECRET) {
     throw new Error(
@@ -128,6 +129,7 @@ export function signSupabaseJwt(
       eq_role: eqRole,
       is_platform_admin: isPlatformAdmin,
       source_app: sourceApp,
+      ...(email ? { email } : {}),
     },
     iat: now,
     exp: now + ttlSeconds,
