@@ -36,11 +36,18 @@
 
 BEGIN;
 
--- ── 1. tenant_id text -> uuid (+ realign the tenant-scoped SELECT policy) ──────
--- Per table, only when the column is still text. DROP the tenant-gate policy
--- first (it references tenant_id as text), convert the column, then recreate the
--- policy with the uuid cast. The service_role and per-user (auth.uid()) policies
--- do not reference tenant_id, so they are untouched.
+-- ── 1. tenant_id text -> uuid (+ realign the tenant-scoped SELECT policies) ────
+-- gm_report_jobs gates THROUGH gm_report_periods.tenant_id, so its policy must be
+-- dropped BEFORE that column is altered — Postgres blocks ALTER TYPE on a column
+-- that any policy depends on. Verified (read-only) this is the ONLY cross-table
+-- dependency on the three columns, and there are no dependent views. Recreated
+-- with the uuid cast at the end of step 1.
+DROP POLICY IF EXISTS "Tenant sees own jobs" ON app_data.gm_report_jobs;
+
+-- Per table, only when the column is still text. DROP the table's OWN tenant-gate
+-- policy first (it references tenant_id as text), convert the column, then recreate
+-- it with the uuid cast. The service_role and per-user (auth.uid()) policies do not
+-- reference tenant_id, so they do not block the alter and are untouched.
 DO $$
 DECLARE
   r record;
@@ -64,11 +71,8 @@ BEGIN
   END LOOP;
 END$$;
 
--- gm_report_jobs has no tenant_id of its own — it gates through
--- gm_report_periods.tenant_id. Recreate its SELECT policy with the uuid cast so
--- the subquery comparison is uuid = uuid. Idempotent (drop + recreate to the
--- canonical definition; a no-op in effect where already uuid-cast).
-DROP POLICY IF EXISTS "Tenant sees own jobs" ON app_data.gm_report_jobs;
+-- Recreate gm_report_jobs' SELECT policy (dropped above) with the uuid cast, now
+-- that gm_report_periods.tenant_id is uuid, so the subquery comparison is uuid=uuid.
 CREATE POLICY "Tenant sees own jobs" ON app_data.gm_report_jobs
   FOR SELECT TO authenticated
   USING (period_id IN (
