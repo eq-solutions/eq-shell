@@ -54,7 +54,25 @@ function normalizeAuPhone(raw: string): string | null {
   return null;
 }
 
-export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
+// Cards Flutter web (cards.eq.solutions) calls this on core.eq.solutions —
+// cross-origin. Mirror cards-api.ts's allowlist so the browser doesn't block
+// the phone-OTP exchange. Native builds send no Origin header → no-op there.
+const ALLOWED_ORIGIN_EXACT = new Set<string>(['https://cards.eq.solutions']);
+const ALLOWED_ORIGIN_RE = /^https:\/\/deploy-preview-\d+--eq-cards\.netlify\.app$/;
+
+function corsHeaders(origin: string | null): Record<string, string> {
+  if (!origin) return {};
+  if (!ALLOWED_ORIGIN_EXACT.has(origin) && !ALLOWED_ORIGIN_RE.test(origin)) return {};
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, content-type',
+    'Access-Control-Max-Age': '600',
+    Vary: 'Origin',
+  };
+}
+
+async function core(req: Request, _ctx: Context): Promise<Response> {
   if (process.env.ENABLE_PHONE_OTP !== 'true') {
     return new Response(JSON.stringify({ error: 'Not available' }), {
       status: 404,
@@ -191,4 +209,16 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     },
     { 'Set-Cookie': cookie },
   );
+}
+
+export default withSentry(async (req: Request, ctx: Context): Promise<Response> => {
+  // CORS: handle the cross-origin preflight from cards.eq.solutions, and add
+  // the allow headers to every response so the browser exposes the body.
+  const cors = corsHeaders(req.headers.get('origin'));
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: cors });
+  }
+  const res = await core(req, ctx);
+  for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
+  return res;
 });
