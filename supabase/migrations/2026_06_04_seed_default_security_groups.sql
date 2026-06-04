@@ -16,7 +16,9 @@
 -- (group_id, perm_key) keys, so re-running is a no-op and it never clobbers a
 -- tenant's own custom group of the same name.
 --
--- NOT YET APPLIED — pending explicit go-ahead from Royce (production data write).
+-- Applied 2026-06-04 via Supabase MCP (migration name: seed_default_security_groups).
+-- Seeded 8 template groups (4 tenants x 2) + their perms; sks's custom
+-- "Project Manager" group left untouched.
 
 -- 1. Ensure each template group exists for every tenant.
 INSERT INTO shell_control.security_groups (tenant_id, name, description, created_by)
