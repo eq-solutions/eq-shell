@@ -10,6 +10,7 @@
 //   ✓ Fetch URL + anon key + service-role key
 //   ✓ Encrypt the service-role key with TENANT_ROUTING_MASTER_KEY
 //   ✓ Ensure a shell_control.tenants row exists for the slug
+//   ✓ Seed the canonical default security groups (idempotent)
 //   ✓ Insert/update shell_control.tenant_routing with status='provisioning'
 //   ✓ Print the next step (run migrate-tenants.mjs, then flip status='active')
 //
@@ -40,6 +41,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { createCipheriv, randomBytes } from 'node:crypto';
 import { parseArgs } from 'node:util';
+// Canonical default security-group templates. Plain Node scripts can import the
+// package directly (unlike bundled Netlify functions, which use the local mirror
+// in netlify/functions/_shared/default-groups.ts).
+import { DEFAULT_GROUPS } from '@eq-solutions/roles';
 
 const SUPABASE_API = 'https://api.supabase.com';
 const POLL_INTERVAL_MS = 5000;
@@ -93,6 +98,10 @@ if (args['dry-run']) log('DRY RUN — no API calls or DB writes will be made');
 
 const tenant = await ensureTenantRow(args.slug, args.name);
 log(`Tenant row: ${tenant.id} (slug=${tenant.slug})`);
+
+// Seed the canonical default security groups so the tenant doesn't start with
+// zero (matches the runtime path in netlify/functions/admin-tenants.ts).
+await seedDefaultGroups(tenant.id);
 
 // ─── 1. check for existing routing row (idempotency) ──────────────────
 
@@ -220,6 +229,45 @@ async function ensureTenantRow(slug, name) {
   return created;
 }
 
+// Seed the canonical DEFAULT_GROUPS templates for a tenant. Idempotent
+// (ON CONFLICT DO NOTHING on the unique keys), system-seeded (created_by NULL),
+// and never touches user_security_groups. Non-fatal: a seed hiccup logs a
+// warning but does not abort provisioning. Mirrors the runtime seed in
+// netlify/functions/_shared/seed-default-groups.ts; the same idempotent backfill
+// SQL (supabase/migrations/2026_06_04_seed_default_security_groups.sql) also
+// covers anything missed here.
+async function seedDefaultGroups(tenantId) {
+  if (args['dry-run']) {
+    log(`DRY RUN — would seed ${DEFAULT_GROUPS.length} default security groups`);
+    return;
+  }
+  for (const group of DEFAULT_GROUPS) {
+    const { error: groupErr } = await control
+      .from('security_groups')
+      .upsert(
+        { tenant_id: tenantId, name: group.name, description: group.description, created_by: null },
+        { onConflict: 'tenant_id,name', ignoreDuplicates: true },
+      );
+    if (groupErr) { warn(`seed group "${group.name}" failed: ${groupErr.message}`); continue; }
+
+    const { data: row, error: idErr } = await control
+      .from('security_groups')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('name', group.name)
+      .single();
+    if (idErr || !row) { warn(`resolve group id "${group.name}" failed: ${idErr?.message ?? 'not found'}`); continue; }
+
+    if (!group.perms.length) continue;
+    const permRows = group.perms.map((perm_key) => ({ group_id: row.id, perm_key }));
+    const { error: permErr } = await control
+      .from('security_group_perms')
+      .upsert(permRows, { onConflict: 'group_id,perm_key', ignoreDuplicates: true });
+    if (permErr) warn(`seed perms for "${group.name}" failed: ${permErr.message}`);
+  }
+  log(`Seeded default security groups (${DEFAULT_GROUPS.map((g) => g.name).join(', ')})`);
+}
+
 async function mgmtApi(method, path, body) {
   const url = `${SUPABASE_API}${path}`;
   const res = await fetch(url, {
@@ -286,6 +334,7 @@ function requireEnvs(names) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function log(msg)  { console.log(`[${new Date().toISOString()}] ${msg}`); }
+function warn(msg) { console.warn(`[${new Date().toISOString()}] WARN: ${msg}`); }
 function fail(code, msg) {
   console.error(`ERROR: ${msg}`);
   process.exit(code);
