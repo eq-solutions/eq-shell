@@ -91,21 +91,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return jsonResponse(401, { valid: false });
   }
 
-  // For aud='service' resolve the VERIFIED active-tenant slug so Service can
-  // provision the user's OWN-tenant membership by slug. user.tenant_id is the
-  // session tenant (guarded above), never client input — so this slug can only
-  // ever name the tenant the user is actually in. If the lookup fails the JWT
-  // simply omits the slug and Service falls back to its no-membership state.
-  let serviceTenantSlug: string | undefined;
-  if (aud === 'service') {
-    const { data: t } = await sb
-      .from('tenants')
-      .select('slug')
-      .eq('id', user.tenant_id)
-      .maybeSingle<{ slug: string }>();
-    serviceTenantSlug = t?.slug;
-  }
-
   const { token, exp } = signSupabaseJwt(
     user.id,
     user.tenant_id,
@@ -119,7 +104,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     IFRAME_TOKEN_TTL_SECONDS,
     aud === 'field' ? `field:${tenantSlug ?? 'eq'}` : 'service',
     user.email,
-    aud === 'service' ? serviceTenantSlug : undefined,
   );
 
   // Log for parity analysis — helps Phase 2 parity check compare
@@ -129,11 +113,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     p_actor_id: user.id,
     p_tenant_id: user.tenant_id,
     p_ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown',
-    p_detail: { aud, method: 'supabase-jwt', tenant_slug: (aud === 'field' ? tenantSlug : serviceTenantSlug) ?? null },
+    p_detail: { aud, method: 'supabase-jwt', tenant_slug: tenantSlug ?? null },
   });
 
   if (aud === 'field') {
     return jsonResponse(200, { token, tenant_slug: tenantSlug, exp });
   }
-  return jsonResponse(200, { token, tenant_slug: serviceTenantSlug ?? null, exp });
+  return jsonResponse(200, { token, exp });
 });
