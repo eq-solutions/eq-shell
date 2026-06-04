@@ -45,6 +45,7 @@ interface InviteSuccess {
 
 function AdminInviteUserForm() {
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [role, setRole] = useState<EqRole>('employee');
   const [entitlements, setEntitlements] = useState<Set<string>>(new Set(['intake']));
   const [busy, setBusy] = useState(false);
@@ -85,6 +86,7 @@ function AdminInviteUserForm() {
           email: email.trim().toLowerCase(),
           role,
           entitlements: [...entitlements],
+          ...(phone.trim() ? { phone: phone.trim() } : {}),
         }),
       });
       const body = (await res.json()) as
@@ -95,6 +97,7 @@ function AdminInviteUserForm() {
           'unauthorized':     'Sign in again to invite users.',
           'forbidden':        'Only managers can invite users.',
           'bad-email':        'That email doesn\'t look right.',
+          'bad-phone':        'That mobile doesn\'t look like an Australian number.',
           'bad-role':         'Pick a role from the list.',
           'user-exists':      'A user with that email already exists.',
           'already-invited':  'An open invite for that email already exists.',
@@ -110,6 +113,7 @@ function AdminInviteUserForm() {
         email_delivered: body.email_delivered,
       });
       setEmail('');
+      setPhone('');
       setBusy(false);
     } catch {
       setErr('Network error — please try again.');
@@ -143,6 +147,23 @@ function AdminInviteUserForm() {
             disabled={busy}
             style={inputStyle}
           />
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label htmlFor="invite-phone" style={labelStyle}>Mobile (optional)</label>
+          <input
+            id="invite-phone"
+            type="tel"
+            autoComplete="tel"
+            placeholder="0412 345 678"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            disabled={busy}
+            style={inputStyle}
+          />
+          <p style={{ fontSize: 12, color: 'var(--gray-500)', margin: '6px 0 0' }}>
+            Adding a mobile lets them sign in by text code, not just a PIN.
+          </p>
         </div>
 
         <div style={{ marginBottom: 20 }}>

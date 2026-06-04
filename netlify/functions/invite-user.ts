@@ -34,6 +34,7 @@ import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, EqRole } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { sendEmail } from './_shared/email.js';
+import { normalizeAuPhone } from './_shared/phone.js';
 import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
@@ -83,7 +84,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(403, { ok: false, error: 'forbidden' });
   }
 
-  let body: { email?: string; role?: string; entitlements?: unknown };
+  let body: { email?: string; role?: string; entitlements?: unknown; phone?: string };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -101,6 +102,16 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   }
   if (!VALID_ROLES.has(role as EqRole)) {
     return jsonResponse(400, { ok: false, error: 'bad-role' });
+  }
+
+  // Optional mobile — captured at invite time so the recipient can use the
+  // Mobile (phone-OTP) sign-in door from day one. If provided but not a
+  // recognisable AU mobile, reject so the admin fixes it rather than storing
+  // junk that silently never works as a login.
+  const rawPhone = (body.phone ?? '').trim();
+  const phone = rawPhone ? normalizeAuPhone(rawPhone) : null;
+  if (rawPhone && !phone) {
+    return jsonResponse(400, { ok: false, error: 'bad-phone' });
   }
 
   let sb;
@@ -217,6 +228,7 @@ If you weren't expecting this, you can ignore this email.
       email,
       role: role as EqRole,
       entitlements,
+      phone,
       invited_by: session.user_id,
       invite_token_hash: tokenHash,
       expires_at: expiresAt,
