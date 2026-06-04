@@ -4,9 +4,15 @@
 // Three independent checks in one gate:
 //
 //   1. CROSS-TENANT DRIFT  — fingerprints app_data schema (tables, columns,
-//      functions, policies) across every active tenant and fails if any tenant
-//      differs from the reference. Catches structural drift AND security
-//      regressions (anon-exec fns, USING(true) policies, user_metadata RLS).
+//      functions, policies, foreign keys + ON DELETE/ON UPDATE) across every
+//      active tenant and reports where a tenant differs from the reference. The
+//      FK signature is name-independent (source/target table + ordered columns +
+//      referential action, NOT the constraint name) so the _fk/_fkey naming
+//      inconsistency is not false drift, but an ON DELETE change (e.g. migration
+//      048) is caught. INFORMATIONAL by default: the EQ and
+//      SKS tenants diverge by design (different apps, independent migration
+//      lineages), so tenant-vs-tenant equality is not a pass/fail gate. Pass
+//      --strict-drift to make drift fail (e.g. comparing same-app tenants).
 //
 //   2. ANON-GRANT INVARIANT — scans all three canonical Supabase projects for
 //      tables reachable by the anon or authenticated role with no caller-scoped
@@ -26,6 +32,7 @@
 //   node scripts/check-tenant-drift.mjs --reference=core # pin drift reference
 //   node scripts/check-tenant-drift.mjs --anon-only      # skip cross-tenant drift
 //   node scripts/check-tenant-drift.mjs --no-anon        # skip anon-grant check
+//   node scripts/check-tenant-drift.mjs --strict-drift   # make cross-tenant drift fail
 //   node scripts/check-tenant-drift.mjs --json           # machine-readable output
 //
 // Required env:
@@ -34,19 +41,41 @@
 //   CANONICAL_INTERNAL_PROJECT_REF   EQ internal tenant ref (zaapmfdkgedqupfjtchl)
 //   SKS_CANONICAL_PROJECT_REF        SKS tenant ref (ehowgjardagevnrluult)
 //
-// Exit codes: 0 = all clear, 1 = config error, 2 = drift or violation detected.
+// Exit codes: 0 = all clear, 1 = config error, 2 = failure detected.
+// What fails the build (exit 2): a NEW anon-grant violation (not intentional/
+// known-legacy), or a migration-identity query error. Cross-tenant drift and
+// migration gaps/out-of-band are informational unless --strict-drift /
+// --strict-identity are passed.
 
 import { parseArgs } from 'node:util';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mgmtRows, controlRef, requireAccessToken } from './_mgmt.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const { values: args } = parseArgs({ options: {
   reference:  { type: 'string' },
   json:       { type: 'boolean', default: false },
   'anon-only':{ type: 'boolean', default: false },
   'no-anon':  { type: 'boolean', default: false },
+  // Cross-tenant structural drift is INFORMATIONAL by default: the EQ and SKS
+  // tenants diverge by design (different apps, independent migration lineages),
+  // so tenant-vs-tenant equality is not a meaningful pass/fail gate. Pass
+  // --strict-drift to make drift fail the build (e.g. comparing same-app tenants).
+  'strict-drift': { type: 'boolean', default: false },
+  // SPINE-SCOPED enforcement: the canonical spine (tables CREATEd by
+  // supabase/tenant-migrations/*.sql) MUST be identical on every tenant — that's
+  // the governed surface the One Pipe rolls out. --strict-spine fails the build
+  // on drift that touches a SPINE table (its columns, policies, or FKs), while
+  // non-spine tables (module layers like field_*, and legacy app tables) stay
+  // informational. This is the CI default for the blocking gate: enforce the core
+  // without drowning in the by-design app-layer differences.
+  'strict-spine': { type: 'boolean', default: false },
+  // Migration-identity gaps / out-of-band are likewise informational by default
+  // (divergent lineages). --strict-identity makes them fail. Query errors always fail.
+  'strict-identity': { type: 'boolean', default: false },
 }});
 
 requireAccessToken();
@@ -88,13 +117,86 @@ const FINGERPRINT_SQL = `
                || ' USING ' || coalesce(qual, '-') as sig
         from pg_policies where schemaname = 'app_data'
       ) pol
+    ),
+    'foreign_keys', (
+      -- NAME-INDEPENDENT FK signature: source table + ordered source columns ->
+      -- referenced table + ordered referenced columns + ON DELETE/ON UPDATE
+      -- action. Deliberately excludes the constraint NAME so the known _fk vs
+      -- _fkey naming inconsistency does not register as drift — only a real
+      -- structural or referential-action difference does. This is the gap that
+      -- let migration 048 (spine ON DELETE normalisation) slip past the guard.
+      select coalesce(jsonb_agg(sig order by sig), '[]'::jsonb) from (
+        select
+          srcns.nspname || '.' || srcrel.relname || ' ('
+          || (select string_agg(a.attname, ',' order by k.ord)
+                from unnest(c.conkey) with ordinality as k(attnum, ord)
+                join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum)
+          || ') -> '
+          || tgtns.nspname || '.' || tgtrel.relname || ' ('
+          || (select string_agg(a.attname, ',' order by k.ord)
+                from unnest(c.confkey) with ordinality as k(attnum, ord)
+                join pg_attribute a on a.attrelid = c.confrelid and a.attnum = k.attnum)
+          || ')'
+          || ' ON DELETE ' || (case c.confdeltype
+                when 'a' then 'NO ACTION' when 'r' then 'RESTRICT' when 'c' then 'CASCADE'
+                when 'n' then 'SET NULL' when 'd' then 'SET DEFAULT' else c.confdeltype::text end)
+          || ' ON UPDATE ' || (case c.confupdtype
+                when 'a' then 'NO ACTION' when 'r' then 'RESTRICT' when 'c' then 'CASCADE'
+                when 'n' then 'SET NULL' when 'd' then 'SET DEFAULT' else c.confupdtype::text end) as sig
+        from pg_constraint c
+        join pg_class     srcrel on srcrel.oid = c.conrelid
+        join pg_namespace srcns  on srcns.oid  = srcrel.relnamespace
+        join pg_class     tgtrel on tgtrel.oid = c.confrelid
+        join pg_namespace tgtns  on tgtns.oid  = tgtrel.relnamespace
+        where c.contype = 'f'
+          and srcns.nspname = 'app_data'
+      ) fk
+    ),
+    'effective_rls', (
+      -- SEMANTIC RLS signature: per table, the EFFECTIVE access control, not the
+      -- policy names/decomposition. Two tenants that express the same isolation
+      -- differently (one ALL policy vs four per-command policies with the same
+      -- gate) produce the SAME signature, so cosmetic decomposition is not drift —
+      -- the same name-independence the FK signature already has. Captures:
+      --   rls=<on/off>  · open=<true if any permissive USING(true) policy exists>
+      --   gates=[distinct normalised tenant-scoped USING/WITH CHECK expressions]
+      -- A genuinely open table (open=true / rls=off) or a different gate IS drift.
+      select coalesce(jsonb_agg(sig order by sig), '[]'::jsonb) from (
+        select t.tablename
+          || ' rls=' || c.relrowsecurity
+          || ' open=' || coalesce(bool_or(p.permissive = 'PERMISSIVE' and btrim(coalesce(p.qual, '')) = 'true'), false)
+          || ' gates=[' || coalesce((
+               -- Distinct SET of tenant-scoped gate expressions across all permissive
+               -- policies on the table — each USING and each WITH CHECK collected
+               -- SEPARATELY (not paired per policy), so one ALL policy and many
+               -- per-command policies carrying the same expression collapse to the
+               -- same set. Decomposition-independent; still expression-sensitive.
+               select string_agg(distinct g, '; ' order by g) from (
+                 select regexp_replace(p2.qual, '\\s+', ' ', 'g') as g
+                 from pg_policies p2
+                 where p2.schemaname = 'app_data' and p2.tablename = t.tablename
+                   and p2.permissive = 'PERMISSIVE' and p2.qual is not null and p2.qual ~ 'tenant_id'
+                 union
+                 select regexp_replace(p2.with_check, '\\s+', ' ', 'g')
+                 from pg_policies p2
+                 where p2.schemaname = 'app_data' and p2.tablename = t.tablename
+                   and p2.permissive = 'PERMISSIVE' and p2.with_check is not null and p2.with_check ~ 'tenant_id'
+               ) gg
+             ), '') || ']' as sig
+        from pg_tables t
+        join pg_class     c on c.relname = t.tablename
+        join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'app_data'
+        left join pg_policies p on p.schemaname = 'app_data' and p.tablename = t.tablename
+        where t.schemaname = 'app_data'
+        group by t.tablename, c.relrowsecurity
+      ) er
     )
   ) as fp;
 `;
 
 async function fingerprint(ref) {
   const rows = await mgmtRows(ref, FINGERPRINT_SQL);
-  return rows?.[0]?.fp ?? { tables: [], columns: [], functions: [], policies: [] };
+  return rows?.[0]?.fp ?? { tables: [], columns: [], functions: [], policies: [], foreign_keys: [], effective_rls: [] };
 }
 
 // ─── load tenants ───────────────────────────────────────────────────────────
@@ -124,9 +226,19 @@ if (!args['anon-only']) {
   const refSlug = args.reference ?? tenants[0].slug;
   if (!fps[refSlug]) fail(1, `reference '${refSlug}' not among ${tenants.map(t => t.slug).join(', ')}`);
 
-  const CATS = ['tables', 'columns', 'functions', 'policies'];
+  // The SPINE = every table CREATEd by the canonical migrations. Drift on these
+  // is the blocking surface under --strict-spine; everything else (module layers,
+  // legacy app tables) is informational.
+  const spineTables = await loadSpineTables();
+  log(`spine = ${spineTables.size} tables created by the canonical migrations`);
+
+  // 'effective_rls' is the SEMANTIC isolation dimension used for spine enforcement;
+  // 'policies' is kept for raw visibility but is informational only (its name/
+  // decomposition differences are cosmetic — see tag() below).
+  const CATS = ['tables', 'columns', 'functions', 'policies', 'foreign_keys', 'effective_rls'];
   const report = {};
-  let drift = false;
+  let drift = false;       // any cross-tenant difference (informational umbrella)
+  let spineDrift = false;  // a difference that touches a SPINE table (blocking surface)
 
   for (const t of tenants) {
     if (t.slug === refSlug) continue;
@@ -136,12 +248,23 @@ if (!args['anon-only']) {
       const curSet = new Set(fps[t.slug][cat]);
       const missing = [...refSet].filter(x => !curSet.has(x));
       const extra   = [...curSet].filter(x => !refSet.has(x));
-      if (missing.length || extra.length) { drift = true; cats[cat] = { missing, extra }; }
+      if (!missing.length && !extra.length) continue;
+      drift = true;
+      // Classify each diff by the table it belongs to: spine vs non-spine.
+      const tag = (items) => items.map(sig => {
+        const tbl = diffTable(cat, sig);
+        // Raw 'policies' never gates the spine — its name/decomposition differences
+        // are cosmetic; 'effective_rls' is the semantic isolation signal instead.
+        const isSpine = cat !== 'policies' && tbl != null && spineTables.has(tbl);
+        if (isSpine) spineDrift = true;
+        return { sig, spine: isSpine };
+      });
+      cats[cat] = { missing: tag(missing), extra: tag(extra) };
     }
     if (Object.keys(cats).length) report[t.slug] = cats;
   }
 
-  driftResult = { skip: false, drift, report, refSlug };
+  driftResult = { skip: false, drift, spineDrift, report, refSlug, spineCount: spineTables.size };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -149,39 +272,86 @@ if (!args['anon-only']) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Tables that intentionally allow anon reads for pre-auth bootstrap (login page,
-// org lookup, schema registry). Only on the control plane (jvkn). Do NOT add
-// entries here for data tables — bootstrap reads belong in service_role functions.
+// org lookup, schema registry). Low-sensitivity, deliberate, permanent. Do NOT
+// add data tables here — bootstrap reads belong in service_role functions.
 const INTENTIONAL_ANON_READS = {
-  jvknxcmbtrfnxfrwfimn: new Set([
+  jvknxcmbtrfnxfrwfimn: new Set([          // control plane
     'public.organisations',
     'public.module_entitlements',
     'shell_control.eq_schema_registry',
   ]),
+  ehowgjardagevnrluult: new Set([          // SKS tenant — same schema-version discovery read
+    'shell_control.eq_schema_registry',
+  ]),
 };
 
-// Returns rows: { grantee, table_schema, table_name, privileges, scoped_policy_count }
-// scoped_policy_count = number of RLS policies on this table with a non-trivial
-// USING clause (not just the bare literal `true`). A table with anon/authenticated
-// grants and scoped_policy_count = 0 is flagged.
+// KNOWN-LEGACY anon exposure — accepted as TRACKED DEBT, not approval to keep.
+// zaap (eq-canonical-internal) carries EQ Field's pre-canonical access model:
+// Field runs purely as the anon role (PIN-gated client-side, no Supabase Auth /
+// auth.uid()), so these public.* tables have USING(true) anon policies and most
+// are anon-writable. Confirmed 2026-06-03 that revoking them breaks EQ Field
+// (eq / demo-trades / melbourne tenants) until its read/write path moves behind
+// an authenticated identity (server-side proxy or per-user JWT + rewritten RLS).
+// See eq-solves-field SECURITY-REMEDIATION-HANDOFF.md (finding #4) / SKS-CUTOVER.
+// This baseline keeps the debt VISIBLE while letting the gate FAIL on any anon-
+// open table that is NOT already listed here (i.e. new regressions still block).
+// Burn-down: started at 36 (2026-06-03). Removed 11 Field-UNUSED tables after revoking
+// anon on zaap (verified anon has no privilege) — they must now HARD-FAIL if anon access
+// ever returns. Remaining 25 are the tables EQ Field actively uses; they leave the baseline
+// one at a time as each surface cuts over to canonical app_data (see remediation sprint).
+const KNOWN_LEGACY_ANON = {
+  zaapmfdkgedqupfjtchl: new Set([
+    'public.app_config', 'public.apprentice_journal', 'public.apprentice_profiles',
+    'public.audit_log', 'public.competencies', 'public.feedback_entries',
+    'public.feedback_requests', 'public.job_numbers', 'public.leave_requests',
+    'public.managers', 'public.organisations', 'public.people', 'public.prestarts',
+    'public.project_targets', 'public.projects', 'public.regions',
+    'public.roster_presence', 'public.rotations', 'public.schedule',
+    'public.site_diaries', 'public.sites', 'public.skills_ratings',
+    'public.timesheet_locks', 'public.timesheets', 'public.toolbox_talks',
+  ]),
+};
+
+// Returns rows: { grantee, table_schema, table_name, privileges, rls_enabled, open_policy_count }
+//
+// A grant to anon/authenticated is only *reachable* — and therefore a real
+// exposure — if either:
+//   • RLS is disabled on the table (grants apply directly), or
+//   • a PERMISSIVE policy applies to the grantee (or `public`) whose gating
+//     expression is the bare literal `true`, i.e. unconditional.
+// Predicates that reference auth.uid()/auth.jwt() evaluate to NULL → deny for
+// an anon request (no JWT), so an identity-gated policy is NOT reachable and
+// must not be flagged. open_policy_count counts unconditional policies on the
+// USING side (SELECT/UPDATE/DELETE/ALL) and the WITH CHECK side (INSERT/UPDATE/
+// ALL). Supabase-managed platform schemas are excluded.
 const ANON_GRANT_SQL = `
   SELECT
     rtg.grantee,
     rtg.table_schema,
     rtg.table_name,
-    array_agg(DISTINCT rtg.privilege_type ORDER BY rtg.privilege_type) AS privileges,
+    array_to_string(array_agg(DISTINCT rtg.privilege_type ORDER BY rtg.privilege_type), ',') AS privileges,
+    bool_or(c.relrowsecurity) AS rls_enabled,
     (
       SELECT count(*)::int
       FROM pg_policies p
       WHERE p.schemaname = rtg.table_schema
         AND p.tablename  = rtg.table_name
-        AND p.qual IS NOT NULL
-        AND trim(p.qual) NOT IN ('true', '')
-    ) AS scoped_policy_count
+        AND p.permissive = 'PERMISSIVE'
+        AND (p.roles @> ARRAY[rtg.grantee]::name[] OR p.roles @> ARRAY['public']::name[])
+        AND (
+          (p.cmd IN ('SELECT','UPDATE','DELETE','ALL') AND trim(coalesce(p.qual, '')) = 'true')
+          OR (p.cmd IN ('INSERT','UPDATE','ALL') AND trim(coalesce(p.with_check, '')) = 'true')
+        )
+    ) AS open_policy_count
   FROM information_schema.role_table_grants rtg
+  JOIN pg_namespace n ON n.nspname = rtg.table_schema
+  JOIN pg_class c     ON c.relname = rtg.table_name AND c.relnamespace = n.oid
   WHERE rtg.grantee IN ('anon', 'authenticated')
     AND rtg.table_schema NOT IN (
-      'pg_catalog', 'information_schema', 'pg_toast',
-      'pg_temp_1', 'pg_toast_temp_1'
+      'pg_catalog', 'information_schema', 'pg_toast', 'pg_temp_1', 'pg_toast_temp_1',
+      'realtime', 'storage', 'vault', 'graphql', 'graphql_public', 'pgsodium',
+      'pgbouncer', 'cron', 'net', 'supabase_functions', 'supabase_migrations',
+      'extensions', '_realtime', '_analytics'
     )
   GROUP BY rtg.grantee, rtg.table_schema, rtg.table_name
   HAVING count(*) > 0
@@ -193,27 +363,37 @@ async function checkAnonGrants(ref, label) {
   try {
     rows = await mgmtRows(ref, ANON_GRANT_SQL);
   } catch (e) {
-    return { ref, label, error: e.message, violations: [], intentional: [] };
+    return { ref, label, error: e.message, violations: [], intentional: [], knownLegacy: [] };
   }
 
   const exclusions = INTENTIONAL_ANON_READS[ref] ?? new Set();
+  const legacy     = KNOWN_LEGACY_ANON[ref] ?? new Set();
   const violations = [];
   const intentional = [];
+  const knownLegacy = [];
 
   for (const row of rows) {
     const key = `${row.table_schema}.${row.table_name}`;
+    // Reachable by this grantee = RLS off (grants apply directly) OR an
+    // unconditional permissive policy exists. Identity-gated policies are not
+    // reachable by an anon request, so they are intentionally not flagged.
+    const reachable = row.rls_enabled === false || row.open_policy_count > 0;
+    if (!reachable) continue;
+    row.reason = row.rls_enabled === false ? 'rls-disabled' : 'open-policy';
+    if (legacy.has(key)) {
+      // Tracked legacy debt — surfaced but does not fail the gate.
+      knownLegacy.push({ ...row, key });
+      continue;
+    }
     if (exclusions.has(key)) {
-      // Only log intentional if it's actually safe (scoped_policy_count may still be 0
-      // for deliberately open bootstrap tables — that's acceptable and documented).
+      // Deliberate, documented bootstrap reads (login page org lookup, etc.).
       intentional.push({ ...row, key });
       continue;
     }
-    if (row.scoped_policy_count === 0) {
-      violations.push({ ...row, key });
-    }
+    violations.push({ ...row, key });
   }
 
-  return { ref, label, violations, intentional };
+  return { ref, label, violations, intentional, knownLegacy };
 }
 
 const CANONICAL_PROJECTS = [
@@ -273,7 +453,6 @@ if (!args['no-anon']) {
 // full filename (post-2026-05-30 runner) or the basename without .sql (old
 // runner). Both are normalised to the full filename for comparison.
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, '..', 'supabase', 'tenant-migrations');
 
 const TENANT_DATA_PLANES = [
@@ -316,7 +495,7 @@ async function checkMigrationIdentity() {
     let appliedRows;
     try {
       appliedRows = await mgmtRows(tenant.ref, `
-        SELECT name FROM _eq_migrations ORDER BY name;
+        SELECT name FROM app_data._eq_migrations ORDER BY name;
       `);
     } catch (e) {
       tenantResults.push({ ...tenant, error: e.message, gaps: [], outOfBand: [] });
@@ -357,17 +536,29 @@ if (!args['anon-only']) {
 // Output
 // ═══════════════════════════════════════════════════════════════════════════
 
-const identityFailed = identityResult != null
-  && !identityResult.error
+// A real error (couldn't query a tenant) always fails. Gaps / out-of-band are
+// INFORMATIONAL by default — the EQ and SKS tenants run divergent migration
+// lineages by design, so comparing both against the single EQ repo is noisy.
+// Pass --strict-identity to enforce (e.g. for same-lineage tenants).
+const identityError = identityResult != null && (
+  !!identityResult.error ||
+  identityResult.tenants.some(t => !t.skipped && t.error)
+);
+const identityDrift = identityResult != null && !identityResult.error
   && identityResult.tenants.some(t => !t.skipped && !t.error && (t.gaps.length > 0 || t.outOfBand.length > 0));
+const identityFailed = identityError || (identityDrift && args['strict-identity']);
 
-const anyFailure = driftResult.drift || anonFailed || identityFailed;
+const driftFails = driftResult.drift && args['strict-drift'];
+const spineFails = driftResult.spineDrift && args['strict-spine'];
+const anyFailure = driftFails || spineFails || anonFailed || identityFailed;
 
 if (args.json) {
   console.log(JSON.stringify({
     drift: {
       skip: driftResult.skip,
       detected: driftResult.drift,
+      spine_drift: driftResult.spineDrift,
+      spine_table_count: driftResult.spineCount,
       reference: driftResult.refSlug,
       report: driftResult.report,
     },
@@ -389,14 +580,28 @@ if (args.json) {
   // ── drift output ──
   if (!args['anon-only']) {
     if (driftResult.drift) {
-      console.log(`\nReference tenant: ${driftResult.refSlug}`);
+      const spineTag = args['strict-spine'] ? 'BLOCKING' : 'informational — use --strict-spine to enforce';
+      console.log(`\n── Cross-tenant drift ───────────────────────────────────────`);
+      console.log(`Reference: ${driftResult.refSlug}   ·   spine = ${driftResult.spineCount} governed tables`);
       for (const [slug, cats] of Object.entries(driftResult.report)) {
-        console.log(`\n✗ ${slug} differs:`);
+        const spineLines = [];
+        let nonSpine = 0;
         for (const [cat, diff] of Object.entries(cats)) {
-          for (const m of diff.missing) console.log(`    - [${cat}] MISSING here: ${m}`);
-          for (const e of diff.extra)   console.log(`    + [${cat}] EXTRA here:   ${e}`);
+          for (const m of diff.missing) m.spine ? spineLines.push(`      - [${cat}] MISSING here: ${m.sig}`) : nonSpine++;
+          for (const e of diff.extra)   e.spine ? spineLines.push(`      + [${cat}] EXTRA here:   ${e.sig}`) : nonSpine++;
         }
+        console.log(`\n  ${slug}:`);
+        if (spineLines.length) {
+          console.log(`    ✗ SPINE drift (${spineTag}) — ${spineLines.length} item(s):`);
+          for (const l of spineLines) console.log(l);
+        } else {
+          console.log(`    ✓ spine clean`);
+        }
+        if (nonSpine) console.log(`    ℹ ${nonSpine} non-spine difference(s) — module/legacy layer, informational`);
       }
+      console.log(driftResult.spineDrift
+        ? `\n✗ Spine drift detected${args['strict-spine'] ? ' — FAILING build (--strict-spine)' : ' (informational)'}.`
+        : `\n✓ SPINE identical across all tenants — the governed surface is aligned.`);
     } else if (!driftResult.skip) {
       console.log(`\n✓ Cross-tenant drift: all tenants match '${driftResult.refSlug}'.`);
     }
@@ -410,16 +615,22 @@ if (args.json) {
         console.log(`  ✗ ${r.label}: query error — ${r.error}`);
         continue;
       }
+      const notes = [];
+      if (r.intentional.length) notes.push(`${r.intentional.length} deliberate read${r.intentional.length > 1 ? 's' : ''}`);
+      if (r.knownLegacy.length) notes.push(`${r.knownLegacy.length} known-legacy (tracked)`);
+      const note = notes.length ? ` (${notes.join(', ')} excluded)` : '';
       if (!r.violations.length) {
-        const note = r.intentional.length
-          ? ` (${r.intentional.length} deliberate anon read${r.intentional.length > 1 ? 's' : ''} excluded)`
-          : '';
         console.log(`  ✓ ${r.label}: clean${note}`);
       } else {
-        console.log(`  ✗ ${r.label}: ${r.violations.length} table${r.violations.length > 1 ? 's' : ''} with unconstrained anon access`);
+        console.log(`  ✗ ${r.label}: ${r.violations.length} NEW table${r.violations.length > 1 ? 's' : ''} with unconstrained anon access${note}`);
         for (const v of r.violations) {
-          console.log(`      ${v.key}  grantee=${v.grantee}  privs=${v.privileges.join(',')}  scoped_policies=0`);
+          console.log(`      ${v.key}  grantee=${v.grantee}  privs=${v.privileges}  reason=${v.reason}`);
         }
+      }
+      // Surface tracked legacy debt every run so it stays visible.
+      if (r.knownLegacy.length) {
+        const tbls = [...new Set(r.knownLegacy.map(v => v.key))];
+        console.log(`    ↳ known-legacy anon access (EQ Field, tracked — see KNOWN_LEGACY_ANON): ${tbls.length} tables`);
       }
     }
     if (anonResults.length === 0) {
@@ -429,7 +640,8 @@ if (args.json) {
 
   // ── migration-identity output ──
   if (!args['anon-only'] && identityResult) {
-    console.log('\n── Migration identity ──────────────────────────────────────');
+    const itag = args['strict-identity'] ? 'strict' : 'informational — divergent lineages; use --strict-identity to enforce';
+    console.log(`\n── Migration identity (${itag}) ─────────────────────────────`);
     if (identityResult.error) {
       console.log(`  ✗ error: ${identityResult.error}`);
     } else {
@@ -446,7 +658,7 @@ if (args.json) {
         if (!t.gaps.length && !t.outOfBand.length) {
           console.log(`  ✓ ${t.label}: all repo migrations applied, no out-of-band entries`);
         } else {
-          console.log(`  ✗ ${t.label}:`);
+          console.log(`  ${args['strict-identity'] ? '✗' : '⚠'} ${t.label}:`);
           if (t.gaps.length) {
             console.log(`      ${t.gaps.length} repo file(s) NOT applied on this tenant:`);
             for (const g of t.gaps) console.log(`        - ${g}`);
@@ -466,3 +678,32 @@ process.exit(anyFailure ? 2 : 0);
 // ── helpers ──────────────────────────────────────────────────────────────
 function log(m) { if (!args.json) console.log(`[drift] ${m}`); }
 function fail(code, m) { console.error(`ERROR: ${m}`); process.exit(code); }
+
+// The spine table set = every app_data table CREATEd by a canonical migration.
+// Derived from the files so it stays correct as migrations are added — no
+// hand-maintained allowlist to fall out of date.
+async function loadSpineTables() {
+  const dir = join(__dirname, '..', 'supabase', 'tenant-migrations');
+  const files = (await readdir(dir)).filter(f => f.endsWith('.sql')).sort();
+  const spine = new Set();
+  const re = /create\s+table\s+(?:if\s+not\s+exists\s+)?app_data\.([a-z0-9_]+)/gi;
+  for (const f of files) {
+    const sql = await readFile(join(dir, f), 'utf8');
+    let m;
+    while ((m = re.exec(sql))) spine.add(m[1].toLowerCase());
+  }
+  return spine;
+}
+
+// Which table a drift signature belongs to (null = not table-scoped, e.g. a
+// free function — treated as non-spine / informational in this version).
+function diffTable(cat, sig) {
+  switch (cat) {
+    case 'tables':       return sig.trim().toLowerCase();
+    case 'columns':      return sig.split('.')[0].trim().toLowerCase();          // "table.col type …"
+    case 'policies':     return sig.split('.')[0].trim().toLowerCase();          // "table.policy cmd …"
+    case 'foreign_keys': { const m = sig.match(/^app_data\.([a-z0-9_]+)\s*\(/i); return m ? m[1].toLowerCase() : null; }
+    case 'effective_rls': return sig.split(' ')[0].trim().toLowerCase();         // "<table> rls=… open=… gates=[…]"
+    default:             return null;                                            // functions: not table-scoped
+  }
+}

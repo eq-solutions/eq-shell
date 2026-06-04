@@ -804,7 +804,7 @@ export default function LicenceOcrPage() {
           {saved ? (
             // Success state
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, textAlign: 'center' }}>
-              <CheckCircle2 size={48} style={{ color: '#16A34A' }} aria-hidden="true" />
+              <CheckCircle2 size={48} style={{ color: 'var(--eq-success-text)' }} aria-hidden="true" />
               <div>
                 <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--eq-ink, #1A1A2E)' }}>
                   Licence saved

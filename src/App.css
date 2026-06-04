@@ -1705,7 +1705,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #F59E0B;
+  background: var(--eq-warning-text);
   flex-shrink: 0;
 }
 
@@ -1851,7 +1851,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #22C55E;
+  background: var(--eq-success-text);
   flex-shrink: 0;
 }
 
@@ -1982,7 +1982,7 @@
   color: #fff;
   background: #9CA3AF;
 }
-.eq-hub-action--critical .eq-hub-action__rank { background: #EF4444; }
+.eq-hub-action--critical .eq-hub-action__rank { background: var(--eq-error-text); }
 .eq-hub-action--high     .eq-hub-action__rank { background: #F97316; }
 .eq-hub-action--normal   .eq-hub-action__rank { background: #9CA3AF; }
 
@@ -2018,7 +2018,7 @@
   color: #F97316;
   font-weight: 500;
 }
-.eq-hub-action--critical .eq-hub-action__deadline { color: #EF4444; }
+.eq-hub-action--critical .eq-hub-action__deadline { color: var(--eq-error-text); }
 
 .eq-hub-action__arrow {
   flex-shrink: 0;
@@ -2211,7 +2211,7 @@
 .eq-hub-action__btn--done:hover {
   background: #F0FDF4;
   border-color: #86EFAC;
-  color: #16A34A;
+  color: var(--eq-success-text);
 }
 
 .eq-hub-action__btn--dismiss:hover {
@@ -2403,9 +2403,9 @@
   flex-shrink: 0;
 }
 
-.eq-hub-activity__dot--ok      { background: #22C55E; }
-.eq-hub-activity__dot--warn    { background: #F59E0B; }
-.eq-hub-activity__dot--err     { background: #EF4444; }
+.eq-hub-activity__dot--ok      { background: var(--eq-success-text); }
+.eq-hub-activity__dot--warn    { background: var(--eq-warning-text); }
+.eq-hub-activity__dot--err     { background: var(--eq-error-text); }
 .eq-hub-activity__dot--default { background: var(--gray-300); }
 
 .eq-hub-activity__name {
@@ -2458,7 +2458,7 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #22C55E;
+  background: var(--eq-success-text);
   margin-right: 5px;
   vertical-align: middle;
 }
@@ -2476,7 +2476,7 @@
 }
 
 .eq-hub-alert--action {
-  background: #F59E0B;
+  background: var(--eq-warning-text);
   color: #fff;
 }
 
@@ -2809,7 +2809,7 @@
   color: #fff;
   background: #9CA3AF;
 }
-.eq-hub-action--critical .eq-hub-action__rank { background: #EF4444; }
+.eq-hub-action--critical .eq-hub-action__rank { background: var(--eq-error-text); }
 .eq-hub-action--high     .eq-hub-action__rank { background: #F97316; }
 .eq-hub-action--normal   .eq-hub-action__rank { background: #9CA3AF; }
 
@@ -2845,7 +2845,7 @@
   color: #F97316;
   font-weight: 500;
 }
-.eq-hub-action--critical .eq-hub-action__deadline { color: #EF4444; }
+.eq-hub-action--critical .eq-hub-action__deadline { color: var(--eq-error-text); }
 
 .eq-hub-action__arrow {
   flex-shrink: 0;
@@ -3038,7 +3038,7 @@
 .eq-hub-action__btn--done:hover {
   background: #F0FDF4;
   border-color: #86EFAC;
-  color: #16A34A;
+  color: var(--eq-success-text);
 }
 
 .eq-hub-action__btn--dismiss:hover {
@@ -3054,3 +3054,41 @@
   .eq-hub-action { padding: 10px 12px; }
   .eq-hub-action__btn { width: 32px; height: 32px; }
 }
+
+/* ──────────────────────────────────────────────────────────────────
+ * Audit follow-up (2026-06-03): classes referenced in JSX that had no
+ * rule. Surfaced by scripts/check-css-coverage.mjs. The page-specific
+ * design backlog (login hero, form primitives) is tracked in that lint's
+ * ALLOW list; these are the quick/high-traffic wins.
+ * ────────────────────────────────────────────────────────────────── */
+.eq-hub-briefing-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--eq-sky, #3DA8D8);
+  background: #fff;
+  border: 1px solid var(--eq-sky, #3DA8D8);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.eq-hub-briefing-load:hover { background: var(--eq-ice, #EAF5FB); }
+.eq-hub-briefing-load:disabled { opacity: 0.6; cursor: default; }
+
+.eq-hub-alert__text { flex: 1; min-width: 0; line-height: 1.45; }
+
+.eq-muted { color: #6B7280; }
+
+.eq-page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100svh;
+  color: #6B7280;
+}
+
+@keyframes eq-spin { to { transform: rotate(360deg); } }
+.eq-spin { animation: eq-spin 0.8s linear infinite; }

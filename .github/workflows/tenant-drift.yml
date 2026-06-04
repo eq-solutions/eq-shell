@@ -27,7 +27,13 @@ jobs:
 
       - name: Run drift + anon-grant check
         run: |
-          FLAGS=""
+          # --strict-spine: the canonical spine (tables created by the migrations)
+          # must be identical across every tenant — drift on a spine table now FAILS
+          # this check. Module/legacy-layer differences stay informational. The
+          # comparison is semantic (effective RLS isolation, not policy names), so
+          # cosmetic decomposition is not a false failure. Spine verified green
+          # across both tenants 2026-06-04.
+          FLAGS="--strict-spine"
           if [ "${{ inputs.anon_only }}" = "true" ]; then
             FLAGS="--anon-only"
           fi

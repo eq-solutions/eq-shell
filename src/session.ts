@@ -92,6 +92,14 @@ export interface ShellSession {
   supabase_jwt: string;
   /** Per-tenant runtime config. Always present; pre-provisioning responses default to DEFAULT_TENANT_CONFIG. */
   config: TenantConfig;
+  /**
+   * When true, this user must set up a second sign-in step before using
+   * the app — a manager/supervisor/platform-admin past their 14-day
+   * grace runway who hasn't enrolled TOTP yet. The shell routes them to
+   * /settings/2fa and holds them there until they enrol. Re-evaluated by
+   * verify-shell-session on every mount, so it clears as soon as they do.
+   */
+  requires_totp_enrollment?: boolean;
 }
 
 export interface SessionContextValue {

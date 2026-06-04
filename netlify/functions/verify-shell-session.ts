@@ -17,6 +17,7 @@ import { verifySessionToken, signSessionToken, readSessionCookie, hasSecretSalt,
 import type { TenantConfig } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
+import { totpEnrollmentDue } from './_shared/totp.js';
 import { withSentry } from './_shared/sentry.js';
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -58,7 +59,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // demoted a user) take effect on next verify, not just next login.
   const { data: user, error: userErr } = await sb
     .from('users')
-    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at')
+    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at, totp_enrolled_at, created_at')
     .eq('id', session.user_id)
     .eq('active', true)
     .maybeSingle<Omit<CanonicalUser, 'pin_hash'>>();
@@ -142,6 +143,17 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     ...(extra_perms.length > 0 ? { extra_perms } : {}),
   };
 
+  // Re-evaluated on every verify (every route mount + 5-min poll), so a
+  // manager who passes their grace runway mid-session gets gated to
+  // /settings/2fa without needing to re-login — and the flag clears the
+  // moment they enrol.
+  const requires_totp_enrollment = totpEnrollmentDue({
+    role: activeMembership.role,
+    isPlatformAdmin: user.is_platform_admin,
+    totpEnrolledAt: user.totp_enrolled_at,
+    createdAt: user.created_at,
+  });
+
   const body = {
     valid: true,
     user: userForResponse,
@@ -150,6 +162,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     config,
     memberships: await getEnrichedMemberships(user.id).catch(() => memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role }))),
     supabase_jwt: supabaseJwt,
+    requires_totp_enrollment,
   };
 
   // Transparently upgrade pre-2026-05-28 cookies that lack email/name.

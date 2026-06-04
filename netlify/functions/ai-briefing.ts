@@ -1,9 +1,9 @@
 // GET /.netlify/functions/ai-briefing
 //
 // Fully structured AI morning briefing. Synthesises data from:
-//   - Last 48h canonical_events on the tenant data plane
+//   - Last 72h canonical_events on the tenant data plane (LOOKBACK_HOURS)
 //   - SKS pipeline summary (per-tenant config in shell_control.tenants)
-//   - Recent actioned/dismissed items (last 48h) to avoid re-surfacing
+//   - Recent actioned/dismissed items (same 72h window) to avoid re-surfacing
 //
 // Response (all fields always present):
 //   {
@@ -38,9 +38,17 @@ import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
 
 const ANTHROPIC_API_VERSION = '2023-06-01';
-const BRIEF_MODEL            = 'claude-sonnet-4-6';
+// Haiku — the dashboard brief is a short, structured (tool_use) summary, so
+// Haiku is plenty and roughly halves the generation time vs Sonnet. Matches
+// generate-gm-briefing. Bump back to sonnet-4-6 if brief quality regresses.
+const BRIEF_MODEL            = 'claude-haiku-4-5';
 const BRIEF_MAX_TOKENS       = 1024;
 const CACHE_TTL_MS           = 10 * 60 * 1000; // 10 minutes
+// Lookback window for canonical events AND the dismissed-items dedup list.
+// Both queries below share this so the "already actioned" filter always covers
+// the same span as the events — widening one without the other re-surfaces
+// items you've dismissed. 72h covers a long weekend without going stale.
+const LOOKBACK_HOURS         = 72;
 
 // ── Structured output tool ────────────────────────────────────────────────
 
@@ -114,6 +122,7 @@ DATA SOURCES YOU RECEIVE:
 RULES:
 - Always use the submit_briefing tool. Never reply in free text.
 - Brief: 2-3 sentences, plain English, no markdown. Lead with the most urgent item. Name people, sites, and references explicitly. Surface cross-app connections.
+- Recency: events are tagged [recent <12h] or [older]. Lead with [recent <12h] items. Treat [older] items as background context, not new alerts — only raise an older item if it is still unresolved or time-critical (e.g. an open defect, an overdue task, an expiring licence). Do not present a days-old routine event as if it just happened.
 - Actions: max 3. Rank by: compliance/safety first, operational gaps second, commercial third. Skip anything in recently_actioned.
 - On shift: only from shift.started events where occurred_at is within 12 hours. Extract name and site from payload.
 - Upcoming: only items with a verifiable future date from the data. Pipeline start_date_estimated qualifies.
@@ -207,13 +216,13 @@ function buildUserMessage(
   const lines: string[] = [`Current time: ${now}`, ''];
 
   if (events.length > 0) {
-    lines.push(`CANONICAL EVENTS (last 48h — ${events.length} total):`);
+    lines.push(`CANONICAL EVENTS (last ${LOOKBACK_HOURS}h — ${events.length} total):`);
     for (const e of events) {
       const tag = e.occurred_at >= h12 ? '[recent <12h]' : '[older]';
       lines.push(`${tag} ${e.app_source}/${e.event} at ${e.occurred_at}: ${JSON.stringify(e.payload)}`);
     }
   } else {
-    lines.push('CANONICAL EVENTS: none in last 48h');
+    lines.push(`CANONICAL EVENTS: none in last ${LOOKBACK_HOURS}h`);
   }
 
   if (pipeline) {
@@ -316,14 +325,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 
   // ── Parallel data fetch ────────────────────────────────────────────────
-  const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const cutoff = new Date(Date.now() - LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
 
   const [eventsRes, actionedRes, pipeline] = await Promise.all([
     tenantAny
       .schema('app_data')
       .from('canonical_events')
       .select('id, app_source, event, payload, occurred_at')
-      .gte('occurred_at', cutoff48h)
+      .gte('occurred_at', cutoff)
       .order('occurred_at', { ascending: false })
       .limit(30),
 
@@ -332,7 +341,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .from('briefing_actions')
       .select('action_title, action_source, state, created_at')
       .eq('user_id', userId)
-      .gte('created_at', cutoff48h)
+      .gte('created_at', cutoff)
       .order('created_at', { ascending: false }),
 
     pipelineUrl && pipelineApiKey
@@ -341,10 +350,17 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   ]);
 
   if (eventsRes.error) {
-    console.warn('[ai-briefing] canonical events query failed', { tenantId, error: eventsRes.error.message });
+    console.error('[ai-briefing] canonical events query failed', { tenantId, error: eventsRes.error.message });
+    captureServerError(eventsRes.error, { context: 'ai-briefing:events', tenantId });
+    return json(500, { ok: false, error: 'db_error', detail: eventsRes.error.message });
   }
 
   const events  = (eventsRes.data ?? [])   as CanonicalEvent[];
+
+  if (actionedRes.error) {
+    // Non-fatal: actioned list only prevents re-surfacing dismissed items; proceed without it.
+    console.warn('[ai-briefing] briefing_actions query failed', { tenantId, error: actionedRes.error.message });
+  }
   const actioned = (actionedRes.data ?? []) as BriefingAction[];
 
   const contributing_sources = [
@@ -364,9 +380,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.info('[ai-briefing] ANTHROPIC_API_KEY not set');
-    await writeCache(tenantAny, tenantId, userId, emptyResponse);
-    return json(200, emptyResponse);
+    console.error('[ai-briefing] ANTHROPIC_API_KEY not configured — cannot generate briefing');
+    return json(503, { ok: false, error: 'ai_not_configured' });
   }
 
   // ── Claude synthesis ───────────────────────────────────────────────────
@@ -416,9 +431,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   } catch (e) {
     captureServerError(e, { context: 'ai-briefing', tenantId });
-    console.warn('[ai-briefing] synthesis failed:', (e as Error).message);
-    await writeCache(tenantAny, tenantId, userId, emptyResponse);
-    return json(200, emptyResponse);
+    console.error('[ai-briefing] synthesis failed:', (e as Error).message);
+    return json(500, { ok: false, error: 'synthesis_failed', detail: (e as Error).message });
   }
 });
 

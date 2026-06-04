@@ -22,6 +22,7 @@ import TenantPicker from './pages/TenantPicker';
 import TotpChallenge from './pages/TotpChallenge';
 import EnrollTotp from './pages/EnrollTotp';
 import AdminInviteUser from './pages/AdminInviteUser';
+import AdminBulkInvite from './pages/AdminBulkInvite';
 import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
@@ -134,8 +135,8 @@ function SessionProvider({ children }: { children: ReactNode }) {
       });
       if (res.ok) {
         const body = (await res.json()) as ShellSession & { valid: true };
-        const { user, tenant, entitlements, supabase_jwt, memberships, config } = body;
-        const s = { user, tenant, entitlements, supabase_jwt, memberships: memberships ?? [{ tenant_id: tenant.id, role: user.role }], config: config ?? DEFAULT_TENANT_CONFIG };
+        const { user, tenant, entitlements, supabase_jwt, memberships, config, requires_totp_enrollment } = body;
+        const s = { user, tenant, entitlements, supabase_jwt, memberships: memberships ?? [{ tenant_id: tenant.id, role: user.role }], config: config ?? DEFAULT_TENANT_CONFIG, requires_totp_enrollment };
         setSession(s);
         writeStoredSession(s);
         seedSupabaseJwtCache(supabase_jwt);
@@ -293,6 +294,14 @@ function TenantTree() {
   const serviceEnabled = moduleEnabled(session, 'service');
   const quotesEnabled = moduleEnabled(session, 'quotes');
 
+  // Forced second-step gate: a manager/supervisor/platform-admin past
+  // their grace runway is held on /settings/2fa until they enrol. Placed
+  // after all hooks above so this early return can't violate rules-of-hooks.
+  const onEnrolPage = !!tenantSlug && location.pathname.startsWith(`/${tenantSlug}/settings/2fa`);
+  if (session?.requires_totp_enrollment && !onEnrolPage) {
+    return <Navigate to={`/${tenantSlug}/settings/2fa`} replace />;
+  }
+
   return (
     <BrandProvider tenant={session?.tenant ?? null}>
       {/* Persistent iframe keepers — mounted on first visit OR after the 2.5s
@@ -413,6 +422,7 @@ function TenantTree() {
         <Route path="admin/tenants" element={<AdminTenantsPage />} />
         <Route path="admin/users" element={<AdminUserList />} />
         <Route path="admin/users/invite" element={<AdminInviteUser />} />
+        <Route path="admin/users/invite-bulk" element={<AdminBulkInvite />} />
         <Route path="admin/users/:userId" element={<AdminEditUser />} />
         {/* S3 — audit log viewer + entity browser */}
         <Route path="admin/audit" element={<AdminAuditPage />} />

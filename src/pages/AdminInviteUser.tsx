@@ -124,6 +124,11 @@ function AdminInviteUserForm() {
         <p className="eq-page__lede">
           They get a one-time link to set their PIN and land straight on the hub.
         </p>
+        <p style={{ marginTop: 4 }}>
+          <Link to="../invite-bulk" style={{ fontSize: 13 }}>
+            Inviting a whole team? Invite in bulk →
+          </Link>
+        </p>
       </div>
       <form onSubmit={onSubmit} style={{ maxWidth: 520 }}>
 

@@ -255,7 +255,12 @@ export default function TenantHome() {
 
   useEffect(() => {
     void loadData();
-    // AI briefing is deferred — user triggers it via the "Load briefing" button.
+    // AI briefing is deferred (user clicks "Load briefing" to reveal it), but
+    // pre-warm the server-side cache on mount so that click is near-instant.
+    // Fire-and-forget: ai-briefing returns immediately when a fresh (<10min)
+    // cache exists and only generates when stale, so this costs at most one
+    // generation per cache window. Result discarded — the UX stays click-to-reveal.
+    void fetch('/.netlify/functions/ai-briefing', { cache: 'no-store' }).catch(() => {});
     pollRef.current = setInterval(() => { void silentRefreshFeed(); }, 60_000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
