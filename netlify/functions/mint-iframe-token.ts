@@ -39,7 +39,7 @@
 // Response: { token: string }
 
 import type { Context } from '@netlify/functions';
-import { getServiceClient } from './_shared/supabase.js';
+import { getServiceClient, getUserSecurityGroupPerms } from './_shared/supabase.js';
 import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, signShellToken, signBridgeToken, hasBridgeSecret, hasSecretSalt } from './_shared/token.js';
 import { withSentry } from './_shared/sentry.js';
@@ -186,19 +186,30 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Display name for Field's sidebar / audit_log / form prefills.
   const displayName = user.name ?? (user.email.includes('@') ? user.email.split('@')[0] : user.email);
 
+  // 2026-06-05: the user's security-group permission keys, scoped to their
+  // tenant — same source shell-login / verify-shell-session use. Field honours
+  // these additively in EQ_PERMS.can() (v3.5.78). Non-fatal: on any lookup
+  // failure we mint without perms (role still applies) rather than block login.
+  let extraPerms: string[] = [];
+  try {
+    extraPerms = await getUserSecurityGroupPerms(user.id, user.tenant_id);
+  } catch {
+    extraPerms = [];
+  }
+
   const shellToken = signShellToken({
     kind: 'shell-token',
     name: displayName,
     role: fieldRole,
-    // Phase 1.F: extend the wire payload to carry the full canonical
-    // identity. Field doesn't consume these YET — its verify-shell-token
-    // handler only reads `name` + `role` today. The follow-up
-    // Milmlow/eq-field-app PR will add a v2 verifier that honours these
-    // (start using eq_role for finer-grained Field-side gating;
-    // recognise is_platform_admin for support visibility). Until then
-    // the fields travel harmlessly.
+    // Phase 1.F: the full canonical identity. Field DOES consume these now —
+    // verify-shell-token (eq-field v3.5.22+) reads eq_role/is_platform_admin to
+    // derive the Field role, and extra_perms (v3.5.78) to widen access via
+    // security groups.
     eq_role: user.role,
     is_platform_admin: user.is_platform_admin,
+    // Only include extra_perms when non-empty — keeps the token compact and
+    // matches the shell-login / verify-shell-session payload convention.
+    ...(extraPerms.length > 0 ? { extra_perms: extraPerms } : {}),
     // 2026-05-22 — Wave 5: chosen Field tenant. Field's v3.5.17
     // _consumeShellToken cross-checks this against TENANT.ORG_SLUG
     // (set from the iframe URL's ?tenant= param the caller builds

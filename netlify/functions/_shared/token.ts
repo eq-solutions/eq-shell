@@ -146,6 +146,15 @@ export interface ShellTokenPayload {
    */
   is_platform_admin: boolean;
   /**
+   * 2026-06-05: security-group permission keys granted to this user (the same
+   * extra_perms[] that shell-login / verify-shell-session compute via
+   * getUserSecurityGroupPerms). EQ Field's verify-shell-token reads these
+   * (v3.5.78) and honours them additively in EQ_PERMS.can() — a group can widen
+   * Field access on top of the role, never narrow it. Optional: omitted when the
+   * user has no group membership (keeps the token compact).
+   */
+  extra_perms?: string[];
+  /**
    * 2026-05-22 — Wave 5: target Field tenant slug, chosen by the user
    * via the shell-side picker on /core/field. NOT derived from the
    * caller's shell tenant_id (that auto-routing model was rejected —
