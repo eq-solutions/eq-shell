@@ -13,6 +13,7 @@
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { seedDefaultGroups } from './_shared/seed-default-groups.js';
 import { withSentry } from './_shared/sentry.js';
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -143,6 +144,15 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     if (configErr) {
       // Non-fatal — defaults are applied at session-mint time anyway
       console.warn('[admin-tenants] tenant_config insert failed:', configErr.message);
+    }
+
+    // Seed the canonical default security groups so the tenant doesn't start
+    // with zero. Idempotent + non-fatal: a seed hiccup must not block or roll
+    // back tenant creation, and the helper is safe to re-run.
+    try {
+      await seedDefaultGroups(sb, tenantId);
+    } catch (e) {
+      console.warn('[admin-tenants] default security-group seed failed:', (e as Error).message);
     }
 
     return jsonResponse(201, { id: tenantId, slug, name });
