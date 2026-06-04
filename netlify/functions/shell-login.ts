@@ -316,7 +316,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // scope enforced by RLS. Returned in the response body (not a cookie)
   // so the React shell can attach it as Authorization to Supabase calls.
   // Phase 1.F: now carries eq_role + is_platform_admin too via app_metadata.
-  const supabaseJwt = signSupabaseJwt(
+  const { token: supabaseJwt } = signSupabaseJwt(
     user.id,
     tenant.id,
     activeRole,
