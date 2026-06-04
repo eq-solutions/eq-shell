@@ -95,7 +95,12 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     user.id,
     user.tenant_id,
     user.role,
-    user.is_platform_admin,
+    // Tenant isolation (Royce directive: no cross-tenant, ever): a bridged
+    // Service identity must NEVER carry platform-admin. Service maps
+    // is_platform_admin→super_admin, which grants cross-tenant visibility via
+    // its RLS is_super_admin(). Bridged users get only their own tenant's
+    // mapped role. Field is unchanged — it has no such escalation.
+    aud === 'service' ? false : user.is_platform_admin,
     IFRAME_TOKEN_TTL_SECONDS,
     aud === 'field' ? `field:${tenantSlug ?? 'eq'}` : 'service',
     user.email,
