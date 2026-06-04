@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { AlertTriangle, Check } from 'lucide-react';
 import { useSession, moduleEnabled, type EqTier } from '../session';
 import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
+import { MobileTabBar } from '../components/MobileTabBar';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
@@ -358,6 +359,7 @@ export default function TenantHome() {
 
   return (
     <div className="eq-hub">
+      <MobileTabBar />
       <HubSidebar apps={sidebarApps} records={sidebarRecords} />
 
       <div className="eq-hub__content">

@@ -1,7 +1,8 @@
 import { NavLink, useMatch, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Settings, House } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Settings } from 'lucide-react';
 import { useSession, type EqTier } from '../session';
 import { EqLogo } from './EqLogo';
+import { MobileTabBar } from './MobileTabBar';
 import './IconRail.css';
 
 function initials(name: string | null, email: string): string {
@@ -27,14 +28,6 @@ const RAIL_ITEMS: RailItem[] = [
   { key: 'service', label: 'EQ Service', icon: <Wrench size={20} strokeWidth={2} aria-hidden="true" />,     to: 'service' },
   { key: 'quotes',  label: 'EQ Quotes',  icon: <FileText size={20} strokeWidth={2} aria-hidden="true" />,   to: 'quotes',  hideForTier: TRIAL_TIERS },
   { key: 'cards',   label: 'EQ Cards',   icon: <CreditCard size={20} strokeWidth={2} aria-hidden="true" />, to: 'cards'   },
-];
-
-const MOBILE_ITEMS = [
-  { key: 'home',    label: 'Home',    icon: <House size={20} strokeWidth={2} aria-hidden="true" />,        to: '' },
-  { key: 'field',   label: 'Field',   icon: <Users size={20} strokeWidth={2} aria-hidden="true" />,       to: 'field'   },
-  { key: 'service', label: 'Service', icon: <Wrench size={20} strokeWidth={2} aria-hidden="true" />,      to: 'service' },
-  { key: 'quotes',  label: 'Quotes',  icon: <FileText size={20} strokeWidth={2} aria-hidden="true" />,    to: 'quotes'  },
-  { key: 'cards',   label: 'Cards',   icon: <CreditCard size={20} strokeWidth={2} aria-hidden="true" />,  to: 'cards'   },
 ];
 
 export function IconRail() {
@@ -142,27 +135,8 @@ export function IconRail() {
         </div>
       </nav>
 
-      {/* Mobile bottom tab bar */}
-      <nav className="eq-icon-rail-tabs" aria-label="App navigation" role="navigation">
-        {MOBILE_ITEMS.map((item) => {
-          const href = item.to ? `/${tenantSlug}/${item.to}` : `/${tenantSlug}`;
-          const isActive = item.key === 'home'
-            ? activeModule === null
-            : activeModule === item.key;
-
-          return (
-            <NavLink
-              key={item.key}
-              to={href}
-              className={`eq-icon-rail-tabs__item${isActive ? ' eq-icon-rail-tabs__item--active' : ''}`}
-              aria-current={isActive ? 'page' : undefined}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </NavLink>
-          );
-        })}
-      </nav>
+      {/* Mobile bottom tab bar (nav + Account/Sign out) */}
+      <MobileTabBar />
     </>
   );
 }

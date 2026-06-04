@@ -1,0 +1,168 @@
+/* MobileTabBar — fixed bottom tab bar for phones (<=767px).
+   Hidden on desktop; the icon rail / sidebar take over there. */
+
+.eq-mtabs {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .eq-mtabs {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--eq-ink, #1A1A2E);
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    z-index: 200;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+.eq-mtabs__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.50);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: color 100ms ease;
+  border-top: 2px solid transparent;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.eq-mtabs__item--active {
+  color: #3DA8D8;
+  border-top-color: #3DA8D8;
+}
+
+.eq-mtabs__item:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: -2px;
+}
+
+/* ── Account sheet ── */
+
+.eq-mtabs__backdrop {
+  display: none;
+}
+
+.eq-mtabs__sheet {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .eq-mtabs__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.40);
+    z-index: 205;
+  }
+
+  .eq-mtabs__sheet {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 8px);
+    z-index: 210;
+    background: var(--eq-ink, #1A1A2E);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+}
+
+.eq-mtabs__sheet-id {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.eq-mtabs__sheet-avatar {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #2986B4;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.04em;
+}
+
+.eq-mtabs__sheet-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.eq-mtabs__sheet-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eq-mtabs__sheet-email {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eq-mtabs__sheet-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.80);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  width: 100%;
+  transition: background 100ms ease;
+}
+
+.eq-mtabs__sheet-action:last-child { border-bottom: none; }
+.eq-mtabs__sheet-action:hover { background: rgba(255, 255, 255, 0.06); }
+
+.eq-mtabs__sheet-action:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: -2px;
+}
+
+.eq-mtabs__sheet-action--signout {
+  color: #FCA5A5;
+}
