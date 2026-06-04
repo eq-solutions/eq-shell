@@ -2508,15 +2508,39 @@
   .eq-hub-content { padding: 32px 28px; }
 }
 
-@media (max-width: 680px) {
+/* Mobile dashboard: sidebar gives way to the bottom tab bar (MobileTabBar,
+ * <=767px) and the loose stacked layout condenses into compact 2-up tiles.
+ * Breakpoint matches the tab bar so there's no overlap zone. */
+@media (max-width: 767px) {
   .eq-hub__sidebar { display: none; }
-  .eq-hub__content { overflow-y: auto; }
-  .eq-hub-content { padding: 24px 20px; }
-  .eq-hub-tiles { grid-template-columns: 1fr; }
-  .eq-hub-kpis { grid-template-columns: 1fr; }
-  .eq-hub-kpi { border-right: none; border-bottom: 1px solid var(--gray-200); }
-  .eq-hub-kpi:last-child { border-bottom: none; }
-  .eq-hub-content__greeting { font-size: 28px; }
+  /* Clear the fixed 56px tab bar (+ a little breathing room). */
+  .eq-hub__content { overflow-y: auto; padding-bottom: 72px; }
+  .eq-hub-content { padding: 20px 16px; }
+  .eq-hub-content__greeting { font-size: 24px; margin-bottom: 18px; }
+
+  /* KPIs: from a full-width stacked strip to a compact 2-up tile grid. */
+  .eq-hub-kpis {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+    margin-bottom: 20px;
+  }
+  .eq-hub-kpi {
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  /* Last KPI (Equipment, carries the service-due note) spans the full width.
+   * border-right is re-asserted here to beat the desktop strip's
+   * `.eq-hub-kpi:last-child { border-right: none }`. */
+  .eq-hub-kpi:last-child { grid-column: 1 / -1; border-right: 1px solid var(--gray-200); }
+  .eq-hub-kpi__value { font-size: 22px; }
+
+  /* App tiles stay 2-up (tighter gap) instead of collapsing to one column. */
+  .eq-hub-tiles { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; }
+
   .eq-hub-panels { grid-template-columns: 1fr; }
   .eq-hub-action { padding: 10px 12px; }
   .eq-hub-action__btn { width: 32px; height: 32px; }
