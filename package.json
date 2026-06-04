@@ -9,12 +9,13 @@
     "build:packages": "pnpm -r --filter \"./eq-intake/eq-platform/packages/**\" run build",
     "build:tokens": "node scripts/build-public-tokens.mjs",
     "check:perms": "node scripts/check-perm-sync.mjs",
+    "test": "node --import tsx/esm --test \"netlify/functions/**/*.test.ts\"",
     "build": "pnpm run build:packages && pnpm run build:tokens && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@eq-solutions/roles": "github:eq-solutions/eq-roles#v1.3.0",
+    "@eq-solutions/roles": "github:eq-solutions/eq-roles#v2.2.0",
     "@eq-solutions/tokens": "github:eq-solutions/eq-design-tokens#v1.2.0",
     "@eq-solutions/ui": "github:eq-solutions/eq-ui#v1.1.1",
     "@eq/ai": "workspace:*",
@@ -50,6 +51,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "tsx": "^4.19.2",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12"

@@ -19,7 +19,8 @@ import { resolve } from 'path';
 import { createRequire } from 'module';
 
 const _require = createRequire(import.meta.url);
-const { matrix: MATRIX, permissions: PERMISSIONS } = _require('@eq-solutions/roles/roles.json');
+const ROLES_JSON = _require('@eq-solutions/roles/roles.json');
+const { matrix: MATRIX, permissions: PERMISSIONS } = ROLES_JSON;
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
 
@@ -126,6 +127,35 @@ for (const role of Object.keys(clientGrants)) {
   if (missingClient.length) {
     console.error(`❌  role=${role}: server has [${missingClient.join(', ')}] but client does not`);
     ok = false;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 3. Default security-group templates drift
+//    netlify/functions/_shared/default-groups.ts is a bundle-safe local mirror
+//    of the package's roles.json `defaultGroups` (functions can't import the
+//    package at runtime). Guard it the same way as the matrix mirror above.
+// ──────────────────────────────────────────────────────────────────────────────
+const pkgGroups = ROLES_JSON.defaultGroups ?? [];
+const dgSrc = readFile('netlify/functions/_shared/default-groups.ts');
+const dgMatch = dgSrc.match(/DEFAULT_GROUPS\s*:\s*readonly\s+DefaultGroup\[\]\s*=\s*(\[[\s\S]*?\]);/);
+if (!dgMatch) {
+  console.error('❌  Could not find DEFAULT_GROUPS literal in netlify/functions/_shared/default-groups.ts');
+  ok = false;
+} else {
+  // The literal is pure data (strings + arrays) from a repo-controlled file.
+  const mirrorGroups = Function(`return (${dgMatch[1]})`)();
+  const norm = (g) =>
+    JSON.stringify({ key: g.key, name: g.name, description: g.description, perms: [...g.perms].sort() });
+  const pkgNorm = pkgGroups.map(norm).sort();
+  const mirrorNorm = mirrorGroups.map(norm).sort();
+  if (JSON.stringify(pkgNorm) !== JSON.stringify(mirrorNorm)) {
+    console.error('❌  DEFAULT_GROUPS mirror drifted from @eq-solutions/roles roles.json:');
+    console.error('    package:', JSON.stringify(pkgGroups));
+    console.error('    mirror: ', JSON.stringify(mirrorGroups));
+    ok = false;
+  } else {
+    console.log(`✅  Default security-group templates in sync (${pkgGroups.length} groups)`);
   }
 }
 
