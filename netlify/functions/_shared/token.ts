@@ -388,6 +388,39 @@ export function verifyTotpChallengeToken(token: string | null | undefined): Totp
   return verifyKindToken<TotpChallengeTokenPayload>(token, 'totp-challenge', (d) => !!d.user_id);
 }
 
+/**
+ * Single source for the "user has TOTP enrolled → issue a login challenge"
+ * gate. If the user has a confirmed enrolment, returns the standard
+ * 5-minute challenge response; otherwise null (no second step needed).
+ *
+ * Every login door (shell-login PIN, magic-link, phone-otp) calls this so
+ * the second-factor gate can never silently diverge between them — a
+ * manager required to use 2FA must not be able to skip it by switching
+ * sign-in method. The client routes a `requires_totp` response to
+ * /totp-challenge, which posts the code + token back to challenge-totp to
+ * complete the session (challenge-totp re-fetches tenant/memberships, so
+ * only user_id needs to travel on the wire).
+ */
+export interface TotpChallengeResponse {
+  valid: true;
+  requires_totp: true;
+  totp_challenge_token: string;
+}
+
+export function buildTotpChallengeIfEnrolled(user: {
+  id: string;
+  totp_secret: string | null;
+  totp_enrolled_at: string | null;
+}): TotpChallengeResponse | null {
+  if (!user.totp_enrolled_at || !user.totp_secret) return null;
+  const exp = Date.now() + 5 * 60 * 1000; // 5 minutes — enough to open an authenticator app
+  return {
+    valid: true,
+    requires_totp: true,
+    totp_challenge_token: signTotpChallengeToken({ kind: 'totp-challenge', user_id: user.id, exp }),
+  };
+}
+
 // Parses the eq_shell_session cookie value out of a Cookie header.
 // Cookie header looks like: "foo=bar; eq_shell_session=<token>; baz=qux".
 export function readSessionCookie(req: Request): string | null {

@@ -18,9 +18,10 @@
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
-import { signSessionToken, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
+import { signSessionToken, buildTotpChallengeIfEnrolled, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
+import { totpEnrollmentDue } from './_shared/totp.js';
 import { withSentry } from './_shared/sentry.js';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -83,7 +84,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const { data: user, error: userErr } = await sb
     .schema('shell_control')
     .from('users')
-    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at')
+    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at, totp_secret, totp_enrolled_at, created_at')
     .eq('email', email)
     .eq('active', true)
     .maybeSingle<UserRow>();
@@ -95,6 +96,15 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   if (!user) {
     // Email exists in Supabase Auth but has no shell_control.users row — not yet provisioned.
     return jsonResponse(200, { valid: false, error: 'no-account' });
+  }
+
+  // Second-factor gate — identical to the PIN door. If TOTP is enrolled we
+  // issue a 5-minute challenge here and mint NO session cookie; the client
+  // completes login at /totp-challenge. Keeps forced-MFA un-bypassable by
+  // switching sign-in method.
+  const totpChallenge = buildTotpChallengeIfEnrolled(user);
+  if (totpChallenge) {
+    return jsonResponse(200, totpChallenge);
   }
 
   const { data: tenant, error: tenantErr } = await sb
@@ -156,6 +166,17 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     user.is_platform_admin,
   );
 
+  // Forced-enrolment signal — managers/supervisors/platform-admins past
+  // their grace runway must set up a second sign-in step. The shell routes
+  // them to /settings/2fa. (Enrolled users returned early via the challenge
+  // branch above.) Mirrors shell-login so every door agrees.
+  const requires_totp_enrollment = totpEnrollmentDue({
+    role: user.role,
+    isPlatformAdmin: user.is_platform_admin,
+    totpEnrolledAt: user.totp_enrolled_at,
+    createdAt: user.created_at,
+  });
+
   return jsonResponse(
     200,
     {
@@ -164,6 +185,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       tenant,
       entitlements: entitlements ?? [],
       supabase_jwt: supabaseJwt,
+      requires_totp_enrollment,
     },
     { 'Set-Cookie': cookie },
   );
