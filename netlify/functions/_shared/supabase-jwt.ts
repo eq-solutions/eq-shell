@@ -76,6 +76,11 @@ export interface SupabaseJwtClaims {
     is_platform_admin?: boolean;
     source_app?: string;
     email?: string;
+    // Verified slug of the active tenant. Carried for aud='service' so the
+    // receiver can resolve the user's OWN-tenant membership by slug without a
+    // UUID→slug round-trip. Always the session's active tenant slug — never
+    // client-supplied — so it cannot point at a tenant the user isn't in.
+    tenant_slug?: string;
   };
   iat: number;
   exp: number;
@@ -109,6 +114,7 @@ export function signSupabaseJwt(
   ttlSeconds: number = SUPABASE_JWT_TTL_SECONDS,
   sourceApp: string = 'shell',
   email?: string,
+  tenantSlug?: string,
 ): MintedJwt {
   if (!JWT_SECRET) {
     throw new Error(
@@ -130,6 +136,7 @@ export function signSupabaseJwt(
       is_platform_admin: isPlatformAdmin,
       source_app: sourceApp,
       ...(email ? { email } : {}),
+      ...(tenantSlug ? { tenant_slug: tenantSlug } : {}),
     },
     iat: now,
     exp: now + ttlSeconds,
