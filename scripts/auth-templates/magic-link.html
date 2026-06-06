@@ -1,0 +1,50 @@
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+       style="background:#EAF5FB;padding:32px 0;font-family:'Plus Jakarta Sans',-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+  <tr>
+    <td align="center">
+      <table width="440" cellpadding="0" cellspacing="0" role="presentation"
+             style="background:#ffffff;border:1px solid #d7e7f2;border-radius:12px;padding:36px;">
+        <tr>
+          <td style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#2986B4;font-weight:700;">
+            EQ Solutions
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-top:8px;font-size:22px;font-weight:700;color:#1A1A2E;">
+            Sign in to EQ
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-top:16px;font-size:15px;line-height:1.5;color:#1A1A2E;">
+            Click the button below to sign in. No password needed.
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-top:24px;">
+            <a href="{{ .ConfirmationURL }}"
+               style="display:inline-block;background:#3DA8D8;color:#ffffff;text-decoration:none;
+                      font-size:15px;font-weight:700;padding:13px 28px;border-radius:8px;">
+              Sign in &rarr;
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-top:28px;font-size:14px;line-height:1.5;color:#4a4a63;">
+            Or enter this code where prompted:
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-top:8px;font-size:30px;font-weight:700;letter-spacing:.18em;color:#1A1A2E;">
+            {{ .Token }}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-top:28px;font-size:13px;line-height:1.5;color:#7a7a90;">
+            This link and code expire shortly. If you didn't ask to sign in,
+            you can ignore this email.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
