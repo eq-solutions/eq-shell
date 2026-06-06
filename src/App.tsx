@@ -26,6 +26,7 @@ import AdminBulkInvite from './pages/AdminBulkInvite';
 import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
+import AdminMigrationPage from './pages/AdminMigrationPage';
 import SecurityGroupsPage from './pages/SecurityGroupsPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
@@ -426,6 +427,8 @@ function TenantTree() {
         <Route path="admin/users/:userId" element={<AdminEditUser />} />
         {/* S3 — audit log viewer + entity browser */}
         <Route path="admin/audit" element={<AdminAuditPage />} />
+        {/* Migration reconciliation — expected vs landed counts per entity */}
+        <Route path="admin/migration" element={<AdminMigrationPage />} />
         {/* Cards → Field review queue */}
         <Route path="admin/cards-feed" element={<AdminCardsFeed />} />
         {/* Polish 2026-05-21 — tenant settings */}
