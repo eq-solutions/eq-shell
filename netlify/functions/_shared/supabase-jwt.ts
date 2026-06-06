@@ -76,6 +76,10 @@ export interface SupabaseJwtClaims {
     is_platform_admin?: boolean;
     source_app?: string;
     email?: string;
+    // Human-readable tenant slug (e.g. 'sks'). Additive — RLS keys on tenant_id,
+    // not this. EQ Service's shell-auth reads it on the JWT path to upsert the
+    // tenant_members row; omitted for mints that don't need it.
+    tenant_slug?: string;
   };
   iat: number;
   exp: number;
@@ -109,6 +113,7 @@ export function signSupabaseJwt(
   ttlSeconds: number = SUPABASE_JWT_TTL_SECONDS,
   sourceApp: string = 'shell',
   email?: string,
+  tenantSlug?: string,
 ): MintedJwt {
   if (!JWT_SECRET) {
     throw new Error(
@@ -130,6 +135,7 @@ export function signSupabaseJwt(
       is_platform_admin: isPlatformAdmin,
       source_app: sourceApp,
       ...(email ? { email } : {}),
+      ...(tenantSlug ? { tenant_slug: tenantSlug } : {}),
     },
     iat: now,
     exp: now + ttlSeconds,
