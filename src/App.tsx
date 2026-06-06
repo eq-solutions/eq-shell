@@ -23,6 +23,7 @@ import TotpChallenge from './pages/TotpChallenge';
 import EnrollTotp from './pages/EnrollTotp';
 import AdminInviteUser from './pages/AdminInviteUser';
 import AdminBulkInvite from './pages/AdminBulkInvite';
+import AdminInviteMigratedStaff from './pages/AdminInviteMigratedStaff';
 import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
@@ -424,6 +425,7 @@ function TenantTree() {
         <Route path="admin/users" element={<AdminUserList />} />
         <Route path="admin/users/invite" element={<AdminInviteUser />} />
         <Route path="admin/users/invite-bulk" element={<AdminBulkInvite />} />
+        <Route path="admin/users/migrate" element={<AdminInviteMigratedStaff />} />
         <Route path="admin/users/:userId" element={<AdminEditUser />} />
         {/* S3 — audit log viewer + entity browser */}
         <Route path="admin/audit" element={<AdminAuditPage />} />
