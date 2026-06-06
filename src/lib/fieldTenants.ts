@@ -18,7 +18,7 @@ export const FIELD_TENANT_URLS: Record<string, string> = {
   eq: FIELD_BASE_URL,
   'demo-trades': FIELD_BASE_URL,
   melbourne: FIELD_BASE_URL,
-  sks: 'https://sks-field.netlify.app/',
+  sks: 'https://sks-nsw-labour.netlify.app/',
 };
 
 export const TENANT_OPTIONS = [
