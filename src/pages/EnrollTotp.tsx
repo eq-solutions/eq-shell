@@ -8,7 +8,8 @@
 //
 // Accessible to any logged-in user from the hub.
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import QRCode from 'qrcode';
 import { Check } from 'lucide-react';
 import { useParams, Link } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
@@ -25,21 +26,29 @@ interface EnrollData {
   secret: string;
 }
 
-function qrSrc(otpauthUri: string): string {
-  // Use a public QR API — the otpauth URI is not sensitive once enrolled;
-  // the secret is displayed separately and only to the authenticated user.
-  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(otpauthUri)}`;
-}
-
 export default function EnrollTotp() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const { refresh } = useSession();
 
   const [step, setStep] = useState<Step>('idle');
   const [enrollData, setEnrollData] = useState<EnrollData | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Render the QR locally to a data: URL. The otpauth URI carries the TOTP
+  // secret, so it must NOT go to a third-party QR service; a data: URL also
+  // satisfies the strict img-src CSP ('self' data: blob:) where an external
+  // image host would be blocked. Manual-key entry remains as the fallback.
+  useEffect(() => {
+    if (!enrollData) { setQrDataUrl(null); return; }
+    let cancelled = false;
+    QRCode.toDataURL(enrollData.otpauth_uri, { margin: 1, width: 200 })
+      .then((url) => { if (!cancelled) setQrDataUrl(url); })
+      .catch(() => { if (!cancelled) setQrDataUrl(null); });
+    return () => { cancelled = true; };
+  }, [enrollData]);
 
   async function startEnrollment() {
     setErr(null);
@@ -147,13 +156,21 @@ export default function EnrollTotp() {
               <strong>Add account</strong>, then scan this code.
             </p>
             <div style={{ marginBottom: 20 }}>
-              <img
-                src={qrSrc(enrollData.otpauth_uri)}
-                alt="TOTP QR code — scan with your authenticator app"
-                width={200}
-                height={200}
-                style={{ border: '1px solid var(--eq-border)', borderRadius: 8, display: 'block' }}
-              />
+              {qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt="QR code — scan with your authenticator app"
+                  width={200}
+                  height={200}
+                  style={{ border: '1px solid var(--eq-border)', borderRadius: 8, display: 'block' }}
+                />
+              ) : (
+                <div
+                  style={{ width: 200, height: 200, border: '1px solid var(--eq-border)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--eq-grey)', fontSize: 13 }}
+                >
+                  Preparing code… use the key below if it doesn't appear.
+                </div>
+              )}
             </div>
             <details style={{ marginBottom: 20 }}>
               <summary style={{ fontSize: 13, color: 'var(--eq-grey)', cursor: 'pointer' }}>
