@@ -1,0 +1,13 @@
+-- 2026_06_06_migration_baseline.sql — SUPERSEDED, intentionally a no-op.
+--
+-- The migration_baseline table moved from the control plane to the tenant
+-- data plane (app_data) — see supabase/tenant-migrations/0037_migration_baseline.sql.
+--
+-- Why the move: the "expected" count is now emitted by the migration scripts
+-- themselves (the consoles already reading the legacy source), so it must live
+-- in the same database those scripts write — letting them record expected
+-- atomically, in the same transaction as the data load. app_data also carries
+-- enforced single-column FKs (69 of them), which the reconciliation orphan scan
+-- relies on (0038_migration_orphans_rpc.sql).
+--
+-- This file is kept as a tombstone rather than deleted; applying it does nothing.

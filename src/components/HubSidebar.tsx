@@ -1,5 +1,5 @@
 import { Link, NavLink, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database, ListChecks } from 'lucide-react';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
 import { useDensity } from '../lib/useDensity';
@@ -207,6 +207,13 @@ export function HubSidebar({ apps, records }: Props) {
             >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ClipboardList size={16} aria-hidden="true" /></span>
               <span className="eq-hub-sidebar__nav-label">Audit log</span>
+            </NavLink>
+            <NavLink
+              to={`/${tenantSlug}/admin/migration`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ListChecks size={16} aria-hidden="true" /></span>
+              <span className="eq-hub-sidebar__nav-label">Migration</span>
             </NavLink>
             <NavLink
               to={`/${tenantSlug}/admin/security-groups`}
