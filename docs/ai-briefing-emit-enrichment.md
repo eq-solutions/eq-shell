@@ -68,13 +68,29 @@ When the Field unification port lands tender data into `ehowg.tenders`, the brie
 switches to the native summary automatically and the external `pipeline_url` /
 `pipeline_api_key` columns + the cross-entity HTTP call can be retired.
 
-Two known limits of the native summary, to close when the port happens:
-- **Stage classification is by substring** (`verbal` / `confirm|won|award` /
-  dead-stage exclusion) because the tender stage vocabulary isn't fixed in schema.
-  Revisit once the real stage values are known.
-- **Capacity (headcount / peak_demand / bench) is not derivable from `tenders`** —
-  it needs the resourcing model the port will bring. Left at 0/null; the brief
-  omits the capacity line until it's sourced.
+Both earlier limits are now resolved against the canonical schema (verified — the
+data is empty so the code is dormant, but the derivation is correct):
+
+- **Stage classification** uses the canonical vocabulary, not heuristics. The
+  `app_data.tenders.stage` CHECK constraint + tender schema fix the flow as
+  `watch → confirmed → likely → won | lost | withdrawn`. Mapping: active pipeline =
+  all non-terminal stages; verbal agreement (≥90%) = `likely`; confirmed job =
+  `won`. Trap closed: stage `confirmed` is an *early* stage (confirmed
+  opportunity), NOT a won job — it never enters `confirmed_jobs`.
+- **Capacity is derived from the canonical resourcing tables**, not left null:
+  - `headcount` = active `staff` count (works on live data today — 50 for SKS).
+  - `peak_demand` = distinct staff nominated across active tenders
+    (`tender_nominations`).
+  - `confirmed_jobs.peak_workers` / `start_date` = per-tender nomination count /
+    earliest nomination start (`tender_nominations`).
+  - `bench` = active staff not deployed in `schedule_entries` over the next 14
+    days; left **null** (line omitted) when there's no schedule data, so it never
+    implies everyone is free.
+
+  These activate as their tables populate (all empty in `ehowg` today except
+  `staff`). One thing to confirm against real data when the port lands: whether
+  `peak_demand` should be *distinct committed staff* (current) or *peak concurrent
+  demand* from date-overlap analysis — the latter needs nomination date ranges.
 
 ## Contract note
 
