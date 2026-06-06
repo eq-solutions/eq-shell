@@ -118,12 +118,12 @@ const SUBMIT_BRIEFING_TOOL = {
       },
       on_shift: {
         type: 'array',
-        description: 'Staff on shift from shift.started events in last 12 hours.',
+        description: 'Staff on shift, ONLY when a shift.started event payload (last 12h) contains an actual worker name. If payloads carry only site codes + headcounts, return an empty array — never fabricate names.',
         items: {
           type: 'object',
           required: ['name'],
           properties: {
-            name:  { type: 'string' },
+            name:  { type: 'string', description: 'Worker name copied verbatim from the event payload. Never invented.' },
             site:  { type: 'string' },
             since: { type: 'string', description: 'HH:MM start time.' },
           },
@@ -160,13 +160,13 @@ DATA SOURCES YOU RECEIVE:
 
 RULES:
 - Always use the submit_briefing tool. Never reply in free text.
-- Brief: 2-3 sentences, plain English, no markdown. Lead with the most urgent item. Name people, sites, and references explicitly. Surface cross-app connections.
+- Brief: 2-3 sentences, plain English, no markdown. Lead with the most urgent item. Name people, sites, and references explicitly ONLY when they appear verbatim in the data — never infer or invent a name. Surface cross-app connections.
 - Recency: events are tagged [recent <12h] or [older]. Lead with [recent <12h] items. Treat [older] items as background context, not new alerts — only raise an older item if it is still unresolved or time-critical (e.g. an open defect, an overdue task, an expiring licence). Do not present a days-old routine event as if it just happened.
 - Snapshots (licences_expiring, service_due, open_defects, open_incidents) are current state, not new activity — they have no recency tag. Treat them as standing compliance/operational obligations. A large overdue backlog is worth one summarising action ("N tools overdue calibration, oldest X days") rather than one action per item.
 - Actions: max 3. Rank by: compliance/safety first, operational gaps second, commercial third. Skip anything in recently_actioned.
-- On shift: only from shift.started events where occurred_at is within 12 hours. Extract name and site from payload.
+- On shift: only from shift.started events within 12 hours, and ONLY when the payload contains an actual worker NAME. If the payload has only site codes and headcounts (no names), leave on_shift EMPTY — never invent worker names. The headcount is still conveyed in the brief text.
 - Upcoming: only items with a verifiable future date from the data. Pipeline start_date_estimated qualifies.
-- Do not invent data. Only report what the events and pipeline data explicitly show.`;
+- GROUNDING (critical): every name, site, client, number, reference, and date in your output must trace to a specific line in the data above. If it is not in the data, it does not go in the briefing. Do not infer identities or quantities. When uncertain, omit — a blank panel is correct; a plausible-looking guess is a failure.`;
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -561,6 +561,22 @@ function enrichPayload(payload: Record<string, unknown>, names: NameMaps): Recor
   return out;
 }
 
+// Server-side grounding guard — defense in depth behind the prompt rules. Drops
+// any on_shift entry whose worker name does not appear in the data we actually
+// sent the model. shift.started payloads carry no names today, so this strips a
+// fabricated roster outright until the emit side supplies real names. Simple
+// case-insensitive containment against the assembled user message — cheap, no
+// extra model call. Scoped to on_shift (a structured name field) where the
+// fabrication risk is concrete; free-text action titles rely on the prompt rules.
+function groundOnShift(onShift: AiOnShift[], context: string): { kept: AiOnShift[]; dropped: number } {
+  const haystack = context.toLowerCase();
+  const kept = onShift.filter(s => {
+    const name = (s.name ?? '').trim().toLowerCase();
+    return name.length > 1 && haystack.includes(name);
+  });
+  return { kept, dropped: onShift.length - kept.length };
+}
+
 function buildUserMessage(
   events:   CanonicalEvent[],
   pipeline: PipelineSummary | null,
@@ -859,11 +875,19 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
     const payload = toolUse.input as { brief: string; actions: AiAction[]; on_shift?: AiOnShift[]; upcoming?: AiUpcoming[] };
 
+    // Grounding guard: strip any on_shift entry whose name wasn't in the data we
+    // sent the model (catches fabricated rosters the prompt rules should already
+    // prevent). Logged so we can see when the model tries to invent names.
+    const grounded = groundOnShift(payload.on_shift ?? [], userMessage);
+    if (grounded.dropped > 0) {
+      console.warn('[ai-briefing] dropped ungrounded on_shift entries', { tenantId, dropped: grounded.dropped });
+    }
+
     const fullResponse: FullBriefingResponse = {
       ok:                   true,
       brief:                payload.brief ?? null,
       actions:              payload.actions ?? [],
-      on_shift:             payload.on_shift ?? [],
+      on_shift:             grounded.kept,
       upcoming:             payload.upcoming ?? [],
       pipeline,
       contributing_sources,
