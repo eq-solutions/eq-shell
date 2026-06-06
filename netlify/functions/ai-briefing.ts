@@ -268,58 +268,147 @@ async function fetchPipelineSummary(url: string, apiKey: string): Promise<Pipeli
   }
 }
 
-// Stage-name heuristics — the tender stage vocabulary isn't fixed in schema, so we
-// classify by substring. Dead stages are excluded from the active-pipeline totals.
-const DEAD_STAGE_RE    = /(lost|declined|cancel|closed|dead|no[\s_-]?bid|withdrawn)/i;
-const VERBAL_STAGE_RE  = /verbal/i;
-const CONFIRMED_STAGE_RE = /(confirm|won|award)/i;
+// Canonical tender stage vocabulary — the CHECK constraint on app_data.tenders.stage
+// and the tender schema doc fix it as: watch → confirmed → likely → won | lost |
+// withdrawn (probability ascending). Mapped to the brief's pipeline buckets:
+//   - active pipeline  = all non-terminal stages (everything except lost/withdrawn)
+//   - verbal agreement = 'likely'  (≥90% likely to win, not yet secured)
+//   - confirmed job     = 'won'     (secured work)
+// NOTE the trap: stage 'confirmed' is an EARLY stage (confirmed opportunity we're
+// pursuing), NOT a won job — it belongs in by_stage only, never confirmed_jobs.
+const TERMINAL_STAGES = new Set(['lost', 'withdrawn']);
+const VERBAL_STAGE    = 'likely';
+const WON_STAGE       = 'won';
+const SCHEDULE_HORIZON_DAYS = 14;  // window for "deployed vs bench"
 
 // Native pipeline summary, read directly from the EQ Field SKS tenant's
-// app_data.tenders. Returns null when there are no tender rows (the table is
-// empty today) — the caller then falls back to the legacy external fetch. This
-// is the dormant path: it activates automatically once the pipeline becomes
-// native EQ Field data, at which point the external pipeline_url/key retire.
+// app_data.tenders + resourcing tables. Returns null when there are no tender rows
+// (the table is empty today) — the caller then falls back to the legacy external
+// fetch. Dormant path: activates automatically once the pipeline becomes native
+// EQ Field data, at which point the external pipeline_url/key retire.
 //
-// Capacity fields (headcount/peak_demand/bench) are NOT derivable from tenders —
-// they need the resourcing model that the Field unification port will bring. Left
-// at 0/null until then; buildUserMessage omits the capacity line when unsourced.
+// Capacity (headcount / peak_demand / bench) is derived from the canonical
+// resourcing tables: staff (headcount), tender_nominations (per-job workers +
+// peak demand), schedule_entries (deployment → bench). Each is best-effort and
+// degrades to a safe default; bench is left null when there's no schedule data so
+// buildUserMessage omits the line rather than implying everyone is benched.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchNativePipeline(tenantDb: any): Promise<PipelineSummary | null> {
   try {
     const r = await tenantDb
       .schema('app_data').from('tenders')
-      .select('tender_number, title, client_name, stage, estimated_value_cents, close_date')
+      .select('tender_id, tender_number, title, client_name, stage, estimated_value_cents, close_date')
       .limit(500);
     if (r.error) return null;
-    const rows = (r.data ?? []) as Array<{ tender_number: string | null; title: string | null; client_name: string | null; stage: string | null; estimated_value_cents: number | null; close_date: string | null }>;
+    const rows = (r.data ?? []) as Array<{ tender_id: string; tender_number: string | null; title: string | null; client_name: string | null; stage: string | null; estimated_value_cents: number | null; close_date: string | null }>;
     if (rows.length === 0) return null;
 
     const by_stage: Record<string, { count: number; value_cents: number }> = {};
     const verbal_agreement: PipelineSummary['verbal_agreement'] = [];
-    const confirmed_jobs:   PipelineSummary['confirmed_jobs']   = [];
+    const wonTenders: Array<{ tender_id: string; job_name: string; client: string | null; value_cents: number; close_date: string | null }> = [];
+    const activeTenderIds: string[] = [];
     let total = 0;
 
     for (const t of rows) {
-      const stage = (t.stage ?? 'unknown').trim();
-      if (DEAD_STAGE_RE.test(stage)) continue;  // exclude lost/closed from active pipeline
+      const stage = (t.stage ?? 'unknown').trim().toLowerCase();
+      if (TERMINAL_STAGES.has(stage)) continue;  // exclude lost/withdrawn from active pipeline
       const value = Number(t.estimated_value_cents ?? 0);
       total += value;
       (by_stage[stage] ??= { count: 0, value_cents: 0 });
       by_stage[stage].count      += 1;
       by_stage[stage].value_cents += value;
+      activeTenderIds.push(t.tender_id);
       const job_name = t.title ?? t.tender_number ?? 'tender';
-      if (VERBAL_STAGE_RE.test(stage)) {
-        verbal_agreement.push({ job_name, client: t.client_name ?? null, value_cents: value, due_date: t.close_date ?? null, probability_label: null });
+      if (stage === VERBAL_STAGE) {
+        verbal_agreement.push({ job_name, client: t.client_name ?? null, value_cents: value, due_date: t.close_date ?? null, probability_label: 'likely' });
       }
-      if (CONFIRMED_STAGE_RE.test(stage)) {
-        confirmed_jobs.push({ job_name, client: t.client_name ?? null, value_cents: value, peak_workers: null, start_date: null, duration_weeks: null });
+      if (stage === WON_STAGE) {
+        wonTenders.push({ tender_id: t.tender_id, job_name, client: t.client_name ?? null, value_cents: value, close_date: t.close_date ?? null });
       }
     }
 
-    return { total_value_cents: total, by_stage, verbal_agreement, confirmed_jobs, headcount: 0, peak_demand: 0, bench: null };
+    const cap = await deriveCapacity(tenantDb, activeTenderIds);
+
+    const confirmed_jobs: PipelineSummary['confirmed_jobs'] = wonTenders.map(w => ({
+      job_name:       w.job_name,
+      client:         w.client,
+      value_cents:    w.value_cents,
+      peak_workers:   cap.workersByTender.get(w.tender_id) ?? null,
+      start_date:     cap.startByTender.get(w.tender_id) ?? w.close_date,
+      duration_weeks: null,
+    }));
+
+    return {
+      total_value_cents: total,
+      by_stage,
+      verbal_agreement,
+      confirmed_jobs,
+      headcount:   cap.headcount,
+      peak_demand: cap.peak_demand,
+      bench:       cap.bench,
+    };
   } catch {
     return null;
   }
+}
+
+// Derive resourcing capacity from the canonical tables. All best-effort:
+//   headcount    — count of active staff
+//   peak_demand  — distinct staff nominated across the active tenders
+//   bench        — active staff not deployed in schedule over the next 14 days
+//                  (null when there's no schedule data — "unknown", not "all free")
+//   workersByTender / startByTender — per-tender nomination count + earliest start,
+//                  used to fill confirmed_jobs.peak_workers / start_date
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function deriveCapacity(tenantDb: any, activeTenderIds: string[]): Promise<{
+  headcount: number; peak_demand: number; bench: number | null;
+  workersByTender: Map<string, number>; startByTender: Map<string, string>;
+}> {
+  const workersByTender = new Map<string, number>();
+  const startByTender   = new Map<string, string>();
+  let headcount = 0;
+  let peak_demand = 0;
+  let bench: number | null = null;
+
+  try {
+    const r = await tenantDb.schema('app_data').from('staff').select('staff_id', { count: 'exact', head: true }).eq('active', true);
+    headcount = r.count ?? 0;
+  } catch { /* no staff table — headcount stays 0 */ }
+
+  if (activeTenderIds.length > 0) {
+    try {
+      const r = await tenantDb.schema('app_data').from('tender_nominations')
+        .select('tender_id, staff_id, start_date')
+        .in('tender_id', activeTenderIds);
+      const distinctStaff = new Set<string>();
+      for (const n of (r.data ?? []) as Array<{ tender_id: string; staff_id: string | null; start_date: string | null }>) {
+        workersByTender.set(n.tender_id, (workersByTender.get(n.tender_id) ?? 0) + 1);
+        if (n.staff_id) distinctStaff.add(n.staff_id);
+        if (n.start_date) {
+          const cur = startByTender.get(n.tender_id);
+          if (!cur || n.start_date < cur) startByTender.set(n.tender_id, n.start_date);
+        }
+      }
+      peak_demand = distinctStaff.size;
+    } catch { /* no nominations — peak_demand stays 0 */ }
+  }
+
+  try {
+    const today   = new Date().toISOString().slice(0, 10);
+    const horizon = new Date(Date.now() + SCHEDULE_HORIZON_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const r = await tenantDb.schema('app_data').from('schedule_entries')
+      .select('staff_id, leave_type')
+      .gte('date', today)
+      .lte('date', horizon);
+    const sched = (r.data ?? []) as Array<{ staff_id: string | null; leave_type: string | null }>;
+    if (sched.length > 0 && headcount > 0) {
+      const deployed = new Set<string>();
+      for (const s of sched) if (s.staff_id && !s.leave_type) deployed.add(s.staff_id);
+      bench = Math.max(0, headcount - deployed.size);
+    }
+  } catch { /* no schedule — bench stays null (unknown) */ }
+
+  return { headcount, peak_demand, bench, workersByTender, startByTender };
 }
 
 // Resolve the pipeline summary: prefer native EQ Field tenant data; fall back to
