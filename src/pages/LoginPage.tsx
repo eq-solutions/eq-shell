@@ -30,7 +30,11 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { refresh } = useSession();
 
-  const [mode, setMode] = useState<'link' | 'email' | 'phone'>('link');
+  // PIN is the default door. Email-link tab is hidden for launch — its email is
+  // sent by the shared Supabase "Magic Link" template, currently branded for EQ
+  // Cards (same canonical project). Re-enable the tab below once that template
+  // collision is resolved; the 'link' mode + onSendLink flow are left intact.
+  const [mode, setMode] = useState<'link' | 'email' | 'phone'>('email');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -307,15 +311,7 @@ export default function LoginPage() {
             </p>
 
             <div className="eq-login-tabs" role="tablist">
-              <button
-                role="tab"
-                type="button"
-                aria-selected={mode === 'link'}
-                className={`eq-login-tab${mode === 'link' ? ' eq-login-tab--active' : ''}`}
-                onClick={() => switchMode('link')}
-              >
-                Email link
-              </button>
+              {/* Email-link tab hidden for launch — see mode-state note above. */}
               <button
                 role="tab"
                 type="button"
