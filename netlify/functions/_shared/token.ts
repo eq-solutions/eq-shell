@@ -278,12 +278,26 @@ export function signShellToken(payload: ShellTokenPayload): string {
 //
 // Wire format: base64url(JSON) + '.' + hex(HMAC-SHA256)
 // Key:         process.env.EQ_SHELL_BRIDGE_SECRET  (must match on both deploys)
+//
+// Zero-downtime rotation (mirrors EQ_SECRET_SALT_NEXT above):
+//   Step 1 — set EQ_SHELL_BRIDGE_SECRET_NEXT = <new key> on Shell AND Service and
+//             redeploy; both now ACCEPT tokens signed with the old OR new key.
+//   Step 2 — promote: set EQ_SHELL_BRIDGE_SECRET = <new key>, clear _NEXT on both
+//             and redeploy. No handoff gap. (signing always uses the primary key.)
 
 const BRIDGE_SECRET = process.env.EQ_SHELL_BRIDGE_SECRET ?? '';
+// Optional verify-only fallback for zero-downtime EQ_SHELL_BRIDGE_SECRET rotation.
+// Absent until a rotation is explicitly initiated; never used for signing.
+const BRIDGE_SECRET_NEXT = process.env.EQ_SHELL_BRIDGE_SECRET_NEXT ?? null;
 
 function signBridge(payloadJson: string): string {
   if (!BRIDGE_SECRET) throw new Error('EQ_SHELL_BRIDGE_SECRET is not set — server misconfigured');
   return createHmac('sha256', BRIDGE_SECRET).update(payloadJson).digest('hex');
+}
+
+/** Compute the bridge HMAC with an explicit key (verify-only fallback path). */
+function signBridgeWithKey(payloadJson: string, key: string): string {
+  return createHmac('sha256', key).update(payloadJson).digest('hex');
 }
 
 export function hasBridgeSecret(): boolean {
@@ -310,8 +324,12 @@ export function verifyBridgeToken(token: string | null | undefined): BridgeToken
     const [b64url, sig] = token.split('.');
     if (!b64url || !sig) return null;
     const json = Buffer.from(b64url, 'base64url').toString();
-    const expected = signBridge(json);
-    if (!sigsEqual(expected, sig)) return null;
+    // Primary key check, with optional EQ_SHELL_BRIDGE_SECRET_NEXT fallback so a
+    // bridge-secret rotation doesn't invalidate in-flight handoff tokens.
+    const primaryOk = sigsEqual(signBridge(json), sig);
+    if (!primaryOk) {
+      if (!BRIDGE_SECRET_NEXT || !sigsEqual(signBridgeWithKey(json, BRIDGE_SECRET_NEXT), sig)) return null;
+    }
     const data = JSON.parse(json) as BridgeTokenPayload;
     if (data.iss !== 'eq-shell' || data.aud !== 'service') return null;
     if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
