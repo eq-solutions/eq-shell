@@ -97,6 +97,10 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   // is redundant (tenant DB is single-tenant) but kept as defence-in-depth
   // — if a misrouted request reaches the wrong DB, RLS catches it but the
   // service-role bypasses RLS, so this explicit filter is the last line.
+  // field_status='pending' is the authoritative gate (migration 0039): it excludes
+  // 'active' (already a Field resource — incl. the back-migrated eq-solves-field rows,
+  // which 0039 backfills to 'active') and 'rejected'. Replaces the old
+  // imported_from!=='eq-solves-field' heuristic.
   const { data: allStaff, error: staffErr } = (await tenantAny
     .schema('app_data')
     .from('staff')
@@ -106,6 +110,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     )
     .eq('tenant_id', tenantId)
     .eq('active', true)
+    .eq('field_status', 'pending')
     .order('created_at', { ascending: false })) as {
     data: StaffRow[] | null;
     error: { message: string } | null;
@@ -113,11 +118,9 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (staffErr) return json(500, { error: staffErr.message });
 
-  // Filter out already-reviewed staff and Field-imported staff (they're already in Field
-  // and don't need the Cards → Field approval flow — approving them would create duplicates).
-  const staff = (allStaff ?? []).filter(
-    (s) => !reviewedIds.has(s.staff_id) && s.imported_from !== 'eq-solves-field',
-  );
+  // reviewedIds is belt-and-suspenders: field_status already excludes reviewed rows,
+  // but a stray audit row without a matching flip shouldn't reappear in the queue.
+  const staff = (allStaff ?? []).filter((s) => !reviewedIds.has(s.staff_id));
 
   if (staff.length === 0) {
     return json(200, { pending: [] });
