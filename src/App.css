@@ -2170,6 +2170,10 @@
   margin: 2px 0 0;
 }
 
+.eq-hub-ai__coverage--degraded {
+  color: #B45309;
+}
+
 /* ── Action title as link ──────────────────────────────────── */
 .eq-hub-action__title-link {
   display: block;
@@ -3019,6 +3023,10 @@
   font-size: 0.6875rem;
   color: #9CA3AF;
   margin: 2px 0 0;
+}
+
+.eq-hub-ai__coverage--degraded {
+  color: #B45309;
 }
 
 /* ── Action title as link ──────────────────────────────────── */

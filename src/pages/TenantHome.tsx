@@ -74,6 +74,7 @@ interface AiData {
   upcoming:             AiUpcoming[];
   pipeline:             PipelineSummary | null;
   contributing_sources: string[];
+  degraded:             string[];
   generated_at:         string;
 }
 
@@ -82,7 +83,16 @@ const SOURCE_LABELS: Record<string, string> = {
   service:  'EQ Service',
   quotes:   'EQ Quotes',
   cards:    'EQ Cards',
-  pipeline: 'Pipeline',
+  pipeline:     'Pipeline',
+  licences:     'Licences',
+  service_due:  'Service due',
+  defects:      'Defects',
+  incidents:    'Incidents',
+};
+
+// Human label for a degraded (configured-but-unavailable) source.
+const DEGRADED_LABELS: Record<string, string> = {
+  pipeline: 'Pipeline data is temporarily unavailable',
 };
 
 function formatSource(source: string): string {
@@ -224,6 +234,7 @@ export default function TenantHome() {
         upcoming:             body.upcoming             ?? [],
         pipeline:             body.pipeline             ?? null,
         contributing_sources: body.contributing_sources ?? [],
+        degraded:             body.degraded             ?? [],
         generated_at:         body.generated_at         ?? new Date().toISOString(),
       });
     } catch {
@@ -443,6 +454,13 @@ export default function TenantHome() {
                       {aiData.contributing_sources
                         .map(s => SOURCE_LABELS[s] ?? s)
                         .join(', ')}
+                    </p>
+                  )}
+                  {(aiData.degraded ?? []).length > 0 && (
+                    <p className="eq-hub-ai__coverage eq-hub-ai__coverage--degraded">
+                      {aiData.degraded
+                        .map(s => DEGRADED_LABELS[s] ?? `${SOURCE_LABELS[s] ?? s} unavailable`)
+                        .join(' · ')}
                     </p>
                   )}
                 </>
