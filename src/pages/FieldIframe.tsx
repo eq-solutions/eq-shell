@@ -110,12 +110,20 @@ export default function FieldIframe() {
   // only as a fallback if no default can be resolved.
   const adminDefaultSlug: TenantSlug | null = (() => {
     if (!session?.user.is_platform_admin) return null;
+    // Honor the tenant the admin is currently in FIRST. The /:tenantSlug/ shell
+    // context is forced to equal session.tenant.slug by RequireSession, so an
+    // admin who has switched into (e.g.) SKS and opens /sks/field must land on
+    // SKS Field — not whatever workspace they last picked. Without this, a sticky
+    // localStorage default (e.g. 'eq') overrode the explicit /sks/ context and
+    // loaded the wrong (empty) tenant. Last-pick now applies only as a fallback
+    // when the active tenant has no Field org.
+    const ownMatch = TENANT_OPTIONS.find((t) => t.slug === session?.tenant.slug);
+    if (ownMatch) return ownMatch.slug;
     const stored = localStorage.getItem('eq-field-default-tenant');
     if (stored && TENANT_OPTIONS.some((t) => t.slug === stored)) return stored as TenantSlug;
     const configured = session?.tenant.field_tenant_slug;
     if (configured && TENANT_OPTIONS.some((t) => t.slug === configured)) return configured as TenantSlug;
-    const ownMatch = TENANT_OPTIONS.find((t) => t.slug === session?.tenant.slug);
-    return ownMatch?.slug ?? TENANT_OPTIONS[0]?.slug ?? null;
+    return TENANT_OPTIONS[0]?.slug ?? null;
   })();
 
   const autoSlug: TenantSlug | null =
