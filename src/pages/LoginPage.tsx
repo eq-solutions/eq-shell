@@ -26,11 +26,32 @@ function normalizeAuPhone(raw: string): string | null {
   return null;
 }
 
+// Remember the last successfully-used login door per device, so office users
+// settle into PIN and field crew settle into Mobile without a global default.
+// Only the two visible doors ('email'=PIN, 'phone'=Mobile) are honoured — a
+// stale 'link' (hidden email-link) falls back to PIN.
+const LAST_DOOR_KEY = 'eq.lastLoginDoor';
+function readLastDoor(): 'email' | 'phone' {
+  try {
+    const v = localStorage.getItem(LAST_DOOR_KEY);
+    if (v === 'email' || v === 'phone') return v;
+  } catch { /* storage blocked (private mode) — use default */ }
+  return 'email';
+}
+function rememberDoor(door: 'email' | 'phone') {
+  try { localStorage.setItem(LAST_DOOR_KEY, door); } catch { /* ignore */ }
+}
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const { refresh } = useSession();
 
-  const [mode, setMode] = useState<'link' | 'email' | 'phone'>('link');
+  // Default door = last one successfully used on this device (PIN first visit).
+  // Email-link tab is hidden for launch — its email is sent by the shared
+  // Supabase "Magic Link" template, currently branded for EQ Cards (same
+  // canonical project). Re-enable the tab below once that collision is resolved;
+  // the 'link' mode + onSendLink flow are left intact.
+  const [mode, setMode] = useState<'link' | 'email' | 'phone'>(readLastDoor);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -178,6 +199,8 @@ export default function LoginPage() {
         setBusy(false);
         return;
       }
+      // Correct PIN — this device prefers the PIN door from now on.
+      rememberDoor('email');
       if ('requires_totp' in body && body.requires_totp) {
         navigate('/totp-challenge', {
           replace: true,
@@ -249,6 +272,7 @@ export default function LoginPage() {
         }),
       });
       const body = (await res.json()) as
+        | { valid: true; requires_totp: true; totp_challenge_token: string }
         | { valid: true; tenant: { slug: string } }
         | { valid: false };
       if (!body.valid) {
@@ -256,8 +280,19 @@ export default function LoginPage() {
         setBusy(false);
         return;
       }
+      // Verified mobile — this device prefers the Mobile door from now on.
+      rememberDoor('phone');
+      // TOTP-enrolled users finish at the challenge screen — same handoff
+      // the PIN door uses. No session cookie was set yet.
+      if ('requires_totp' in body && body.requires_totp) {
+        navigate('/totp-challenge', {
+          replace: true,
+          state: { totpChallengeToken: body.totp_challenge_token },
+        });
+        return;
+      }
       void refresh();
-      navigate(`/${body.tenant.slug}`, { replace: true });
+      navigate(`/${(body as { tenant: { slug: string } }).tenant.slug}`, { replace: true });
     } catch {
       setErr('Network error — please try again.');
       setBusy(false);
@@ -297,15 +332,7 @@ export default function LoginPage() {
             </p>
 
             <div className="eq-login-tabs" role="tablist">
-              <button
-                role="tab"
-                type="button"
-                aria-selected={mode === 'link'}
-                className={`eq-login-tab${mode === 'link' ? ' eq-login-tab--active' : ''}`}
-                onClick={() => switchMode('link')}
-              >
-                Email link
-              </button>
+              {/* Email-link tab hidden for launch — see mode-state note above. */}
               <button
                 role="tab"
                 type="button"

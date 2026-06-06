@@ -187,7 +187,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     maxAgeSeconds: SESSION_TTL_MS / 1000,
   });
 
-  const supabaseJwt = signSupabaseJwt(
+  const { token: supabaseJwt } = signSupabaseJwt(
     user.id,
     tenant.id,
     activeMembership.role,

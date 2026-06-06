@@ -45,6 +45,7 @@ import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, EqRole } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { sendEmail } from './_shared/email.js';
+import { normalizeAuPhone } from './_shared/phone.js';
 import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
@@ -135,12 +136,14 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   const seen = new Set<string>();
 
   for (const raw of body.invites) {
-    const row = (raw ?? {}) as { email?: string; role?: string; entitlements?: unknown };
+    const row = (raw ?? {}) as { email?: string; role?: string; entitlements?: unknown; phone?: string };
     const email = (row.email ?? '').trim().toLowerCase();
     const role = (row.role ?? '').trim();
     const entitlements = Array.isArray(row.entitlements)
       ? row.entitlements.filter((v): v is string => typeof v === 'string')
       : [];
+    const rawPhone = (row.phone ?? '').trim();
+    const phone = rawPhone ? normalizeAuPhone(rawPhone) : null;
 
     if (!email || !email.includes('@')) {
       results.push({ email: email || '(blank)', status: 'failed', error: 'bad-email' });
@@ -150,6 +153,10 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       results.push({ email, status: 'failed', error: 'bad-role' });
       continue;
     }
+    if (rawPhone && !phone) {
+      results.push({ email, status: 'failed', error: 'bad-phone' });
+      continue;
+    }
     if (seen.has(email)) {
       results.push({ email, status: 'failed', error: 'duplicate-in-batch' });
       continue;
@@ -157,7 +164,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     seen.add(email);
 
     try {
-      const result = await processOne(sb, req, session.tenant_id, session.user_id, tenantName, email, role as EqRole, entitlements);
+      const result = await processOne(sb, req, session.tenant_id, session.user_id, tenantName, email, role as EqRole, entitlements, phone);
       results.push(result);
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -183,6 +190,7 @@ async function processOne(
   email: string,
   role: EqRole,
   entitlements: string[],
+  phone: string | null,
 ): Promise<RowResult> {
   const { data: existingUser } = await sb
     .from('users')
@@ -261,6 +269,7 @@ If you weren't expecting this, you can ignore this email.
       email,
       role,
       entitlements,
+      phone,
       invited_by: invitedBy,
       invite_token_hash: tokenHash,
       expires_at: expiresAt,

@@ -54,6 +54,7 @@ interface InviteRow {
   email: string;
   role: EqRole;
   entitlements: string[];
+  phone: string | null;
   expires_at: string;
   accepted_at: string | null;
 }
@@ -115,7 +116,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const { data: invite } = await sb
     .from('user_invites')
-    .select('id, tenant_id, email, role, entitlements, expires_at, accepted_at')
+    .select('id, tenant_id, email, role, entitlements, phone, expires_at, accepted_at')
     .eq('invite_token_hash', tokenHash)
     .is('accepted_at', null)
     .gte('expires_at', new Date().toISOString())
@@ -149,12 +150,20 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       is_platform_admin: false,
       active: true,
       pin_hash: pinHash,
+      phone: invite.phone,
       last_active_tenant_id: invite.tenant_id,
     })
     .select('id, email, tenant_id, role, is_platform_admin, active, last_login_at')
     .single<Omit<CanonicalUser, 'pin_hash' | 'phone' | 'name' | 'last_active_tenant_id'>>();
 
   if (insertErr || !created) {
+    // 23505 = unique_violation. Email collision is already ruled out above,
+    // so this is almost certainly the partial-unique index on users.phone —
+    // the invited mobile is already linked to another account. Surface it as
+    // a clear 409 rather than a generic server error.
+    if (insertErr?.code === '23505') {
+      return jsonResponse(409, { valid: false, error: 'phone-already-linked' });
+    }
     // eslint-disable-next-line no-console
     console.error('[accept-invite] user insert failed:', insertErr?.message);
     return jsonResponse(500, { valid: false, error: 'server-error' });
@@ -258,7 +267,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     maxAgeSeconds: SESSION_TTL_MS / 1000,
   });
 
-  const supabaseJwt = signSupabaseJwt(
+  const { token: supabaseJwt } = signSupabaseJwt(
     created.id,
     tenant.id,
     created.role,

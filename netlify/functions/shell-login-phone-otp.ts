@@ -24,9 +24,10 @@
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
-import { signSessionToken, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
+import { signSessionToken, buildTotpChallengeIfEnrolled, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
+import { totpEnrollmentDue } from './_shared/totp.js';
 import { withSentry } from './_shared/sentry.js';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -128,7 +129,7 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
   type UserRow = Omit<CanonicalUser, 'pin_hash' | 'phone'>;
   const { data: user, error: userErr } = await sb
     .from('users')
-    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at')
+    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at, totp_secret, totp_enrolled_at, created_at')
     .eq('phone', phone)
     .eq('active', true)
     .maybeSingle<UserRow>();
@@ -140,6 +141,14 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
   }
   if (!user) {
     return jsonResponse(200, { valid: false });
+  }
+
+  // Second-factor gate — identical to the PIN and magic-link doors. Enrolled
+  // users get a 5-minute challenge and NO session cookie here; the client
+  // completes login at /totp-challenge.
+  const totpChallenge = buildTotpChallengeIfEnrolled(user);
+  if (totpChallenge) {
+    return jsonResponse(200, totpChallenge);
   }
 
   const { data: tenant, error: tenantErr } = await sb
@@ -198,6 +207,15 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     user.is_platform_admin,
   );
 
+  // Forced-enrolment signal — mirrors shell-login + magic-link so every
+  // door agrees. (Enrolled users returned early via the challenge branch.)
+  const requires_totp_enrollment = totpEnrollmentDue({
+    role: user.role,
+    isPlatformAdmin: user.is_platform_admin,
+    totpEnrolledAt: user.totp_enrolled_at,
+    createdAt: user.created_at,
+  });
+
   return jsonResponse(
     200,
     {
@@ -206,6 +224,7 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
       tenant,
       entitlements: entitlements ?? [],
       supabase_jwt: supabaseJwt,
+      requires_totp_enrollment,
     },
     { 'Set-Cookie': cookie },
   );

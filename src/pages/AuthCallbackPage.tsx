@@ -76,6 +76,7 @@ export default function AuthCallbackPage() {
       }
 
       const body = (await res.json()) as
+        | { valid: true; requires_totp: true; totp_challenge_token: string }
         | { valid: true; tenant: { slug: string } }
         | { valid: false; error?: string };
 
@@ -92,8 +93,18 @@ export default function AuthCallbackPage() {
         return;
       }
 
+      // TOTP-enrolled users complete sign-in at the challenge screen — no
+      // session cookie was set yet. Same handoff the PIN door uses.
+      if ('requires_totp' in body && body.requires_totp) {
+        navigate('/totp-challenge', {
+          replace: true,
+          state: { totpChallengeToken: body.totp_challenge_token },
+        });
+        return;
+      }
+
       void refresh();
-      navigate(`/${body.tenant.slug}`, { replace: true });
+      navigate(`/${(body as { tenant: { slug: string } }).tenant.slug}`, { replace: true });
     }
 
     void exchange();

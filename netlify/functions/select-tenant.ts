@@ -146,7 +146,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     exp,
   });
   const cookie = buildSessionCookie(req, cookieValue, { maxAgeSeconds: SESSION_TTL_MS / 1000 });
-  const supabaseJwt = signSupabaseJwt(user.id, tenant.id, chosen.role, user.is_platform_admin);
+  const { token: supabaseJwt } = signSupabaseJwt(user.id, tenant.id, chosen.role, user.is_platform_admin);
 
   const userSafe = {
     id: user.id,

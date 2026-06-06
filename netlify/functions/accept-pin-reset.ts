@@ -172,7 +172,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     exp,
   });
   const cookie = buildSessionCookie(req, cookieValue, { maxAgeSeconds: SESSION_TTL_MS / 1000 });
-  const supabaseJwt = signSupabaseJwt(user.id, tenant.id, activeMembership.role, user.is_platform_admin);
+  const { token: supabaseJwt } = signSupabaseJwt(user.id, tenant.id, activeMembership.role, user.is_platform_admin);
 
   return jsonResponse(
     200,

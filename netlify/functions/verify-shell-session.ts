@@ -125,7 +125,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return true;
   });
 
-  const supabaseJwt = signSupabaseJwt(
+  const { token: supabaseJwt } = signSupabaseJwt(
     user.id,
     tenant.id,
     activeMembership.role,
