@@ -102,16 +102,24 @@ export default function FieldIframe() {
       ? TENANT_OPTIONS.filter((t) => t.slug === nonAdminSlug)
       : [];
 
-  // Platform admins: restore last-picked workspace from sessionStorage so
-  // they skip the picker on return visits. Non-admins always auto-route.
-  const storedDefaultSlug: TenantSlug | null = (() => {
+  // Platform admins auto-route into a workspace instead of stopping at the
+  // "Pick a Field workspace" picker on entry (Royce 2026-06-06): last-picked →
+  // configured field_tenant_slug → their own shell tenant (if it maps to a
+  // Field org) → first option. Non-admins already auto-route to their single
+  // workspace. The picker is now effectively bypassed for everyone; it remains
+  // only as a fallback if no default can be resolved.
+  const adminDefaultSlug: TenantSlug | null = (() => {
     if (!session?.user.is_platform_admin) return null;
     const stored = localStorage.getItem('eq-field-default-tenant');
-    return stored && TENANT_OPTIONS.some((t) => t.slug === stored) ? (stored as TenantSlug) : null;
+    if (stored && TENANT_OPTIONS.some((t) => t.slug === stored)) return stored as TenantSlug;
+    const configured = session?.tenant.field_tenant_slug;
+    if (configured && TENANT_OPTIONS.some((t) => t.slug === configured)) return configured as TenantSlug;
+    const ownMatch = TENANT_OPTIONS.find((t) => t.slug === session?.tenant.slug);
+    return ownMatch?.slug ?? TENANT_OPTIONS[0]?.slug ?? null;
   })();
 
   const autoSlug: TenantSlug | null =
-    visibleOptions.length === 1 ? visibleOptions[0].slug : storedDefaultSlug;
+    visibleOptions.length === 1 ? visibleOptions[0].slug : adminDefaultSlug;
 
   useEffect(() => {
     if (autoSlug && !selectedTenant) {
@@ -279,15 +287,17 @@ export default function FieldIframe() {
         </HubLayout>
       );
     }
-    // Single option — auto-select fires via useEffect; show loading until it fires.
-    if (visibleOptions.length === 1) {
+    // A default resolved (single option, or an admin's resolved default) —
+    // auto-select fires via the pickTenant effect; show loading until it does,
+    // so the picker never flashes on entry.
+    if (autoSlug) {
       return (
         <HubLayout iframe hideMainSidebar>
           <div className="eq-field-frame-loading">Connecting to EQ Field…</div>
         </HubLayout>
       );
     }
-    // Multiple options — show full picker (platform admins only).
+    // No default could be resolved — fall back to the full picker.
     return (
       <HubLayout iframe>
         <TenantPicker options={visibleOptions} onPick={pickTenant} />
