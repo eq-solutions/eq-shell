@@ -67,7 +67,12 @@ CREATE INDEX IF NOT EXISTS staff_field_status_idx
 -- leak a 'pending' person into the dispatch pool. The gate IS the surface.
 -- SELECT * is expanded at creation — re-run this migration to refresh after a
 -- staff-column change.
-CREATE OR REPLACE VIEW app_data.field_people AS
+-- security_invoker so the view runs with the querying role's rights: service-role
+-- (Field's reader) bypasses RLS as today, but if a non-service role ever queries it
+-- the staff RLS tenant-isolation still applies — the view can't become a leak path.
+-- Also avoids the Supabase "security definer view" advisor flag.
+CREATE OR REPLACE VIEW app_data.field_people
+  WITH (security_invoker = true) AS
   SELECT * FROM app_data.staff WHERE field_status = 'active';
 
 COMMENT ON VIEW app_data.field_people IS
