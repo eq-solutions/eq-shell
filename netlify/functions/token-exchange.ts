@@ -91,6 +91,24 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return jsonResponse(401, { valid: false });
   }
 
+  // For aud='service', resolve the tenant slug from the session tenant so the
+  // minted JWT can carry it. EQ Service's shell-auth needs tenant_slug to upsert
+  // the tenant_members row; without it a bridged user authenticates but lands
+  // with no per-tenant access → access-gate bounce (e.g. the sks Service tile).
+  // The slug is server-derived from the user's own tenant_id — no cross-tenant
+  // input, no escalation. Field encodes its slug in source_app already.
+  let serviceTenantSlug: string | undefined;
+  if (aud === 'service') {
+    const { data: tenantRow } = await sb
+      .schema('shell_control')
+      .from('tenants')
+      .select('slug')
+      .eq('id', user.tenant_id)
+      .maybeSingle<{ slug: string }>();
+    if (!tenantRow) return jsonResponse(500, { error: 'Could not resolve tenant slug' });
+    serviceTenantSlug = tenantRow.slug;
+  }
+
   const { token, exp } = signSupabaseJwt(
     user.id,
     user.tenant_id,
@@ -104,6 +122,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     IFRAME_TOKEN_TTL_SECONDS,
     aud === 'field' ? `field:${tenantSlug ?? 'eq'}` : 'service',
     user.email,
+    serviceTenantSlug,
   );
 
   // Log for parity analysis — helps Phase 2 parity check compare
