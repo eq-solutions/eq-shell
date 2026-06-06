@@ -26,15 +26,32 @@ function normalizeAuPhone(raw: string): string | null {
   return null;
 }
 
+// Remember the last successfully-used login door per device, so office users
+// settle into PIN and field crew settle into Mobile without a global default.
+// Only the two visible doors ('email'=PIN, 'phone'=Mobile) are honoured — a
+// stale 'link' (hidden email-link) falls back to PIN.
+const LAST_DOOR_KEY = 'eq.lastLoginDoor';
+function readLastDoor(): 'email' | 'phone' {
+  try {
+    const v = localStorage.getItem(LAST_DOOR_KEY);
+    if (v === 'email' || v === 'phone') return v;
+  } catch { /* storage blocked (private mode) — use default */ }
+  return 'email';
+}
+function rememberDoor(door: 'email' | 'phone') {
+  try { localStorage.setItem(LAST_DOOR_KEY, door); } catch { /* ignore */ }
+}
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const { refresh } = useSession();
 
-  // PIN is the default door. Email-link tab is hidden for launch — its email is
-  // sent by the shared Supabase "Magic Link" template, currently branded for EQ
-  // Cards (same canonical project). Re-enable the tab below once that template
-  // collision is resolved; the 'link' mode + onSendLink flow are left intact.
-  const [mode, setMode] = useState<'link' | 'email' | 'phone'>('email');
+  // Default door = last one successfully used on this device (PIN first visit).
+  // Email-link tab is hidden for launch — its email is sent by the shared
+  // Supabase "Magic Link" template, currently branded for EQ Cards (same
+  // canonical project). Re-enable the tab below once that collision is resolved;
+  // the 'link' mode + onSendLink flow are left intact.
+  const [mode, setMode] = useState<'link' | 'email' | 'phone'>(readLastDoor);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -182,6 +199,8 @@ export default function LoginPage() {
         setBusy(false);
         return;
       }
+      // Correct PIN — this device prefers the PIN door from now on.
+      rememberDoor('email');
       if ('requires_totp' in body && body.requires_totp) {
         navigate('/totp-challenge', {
           replace: true,
@@ -261,6 +280,8 @@ export default function LoginPage() {
         setBusy(false);
         return;
       }
+      // Verified mobile — this device prefers the Mobile door from now on.
+      rememberDoor('phone');
       // TOTP-enrolled users finish at the challenge screen — same handoff
       // the PIN door uses. No session cookie was set yet.
       if ('requires_totp' in body && body.requires_totp) {
