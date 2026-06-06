@@ -90,7 +90,43 @@ features }` — Field needs its tier to gate UI in **both** options. The auth ha
 
 ## Decision
 
-- [ ] **β — route through Shell functions** (recommended)
-- [ ] **α — browser-direct with per-plane minted JWTs**
+- [x] **β — route through Shell functions** ✅ chosen by Royce 2026-06-06
+- [ ] ~~α — browser-direct with per-plane minted JWTs~~
 
-Record the choice here, then F1 WS1's auth half is unambiguous.
+### What β means for F1 (and what's already done)
+
+No `mint-field-jwt`, no data-plane JWT secrets, no new secret surface. Field's
+data layer calls **Shell endpoints** authed by the `eq_shell_session` cookie (or a
+control-plane Supabase JWT); those endpoints use `getTenantDataClientById(
+session.tenant_id)` (service role) to reach the tenant data plane, with the tenant
+resolved server-side and perms enforced per call.
+
+**The template — and much of the surface — already exists** and follows exactly
+this contract (session cookie, tenant from session never the body, perm-gated):
+
+| Field need | Existing Shell endpoint | Status |
+|---|---|---|
+| Read rows of an entity | `entity-rows` (→ `eq_browse_entity` RPC) | ✅ generic, reuse |
+| Create a record | `entity-insert` (perm `entity.create`) | ✅ reuse / extend entity set |
+| Edit a record | `entity-patch` (allowlisted fields) | ✅ reuse / extend entity set |
+| Archive / delete | `entity-actions` | ✅ reuse |
+| Home dashboard payload | `tenant-dashboard` | ✅ reuse |
+| Tier / feature gating | `field-tenant-config` (this PR) | ✅ built |
+
+**The genuine F1 gap (build during the Field-app refactor, in eq-solves-field):**
+1. Field-specific entities not yet in the generic `entity-*` set (roster,
+   schedule, timesheets, leave, prestart_checks, toolbox_talks, teams, pipeline…)
+   — register them with `eq_browse_entity` + the editable-field allowlists, OR add
+   thin Field-data endpoints on the same template.
+2. Field-specific **operations** that aren't plain CRUD (submit timesheet, approve
+   leave, lock a timesheet week, apprentice approval) — each becomes a small
+   session-gated endpoint calling a per-tenant RPC via `getTenantDataClientById`,
+   mirroring the existing pattern. (These RPCs are the F2 / migration-0012 work.)
+3. Refactor Field's `scripts/supabase.js` from direct Supabase calls to fetch()
+   against these Shell endpoints (this is the bulk of the Field-side F1 change).
+
+So under β the **Shell-side auth/data contract is effectively complete** for F1
+start — `field-tenant-config` for discovery + the `entity-*` surface for data. The
+remaining work is in the Field app itself, which is F1-proper (and the
+Field-specific entities/RPCs are gated on the Prestart/Toolbox port + the 0012
+schema diff). No further Shell auth-surface change is needed for F1.
