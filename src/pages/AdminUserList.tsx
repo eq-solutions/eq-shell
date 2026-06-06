@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { UsersRound } from 'lucide-react';
 import { useSession } from '../session';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
@@ -81,12 +82,21 @@ function AdminUserListInner() {
               Your team members and their roles.
             </p>
           </div>
-          <Link
-            to={`/${tenantSlug}/admin/users/invite`}
-            style={{ width: 'auto', padding: '0 16px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none', height: 40, background: 'var(--eq-sky)', color: '#fff', borderRadius: 6, fontWeight: 600, fontSize: 14, border: 'none' }}
-          >
-            + Invite user
-          </Link>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <Link
+              to={`/${tenantSlug}/admin/users/migrate`}
+              style={{ width: 'auto', padding: '0 16px', display: 'inline-flex', alignItems: 'center', gap: 7, textDecoration: 'none', height: 40, background: 'transparent', color: 'var(--eq-deep)', borderRadius: 6, fontWeight: 600, fontSize: 14, border: '1px solid var(--eq-border)' }}
+            >
+              <UsersRound size={16} aria-hidden="true" />
+              Invite migrated staff
+            </Link>
+            <Link
+              to={`/${tenantSlug}/admin/users/invite`}
+              style={{ width: 'auto', padding: '0 16px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none', height: 40, background: 'var(--eq-sky)', color: '#fff', borderRadius: 6, fontWeight: 600, fontSize: 14, border: 'none' }}
+            >
+              + Invite user
+            </Link>
+          </div>
         </div>
 
         {err && <EqError title="Couldn't load users" message={err} onRetry={load} />}
