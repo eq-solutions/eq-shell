@@ -155,6 +155,14 @@ export interface IdentifyTraits {
  * provider hydrates, including post-login.
  */
 export function identifyUser(userId: string, traits: IdentifyTraits = {}): void {
+  // PostHog/Clarity distinct_id is the lowercased email so the same human
+  // stitches across Shell / Field / Service. Those apps sit on three
+  // different identity backends (Shell = shell_control.users, Service = its
+  // own GoTrue, Field = a constructed handle) and so cannot share a UUID —
+  // email is the only key all three can emit. Sentry keeps the canonical
+  // user id for error grouping. Falls back to userId if email is absent.
+  const analyticsId = traits.email ? traits.email.toLowerCase() : userId;
+
   if (sentryReady) {
     try {
       Sentry.setUser({
@@ -172,7 +180,7 @@ export function identifyUser(userId: string, traits: IdentifyTraits = {}): void 
 
   if (posthogReady) {
     try {
-      posthog.identify(userId, traits);
+      posthog.identify(analyticsId, traits);
       if (traits.tenant) {
         // Group-analytics-style tenant tag — lets Royce slice events
         // by tenant in PostHog without re-querying every chart.
@@ -190,7 +198,7 @@ export function identifyUser(userId: string, traits: IdentifyTraits = {}): void 
       // so heatmaps / replays can be filtered by user.
       const clarity = (window as unknown as { clarity?: (...args: unknown[]) => void }).clarity;
       if (typeof clarity === 'function') {
-        clarity('identify', userId, undefined, undefined, traits.email ?? undefined);
+        clarity('identify', analyticsId, undefined, undefined, traits.email ?? undefined);
         if (traits.tenant) clarity('set', 'tenant', traits.tenant);
         if (traits.role) clarity('set', 'role', traits.role);
       }
