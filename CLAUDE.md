@@ -68,6 +68,28 @@ When you change anything in this list, also verify the downstream consumer:
 - **Iframe pages (`FieldIframe`, `CardsIframe`, `ServiceIframe`) mint a fresh
   token on mount.** Don't cache; the handshake is the contract.
 
+## Canonical DDL governance — secure by default, open by exception
+
+- **New tables are born CLOSED.** Per the 2026-06-07 default-privilege lockdown
+  (`supabase/security/2026-06-07_default-privileges-*.sql`), `ALTER DEFAULT
+  PRIVILEGES` on the control plane (jvkn: `public` + `shell_control`) and the
+  SKS plane (ehow: `public`) no longer grant `anon`/`authenticated` on freshly
+  created tables. This replaced the old "open by default" posture that let
+  `sks_quotes_*`, `sks_quotes_pricing_*`, and `tenant_role_overrides` ship
+  anon-exposed until someone remembered to `REVOKE`.
+- **Anon/authenticated access is now opt-in.** A new table that genuinely needs
+  it must add an EXPLICIT `GRANT` **plus** an RLS policy in its own migration —
+  never rely on a schema default. Bootstrap reads (login-page org lookup,
+  module map, schema registry) stay in `INTENTIONAL_ANON_READS` in
+  `scripts/check-tenant-drift.mjs` and are SELECT-only via policy.
+- **`service_role` is the normal path.** Data tables are reached server-side
+  via service-role functions or the per-user Supabase JWT against RLS — not via
+  a standing anon/authenticated grant.
+- **The drift gate still backstops this.** `scripts/check-tenant-drift.mjs`
+  (anon-grant invariant) fails the build on any *new* anon-open table; the
+  default-privilege change just stops new tables from being born that way in the
+  first place. Run it (`--anon-only`) after any DDL that adds tables.
+
 ## Module convention
 
 - Every new lazy React module: add `React.lazy()` import + `<ModuleGate
