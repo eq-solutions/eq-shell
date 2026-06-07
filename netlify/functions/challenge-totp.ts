@@ -31,11 +31,13 @@ import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_sh
 import {
   signSessionToken,
   verifyTotpChallengeToken,
+  signTrustedDeviceToken,
   hasSecretSalt,
   DEFAULT_TENANT_CONFIG,
+  TRUSTED_DEVICE_TTL_MS,
 } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
-import { buildSessionCookie } from './_shared/cookie.js';
+import { buildSessionCookie, buildTrustedDeviceCookie } from './_shared/cookie.js';
 import { verifyTotp } from './_shared/totp.js';
 import { withSentry } from './_shared/sentry.js';
 
@@ -63,12 +65,13 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(500, { valid: false, error: 'server-misconfigured' });
   }
 
-  let body: { totp_challenge_token?: string; code?: string };
+  let body: { totp_challenge_token?: string; code?: string; trust_device?: boolean };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return jsonResponse(400, { valid: false, error: 'bad-request' });
   }
+  const trustDevice = body.trust_device === true;
 
   const challengePayload = verifyTotpChallengeToken(body.totp_challenge_token);
   if (!challengePayload) {
@@ -187,6 +190,24 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     maxAgeSeconds: SESSION_TTL_MS / 1000,
   });
 
+  // "Remember this device for 30 days" — when ticked, mint a separate signed
+  // cookie bound to this user. Future PIN / phone-OTP logins on this device see
+  // it and skip the authenticator step (hasTrustedDeviceFor). It never replaces
+  // the first factor — see token.ts TrustedDeviceTokenPayload.
+  const cookies = [cookie];
+  if (trustDevice) {
+    const trustedValue = signTrustedDeviceToken({
+      kind: 'trusted-device',
+      user_id: user.id,
+      exp: Date.now() + TRUSTED_DEVICE_TTL_MS,
+    });
+    cookies.push(
+      buildTrustedDeviceCookie(req, trustedValue, {
+        maxAgeSeconds: TRUSTED_DEVICE_TTL_MS / 1000,
+      }),
+    );
+  }
+
   const { token: supabaseJwt } = signSupabaseJwt(
     user.id,
     tenant.id,
@@ -197,9 +218,14 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   const { pin_hash, totp_secret, ...userSafe } = user;
   void pin_hash; void totp_secret;
 
-  return jsonResponse(
-    200,
-    {
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+  });
+  for (const c of cookies) headers.append('Set-Cookie', c);
+
+  return new Response(
+    JSON.stringify({
       valid: true,
       user: { ...userSafe, role: activeMembership.role, tenant_id: tenant.id },
       tenant,
@@ -208,7 +234,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
         memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
       ),
       supabase_jwt: supabaseJwt,
-    },
-    { 'Set-Cookie': cookie },
+    }),
+    { status: 200, headers },
   );
 });

@@ -21,6 +21,7 @@
 // against its deploy preview.
 
 const SESSION_COOKIE_NAME = 'eq_shell_session';
+const TRUSTED_DEVICE_COOKIE_NAME = 'eq_shell_trusted_device';
 
 /**
  * Returns the Domain value to use for the session cookie, or null if
@@ -64,7 +65,30 @@ export function buildSessionCookie(
   value: string,
   opts: SessionCookieOptions,
 ): string {
-  const parts: string[] = [`${SESSION_COOKIE_NAME}=${value}`];
+  return buildCookie(SESSION_COOKIE_NAME, req, value, opts);
+}
+
+/**
+ * Build the "remember this device" cookie. Same attributes and conditional
+ * Domain scoping as the session cookie — it's only ever read back by Shell's
+ * own login functions (hasTrustedDeviceFor) to skip the 2FA step. Set with a
+ * 30-day Max-Age by challenge-totp when the user ticks the box.
+ */
+export function buildTrustedDeviceCookie(
+  req: Request,
+  value: string,
+  opts: SessionCookieOptions,
+): string {
+  return buildCookie(TRUSTED_DEVICE_COOKIE_NAME, req, value, opts);
+}
+
+function buildCookie(
+  name: string,
+  req: Request,
+  value: string,
+  opts: SessionCookieOptions,
+): string {
+  const parts: string[] = [`${name}=${value}`];
   const domain = getSessionCookieDomain(req);
   if (domain) {
     parts.push(`Domain=${domain}`);
