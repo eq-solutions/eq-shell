@@ -13,7 +13,8 @@
 -- add, and CREATE INDEX IF NOT EXISTS. Safe to re-run on any plane.
 --
 -- The runner (scripts/migrate-tenants.mjs) is the single ledger writer; this
--- file deliberately does NOT self-insert into app_data._eq_migrations.
+-- file deliberately records no ledger row of its own (the runner does that on
+-- apply, under the full filename).
 
 -- 1. The custodian column. Nullable — unassigned is the default state.
 ALTER TABLE app_data.assets
