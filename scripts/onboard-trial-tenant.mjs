@@ -114,7 +114,7 @@ log('');
 // ─── step 1 ─ provision ────────────────────────────────────────────────
 
 if (!args['skip-provision']) {
-  log('━━━ Step 1/5: Provisioning Supabase project (~2-3 min) ━━━');
+  log('━━━ Step 1/6: Provisioning Supabase project (~2-3 min) ━━━');
   await spawnStep('node', [
     'scripts/provision-tenant.mjs',
     `--slug=${args.slug}`,
@@ -129,7 +129,7 @@ log('');
 // ─── step 2 ─ migrate ──────────────────────────────────────────────────
 
 if (!args['skip-migrate']) {
-  log('━━━ Step 2/5: Applying per-tenant schema migrations ━━━');
+  log('━━━ Step 2/6: Applying per-tenant schema migrations ━━━');
   await spawnStep('node', [
     'scripts/migrate-tenants.mjs',
     `--slug=${args.slug}`,
