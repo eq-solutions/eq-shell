@@ -60,6 +60,30 @@
       "individual_days": null,
       "status": "approved",
       "archived": false
+    },
+    {
+      "id": 5006,
+      "requester_name": "Jordan Reyes",
+      "leave_type": "RDO",
+      "date_start": "2026-12-04",
+      "date_end": "2026-12-04",
+      "note": "Rostered day off",
+      "approver_name": "Sam O'Neil",
+      "individual_days": null,
+      "status": "Withdrawn",
+      "archived": false
+    },
+    {
+      "id": 5007,
+      "requester_name": "Casey Lin",
+      "leave_type": "A/L",
+      "date_start": "2026-12-20",
+      "date_end": "2026-12-10",
+      "note": "reversed span — should be blocked",
+      "approver_name": null,
+      "individual_days": null,
+      "status": "approved",
+      "archived": false
     }
   ]
 }
