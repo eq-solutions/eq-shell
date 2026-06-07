@@ -11,8 +11,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { ShieldCheck, Plus, Trash2, ChevronRight, X, RotateCcw, Eye } from 'lucide-react';
-import { resolveEffectivePermissions } from '@eq-solutions/roles';
+import { ShieldCheck, Plus, Trash2, ChevronRight, X, RotateCcw, Eye, Search, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { resolveEffectivePermissions, PERMISSIONS, labelFor } from '@eq-solutions/roles';
+import type { PermKey } from '@eq-solutions/roles';
 import { HubLayout } from '../components/HubLayout';
 import { Gate } from '../permissions/Gate';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
@@ -866,19 +867,176 @@ function CreateGroupModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
 // ── Group detail modal ────────────────────────────────────────────────────────
 
-const ALL_PERM_KEYS = [
-  'admin.list_users', 'admin.invite_user', 'admin.edit_user',
-  'admin.deactivate_user', 'admin.review_cards', 'admin.manage_groups',
-  'audit.view', 'audit.rollback',
-  'entity.view', 'entity.create', 'entity.edit', 'entity.delete',
-  'intake.view', 'intake.import', 'intake.commit',
-  'equipment.view', 'equipment.edit',
-  'reports.view', 'reports.upload', 'reports.generate_briefing',
-  'cards.view', 'cards.onboard',
-  'service.view', 'service.create', 'service.close',
-  'field.view', 'field.dispatch',
-  'quotes.view', 'quotes.create', 'quotes.approve',
-] as const;
+// Module display labels (Title Case) for grouping — module keys come from PERMISSIONS.
+const MODULE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  audit: 'Audit',
+  entity: 'Records',
+  intake: 'Intake',
+  equipment: 'Equipment',
+  reports: 'Reports',
+  cards: 'Cards',
+  service: 'Service',
+  field: 'Field',
+  quotes: 'Quotes',
+};
+
+// ── Grouped perm pill picker ──────────────────────────────────────────────────
+
+interface PermPillPickerProps {
+  grantedKeys: string[];
+  permBusy: string | null;
+  onToggle: (permKey: PermKey, granted: boolean) => Promise<void>;
+}
+
+function PermPillPicker({ grantedKeys, permBusy, onToggle }: PermPillPickerProps) {
+  const [search, setSearch] = useState('');
+
+  // Group PERMISSIONS by module, in canonical order
+  const moduleOrder: string[] = [];
+  const byModule: Record<string, typeof PERMISSIONS[number][]> = {};
+  for (const p of PERMISSIONS) {
+    if (!byModule[p.module]) {
+      byModule[p.module] = [];
+      moduleOrder.push(p.module);
+    }
+    byModule[p.module].push(p);
+  }
+
+  const q = search.trim().toLowerCase();
+
+  // Track which sections are collapsed; default: sections with any grant start expanded
+  const defaultCollapsed = (): Record<string, boolean> => {
+    const state: Record<string, boolean> = {};
+    for (const mod of moduleOrder) {
+      const hasGrant = byModule[mod].some(p => grantedKeys.includes(p.key));
+      state[mod] = !hasGrant; // start collapsed if no grants, expanded if has grants
+    }
+    return state;
+  };
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(defaultCollapsed);
+
+  // When search is active, expand all matching sections so results are visible
+  const toggleCollapsed = (mod: string) => {
+    setCollapsed(prev => ({ ...prev, [mod]: !prev[mod] }));
+  };
+
+  return (
+    <div>
+      {/* Search bar */}
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <Search
+          size={14}
+          style={{
+            position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+            color: 'var(--eq-grey)', pointerEvents: 'none',
+          }}
+        />
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search permissions…"
+          style={{
+            display: 'block', width: '100%', padding: '7px 10px 7px 30px',
+            border: '1px solid var(--eq-border)', borderRadius: 6,
+            fontSize: 13, color: 'var(--eq-ink)', background: '#fff',
+            boxSizing: 'border-box', outline: 'none',
+          }}
+        />
+      </div>
+
+      {/* Module sections */}
+      {moduleOrder.map(mod => {
+        const perms = byModule[mod];
+        // Filter by search (match label, not key)
+        const filtered = q
+          ? perms.filter(p => labelFor(p.key as PermKey).toLowerCase().includes(q))
+          : perms;
+        if (filtered.length === 0) return null;
+
+        const grantedCount = filtered.filter(p => grantedKeys.includes(p.key)).length;
+        const isCollapsed = !q && collapsed[mod];
+
+        return (
+          <div key={mod} style={{ marginBottom: 10 }}>
+            {/* Section header */}
+            <button
+              type="button"
+              onClick={() => toggleCollapsed(mod)}
+              style={{
+                display: 'flex', alignItems: 'center', width: '100%',
+                background: 'none', border: 'none', padding: '5px 0',
+                cursor: 'pointer', gap: 6,
+              }}
+            >
+              {isCollapsed
+                ? <ChevronDown size={13} style={{ color: 'var(--eq-grey)', flexShrink: 0 }} />
+                : <ChevronUp size={13} style={{ color: 'var(--eq-grey)', flexShrink: 0 }} />
+              }
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--eq-ink)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {MODULE_LABELS[mod] ?? mod}
+              </span>
+              {grantedCount > 0 && (
+                <span style={{
+                  fontSize: 11, fontWeight: 600,
+                  background: '#3DA8D8', color: '#fff',
+                  borderRadius: 10, padding: '1px 7px', marginLeft: 4,
+                }}>
+                  {grantedCount} / {filtered.length}
+                </span>
+              )}
+            </button>
+
+            {/* Pills */}
+            {!isCollapsed && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 20, marginTop: 4, marginBottom: 4 }}>
+                {filtered.map(p => {
+                  const permKey = p.key as PermKey;
+                  const granted = grantedKeys.includes(p.key);
+                  const busy = permBusy === p.key;
+
+                  return (
+                    <button
+                      key={p.key}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void onToggle(permKey, granted)}
+                      title={p.key}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '5px 10px', borderRadius: 20, fontSize: 12, fontWeight: 500,
+                        cursor: busy ? 'wait' : 'pointer',
+                        border: granted ? 'none' : '1px solid #1A1A2E',
+                        background: granted ? '#3DA8D8' : '#fff',
+                        color: granted ? '#fff' : '#1A1A2E',
+                        transition: 'background 0.12s, color 0.12s',
+                        opacity: busy ? 0.55 : 1,
+                      }}
+                      onMouseEnter={e => {
+                        if (!granted && !busy) {
+                          (e.currentTarget as HTMLButtonElement).style.background = '#EAF5FB';
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        if (!granted && !busy) {
+                          (e.currentTarget as HTMLButtonElement).style.background = '#fff';
+                        }
+                      }}
+                    >
+                      {granted && <Check size={11} strokeWidth={2.5} />}
+                      {labelFor(permKey)}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function GroupDetailModal({
   group, onClose, onUpdated, onPermChange, onRemoveMember,
@@ -902,7 +1060,7 @@ function GroupDetailModal({
     } catch { setDeleting(false); }
   };
 
-  const togglePerm = async (permKey: string, granted: boolean) => {
+  const togglePerm = async (permKey: PermKey, granted: boolean) => {
     setPermBusy(permKey);
     try { await onPermChange(permKey, !granted); }
     finally { setPermBusy(null); }
@@ -926,18 +1084,11 @@ function GroupDetailModal({
 
       <section style={{ marginBottom: 20 }}>
         <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--eq-ink)', marginBottom: 8 }}>Permissions</h3>
-        <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-          {ALL_PERM_KEYS.map(k => {
-            const granted = group.perm_keys.includes(k);
-            const busy = permBusy === k;
-            return (
-              <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', cursor: busy ? 'wait' : 'pointer' }}>
-                <input type="checkbox" checked={granted} disabled={busy} onChange={() => void togglePerm(k, granted)} />
-                <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--eq-ink)' }}>{k}</span>
-              </label>
-            );
-          })}
-        </div>
+        <PermPillPicker
+          grantedKeys={group.perm_keys}
+          permBusy={permBusy}
+          onToggle={togglePerm}
+        />
       </section>
 
       <section style={{ marginBottom: 20 }}>
