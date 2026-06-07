@@ -15,6 +15,26 @@ on:
         default: false
 
 jobs:
+  # Creds-free static lint: a newly-ADDED tenant-migration file must not
+  # self-insert into app_data._eq_migrations (the runner is the single ledger
+  # writer — see SCHEMA-GOVERNANCE.md). PR-only: it needs the PR diff to scope
+  # to added files, and on schedule there is no diff. No DB secrets required.
+  migration-hygiene:
+    name: Migration ledger hygiene (added files)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history to diff added files against the base
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Lint newly-added migrations for ledger self-inserts
+        run: node scripts/check-migration-hygiene.mjs
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+
   drift-check:
     name: Schema drift + anon-grant invariant
     runs-on: ubuntu-latest
