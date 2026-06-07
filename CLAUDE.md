@@ -95,6 +95,28 @@ The tenant data planes are **production × two entities** — zaap (EQ ·
   not on merge. Note: `postgres` is **not superuser** here, so in-DB event
   triggers / DDL audit are infeasible — detection is via the gate, not a trigger.
 
+### Secure by default, open by exception (default privileges)
+
+- **New tables are born CLOSED.** As of the 2026-06-07 default-privilege lockdown,
+  `ALTER DEFAULT PRIVILEGES` on all three canonical planes — control (jvkn:
+  `public` + `shell_control`), SKS (ehow: `public`), EQ Field (zaap: `public`) —
+  no longer grants `anon`/`authenticated` on freshly created tables. This ended
+  the "open by default" posture that let `sks_quotes_*`, `sks_quotes_pricing_*`,
+  and `tenant_role_overrides` ship anon-exposed until someone remembered to
+  `REVOKE`. (Residual: the `supabase_admin` grantor default is unchanged —
+  `postgres` can't alter it; accepted, since it only affects future tables created
+  by platform internals, not app tables.)
+- **Anon/authenticated access is opt-in.** A new table that genuinely needs it
+  must add an EXPLICIT `GRANT` **plus** an RLS policy in its own migration — never
+  rely on a schema default. Bootstrap reads (login-page org lookup, module map,
+  schema registry) stay in `INTENTIONAL_ANON_READS` in `check-tenant-drift.mjs`,
+  SELECT-only via policy. `service_role` is the normal data path.
+- **Governed-path caveat.** That lockdown's record lives in
+  `supabase/security/2026-06-07_default-privileges-*.sql` + runbook. The live
+  posture change was applied via the Supabase MCP (a security hotfix) — which the
+  One Pipe rule above now discourages; **future** default-privilege changes belong
+  in the governed migration path, not by hand.
+
 ## Module convention
 
 - Every new lazy React module: add `React.lazy()` import + `<ModuleGate
