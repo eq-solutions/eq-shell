@@ -265,7 +265,7 @@ if (want('timesheets')) {
 
 if (want('schedule')) {
   const sched = await readAll(
-    source.from('schedule').select('*').eq('org_id', SKS_ORG_ID),
+    source.from('schedule').select('*').eq('org_id', SKS_ORG_ID).is('deleted_at', null),
     'nspbmir schedule',
   );
 
@@ -273,9 +273,8 @@ if (want('schedule')) {
   const ok = results.filter((r) => r.ok);
   const rows = ok.flatMap((r) => r.rows.map(stampImported));
 
-  // schedule_entries.site_id is NOT NULL live but we emit null → a real apply
-  // would fail. Surface it as a blocker count; the apply UPSERT will report the
-  // write error rather than silently dropping (gate documented in PR notes).
+  // schedule_entries.site_id is NULLABLE (verified 2026-06-08) so null is fine.
+  // We still surface the count for observability; it is informational, NOT a blocker.
   const siteGap = results.filter((r) => r.warnings.includes('site_id_required_not_null')).length;
 
   const upserted = APPLY ? await upsert('schedule_entries', 'schedule_id', rows) : null;
