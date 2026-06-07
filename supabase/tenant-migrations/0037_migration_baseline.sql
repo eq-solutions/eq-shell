@@ -11,8 +11,12 @@
 --
 -- Contract for migration scripts: docs/migration-baseline-contract.md.
 --
--- NOT YET APPLIED — author-on-branch. Apply to each target tenant DB via
--- Supabase MCP when ready (same rollout as the other tenant-migrations/*.sql).
+-- RLS: enabled, with NO caller-scoped policy. service_role bypasses RLS and is
+-- the only grantee; there is no anon/authenticated path. This matches every
+-- other app_data table (all RLS=on) and the posture already applied to the SKS
+-- (ehow) plane. Enabling here keeps fresh-provisioned tenants consistent from
+-- the start; 0039_migration_baseline_rls converges tenants where this table was
+-- created before RLS was added.
 
 CREATE TABLE IF NOT EXISTS app_data.migration_baseline (
   tenant_id      uuid        NOT NULL,
@@ -35,6 +39,10 @@ CREATE INDEX IF NOT EXISTS migration_baseline_tenant ON app_data.migration_basel
 -- migration scripts (service-role). No browser path → no anon/authenticated grant.
 REVOKE ALL ON app_data.migration_baseline FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON app_data.migration_baseline TO service_role;
+
+-- RLS on, no caller policy: service_role bypasses RLS; anon/authenticated have no
+-- grant and (with RLS enabled) no row access. Idempotent.
+ALTER TABLE app_data.migration_baseline ENABLE ROW LEVEL SECURITY;
 
 INSERT INTO app_data._eq_migrations(name, checksum) VALUES ('0037_migration_baseline', NULL)
   ON CONFLICT (name) DO NOTHING;

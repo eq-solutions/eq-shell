@@ -10,7 +10,8 @@
 //   - FOREIGN KEYs (deferred to a second pass so creation order doesn't matter)
 //   - All indexes (via pg_get_indexdef)
 //   - GRANTs for service_role
-//   - RLS enable + tenant_isolation policy
+//   - RLS enable + tenant_isolation policy (service-role-only tables get RLS
+//     on with NO policy — see SERVICE_ROLE_ONLY)
 //   - updated_at trigger where the column exists
 //
 // We use pg_get_constraintdef + pg_get_indexdef so DDL strings come straight
@@ -52,6 +53,18 @@ const PG_RESERVED = new Set([
 function quote(name) {
   return /^[a-z_][a-z0-9_]*$/.test(name) && !PG_RESERVED.has(name) ? name : `"${name}"`;
 }
+
+// Service-role-only tables: written/read ONLY by service_role (migration scripts,
+// SECURITY DEFINER reconcile functions) with no browser path. These get RLS on
+// but NO caller-scoped tenant_isolation policy — even though they have a
+// tenant_id column — because service_role bypasses RLS and anon/authenticated
+// must have no access at all. Emitting a tenant_isolation policy here would
+// re-introduce the exact spine drift fixed in tenant-migration 0039
+// (migration_baseline diverged because a regen pass kept re-adding the policy).
+// Keep this list in sync with the migrations that set the same posture.
+const SERVICE_ROLE_ONLY = new Set([
+  'migration_baseline',
+]);
 
 const { values: args } = parseArgs({
   options: {
@@ -252,6 +265,24 @@ async function emitIndexes(schema, table) {
 }
 
 function emitGrantsAndPolicies(schema, table) {
+  // Service-role-only tables: RLS on, NO caller-scoped policy. service_role
+  // bypasses RLS; anon/authenticated get no grant and no row access. Drop any
+  // stray tenant_isolation policy a previous regen may have emitted.
+  if (SERVICE_ROLE_ONLY.has(table)) {
+    return `GRANT SELECT, INSERT, UPDATE, DELETE ON ${schema}.${table} TO service_role;
+REVOKE ALL ON ${schema}.${table} FROM PUBLIC, anon, authenticated;
+ALTER TABLE ${schema}.${table} ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  -- service-role-only (see SERVICE_ROLE_ONLY): no caller-scoped policy.
+  EXECUTE 'DROP POLICY IF EXISTS ${table}_tenant_isolation ON ${schema}.${table}';
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='${schema}' AND table_name='${table}' AND column_name='updated_at') THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS ${table}_touch_updated_at ON ${schema}.${table}';
+    EXECUTE 'CREATE TRIGGER ${table}_touch_updated_at BEFORE UPDATE ON ${schema}.${table} FOR EACH ROW EXECUTE FUNCTION app_data.touch_updated_at()';
+  END IF;
+END $$;
+`;
+  }
+
   return `GRANT ALL ON ${schema}.${table} TO service_role;
 ALTER TABLE ${schema}.${table} ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
@@ -283,6 +314,8 @@ ${tables.map(t => `--   ${t}`).join('\n')}
 --
 -- All tables: GRANT to service_role, RLS enabled with tenant_isolation
 -- policy (if tenant_id column exists), updated_at trigger (if column exists).
+-- Service-role-only tables (e.g. migration_baseline) get RLS on with NO
+-- caller-scoped policy — service_role bypasses RLS, no anon/authenticated path.
 `;
 }
 
