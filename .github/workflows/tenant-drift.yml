@@ -5,8 +5,12 @@ on:
     branches:
       - main
   schedule:
-    # Monday 08:00 AEST (UTC+10 standard time) = Sunday 22:00 UTC
-    - cron: '0 22 * * 0'
+    # Every 3 hours. Drift on the canonical planes comes from out-of-band changes
+    # (ad-hoc DDL via the dashboard / Supabase MCP), NOT from PRs — so a tight
+    # scheduled cadence is the only way to catch it fast. Weekly meant a bad
+    # change could sit ~7 days; 3-hourly bounds exposure to a few hours.
+    # Off the :00 mark to avoid the top-of-hour API stampede.
+    - cron: '7 */3 * * *'
   workflow_dispatch:
     inputs:
       anon_only:
