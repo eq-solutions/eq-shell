@@ -28,6 +28,7 @@ export default function AcceptInvite() {
   const [pinConfirm, setPinConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [showSignIn, setShowSignIn] = useState(false);
 
   if (!token) {
     return (
@@ -66,11 +67,15 @@ export default function AcceptInvite() {
         | { valid: true; tenant: { slug: string } }
         | { valid: false; error?: string };
       if (!body.valid) {
+        if (body.error === 'user-already-exists') {
+          setErr('An account with this email already exists.');
+          setShowSignIn(true);
+          setBusy(false);
+          return;
+        }
         const map: Record<string, string> = {
           'invite-not-found-or-expired':
             'This invite is no longer valid. Ask your admin for a new one.',
-          'user-already-exists':
-            'An account with this email already exists. Try signing in instead.',
           'bad-pin': 'PIN must be 4–12 letters or digits.',
           'bad-request': 'Something went wrong with the request — try again.',
         };
@@ -129,6 +134,14 @@ export default function AcceptInvite() {
         {err && (
           <div className="eq-err" role="alert">
             {err}
+            {showSignIn && (
+              <>
+                {' '}
+                <a href="/" style={{ color: 'inherit', fontWeight: 600, textDecoration: 'underline' }}>
+                  Sign in instead →
+                </a>
+              </>
+            )}
           </div>
         )}
         <p className="eq-login-form__foot">
@@ -169,7 +182,7 @@ function AcceptInviteShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <footer className="eq-login-hero__foot">
-          © EQ Solutions · {new Date().getFullYear()} · accept-invite
+          © EQ Solutions · {new Date().getFullYear()}
         </footer>
       </aside>
 

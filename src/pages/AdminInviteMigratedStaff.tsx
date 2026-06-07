@@ -34,7 +34,16 @@ interface Candidate {
   role: EqRole;
   role_uncertain: boolean;
   status: CandidateStatus;
+  worker_id: string | null;
 }
+
+const ROLE_OPTIONS: { value: EqRole; label: string }[] = [
+  { value: 'employee', label: 'Employee' },
+  { value: 'apprentice', label: 'Apprentice' },
+  { value: 'labour_hire', label: 'Labour Hire' },
+  { value: 'supervisor', label: 'Supervisor' },
+  { value: 'manager', label: 'Manager' },
+];
 
 interface Counts {
   ready: number;
@@ -92,6 +101,7 @@ function AdminInviteMigratedStaffInner() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [roleOverrides, setRoleOverrides] = useState<Record<string, EqRole>>({});
   const [apps, setApps] = useState<Set<string>>(new Set(DEFAULT_APPS));
   const [busy, setBusy] = useState(false);
   const [sendErr, setSendErr] = useState<string | null>(null);
@@ -119,6 +129,8 @@ function AdminInviteMigratedStaffInner() {
       setCounts(body.counts);
       // Pre-select everyone who's ready to invite.
       setSelected(new Set(body.candidates.filter((c) => c.status === 'ready').map((c) => c.staff_id)));
+      // Reset role overrides on reload.
+      setRoleOverrides({});
     } catch {
       setLoadErr('Network error — please try again.');
     }
@@ -172,7 +184,7 @@ function AdminInviteMigratedStaffInner() {
         body: JSON.stringify({
           invites: selectedReady.map((c) => ({
             email: c.email,
-            role: c.role,
+            role: roleOverrides[c.staff_id] ?? c.role,
             entitlements: [...apps],
             ...(c.phone ? { phone: c.phone } : {}),
           })),
@@ -353,12 +365,38 @@ function AdminInviteMigratedStaffInner() {
                       <td style={{ ...cellStyle, color: 'var(--gray-500)' }}>
                         {c.email ?? <span style={{ color: '#B42318' }}>—</span>}
                       </td>
-                      <td style={{ ...cellStyle, color: 'var(--gray-500)' }}>
-                        {roleLabel(c.role)}
-                        {c.role_uncertain && (
-                          <span title="Set from an unrecognised employment type — check this" style={{ marginLeft: 6, color: '#B26B00', display: 'inline-flex', verticalAlign: 'middle' }}>
-                            <TriangleAlert size={13} aria-hidden="true" />
-                          </span>
+                      <td style={{ ...cellStyle }}>
+                        {selectable ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <select
+                              value={roleOverrides[c.staff_id] ?? c.role}
+                              onChange={(e) =>
+                                setRoleOverrides((prev) => ({
+                                  ...prev,
+                                  [c.staff_id]: e.target.value as EqRole,
+                                }))
+                              }
+                              disabled={busy}
+                              aria-label={`Role for ${c.name}`}
+                              style={{
+                                fontSize: 12, border: '1px solid var(--eq-border)',
+                                borderRadius: 4, padding: '3px 6px',
+                                background: 'var(--eq-bg)', color: 'var(--eq-ink)',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {ROLE_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                            {c.role_uncertain && !(c.staff_id in roleOverrides) && (
+                              <span title="Defaulted from unrecognised employment type — confirm before sending" style={{ color: '#B26B00', display: 'inline-flex' }}>
+                                <TriangleAlert size={13} aria-hidden="true" />
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--gray-500)', fontSize: 13 }}>{roleLabel(c.role)}</span>
                         )}
                       </td>
                       <td style={{ ...cellStyle, textAlign: 'right', width: 1, whiteSpace: 'nowrap' }}>

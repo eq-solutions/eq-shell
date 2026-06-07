@@ -132,6 +132,15 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .maybeSingle<{ name: string }>();
   const tenantName = tenantRow?.name ?? 'an EQ Solutions workspace';
 
+  // Org id for this tenant — used when creating worker_invites records so
+  // Cards can pre-populate the profile on first open. Best-effort only.
+  const { data: orgRow } = await sb
+    .from('organisations')
+    .select('id')
+    .eq('tenant_id', session.tenant_id)
+    .maybeSingle<{ id: string }>();
+  const orgId = orgRow?.id ?? null;
+
   const results: RowResult[] = [];
   const seen = new Set<string>();
 
@@ -164,7 +173,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     seen.add(email);
 
     try {
-      const result = await processOne(sb, req, session.tenant_id, session.user_id, tenantName, email, role as EqRole, entitlements, phone);
+      const result = await processOne(sb, req, session.tenant_id, session.user_id, tenantName, orgId, email, role as EqRole, entitlements, phone);
       results.push(result);
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -187,6 +196,7 @@ async function processOne(
   tenantId: string,
   invitedBy: string,
   tenantName: string,
+  orgId: string | null,
   email: string,
   role: EqRole,
   entitlements: string[],
@@ -279,6 +289,48 @@ If you weren't expecting this, you can ignore this email.
 
   if (insertErr || !inserted) {
     return { email, status: 'failed', error: 'server-error' };
+  }
+
+  // Link to canonical workers + create Cards pre-population record.
+  // Best-effort — never fails the invite if the worker isn't found.
+  if (orgId) {
+    const { data: worker } = await sb
+      .from('workers')
+      .select('id, first_name, last_name, phone, role')
+      .eq('email', email)
+      .maybeSingle<{ id: string; first_name: string | null; last_name: string | null; phone: string | null; role: string | null }>();
+
+    if (worker) {
+      // Stamp worker_id on the shell invite so accept-invite can link workers.user_id
+      await sb
+        .from('user_invites')
+        .update({ worker_id: worker.id })
+        .eq('id', inserted.id);
+
+      // Create the Cards-side pre-population record (idempotent — skip if one exists)
+      const { data: existingWi } = await sb
+        .from('worker_invites')
+        .select('id')
+        .eq('worker_id', worker.id)
+        .is('claimed_at', null)
+        .maybeSingle<{ id: string }>();
+
+      if (!existingWi) {
+        await sb.from('worker_invites').insert({
+          org_id: orgId,
+          worker_id: worker.id,
+          created_by: invitedBy,
+          profile_data: {
+            first_name: worker.first_name,
+            last_name: worker.last_name,
+            phone: worker.phone ?? phone,
+            email,
+            role: worker.role,
+          },
+          licences_data: [],
+        });
+      }
+    }
   }
 
   const inviteUrl = inviteUrlFor(req, rawToken);

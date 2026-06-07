@@ -57,6 +57,7 @@ interface InviteRow {
   phone: string | null;
   expires_at: string;
   accepted_at: string | null;
+  worker_id: string | null;
 }
 
 function jsonResponse(status: number, body: unknown, extraHeaders: Record<string, string> = {}): Response {
@@ -116,7 +117,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const { data: invite } = await sb
     .from('user_invites')
-    .select('id, tenant_id, email, role, entitlements, phone, expires_at, accepted_at')
+    .select('id, tenant_id, email, role, entitlements, phone, expires_at, accepted_at, worker_id')
     .eq('invite_token_hash', tokenHash)
     .is('accepted_at', null)
     .gte('expires_at', new Date().toISOString())
@@ -223,6 +224,29 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .from('user_invites')
     .update({ accepted_at: new Date().toISOString() })
     .eq('id', invite.id);
+
+  // Link canonical worker to the new shell user so Cards can pre-populate
+  // the profile on first open. Best-effort — never blocks the accept flow.
+  if (invite.worker_id) {
+    await sb
+      .from('workers')
+      .update({ user_id: created.id })
+      .eq('id', invite.worker_id);
+
+    const { data: workerInvite } = await sb
+      .from('worker_invites')
+      .select('id')
+      .eq('worker_id', invite.worker_id)
+      .is('claimed_at', null)
+      .maybeSingle<{ id: string }>();
+
+    if (workerInvite) {
+      await sb
+        .from('worker_invites')
+        .update({ claimed_at: new Date().toISOString(), claimed_by: created.id })
+        .eq('id', workerInvite.id);
+    }
+  }
 
   const inviteIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
                  ?? req.headers.get('client-ip')

@@ -52,6 +52,7 @@ interface Candidate {
   role: EqRole;
   role_uncertain: boolean;
   status: CandidateStatus;
+  worker_id: string | null;
 }
 
 // employment_type → eq_role. The staff table has no title; employment_type is
@@ -149,7 +150,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .filter(Boolean),
   );
 
-  const candidates: Candidate[] = staff.map((s) => {
+  const candidatesRaw: Omit<Candidate, 'worker_id'>[] = staff.map((s) => {
     const email = (s.email ?? '').trim().toLowerCase();
     const { role, uncertain } = mapStaffRole(s.employment_type);
     const phone = normalizeAuPhone(s.phone); // null when missing or unparseable
@@ -171,6 +172,28 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       status,
     };
   });
+
+  // Look up canonical worker_id for each candidate so the migrate page
+  // can display link status and Cards can pre-populate their profile.
+  const candidateEmails = candidatesRaw
+    .filter((c) => c.email)
+    .map((c) => c.email as string);
+
+  const workerIdByEmail = new Map<string, string>();
+  if (candidateEmails.length > 0) {
+    const { data: workerRows } = await sb
+      .from('workers')
+      .select('id, email')
+      .in('email', candidateEmails);
+    for (const w of (workerRows ?? []) as Array<{ id: string; email: string | null }>) {
+      if (w.email) workerIdByEmail.set(w.email.trim().toLowerCase(), w.id);
+    }
+  }
+
+  const candidates: Candidate[] = candidatesRaw.map((c) => ({
+    ...c,
+    worker_id: c.email ? (workerIdByEmail.get(c.email) ?? null) : null,
+  }));
 
   const counts = {
     ready: candidates.filter((c) => c.status === 'ready').length,
