@@ -1,4 +1,4 @@
-name: Tenant drift + anon-grant check
+name: Tenant drift + anon-grant + policy-lint check
 
 on:
   pull_request:
@@ -40,23 +40,34 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
 
   drift-check:
-    name: Schema drift + anon-grant invariant
+    name: Schema drift + anon-grant + policy-lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'
 
-      - name: Run drift + anon-grant check
+      - name: Install packages
+        # Required for check-orphan-perms.mjs which reads @eq-solutions/roles.
+        # check-tenant-drift.mjs has no npm deps but shares the same job.
+        run: pnpm install --frozen-lockfile
+        env:
+          # Allows pnpm to fetch the github:eq-solutions/eq-roles package.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run drift + anon-grant + policy-lint check
         run: |
-          # --strict-spine: the canonical spine (tables created by the migrations)
-          # must be identical across every tenant — drift on a spine table now FAILS
-          # this check. Module/legacy-layer differences stay informational. The
-          # comparison is semantic (effective RLS isolation, not policy names), so
-          # cosmetic decomposition is not a false failure. Spine verified green
-          # across both tenants 2026-06-04.
+          # --strict-spine: the canonical spine must be identical across every tenant.
+          # Policy-lint (CHECK 5, Phase 5.2) is ABSOLUTE by default — every app_data
+          # table with RLS=on and no tenant_id policy fails the build. Suppress with
+          # --no-policy-lint only in exceptional circumstances.
           FLAGS="--strict-spine"
           if [ "${{ inputs.anon_only }}" = "true" ]; then
             FLAGS="--anon-only"
@@ -67,3 +78,14 @@ jobs:
           CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}
           CANONICAL_INTERNAL_PROJECT_REF: ${{ secrets.CANONICAL_INTERNAL_PROJECT_REF }}
           SKS_CANONICAL_PROJECT_REF: ${{ secrets.SKS_CANONICAL_PROJECT_REF }}
+
+      - name: Run orphan-perms check (Phase 5.3)
+        # Validates that every perm_key in shell_control.security_group_perms
+        # exists in the pinned @eq-solutions/roles package. An orphan key means
+        # a security group silently grants nothing to its members (can() returns
+        # false without an error). Skipped when running anon-only.
+        if: ${{ inputs.anon_only != true }}
+        run: node scripts/check-orphan-perms.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}

@@ -1,89 +1,80 @@
 #!/usr/bin/env node
 // scripts/check-orphan-perms.mjs
 //
-// Validates that every perm_key stored in shell_control.security_group_perms
-// exists in the pinned @eq-solutions/roles PermKey union. An orphan key means
-// a security group has a perm that the roles package no longer recognises —
-// it silently fails in useCan() and leaves a confused user with no error.
+// Phase 5.3 CI gate: validates that every perm_key stored in
+// shell_control.security_group_perms on the control plane (jvkn) exists in the
+// pinned @eq-solutions/roles PermKey union. An orphan key means a security group
+// grants a perm that the roles package no longer recognises — it silently passes
+// the `can()` check as false and leaves an admin confused with no error message.
+//
+// This check uses the Supabase Management API so it runs in the same CI job as
+// check-tenant-drift.mjs with the same credentials — no extra secrets needed.
 //
 // Usage:
 //   node scripts/check-orphan-perms.mjs
-//   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/check-orphan-perms.mjs
 //
-// Exit codes: 0 = clean, 1 = orphan keys found or config error.
+// Required env:
+//   SUPABASE_ACCESS_TOKEN   — Supabase Management API token
+//   CONTROL_PROJECT_REF     — project ref for the control plane (jvknxcmbtrfnxfrwfimn)
 //
-// Reads env from process.env or from a local .env file if present.
+// Exit codes: 0 = clean, 1 = config error, 2 = orphan keys found.
 
-import { createClient } from '@supabase/supabase-js';
-import { readFileSync, existsSync } from 'node:fs';
-import { resolve, dirname, fileURLToPath } from 'node:path';
+import { createRequire } from 'node:module';
+import { mgmtRows, requireAccessToken, controlRef } from './_mgmt.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const _require = createRequire(import.meta.url);
 
-// Load .env if present (local development only).
-const envPath = resolve(__dirname, '../.env');
-if (existsSync(envPath)) {
-  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-    const m = line.match(/^([A-Z_]+)=(.*)$/);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
-  }
-}
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!SUPABASE_URL || !SERVICE_KEY) {
-  console.error('ERROR: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.');
-  console.error('  Set them in your environment or a .env file.');
-  process.exit(1);
-}
-
-// Import the canonical PermKey set from the installed package.
-// The package ships a compiled roles.js with { ALL_PERMS } array export.
-let ALL_PERMS;
+// Load the pinned PermKey set from the installed package.
+// roles.json ships with the compiled package and exports { permissions: [{ key, label }] }.
+// Using roles.json directly avoids ESM/CJS interop issues with the compiled roles.js.
+let validPerms;
 try {
-  const rolesModule = await import('@eq-solutions/roles');
-  ALL_PERMS = rolesModule.ALL_PERMS;
-  if (!Array.isArray(ALL_PERMS)) throw new Error('ALL_PERMS is not an array');
+  const ROLES_JSON = _require('@eq-solutions/roles/roles.json');
+  const perms = ROLES_JSON.permissions;
+  if (!Array.isArray(perms)) throw new Error('roles.json.permissions is not an array');
+  validPerms = new Set(perms.map(p => p.key));
 } catch (e) {
-  console.error('ERROR: could not import ALL_PERMS from @eq-solutions/roles:', e.message);
+  console.error('ERROR: could not load permissions from @eq-solutions/roles/roles.json:', e.message);
   console.error('  Run: pnpm install');
   process.exit(1);
 }
 
-const validPerms = new Set(ALL_PERMS);
-console.log(`[check-orphan-perms] ${validPerms.size} known perm keys loaded from @eq-solutions/roles`);
+requireAccessToken();
+const ref = controlRef();
 
-const client = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-
-const { data, error } = await client
-  .schema('shell_control')
-  .from('security_group_perms')
-  .select('perm_key, security_groups!inner(name, tenant_id)');
-
-if (error) {
-  console.error('ERROR: could not query shell_control.security_group_perms:', error.message);
+let rows;
+try {
+  rows = await mgmtRows(ref, `
+    SELECT DISTINCT
+      sgp.perm_key,
+      sg.name     AS group_name,
+      sg.tenant_id
+    FROM shell_control.security_group_perms sgp
+    JOIN shell_control.security_groups sg ON sg.id = sgp.security_group_id
+    ORDER BY sgp.perm_key, sg.tenant_id;
+  `);
+} catch (e) {
+  console.error(`ERROR: could not query shell_control.security_group_perms on ${ref}: ${e.message}`);
   process.exit(1);
 }
 
-const rows = (data ?? []);
-console.log(`[check-orphan-perms] ${rows.length} perm rows found across all security groups`);
+console.log(`[orphan-perms] ${validPerms.size} known perm keys in @eq-solutions/roles`);
+console.log(`[orphan-perms] ${rows.length} distinct perm assignments in shell_control.security_group_perms`);
 
 const orphans = rows.filter(r => !validPerms.has(r.perm_key));
 
 if (orphans.length === 0) {
-  console.log('✓ no orphan perm keys found — all security_group_perms are valid.');
+  console.log('✓ no orphan perm keys — all security_group_perms.perm_key values are valid.');
   process.exit(0);
 }
 
 console.log('');
-console.log(`✗ ${orphans.length} orphan perm key(s) found:`);
+console.log(`✗ ${orphans.length} orphan perm key(s) found in shell_control.security_group_perms:`);
 for (const o of orphans) {
-  const sg = Array.isArray(o.security_groups) ? o.security_groups[0] : o.security_groups;
-  console.log(`  "${o.perm_key}" — group "${sg?.name ?? '?'}" tenant ${sg?.tenant_id ?? '?'}`);
+  console.log(`  "${o.perm_key}"  group="${o.group_name}"  tenant=${o.tenant_id}`);
 }
 console.log('');
-console.log('  These keys are not in the installed @eq-solutions/roles. Either:');
-console.log('    a) Remove them from the affected security groups, or');
-console.log('    b) Bump @eq-solutions/roles to a version that includes them.');
-process.exit(1);
+console.log('  Each key above is stored on a live security group but is NOT in the installed');
+console.log('  @eq-solutions/roles package. can() will silently return false for holders.');
+console.log('  Fix: remove the orphan rows (or bump the package to include the renamed key).');
+process.exit(2);
