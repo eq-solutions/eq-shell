@@ -1,11 +1,13 @@
 ---
 title: Secure-by-default DEFAULT PRIVILEGES lockdown — runbook
 date: 2026-06-07
-status: APPLIED 2026-06-07 (postgres-role lines, both planes, verified born-closed). One residual:
-        the `FOR ROLE supabase_admin` line returned 42501 (permission denied as postgres) on both
-        planes — run it from the dashboard SQL editor to fully close. Not load-bearing (migrations
-        create tables as postgres). SKS plane applied on Royce's "finish everything" sign-off as
-        SKS NSW ops authority; still confirm with the sks-labour owner on the shared plane.
+status: APPLIED 2026-06-07 (postgres-role lines, all THREE planes — jvkn, ehow, zaap — verified
+        born-closed). supabase_admin residual = ACCEPTED 2026-06-07 (Royce): the `FOR ROLE
+        supabase_admin` line returns 42501 (permission denied as postgres); left as a documented
+        platform residual because it only affects future tables created BY supabase_admin (platform
+        internals), not app tables. The dashboard-SQL-editor close-out below is OPTIONAL, not
+        required. SKS plane applied on Royce's "finish everything" sign-off as SKS NSW ops
+        authority; still confirm with the sks-labour owner on the shared plane.
 planes:
   - eq-canonical / control (jvknxcmbtrfnxfrwfimn) — EQ entity
   - sks-canonical (ehowgjardagevnrluult) — SKS entity (coordinate with sks-labour owner)
