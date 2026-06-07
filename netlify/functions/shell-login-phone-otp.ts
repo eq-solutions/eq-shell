@@ -113,7 +113,22 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
   // Validate the Supabase access_token. getUser(jwt) calls /auth/v1/user
   // with the provided JWT as the Bearer token — Supabase verifies the
   // signature and expiry and returns the auth user record.
-  const { data: { user: authUser }, error: authErr } = await sb.auth.getUser(accessToken);
+  //
+  // Retry once on transient failure: GoTrue occasionally returns 403
+  // immediately after phone OTP verification (observed 2026-06-06T21:32Z —
+  // the session wasn't fully committed when the Lambda called /user ~1s
+  // after verifyOtp). A 500ms pause resolves it without a second OTP.
+  let authUser: { phone?: string | null; id?: string } | null = null;
+  let authErr: { message?: string } | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) {
+      await new Promise<void>((r) => setTimeout(r, 500));
+    }
+    const result = await sb.auth.getUser(accessToken);
+    authErr = result.error;
+    authUser = result.data?.user ?? null;
+    if (!authErr && authUser) break;
+  }
   if (authErr || !authUser) {
     return jsonResponse(200, { valid: false });
   }
