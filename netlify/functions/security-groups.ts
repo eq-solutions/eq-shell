@@ -34,6 +34,17 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const sb = getServiceClient();
   const tenantId = session.tenant_id;
 
+  // Best-effort audit of every group mutation → shell_control.audit_log via the
+  // shared RPC (same channel as login events). Non-blocking.
+  const writeAudit = (event: string, detail: Record<string, unknown>): void => {
+    void sb.schema('public').rpc('eq_write_audit_log', {
+      p_event: event,
+      p_actor_id: session.user_id,
+      p_tenant_id: tenantId,
+      p_detail: detail,
+    });
+  };
+
   // ── GET ────────────────────────────────────────────────────────────────────
   if (req.method === 'GET') {
     const url = new URL(req.url);
@@ -126,6 +137,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         if (error.code === '23505') return json(409, { ok: false, error: 'name_taken' });
         return json(500, { ok: false, error: 'db_error' });
       }
+      writeAudit('security_group.create', { group_id: data.id, name });
       return json(201, { ok: true, group: data });
     }
 
@@ -138,6 +150,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         .eq('id', id)
         .eq('tenant_id', tenantId);
       if (error) return json(500, { ok: false, error: 'db_error' });
+      writeAudit('security_group.delete', { group_id: id });
       return json(200, { ok: true });
     }
 
@@ -149,6 +162,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       if (!g) return json(404, { ok: false, error: 'not_found' });
       const { error } = await sb.from('security_group_perms').upsert({ group_id: id, perm_key });
       if (error) return json(500, { ok: false, error: 'db_error' });
+      writeAudit('security_group.add_perm', { group_id: id, perm_key });
       return json(200, { ok: true });
     }
 
@@ -159,6 +173,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       if (!g) return json(404, { ok: false, error: 'not_found' });
       const { error } = await sb.from('security_group_perms').delete().eq('group_id', id).eq('perm_key', perm_key);
       if (error) return json(500, { ok: false, error: 'db_error' });
+      writeAudit('security_group.remove_perm', { group_id: id, perm_key });
       return json(200, { ok: true });
     }
 
@@ -167,8 +182,20 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       if (!id || !user_id) return json(400, { ok: false, error: 'missing_fields' });
       const { data: g } = await sb.from('security_groups').select('id').eq('id', id).eq('tenant_id', tenantId).maybeSingle();
       if (!g) return json(404, { ok: false, error: 'not_found' });
+      // Only assign users who actually belong to this tenant — stops a manager
+      // from attaching an arbitrary user id to their tenant's group.
+      const { data: mem } = await sb
+        .schema('shell_control')
+        .from('user_tenant_memberships')
+        .select('user_id')
+        .eq('user_id', user_id)
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .maybeSingle();
+      if (!mem) return json(400, { ok: false, error: 'user_not_in_tenant' });
       const { error } = await sb.from('user_security_groups').upsert({ user_id, group_id: id, assigned_by: session.user_id });
       if (error) return json(500, { ok: false, error: 'db_error' });
+      writeAudit('security_group.add_member', { group_id: id, user_id });
       return json(200, { ok: true });
     }
 
@@ -179,6 +206,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       if (!g) return json(404, { ok: false, error: 'not_found' });
       const { error } = await sb.from('user_security_groups').delete().eq('group_id', id).eq('user_id', user_id);
       if (error) return json(500, { ok: false, error: 'db_error' });
+      writeAudit('security_group.remove_member', { group_id: id, user_id });
       return json(200, { ok: true });
     }
 

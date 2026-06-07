@@ -6,11 +6,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { Users, Plus, Trash2, ChevronRight, X } from 'lucide-react';
+import { Users, Plus, Trash2, ChevronRight, X, UserPlus, Eye } from 'lucide-react';
+import { PERMISSIONS, labelFor, resolveEffectivePermissions } from '@eq-solutions/roles';
+import type { PermKey, EqRole } from '@eq-solutions/roles';
 import { HubLayout } from '../components/HubLayout';
 import { Gate } from '../permissions/Gate';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 import { EqError } from '../components/EqError';
+import { createSupabaseClient } from '../lib/supabaseJwt';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
@@ -86,6 +89,37 @@ async function removePerm(id: string, perm_key: string): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'remove_perm', id, perm_key }),
   });
+}
+
+async function addMember(id: string, user_id: string): Promise<void> {
+  await sgFetch('', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'add_member', id, user_id }),
+  });
+}
+
+async function removeMember(id: string, user_id: string): Promise<void> {
+  await sgFetch('', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'remove_member', id, user_id }),
+  });
+}
+
+interface TenantUser {
+  id: string;
+  name: string | null;
+  email: string;
+  role: EqRole;
+}
+
+// The tenant's users (for the member picker + see-as) — same RPC AdminUserList uses.
+async function listTenantUsers(): Promise<TenantUser[]> {
+  const sb = await createSupabaseClient();
+  const { data, error } = await sb.rpc('eq_list_tenant_users');
+  if (error) throw new Error(error.message);
+  return (data as TenantUser[] | null) ?? [];
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -219,6 +253,12 @@ function SecurityGroupsInner() {
             const updated = await getDetail(selected.id);
             setSelected(updated);
           }}
+          onMemberChange={async (userId, add) => {
+            if (add) await addMember(selected.id, userId);
+            else await removeMember(selected.id, userId);
+            const updated = await getDetail(selected.id);
+            setSelected(updated);
+          }}
         />
       )}
     </div>
@@ -295,32 +335,30 @@ function CreateGroupModal({
 
 // ── Detail modal ──────────────────────────────────────────────────────────────
 
-// All known permission keys — sourced from @eq-solutions/roles at build time
-// (permissions.ts PermKey). Listed here for the add-perm UI.
-const ALL_PERM_KEYS = [
-  'admin.list_users', 'admin.invite_user', 'admin.edit_user',
-  'admin.deactivate_user', 'admin.review_cards', 'admin.manage_groups',
-  'audit.view', 'audit.rollback',
-  'entity.view', 'entity.create', 'entity.edit', 'entity.delete',
-  'intake.view', 'intake.import', 'intake.commit',
-  'equipment.view', 'equipment.edit',
-  'reports.view', 'reports.upload', 'reports.generate_briefing',
-  'cards.view', 'cards.onboard',
-  'service.view', 'service.create', 'service.close',
-  'field.view', 'field.dispatch',
-  'quotes.view', 'quotes.create', 'quotes.approve',
-] as const;
-
 function GroupDetailModal({
-  group, onClose, onUpdated, onPermChange,
+  group, onClose, onUpdated, onPermChange, onMemberChange,
 }: {
   group: GroupDetail;
   onClose: () => void;
   onUpdated: () => void;
   onPermChange: (permKey: string, add: boolean) => Promise<void>;
+  onMemberChange: (userId: string, add: boolean) => Promise<void>;
 }) {
   const [deleting, setDeleting] = useState(false);
   const [permBusy, setPermBusy] = useState<string | null>(null);
+  const [users, setUsers] = useState<TenantUser[]>([]);
+  const [memberBusy, setMemberBusy] = useState<string | null>(null);
+  const [addUserId, setAddUserId] = useState('');
+  const [seeAsUserId, setSeeAsUserId] = useState('');
+
+  useEffect(() => {
+    void listTenantUsers().then(setUsers).catch(() => setUsers([]));
+  }, []);
+
+  const memberIds = new Set(group.members.map((m) => m.user_id));
+  const assignable = users.filter((u) => !memberIds.has(u.id));
+  const seeAsUser = users.find((u) => u.id === seeAsUserId) ?? null;
+  const groupPerms = group.perm_keys as PermKey[];
 
   const handleDeleteGroup = async () => {
     if (!window.confirm(`Delete group "${group.name}"? This cannot be undone.`)) return;
@@ -342,6 +380,26 @@ function GroupDetailModal({
     }
   };
 
+  const handleAddMember = async () => {
+    if (!addUserId) return;
+    setMemberBusy(addUserId);
+    try {
+      await onMemberChange(addUserId, true);
+      setAddUserId('');
+    } finally {
+      setMemberBusy(null);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    setMemberBusy(userId);
+    try {
+      await onMemberChange(userId, false);
+    } finally {
+      setMemberBusy(null);
+    }
+  };
+
   return (
     <ModalOverlay onClose={onClose}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -356,10 +414,11 @@ function GroupDetailModal({
 
       <section style={{ marginBottom: 20 }}>
         <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--eq-ink)', marginBottom: 8 }}>
-          Permissions
+          Extra access this group grants
         </h3>
-        <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-          {ALL_PERM_KEYS.map((k) => {
+        <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+          {PERMISSIONS.map((p) => {
+            const k = p.key;
             const granted = group.perm_keys.includes(k);
             const busy = permBusy === k;
             return (
@@ -376,7 +435,8 @@ function GroupDetailModal({
                   disabled={busy}
                   onChange={() => void togglePerm(k, granted)}
                 />
-                <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--eq-ink)' }}>{k}</span>
+                <span style={{ fontSize: 13, color: 'var(--eq-ink)' }}>{labelFor(k) ?? k}</span>
+                <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--eq-grey)' }}>{k}</span>
               </label>
             );
           })}
@@ -387,21 +447,69 @@ function GroupDetailModal({
         <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--eq-ink)', marginBottom: 8 }}>
           Members ({group.members.length})
         </h3>
-        {group.members.length === 0 ? (
-          <p style={{ color: 'var(--eq-grey)', fontSize: 13 }}>No members. Assign this group from a user's profile.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        {group.members.length > 0 && (
+          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 10px' }}>
             {group.members.map((m) => (
               <li key={m.user_id} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '8px 12px', border: '1px solid var(--eq-border)',
                 borderRadius: 6, marginBottom: 6, fontSize: 13, color: 'var(--eq-ink)',
               }}>
-                <span style={{ fontWeight: 500 }}>{m.name ?? m.email}</span>
-                {m.name && <span style={{ color: 'var(--eq-grey)', marginLeft: 8 }}>{m.email}</span>}
+                <span>
+                  <span style={{ fontWeight: 500 }}>{m.name ?? m.email}</span>
+                  {m.name && <span style={{ color: 'var(--eq-grey)', marginLeft: 8 }}>{m.email}</span>}
+                </span>
+                <button
+                  onClick={() => void handleRemoveMember(m.user_id)}
+                  disabled={memberBusy === m.user_id}
+                  aria-label={`Remove ${m.name ?? m.email}`}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--eq-grey)' }}
+                >
+                  <X size={14} />
+                </button>
               </li>
             ))}
           </ul>
         )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select
+            value={addUserId}
+            onChange={(e) => setAddUserId(e.target.value)}
+            style={{ ...inputStyle, marginTop: 0, flex: 1 }}
+          >
+            <option value="">Add a team member…</option>
+            {assignable.map((u) => (
+              <option key={u.id} value={u.id}>{u.name ?? u.email} · {roleLabel(u.role)}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => void handleAddMember()}
+            disabled={!addUserId || memberBusy === addUserId}
+            style={{
+              ...primaryBtnStyle, display: 'inline-flex', alignItems: 'center', gap: 6,
+              opacity: !addUserId ? 0.5 : 1, cursor: !addUserId ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <UserPlus size={14} /> Add
+          </button>
+        </div>
+      </section>
+
+      <section style={{ marginBottom: 20 }}>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--eq-ink)', marginBottom: 8 }}>
+          <Eye size={14} /> Preview a member's access
+        </h3>
+        <select
+          value={seeAsUserId}
+          onChange={(e) => setSeeAsUserId(e.target.value)}
+          style={{ ...inputStyle, marginTop: 0 }}
+        >
+          <option value="">Pick someone to see their access with this group…</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>{u.name ?? u.email} · {roleLabel(u.role)}</option>
+          ))}
+        </select>
+        {seeAsUser && <SeeAsPreview role={seeAsUser.role} groupPerms={groupPerms} />}
       </section>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
@@ -421,6 +529,49 @@ function GroupDetailModal({
         </button>
       </div>
     </ModalOverlay>
+  );
+}
+
+function roleLabel(role: EqRole): string {
+  return role.split('_').map((s) => s[0].toUpperCase() + s.slice(1)).join(' ');
+}
+
+// "See-as": the effective access a user would have IN this group — role defaults
+// ∪ the group's grants, resolved by @eq-solutions/roles. Perms gained from the
+// group (not already in the role) are flagged so a manager sees exactly what the
+// group adds.
+function SeeAsPreview({ role, groupPerms }: { role: EqRole; groupPerms: PermKey[] }) {
+  const base = new Set(resolveEffectivePermissions({ role, groupPerms: [] }));
+  const effective = resolveEffectivePermissions({ role, groupPerms });
+  return (
+    <div style={{
+      marginTop: 10, padding: '10px 12px', border: '1px solid var(--eq-border)',
+      borderRadius: 6, background: 'var(--eq-ice, #eaf5fb)',
+    }}>
+      <div style={{ fontSize: 12, color: 'var(--eq-grey)', marginBottom: 8 }}>
+        {roleLabel(role)} base access plus this group:
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {effective.map((k) => {
+          const fromGroup = !base.has(k);
+          return (
+            <span
+              key={k}
+              title={k}
+              style={{
+                fontSize: 12, padding: '3px 8px', borderRadius: 4,
+                background: fromGroup ? 'var(--eq-sky)' : '#fff',
+                color: fromGroup ? '#fff' : 'var(--eq-ink)',
+                border: fromGroup ? 'none' : '1px solid var(--eq-border)',
+                fontWeight: fromGroup ? 600 : 400,
+              }}
+            >
+              {labelFor(k) ?? k}{fromGroup ? ' +' : ''}
+            </span>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
