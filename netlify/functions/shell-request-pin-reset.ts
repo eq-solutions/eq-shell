@@ -19,6 +19,7 @@ import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import { hasSecretSalt } from './_shared/token.js';
 import { sendEmail } from './_shared/email.js';
+import { emailHtml } from './_shared/email/template.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
 
 const RESET_TTL_HOURS = 1;
@@ -109,6 +110,15 @@ ${resetUrl}
 This link expires in ${RESET_TTL_HOURS} hour. If you didn't request this, ignore it — your current PIN still works.
 
 — EQ Solutions`,
+    html: emailHtml({
+      preheader: 'Set a new PIN for your EQ Solutions account.',
+      heading: 'Reset your PIN.',
+      body: `<p style="margin:0 0 20px;">You requested a PIN reset for your EQ Solutions account.</p>
+<p style="margin:0 0 4px;">This link expires in <strong>${RESET_TTL_HOURS} hour</strong>. One use only.</p>`,
+      ctaLabel: 'Set new PIN →',
+      ctaUrl: resetUrl,
+      footerNote: "If you didn't request this, ignore it — your current PIN still works and nothing has changed.",
+    }),
   });
 
   if (!emailResult.delivered) {

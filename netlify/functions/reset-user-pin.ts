@@ -21,6 +21,7 @@ import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { can } from './_shared/permissions.js';
 import { sendEmail } from './_shared/email.js';
+import { emailHtml } from './_shared/email/template.js';
 import { withSentry } from './_shared/sentry.js';
 
 const RESET_TTL_HOURS = 24;
@@ -137,6 +138,15 @@ ${resetUrl}
 This link expires in ${RESET_TTL_HOURS} hours. If you didn't expect this, ignore it — your current PIN still works.
 
 — EQ Solutions`,
+    html: emailHtml({
+      preheader: 'A PIN reset has been requested for your EQ Solutions account.',
+      heading: 'Reset your PIN.',
+      body: `<p style="margin:0 0 20px;">Your administrator has requested a PIN reset for your EQ Solutions account.</p>
+<p style="margin:0 0 4px;">This link expires in <strong>${RESET_TTL_HOURS} hours</strong>. One use only.</p>`,
+      ctaLabel: 'Set new PIN →',
+      ctaUrl: resetUrl,
+      footerNote: "If you weren't expecting this, ignore it — your current PIN still works and nothing has changed.",
+    }),
   });
 
   // eslint-disable-next-line no-console
