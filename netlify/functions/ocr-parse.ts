@@ -75,7 +75,9 @@ export default withSentry(async (req: Request): Promise<Response> => {
   const cors = corsHeaders(req.headers.get('origin'))
 
   if (req.method === 'OPTIONS') {
-    return new Response('', { status: 204, headers: cors })
+    // 204 must have a null body — `new Response('', { status: 204 })` throws in
+    // the Node runtime (latent in the original; surfaced now we use OPTIONS).
+    return new Response(null, { status: 204, headers: cors })
   }
 
   if (req.method !== 'POST') {
