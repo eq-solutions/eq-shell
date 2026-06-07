@@ -229,8 +229,12 @@
   color: rgba(255, 255, 255, 0.45);
 }
 
-/* ── Mobile (<768px): rail hidden, MobileTabBar takes over ──
-   The 56px bottom padding clears the fixed tab bar (see MobileTabBar.css). */
+/* ── Mobile (<768px): rail hidden ──
+   This offset wraps iframe-module pages (Field / Service / Cards / Quotes). On
+   mobile Shell yields the bottom bar to the embedded app (so its own bottom nav
+   is reachable) and shows a slim 48px top bar instead — see MobileTabBar.css.
+   So the content clears the top bar, not a bottom bar; the iframe runs to the
+   bottom edge and the embedded app handles its own safe-area inset. */
 @media (max-width: 767px) {
   .eq-icon-rail {
     display: none;
@@ -238,6 +242,15 @@
 
   .eq-icon-rail-offset {
     margin-left: 0;
-    padding-bottom: 56px;
+    /* Pin to the viewport and put the top-bar gap *inside* the box so the iframe
+       (flex:1) fills exactly the remaining height and runs to the bottom edge —
+       no overflow past 100vh, no gap at the bottom. box-sizing:border-box makes
+       padding-top eat into the fixed height rather than add to it. */
+    box-sizing: border-box;
+    min-height: 0 !important;
+    height: 100vh;
+    height: 100dvh;
+    padding-top: calc(48px + env(safe-area-inset-top, 0px));
+    padding-bottom: 0;
   }
 }
