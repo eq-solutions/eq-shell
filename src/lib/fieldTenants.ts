@@ -8,10 +8,11 @@
 // When VITE_FIELD_URL=https://field.eq.solutions, the eq_shell_session cookie
 // (Domain=.eq.solutions) is sent automatically to field.eq.solutions. Field's
 // verify-pin.js reads it directly — no token minting needed.
-// SKS is served from field.sks.eq.solutions (the EQ Field build, B5 cutover
-// 2026-06-06) — a .eq.solutions host, so it uses cookie auth too. The prior
-// sks-nsw-labour.netlify.app standalone is retired post-soak. (#184 rolled this
-// back when the sks-field host wasn't live yet; the host is live now.)
+//
+// SKS routes to eq-solves-field.netlify.app (the unified EQ Field codebase) with
+// ?tenant=sks. This host is not on .eq.solutions, so it uses token auth — Shell
+// mints a short-lived JWT via token-exchange and passes it in the #sh= hash.
+// field.sks.eq.solutions and sks-nsw-labour.netlify.app are both retired.
 
 const FIELD_BASE_URL = (import.meta.env.VITE_FIELD_URL as string | undefined)
   ?? 'https://eq-solves-field.netlify.app/';
@@ -20,7 +21,7 @@ export const FIELD_TENANT_URLS: Record<string, string> = {
   eq: FIELD_BASE_URL,
   'demo-trades': FIELD_BASE_URL,
   melbourne: FIELD_BASE_URL,
-  sks: 'https://field.sks.eq.solutions/',
+  sks: FIELD_BASE_URL,   // eq-solves-field.netlify.app + token auth (#sh= handoff)
 };
 
 export const TENANT_OPTIONS = [
