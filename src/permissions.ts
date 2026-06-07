@@ -31,6 +31,8 @@ export function useCan(perm: PermKey): boolean {
   const { session } = useSession();
   if (!session) return false;
   if (session.user.is_platform_admin) return true;
+  // Tenant role overrides: explicit denials beat defaults + group grants.
+  if (session.user.denied_perms?.includes(perm)) return false;
   if (session.user.extra_perms?.includes(perm)) return true;
   return MATRIX[session.user.role].has(perm);
 }

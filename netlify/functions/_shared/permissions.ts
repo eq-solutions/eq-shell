@@ -35,18 +35,22 @@ export interface Principal {
   role?: EqRole | null;
   is_platform_admin?: boolean | null;
   extra_perms?: string[] | null;
+  /**
+   * Permission keys explicitly denied by tenant role overrides. Applied
+   * after is_platform_admin short-circuit, before role defaults + group grants.
+   * Populated by verify-shell-session from shell_control.tenant_role_overrides.
+   */
+  denied_perms?: string[] | null;
 }
 
 /**
  * Can this principal perform `perm`? Mirrors the browser useCan(): platform
- * admins short-circuit to true; otherwise the package resolves role-defaults ∪
- * group grants (extra_perms), validating each key and applying any future
- * revokes. A null role yields no role-defaults but still honours extra_perms
- * (guest invites) — resolveEffectivePermissions tolerates an absent role at
- * runtime (MATRIX[undefined] ?? []).
+ * admins short-circuit to true; denied_perms trumps role defaults + group
+ * grants; otherwise the package resolves role-defaults ∪ group grants.
  */
 export function can(principal: Principal, perm: PermKey): boolean {
   if (principal.is_platform_admin === true) return true;
+  if (principal.denied_perms?.includes(perm)) return false;
   const effective = resolveEffectivePermissions({
     // Cast: the package types `role` as required, but its runtime tolerates an
     // absent role (a no-role principal still gets its group grants).

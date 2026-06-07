@@ -55,10 +55,15 @@ export interface User {
   active: boolean;
   last_login_at: string | null;
   /**
-   * Extra permission keys granted via security groups (optional — absent
-   * for users with no group membership). Populated by verify-shell-session.
+   * Extra permission keys granted via security groups + tenant role grants
+   * (optional — absent for users with neither). Populated by verify-shell-session.
    */
   extra_perms?: string[];
+  /**
+   * Permission keys explicitly denied by tenant role overrides. Populated
+   * by verify-shell-session. Takes precedence over role defaults + extra_perms.
+   */
+  denied_perms?: string[];
 }
 
 export interface Entitlement {
