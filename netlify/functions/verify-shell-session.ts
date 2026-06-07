@@ -136,11 +136,30 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // without requiring a re-login. Best-effort: missing table → empty array.
   const extra_perms = await getUserSecurityGroupPerms(user.id, session.active_tenant_id);
 
+  // Load tenant role overrides for this user's role. Grants merge into
+  // extra_perms (additive); denials pass separately so can() applies them
+  // before role-default resolution. Best-effort — new table may not exist yet.
+  const { data: roleOverrideRows } = await sb
+    .from('tenant_role_overrides')
+    .select('perm_key, enabled')
+    .eq('tenant_id', session.active_tenant_id)
+    .eq('role', activeMembership.role);
+
+  const roleGrants: string[] = [];
+  const roleDenials: string[] = [];
+  for (const r of (roleOverrideRows ?? []) as Array<{ perm_key: string; enabled: boolean }>) {
+    if (r.enabled) roleGrants.push(r.perm_key);
+    else roleDenials.push(r.perm_key);
+  }
+
+  const merged_extra_perms = [...extra_perms, ...roleGrants];
+
   const userForResponse = {
     ...user,
     tenant_id: tenant.id,
     role: activeMembership.role,
-    ...(extra_perms.length > 0 ? { extra_perms } : {}),
+    ...(merged_extra_perms.length > 0 ? { extra_perms: merged_extra_perms } : {}),
+    ...(roleDenials.length > 0 ? { denied_perms: roleDenials } : {}),
   };
 
   // Re-evaluated on every verify (every route mount + 5-min poll), so a

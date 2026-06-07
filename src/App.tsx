@@ -29,6 +29,7 @@ import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
 import AdminMigrationPage from './pages/AdminMigrationPage';
 import SecurityGroupsPage from './pages/SecurityGroupsPage';
+import AccessControlPage from './pages/AccessControlPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
 import AdminTenantsPage from './pages/AdminTenantsPage';
@@ -471,6 +472,7 @@ function TenantTree() {
         {/* Polish 2026-05-21 — tenant settings */}
         <Route path="admin/settings" element={<AdminTenantSettings />} />
         <Route path="admin/security-groups" element={<SecurityGroupsPage />} />
+        <Route path="admin/access-control" element={<AccessControlPage />} />
         {/* Phase 1.G — TOTP 2FA enrollment (any logged-in user) */}
         <Route path="settings/2fa" element={<EnrollTotp />} />
         <Route

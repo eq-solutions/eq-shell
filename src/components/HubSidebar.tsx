@@ -218,11 +218,11 @@ export function HubSidebar({ apps, records }: Props) {
               <span className="eq-hub-sidebar__nav-label">Migration</span>
             </NavLink>
             <NavLink
-              to={`/${tenantSlug}/admin/security-groups`}
+              to={`/${tenantSlug}/admin/access-control`}
               className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
             >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={16} aria-hidden="true" /></span>
-              <span className="eq-hub-sidebar__nav-label">Security groups</span>
+              <span className="eq-hub-sidebar__nav-label">Access</span>
             </NavLink>
             <NavLink
               to={`/${tenantSlug}/admin/settings`}
