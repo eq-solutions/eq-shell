@@ -21,9 +21,28 @@
 import { GoogleAuth } from 'google-auth-library'
 import { withSentry } from './_shared/sentry.js'
 import { getServiceClient } from './_shared/supabase.js'
+import { verifySessionToken, readSessionCookie } from './_shared/token.js'
 
 const MAX_BYTES = 10 * 1024 * 1024
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf']
+
+// CORS — the only legitimate caller is the same-origin shell page
+// (LicenceOcrPage fetches a relative URL), so genuine requests need no ACAO at
+// all. We still emit a tight allow-list on the preflight instead of the previous
+// `*`, so the endpoint can't be driven from an arbitrary origin. Mirrors cards-api.ts.
+const ALLOWED_ORIGIN_EXACT = new Set<string>(['https://core.eq.solutions'])
+const ALLOWED_ORIGIN_RE = /^https:\/\/deploy-preview-\d+--eq-shell\.netlify\.app$/
+
+function corsHeaders(origin: string | null): Record<string, string> {
+  if (!origin) return {}
+  if (!ALLOWED_ORIGIN_EXACT.has(origin) && !ALLOWED_ORIGIN_RE.test(origin)) return {}
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    Vary: 'Origin',
+  }
+}
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -53,19 +72,22 @@ interface DocAiResponse {
 type FieldEntry = { value: string; confidence: number }
 
 export default withSentry(async (req: Request): Promise<Response> => {
+  const cors = corsHeaders(req.headers.get('origin'))
+
   if (req.method === 'OPTIONS') {
-    return new Response('', {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    })
+    return new Response('', { status: 204, headers: cors })
   }
 
   if (req.method !== 'POST') {
     return json(405, { error: 'Method not allowed' })
   }
+
+  // Auth gate — this endpoint runs paid Google Document AI under a service
+  // account, so it must never be callable unauthenticated. Its only caller is
+  // the signed-in operator page /:tenantSlug/onboarding/licence (LicenceOcrPage),
+  // which sends the eq_shell_session cookie. Reject anyone without a valid session.
+  const session = verifySessionToken(readSessionCookie(req))
+  if (!session) return json(401, { error: 'Not signed in' })
 
   let body: Record<string, unknown>
   try {
