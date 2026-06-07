@@ -23,9 +23,16 @@
 //   date_end       → to_date
 //   note           → reason
 //   approver_name  → approver_id (via resolver.byName; optional — null if absent/unmatched)
-//   leave_type     → leave_type  (mapped onto the closed enum; unknown → 'other' + flag)
-//   status         → status      (mapped onto the closed enum; unknown → 'pending' + flag)
+//   leave_type     → leave_type  (mapped onto the closed enum; A/L→annual,
+//                                  U/L→unpaid; RDO has no leave_requests enum →
+//                                  'other' + verbatim "[leave_type: RDO]" carrier
+//                                  prefixed onto reason; unknown → 'other' + flag)
+//   status         → status      (lowercased onto the closed enum; Withdrawn →
+//                                  cancelled; unknown → 'pending' + flag)
 //   archived       → archived
+//
+// CHECK: ehow leave_requests enforces to_date >= from_date. A reversed span is
+// blocked here (issue 'to_date_before_from_date') — never emitted.
 //
 // LOSSY CASE — individual_days:
 //   nspbmir's individual_days is a jsonb list of non-contiguous dates a request
@@ -87,14 +94,34 @@ export interface LeaveResult {
 
 // nspbmir leave_type strings → closed target enum. Tolerant of case/spacing;
 // anything unrecognized maps to 'other' and is flagged (not dropped).
+//
+// The leave_requests target enum is per-table and DIFFERS from schedule_entries:
+//   leave_requests.leave_type ∈
+//     {annual, sick, personal, long_service, unpaid, tafe, other}  — NO 'rdo'.
+// The live nspbmir source vocabulary (verified) is A/L → annual, U/L → unpaid,
+// RDO → (no enum bucket here) → 'other' + a LOSSLESS verbatim carrier. The
+// schedule_entries table DOES have 'rdo'; a roster RDO cell maps there. Same
+// word, different target per table — see transform-schedule.ts and the PR note.
 const LEAVE_TYPE_MAP: Record<string, LeaveType> = {
   annual: 'annual', 'annual leave': 'annual', holiday: 'annual',
+  'a/l': 'annual', al: 'annual', ann: 'annual',
   sick: 'sick', 'sick leave': 'sick', 'personal/carers': 'personal',
   personal: 'personal', carers: 'personal', "carer's": 'personal',
   'long service': 'long_service', long_service: 'long_service', lsl: 'long_service',
   unpaid: 'unpaid', 'unpaid leave': 'unpaid', loa: 'unpaid',
+  'u/l': 'unpaid', ul: 'unpaid', lwop: 'unpaid',
   tafe: 'tafe', training: 'tafe', other: 'other',
+  // RDO is intentionally NOT in this map: leave_requests has no 'rdo' enum value.
+  // It is handled specially in transformLeave() — folds to 'other' + the verbatim
+  // 'RDO' carried losslessly so the round-trip is recoverable.
 };
+
+// Source leave_type tokens that have NO leave_requests enum home but ARE a real,
+// recognised category (so they should fold to 'other' WITHOUT a noisy
+// 'unmapped_leave_type' warning, and WITH a lossless verbatim carrier). RDO is
+// the canonical case: it is a valid schedule_entries enum but absent from
+// leave_requests. Schema-gap flagged for Royce in the PR.
+const LEAVE_TYPE_CARRIER_OTHER = new Set(['rdo']);
 
 const STATUS_MAP: Record<string, LeaveStatus> = {
   pending: 'pending', requested: 'pending', submitted: 'pending', new: 'pending',
@@ -187,11 +214,31 @@ export function transformLeave(
 
   if (!fromDate || !toDate) {
     issues.push('missing_dates');
+  } else if (toDate < fromDate) {
+    // ehow app_data.leave_requests CHECK: to_date >= from_date. A reversed span
+    // would be rejected by the DB on apply — block it here, loudly, rather than
+    // emit a row that can never land.
+    issues.push('to_date_before_from_date');
   }
 
+  // leave_type. RDO (and any other carrier-only token) has no leave_requests
+  // enum bucket → 'other' + lossless verbatim carrier; this is the per-table
+  // distinction the brief calls out (schedule_entries DOES have 'rdo').
   const leaveTypeKey = norm(src.leave_type);
-  const leaveType: LeaveType = LEAVE_TYPE_MAP[leaveTypeKey] ?? 'other';
-  if (leaveTypeKey && !LEAVE_TYPE_MAP[leaveTypeKey]) warnings.push('unmapped_leave_type');
+  let leaveType: LeaveType;
+  let typeCarrier: string | null = null;
+  if (LEAVE_TYPE_CARRIER_OTHER.has(leaveTypeKey)) {
+    leaveType = 'other';
+    typeCarrier = (src.leave_type ?? '').trim() || null;   // verbatim 'RDO'
+    warnings.push('rdo_folded_to_other');                  // schema-gap flag
+    needsDecision = true;
+  } else {
+    leaveType = LEAVE_TYPE_MAP[leaveTypeKey] ?? 'other';
+    if (leaveTypeKey && !LEAVE_TYPE_MAP[leaveTypeKey]) {
+      warnings.push('unmapped_leave_type');
+      typeCarrier = (src.leave_type ?? '').trim() || null; // keep the unknown token
+    }
+  }
 
   const statusKey = norm(src.status);
   const status: LeaveStatus = STATUS_MAP[statusKey] ?? 'pending';
@@ -203,6 +250,17 @@ export function transformLeave(
     return { ok: false, row: null, warnings, issues, needsDecision, source };
   }
 
+  // Lossless carrier: when the source leave_type collapsed onto 'other' (RDO or
+  // an unknown token) the verbatim value must survive so the round-trip is
+  // recoverable. The normalized table has no spare type column, so we prefix it
+  // onto `reason` with a structured "[leave_type: RDO]" tag the read-back can
+  // strip. Never silently dropped.
+  let reason = src.note ?? null;
+  if (typeCarrier) {
+    const tag = `[leave_type: ${typeCarrier}]`;
+    reason = reason ? `${tag} ${reason}` : tag;
+  }
+
   const row: TargetLeave = {
     leave_request_id: makeUuid('leave_request', tenantId, String(src.id)),
     tenant_id: tenantId,
@@ -211,7 +269,7 @@ export function transformLeave(
     from_date: fromDate!,
     to_date: toDate!,
     status,
-    reason: src.note ?? null,
+    reason,
     approver_id: approverId,
     archived: src.archived ?? false,
     imported_at: null,           // set at apply time, not in the pure transform
