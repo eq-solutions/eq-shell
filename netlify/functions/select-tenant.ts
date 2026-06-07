@@ -6,7 +6,7 @@
 // real session cookie.
 
 import type { Context } from '@netlify/functions';
-import { getServiceClient, getUserMemberships, getEnrichedMemberships } from './_shared/supabase.js';
+import { getServiceClient, getUserMemberships, getEnrichedMemberships, getUserSecurityGroupPerms } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import {
   signSessionToken,
@@ -132,6 +132,12 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     p_detail: { method: 'tenant-selection', role: chosen.role },
   });
 
+  // Best-effort security group perm fetch — same as shell-login.
+  // Multi-tenant users who reach select-tenant must also get extra_perms
+  // in their session cookie, otherwise security group grants are lost
+  // for anyone with more than one membership.
+  const extra_perms = await getUserSecurityGroupPerms(user.id, tenant.id);
+
   const exp = Date.now() + SESSION_TTL_MS;
   const cookieValue = signSessionToken({
     user_id: user.id,
@@ -142,6 +148,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     memberships: memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
     email: user.email,
     name: user.name ?? null,
+    ...(extra_perms.length > 0 ? { extra_perms } : {}),
     config,
     exp,
   });
