@@ -3,6 +3,10 @@
  * 8-pixel grid. Radii 4/6/8/12. No gradients on static. No shadows on static.
  */
 
+/* Records redesign (hi-fi) — Areas 1·2·3 visual layer. Must precede rules
+ * below it (CSS @import ordering). */
+@import "./styles/records-redesign.css";
+
 /* Local vars mirror /eq-tokens.css — keep in sync when updating brand tokens */
 
 /* ──────────────────────────────────────────────────────────────────
@@ -409,6 +413,15 @@
 }
 
 .eq-page__header { margin-bottom: 28px; }
+
+.eq-page__eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--eq-deep);
+  margin: 0 0 4px;
+}
 
 .eq-page__title {
   font-size: 26px;
