@@ -8,3 +8,11 @@ public/eq-tokens.css text eol=lf
 # app_data._eq_migrations. The runner also LF-normalises before hashing as a
 # belt-and-suspenders, but pinning EOL here keeps the working tree honest too.
 supabase/tenant-migrations/*.sql text eol=lf
+
+# Vendored eq-schemas codegen output. These are tracked (Netlify needs them —
+# the vendored package's dist is gitignored), but `pnpm build:packages`
+# regenerates them with LF, and core.autocrlf=true otherwise smudges the
+# checkout to CRLF — so every build shows ~85 phantom-modified files. Pin LF so
+# the regenerated output matches the committed copy and the working tree stays
+# clean. Same rationale as eq-tokens.css above.
+eq-intake/eq-platform/packages/eq-schemas/src/generated/*.ts text eol=lf

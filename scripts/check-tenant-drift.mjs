@@ -533,6 +533,86 @@ if (!args['anon-only']) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CHECK 4 — Spine RLS invariant (ABSOLUTE, per plane)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// CHECK 1's effective_rls dimension is RELATIVE — it only flags when two tenants
+// DISAGREE. That misses a wrong-but-CONSISTENT state: if a spine table has RLS
+// disabled on EVERY plane (the original 0037 bug — migration_baseline shipped
+// grants-only, no ENABLE RLS), the planes match and the spine looks clean while
+// the table is actually unprotected. This check is ABSOLUTE and covers the WHOLE
+// spine:
+//   • EVERY spine table (created by a canonical migration) MUST be RLS=on on
+//     every data plane — the app_data norm is RLS-on for all tables, no exceptions.
+//   • SERVICE_ROLE_ONLY tables additionally MUST have no anon/authenticated grant
+//     and no unconditional (USING true) policy — they have no browser path.
+// A violation always fails the build — there is no flag to downgrade it, because
+// there is no correct state where a governed table is unprotected. Absent spine
+// tables are informational (lineages diverge by design), not a failure.
+//
+// Keep SERVICE_ROLE_ONLY in sync with scripts/regen-tenant-baseline.mjs.
+const SERVICE_ROLE_ONLY = new Set(['migration_baseline', '_eq_migrations']);
+
+function spineRlsSql(spineTables) {
+  const values = spineTables.map(t => `('${t}')`).join(',');
+  return `
+    select t.tablename,
+      c.relrowsecurity as rls_enabled,
+      exists(select 1 from information_schema.role_table_grants g
+             where g.table_schema='app_data' and g.table_name=t.tablename
+               and g.grantee in ('anon','authenticated')) as caller_grant,
+      exists(select 1 from pg_policies p
+             where p.schemaname='app_data' and p.tablename=t.tablename
+               and p.permissive='PERMISSIVE'
+               and (trim(coalesce(p.qual,''))='true' or trim(coalesce(p.with_check,''))='true')) as open_policy
+    from (values ${values}) as t(tablename)
+    join pg_class c on c.relname = t.tablename
+    join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'app_data' and c.relkind = 'r';
+  `;
+}
+
+async function checkSpineRls() {
+  const spine = [...await loadSpineTables()].sort();
+  const sql = spineRlsSql(spine);
+  const planes = [];
+  for (const plane of TENANT_DATA_PLANES) {
+    if (!plane.ref) { planes.push({ ...plane, skipped: true, violations: [], missing: [], present: 0 }); continue; }
+    let rows;
+    try {
+      rows = await mgmtRows(plane.ref, sql);
+    } catch (e) {
+      planes.push({ ...plane, error: e.message, violations: [], missing: [], present: 0 });
+      continue;
+    }
+    const presentSet = new Set(rows.map(r => r.tablename));
+    const violations = [];
+    for (const r of rows) {
+      const reasons = [];
+      if (r.rls_enabled === false) reasons.push('RLS disabled');                 // every spine table
+      if (SERVICE_ROLE_ONLY.has(r.tablename)) {                                   // ledger/service-role tables only
+        if (r.caller_grant === true) reasons.push('anon/authenticated grant');
+        if (r.open_policy === true)  reasons.push('USING(true) policy');
+      }
+      if (reasons.length) violations.push({ table: r.tablename, reasons });
+    }
+    const missing = spine.filter(t => !presentSet.has(t));   // absent = lineage divergence, informational
+    planes.push({ ...plane, present: presentSet.size, missing, violations });
+  }
+  return { spineCount: spine.length, planes };
+}
+
+let spineRlsResult = { spineCount: 0, planes: [] };
+let spineRlsFailed = false;
+if (!args['anon-only']) {
+  log('');
+  log('running spine RLS invariant …');
+  spineRlsResult = await checkSpineRls();
+  for (const p of spineRlsResult.planes) {
+    if (p.error || p.violations.length) spineRlsFailed = true;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Output
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -550,7 +630,7 @@ const identityFailed = identityError || (identityDrift && args['strict-identity'
 
 const driftFails = driftResult.drift && args['strict-drift'];
 const spineFails = driftResult.spineDrift && args['strict-spine'];
-const anyFailure = driftFails || spineFails || anonFailed || identityFailed;
+const anyFailure = driftFails || spineFails || anonFailed || identityFailed || spineRlsFailed;
 
 if (args.json) {
   console.log(JSON.stringify({
@@ -575,6 +655,12 @@ if (args.json) {
           tenants: identityResult.tenants,
         }
       : { skip: true },
+    spine_rls: {
+      skip: args['anon-only'],
+      failed: spineRlsFailed,
+      spine_table_count: spineRlsResult.spineCount,
+      planes: spineRlsResult.planes,
+    },
   }, null, 2));
 } else {
   // ── drift output ──
@@ -668,6 +754,22 @@ if (args.json) {
             for (const o of t.outOfBand) console.log(`        + ${o}`);
           }
         }
+      }
+    }
+  }
+
+  // ── spine RLS invariant output ──
+  if (!args['anon-only']) {
+    console.log(`\n── Spine RLS invariant (${spineRlsResult.spineCount} governed tables) ──────────`);
+    for (const p of spineRlsResult.planes) {
+      if (p.skipped) { console.log(`  - ${p.label}: skipped (${p.envKey} not set)`); continue; }
+      if (p.error)   { console.log(`  ✗ ${p.label}: query error — ${p.error}`); continue; }
+      if (!p.violations.length) {
+        const miss = p.missing.length ? ` (${p.missing.length} absent — lineage divergence: ${p.missing.join(', ')})` : '';
+        console.log(`  ✓ ${p.label}: ${p.present}/${spineRlsResult.spineCount} present, all RLS-on${miss}`);
+      } else {
+        console.log(`  ✗ ${p.label}: ${p.violations.length} spine table(s) violate the RLS invariant`);
+        for (const v of p.violations) console.log(`      ${v.table} — ${v.reasons.join(', ')}`);
       }
     }
   }

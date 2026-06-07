@@ -67,6 +67,32 @@ Reconcile once and it just re-drifts. The fix has to close the *mechanism*.
 **How it works:** add migration file → merge → CI runner reads the control plane's
 `tenant_routing` for the tenant list → applies the migration to each tenant DB → guard confirms match.
 
+#### Ledger truth: the runner records, the file does not (LOCKED)
+The runner (`scripts/migrate-tenants.mjs`) is the **single writer** of the
+`app_data._eq_migrations` ledger. On apply it records each migration under its
+**full filename** (e.g. `0039_migration_baseline_rls.sql`) in the same Management-API
+call as the DDL, so the row can't be lost.
+
+> **A migration file must NOT self-insert its own ledger row.** Do not append
+> `INSERT INTO app_data._eq_migrations (...)`.
+
+The runner keys on `name.sql`; a file that inserts the bare basename (`0039_…`,
+no suffix) writes a **second, twin row** the runner never recognises or reconciles
+on a normal apply. The schema is still correct, but the ledger gains a duplicate
+and the migration-identity guard (`check-tenant-drift.mjs` CHECK 3) flags the
+bare twin as a null-checksum out-of-band entry. This happened to
+`0039_migration_baseline_rls` on **both** the zaap (EQ) and ehow (SKS) planes on
+2026-06-07; the twins were removed via the governed reconcile path (PRs #200 / #205).
+
+- **New migrations** carry no `_eq_migrations` insert. Enforced by
+  `scripts/check-migration-hygiene.mjs` (wired into `tenant-drift.yml`), which fails
+  a PR when a newly-**added** migration file self-inserts.
+- **Legacy migrations** (~25 files) keep their self-insert untouched — the lint is
+  forward-only (added files only). Their duplicate twins are cleaned by
+  `migrate-tenants.mjs --reconcile-ledger`, never by editing the files or by a
+  hand `DELETE`.
+- Template + checklist for new migrations: `supabase/tenant-migrations/README.md`.
+
 ### 3. One Guard — the blocking check
 - `eq-shell/scripts/check-tenant-drift.mjs` already exists and is good (fingerprints
   tables/columns/functions/policies + anon-grant invariant + migration-identity).
@@ -108,7 +134,10 @@ v1.0 = the **union**.
 > nicety. Latent, not active: the public api-intake endpoint has 0 calls on any tenant today.
 
 ### Plumbing level — the REAL cleanup (needs judgment)
-- Duplicate `_eq_migrations` ledger rows (`NNN` *and* `NNN.sql` — two runners).
+- Duplicate `_eq_migrations` ledger rows (`NNN` *and* `NNN.sql`). Two historical
+  sources: the old vs new runner name forms, **and** migration files that
+  self-insert the bare basename while the runner records `NNN.sql` (now blocked
+  for new files — see "Ledger truth" above; reconcile dedupes the existing twins).
 - Inconsistent constraint naming (`assets_site_id_fk` vs `_fkey`), leftover duplicates.
 - Fold migration **048** (spine `ON DELETE` normalisation, currently out-of-band in
   eq-intake `sql/`) into the eq-shell lineage.
@@ -185,6 +214,9 @@ v1.0 = the **union**.
 - ✅ Source of truth for ALL tenant schema = **eq-shell `supabase/tenant-migrations/`**.
 - ✅ **No hand-applied single-tenant SQL, ever** (incl. Claude) — everything goes through the pipe.
 - ✅ Canonical target = **rationalized baseline** (union at the column level; clean the plumbing).
+- ✅ **The runner is the single ledger writer; migration files never self-insert into
+  `app_data._eq_migrations`** (forward-only, enforced by `check-migration-hygiene.mjs`).
+  Duplicate twins are removed via `--reconcile-ledger`, never a hand `DELETE`.
 
 _Background detail also in eq-context `ops/decisions.md` (2026-06-02/03) and the eq-intake
 session memory (`project_schema_governance`, `project_canonical_spine_map`)._

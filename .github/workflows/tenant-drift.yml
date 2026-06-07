@@ -5,8 +5,12 @@ on:
     branches:
       - main
   schedule:
-    # Monday 08:00 AEST (UTC+10 standard time) = Sunday 22:00 UTC
-    - cron: '0 22 * * 0'
+    # Every 3 hours. Drift on the canonical planes comes from out-of-band changes
+    # (ad-hoc DDL via the dashboard / Supabase MCP), NOT from PRs — so a tight
+    # scheduled cadence is the only way to catch it fast. Weekly meant a bad
+    # change could sit ~7 days; 3-hourly bounds exposure to a few hours.
+    # Off the :00 mark to avoid the top-of-hour API stampede.
+    - cron: '7 */3 * * *'
   workflow_dispatch:
     inputs:
       anon_only:
@@ -15,6 +19,26 @@ on:
         default: false
 
 jobs:
+  # Creds-free static lint: a newly-ADDED tenant-migration file must not
+  # self-insert into app_data._eq_migrations (the runner is the single ledger
+  # writer — see SCHEMA-GOVERNANCE.md). PR-only: it needs the PR diff to scope
+  # to added files, and on schedule there is no diff. No DB secrets required.
+  migration-hygiene:
+    name: Migration ledger hygiene (added files)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need history to diff added files against the base
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Lint newly-added migrations for ledger self-inserts
+        run: node scripts/check-migration-hygiene.mjs
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+
   drift-check:
     name: Schema drift + anon-grant invariant
     runs-on: ubuntu-latest

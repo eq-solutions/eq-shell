@@ -59,14 +59,23 @@ export function tenantUsesCookieAuth(tenantSlug: string): boolean {
   return base.includes('.eq.solutions');
 }
 
-/** Build the iframe src for token-based auth (legacy / SKS). */
-export function buildFieldSrc(tenantSlug: string, token: string): string {
+/** Build the iframe src for token-based auth (legacy / SKS). The optional
+ *  correlation id rides ALONGSIDE the signed #sh= handoff (never inside the
+ *  signed payload) so Field can tag the same `cid` on its Sentry events — see
+ *  eq-context/cross-repo-contracts. */
+export function buildFieldSrc(tenantSlug: string, token: string, cid?: string): string {
   const base = FIELD_TENANT_URLS[tenantSlug] ?? FIELD_BASE_URL;
-  return `${base}?tenant=${encodeURIComponent(tenantSlug)}#sh=${encodeURIComponent(token)}`;
+  const hash = cid
+    ? `#sh=${encodeURIComponent(token)}&cid=${encodeURIComponent(cid)}`
+    : `#sh=${encodeURIComponent(token)}`;
+  return `${base}?tenant=${encodeURIComponent(tenantSlug)}${hash}`;
 }
 
-/** Build the iframe src for cookie-based auth (eq.solutions tenants). */
-export function buildFieldCookieSrc(tenantSlug: string): string {
+/** Build the iframe src for cookie-based auth (eq.solutions tenants). cid (when
+ *  present) rides as a query param — cookie mode has no #sh= hash, and Field
+ *  reads `cid` from the query OR the hash. */
+export function buildFieldCookieSrc(tenantSlug: string, cid?: string): string {
   const base = FIELD_TENANT_URLS[tenantSlug] ?? FIELD_BASE_URL;
-  return `${base}?tenant=${encodeURIComponent(tenantSlug)}&shell=1`;
+  const cidPart = cid ? `&cid=${encodeURIComponent(cid)}` : '';
+  return `${base}?tenant=${encodeURIComponent(tenantSlug)}&shell=1${cidPart}`;
 }
