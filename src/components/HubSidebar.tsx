@@ -21,8 +21,6 @@ export interface RecordLink {
   label: string;
   entity: string;   // matches /data/:entity route
   count: number | null;
-  /** Optional path suffix override (default: data/:entity). e.g. 'equipment'. */
-  to?: string;
 }
 
 function initials(name: string | null, email: string): string {
@@ -62,10 +60,6 @@ export function HubSidebar({ apps, records }: Props) {
   const userName = session.user.name ?? session.user.email.split('@')[0].replace('.', ' ');
   const roleLabel = session.user.role.replace(/_/g, ' ').toUpperCase();
 
-  // Plant & equipment is now a Record (folded out of its own group); only show it
-  // to users who can view equipment.
-  const visibleRecords = (records ?? []).filter((r) => r.key !== 'equipment' || canEquipment);
-
   return (
     <aside className="eq-hub__sidebar">
       <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand" aria-label="Go to dashboard">
@@ -84,26 +78,25 @@ export function HubSidebar({ apps, records }: Props) {
         </div>
       )}
 
-      {/* ── RECORDS (Customers · Sites · Contacts · Staff · Licences · Plant & equipment) ── */}
-      {visibleRecords.length > 0 && (
+      {/* ── RECORDS ── */}
+      {records && records.length > 0 && (
         <>
           <p className="eq-hub-sidebar__section-label">RECORDS</p>
           <nav className="eq-hub-sidebar__nav" aria-label="Records navigation">
-            {visibleRecords.map((r) => (
+            {records.map((r) => (
               <NavLink
                 key={r.key}
-                to={`/${tenantSlug}/${r.to ?? `data/${r.entity}`}`}
+                to={`/${tenantSlug}/data/${r.entity}`}
                 className={({ isActive }) =>
                   `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`
                 }
               >
                 <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
-                  {r.key === 'customer'  && <Building2 size={16} aria-hidden="true" />}
-                  {r.key === 'site'      && <MapPin size={16} aria-hidden="true" />}
-                  {r.key === 'contact'   && <User size={16} aria-hidden="true" />}
-                  {r.key === 'staff'     && <Users2 size={16} aria-hidden="true" />}
-                  {r.key === 'licence'   && <BadgeCheck size={16} aria-hidden="true" />}
-                  {r.key === 'equipment' && <Gauge size={16} aria-hidden="true" />}
+                  {r.key === 'customer' && <Building2 size={16} aria-hidden="true" />}
+                  {r.key === 'site'     && <MapPin size={16} aria-hidden="true" />}
+                  {r.key === 'contact'  && <User size={16} aria-hidden="true" />}
+                  {r.key === 'staff'    && <Users2 size={16} aria-hidden="true" />}
+                  {r.key === 'licence'  && <BadgeCheck size={16} aria-hidden="true" />}
                 </span>
                 <span className="eq-hub-sidebar__nav-label">{r.label}</span>
                 {r.count !== null && (
@@ -112,6 +105,23 @@ export function HubSidebar({ apps, records }: Props) {
                 <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
               </NavLink>
             ))}
+          </nav>
+        </>
+      )}
+
+      {/* ── EQUIPMENT ── */}
+      {canEquipment && (
+        <>
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: records?.length ? 16 : 0 }}>EQUIPMENT</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Equipment navigation">
+            <NavLink
+              to={`/${tenantSlug}/equipment`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Gauge size={16} aria-hidden="true" /></span>
+              <span className="eq-hub-sidebar__nav-label">Plant &amp; equipment</span>
+              <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+            </NavLink>
           </nav>
         </>
       )}
@@ -147,31 +157,36 @@ export function HubSidebar({ apps, records }: Props) {
         ))}
       </nav>
 
-      {/* ── TOOLS (GM Reports · Import — folds the old single-item Reports + Intake groups) ── */}
-      {(canReports || canIntake) && (
+      {/* ── INTAKE ── */}
+      {canIntake && (
         <>
-          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>TOOLS</p>
-          <nav className="eq-hub-sidebar__nav" aria-label="Tools navigation">
-            {canReports && (
-              <NavLink
-                to={`/${tenantSlug}/reports`}
-                className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-              >
-                <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><BarChart2 size={16} aria-hidden="true" /></span>
-                <span className="eq-hub-sidebar__nav-label">GM Reports</span>
-                <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-              </NavLink>
-            )}
-            {canIntake && (
-              <NavLink
-                to={`/${tenantSlug}/intake`}
-                className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-              >
-                <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Download size={16} aria-hidden="true" /></span>
-                <span className="eq-hub-sidebar__nav-label">Import</span>
-                <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-              </NavLink>
-            )}
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>INTAKE</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Intake navigation">
+            <NavLink
+              to={`/${tenantSlug}/intake`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Download size={16} aria-hidden="true" /></span>
+              <span className="eq-hub-sidebar__nav-label">Import</span>
+              <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+            </NavLink>
+          </nav>
+        </>
+      )}
+
+      {/* ── REPORTS ── */}
+      {canReports && (
+        <>
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>REPORTS</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Reports navigation">
+            <NavLink
+              to={`/${tenantSlug}/reports`}
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><BarChart2 size={16} aria-hidden="true" /></span>
+              <span className="eq-hub-sidebar__nav-label">GM Reports</span>
+              <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+            </NavLink>
           </nav>
         </>
       )}
@@ -203,11 +218,11 @@ export function HubSidebar({ apps, records }: Props) {
               <span className="eq-hub-sidebar__nav-label">Migration</span>
             </NavLink>
             <NavLink
-              to={`/${tenantSlug}/admin/security-groups`}
+              to={`/${tenantSlug}/admin/access-control`}
               className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
             >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={16} aria-hidden="true" /></span>
-              <span className="eq-hub-sidebar__nav-label">Security groups</span>
+              <span className="eq-hub-sidebar__nav-label">Access</span>
             </NavLink>
             <NavLink
               to={`/${tenantSlug}/admin/settings`}
@@ -226,7 +241,7 @@ export function HubSidebar({ apps, records }: Props) {
           <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>PLATFORM</p>
           <nav className="eq-hub-sidebar__nav" aria-label="Platform navigation">
             <NavLink
-              to={`/${tenantSlug}/admin/tenants`}
+              to="/_platform/tenants"
               className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
             >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Database size={16} aria-hidden="true" /></span>

@@ -14,12 +14,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Loader2, RefreshCw, Plus, ChevronUp, Database } from 'lucide-react';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
-import { HubLayout } from '../components/HubLayout';
+import { PlatformLayout } from '../components/PlatformLayout';
 import { EqError } from '../components/EqError';
 import { Skeleton } from '../components/Skeleton';
-import { defaultSidebarRecords } from '../lib/sidebarConfig';
-
-const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 type RoutingStatus =
   | 'not_provisioned'
@@ -180,17 +177,17 @@ export default function AdminTenantsPage() {
 
   if (!session?.user.is_platform_admin) {
     return (
-      <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
+      <PlatformLayout>
         <div className="eq-page__header">
           <h1 className="eq-page__title">Not allowed</h1>
           <p className="eq-page__lede">This page is restricted to platform administrators.</p>
         </div>
-      </HubLayout>
+      </PlatformLayout>
     );
   }
 
   return (
-    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
+    <PlatformLayout>
       <div className="eq-page__header">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <h1 className="eq-page__title" style={{ margin: 0 }}>Tenants</h1>
@@ -355,6 +352,6 @@ export default function AdminTenantsPage() {
           </tbody>
         </table>
       )}
-    </HubLayout>
+    </PlatformLayout>
   );
 }

@@ -118,7 +118,7 @@ const SUBMIT_BRIEFING_TOOL = {
       },
       on_shift: {
         type: 'array',
-        description: 'Staff on shift, ONLY when a shift.started event payload (last 12h) contains an actual worker name. If payloads carry only site codes + headcounts, return an empty array — never fabricate names.',
+        description: 'Headline staff on shift, taken from the shift.started payload "on_shift" array (already name + human site). Not the full headcount — see scheduled_count.',
         items: {
           type: 'object',
           required: ['name'],
@@ -164,7 +164,7 @@ RULES:
 - Recency: events are tagged [recent <12h] or [older]. Lead with [recent <12h] items. Treat [older] items as background context, not new alerts — only raise an older item if it is still unresolved or time-critical (e.g. an open defect, an overdue task, an expiring licence). Do not present a days-old routine event as if it just happened.
 - Snapshots (licences_expiring, service_due, open_defects, open_incidents) are current state, not new activity — they have no recency tag. Treat them as standing compliance/operational obligations. A large overdue backlog is worth one summarising action ("N tools overdue calibration, oldest X days") rather than one action per item.
 - Actions: max 3. Rank by: compliance/safety first, operational gaps second, commercial third. Skip anything in recently_actioned.
-- On shift: only from shift.started events within 12 hours, and ONLY when the payload contains an actual worker NAME. If the payload has only site codes and headcounts (no names), leave on_shift EMPTY — never invent worker names. The headcount is still conveyed in the brief text.
+- On shift: only from shift.started events where occurred_at is within 12 hours. Use the most recent such event and read its payload's "on_shift" array — each entry already has a resolved "name" and human "site". If "on_shift" is absent, label the "assignments" object's site codes using the payload's "sites" map (code -> human name). Never output a raw site code; always the human site name. "scheduled_count" is the full headcount even though "on_shift" lists only the headline few. Never invent names — if the array is empty and no sites map is present, leave on_shift empty.
 - Upcoming: only items with a verifiable future date from the data. Pipeline start_date_estimated qualifies.
 - GROUNDING (critical): every name, site, client, number, reference, and date in your output must trace to a specific line in the data above. If it is not in the data, it does not go in the briefing. Do not infer identities or quantities. When uncertain, omit — a blank panel is correct; a plausible-looking guess is a failure.`;
 

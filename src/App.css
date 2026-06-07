@@ -1836,6 +1836,13 @@
   max-width: 860px;
 }
 
+/* Platform-operator console shell (PlatformLayout) — tenant-less wrapper around
+   the same eq-hub-content body the tenant pages use. */
+.eq-platform {
+  min-height: 100svh;
+  background: var(--eq-bg, #fff);
+}
+
 .eq-hub-content__dateline {
   display: flex;
   align-items: center;

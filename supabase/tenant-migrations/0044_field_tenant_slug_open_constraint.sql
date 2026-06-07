@@ -1,0 +1,31 @@
+-- Migration: 0044_field_tenant_slug_open_constraint
+-- Target:    eq-canonical CONTROL PLANE (jvknxcmbtrfnxfrwfimn) — shell_control schema
+--            *** NOT a tenant data-plane migration ***
+--            This file is numbered in the 00xx series so it travels with the
+--            sprint diff and is tracked by the same ledger convention, but the
+--            ALTER runs against jvkn via the control-plane pipe, not via
+--            scripts/migrate-tenants.mjs.
+-- Purpose:   Drop the closed-list CHECK constraint on shell_control.tenants.field_tenant_slug
+--            so tenant #2 (and any future tenant) can be assigned an arbitrary Field
+--            workspace slug without a schema change.
+--
+-- WHY (live-verified against jvkn, 2026-06-07):
+--   Migration 2026_05_28_field_tenant_slug added the column with a hardcoded allowlist:
+--     CHECK (field_tenant_slug IN ('eq', 'demo-trades', 'melbourne', 'sks'))
+--   The list enumerated every Field org known at the time. Adding a second customer
+--   tenant that maps to a new Field org slug (e.g. 'client-a') violates the constraint
+--   and blocks the onboarding step in AdminTenantSettings where a platform admin sets
+--   field_tenant_slug. The column is nullable text — the only safety contract is that it
+--   matches a live Field org; that is enforced at the application layer (FieldIframe.tsx
+--   checks TENANT_OPTIONS before using the value). The DB-level allowlist provides no
+--   additional safety and must be open to allow growth.
+--
+--   Live constraint name (verified):
+--     tenants_field_tenant_slug_check
+--     CHECK ((field_tenant_slug = ANY (ARRAY['eq'::text, 'demo-trades'::text, 'melbourne'::text, 'sks'::text])))
+--
+-- Idempotent: DROP CONSTRAINT IF EXISTS is a no-op if the constraint is already absent.
+-- The runner records the ledger row on apply; this file writes no ledger row.
+
+ALTER TABLE shell_control.tenants
+  DROP CONSTRAINT IF EXISTS tenants_field_tenant_slug_check;

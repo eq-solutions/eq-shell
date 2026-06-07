@@ -29,11 +29,11 @@ import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
 import AdminMigrationPage from './pages/AdminMigrationPage';
 import SecurityGroupsPage from './pages/SecurityGroupsPage';
+import AccessControlPage from './pages/AccessControlPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
 import AdminTenantsPage from './pages/AdminTenantsPage';
 import EntityBrowserPage from './pages/EntityBrowserPage';
-import CustomersHubPage from './pages/CustomersHubPage';
 import ServiceIframe from './pages/ServiceIframe';
 import QuotesIframe from './pages/QuotesIframe';
 import StorageBrowser from './pages/StorageBrowser';
@@ -255,6 +255,40 @@ function RootRoute() {
   return <LoginPage />;
 }
 
+// Gate for the platform-operator console (/_platform/*). Mirrors RequireSession
+// but has no tenant slug to match — instead it requires is_platform_admin.
+// Non-operators bounce to their own tenant home.
+function RequirePlatformSession({ children }: { children: ReactNode }) {
+  const { session, loading } = useSession();
+  const location = useLocation();
+  if (loading && !session) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
+        <Skeleton variant="text" width={120} />
+      </div>
+    );
+  }
+  if (!session) {
+    return <Navigate to="/" replace state={{ from: location.pathname }} />;
+  }
+  if (!session.user.is_platform_admin) {
+    return <Navigate to={`/${session.tenant.slug}`} replace />;
+  }
+  return <>{children}</>;
+}
+
+// Platform-operator console — cross-tenant surfaces that don't belong in any one
+// tenant's URL space (tenant provisioning today; room for more operator tools).
+function PlatformTree() {
+  return (
+    <Routes>
+      <Route index element={<Navigate to="tenants" replace />} />
+      <Route path="tenants" element={<AdminTenantsPage />} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+}
+
 function TenantTree() {
   const { session } = useSession();
   const location = useLocation();
@@ -421,8 +455,9 @@ function TenantTree() {
             route is reachable to any signed-in tenant user, but the
             UI shows "Not allowed" when the role doesn't grant it.
             Order matters: 'invite' (static) before ':userId' (param). */}
-        {/* Platform-admin: tenant provisioning dashboard */}
-        <Route path="admin/tenants" element={<AdminTenantsPage />} />
+        {/* Platform-operator console moved to /_platform/tenants. Redirect old
+            in-tenant links/bookmarks so nothing breaks. */}
+        <Route path="admin/tenants" element={<Navigate to="/_platform/tenants" replace />} />
         <Route path="admin/users" element={<AdminUserList />} />
         <Route path="admin/users/invite" element={<AdminInviteUser />} />
         <Route path="admin/users/invite-bulk" element={<AdminBulkInvite />} />
@@ -437,6 +472,7 @@ function TenantTree() {
         {/* Polish 2026-05-21 — tenant settings */}
         <Route path="admin/settings" element={<AdminTenantSettings />} />
         <Route path="admin/security-groups" element={<SecurityGroupsPage />} />
+        <Route path="admin/access-control" element={<AccessControlPage />} />
         {/* Phase 1.G — TOTP 2FA enrollment (any logged-in user) */}
         <Route path="settings/2fa" element={<EnrollTotp />} />
         <Route
@@ -459,9 +495,6 @@ function TenantTree() {
             </Suspense>
           }
         />
-        {/* Customers CRM hub — the primary way into customer→sites→contacts.
-            The flat /data/site + /data/contact routes stay for power users. */}
-        <Route path="customers" element={<CustomersHubPage />} />
         <Route path="data/:entity" element={<EntityBrowserPage />} />
         {/* D3.3d — Shell-hosted licence OCR onboarding (browser fallback for Cards OCR) */}
         <Route path="onboarding/licence" element={<LicenceOcrPage />} />
@@ -490,6 +523,17 @@ function App() {
           <Route path="/select-tenant" element={<TenantPicker />} />
           {/* Phase 1.G: TOTP challenge shown after PIN login when 2FA is enrolled */}
           <Route path="/totp-challenge" element={<TotpChallenge />} />
+          {/* Platform-operator console — top-level, tenant-less, operator-gated.
+              Registered before /:tenantSlug/* so '_platform' is never parsed as
+              a tenant slug. */}
+          <Route
+            path="/_platform/*"
+            element={
+              <RequirePlatformSession>
+                <PlatformTree />
+              </RequirePlatformSession>
+            }
+          />
           <Route
             path="/:tenantSlug/*"
             element={

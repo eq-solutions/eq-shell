@@ -43,7 +43,7 @@ export default function TotpChallenge() {
         <button
           type="button"
           className="eq-login-submit"
-          onClick={() => navigate('/login', { replace: true })}
+          onClick={() => navigate('/', { replace: true })}
         >
           Back to sign in
         </button>
