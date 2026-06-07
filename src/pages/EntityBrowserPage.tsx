@@ -175,6 +175,16 @@ const ENTITY_VIEW: Record<
       { key: 'next_service_due', label: 'Next service' },
     ],
   },
+  // ── Field entities (require field.view to browse) ─────────────────────────
+  team: {
+    table: 'teams',
+    label: 'Teams',
+    columns: [
+      { key: 'name', label: 'Team' },
+      { key: 'color', label: 'Colour' },
+      { key: 'created_at', label: 'Created' },
+    ],
+  },
 };
 
 function formatCell(value: unknown, key: string): string {
@@ -522,6 +532,38 @@ function EntityBrowserInner({ entity }: { entity: string }) {
 // Staff and operational entities are managed inside EQ Field.
 const MANAGEABLE_ENTITIES = new Set(['customer', 'site', 'contact', 'asset']);
 
+// Field entities that support targeted editing from the shell (require field.dispatch).
+const FIELD_EDIT_ENTITIES = new Set(['staff', 'leave_request', 'timesheet']);
+
+// Mirrors the server-side ENTITY_META allowlist in entity-patch.ts.
+// Only these fields are rendered in the edit form and written on save.
+type EditInputType = 'text' | 'email' | 'tel' | 'textarea' | 'bool' | 'select';
+interface EditFieldDef { key: string; label: string; inputType: EditInputType; options?: string[] }
+
+const ENTITY_EDIT_FIELDS: Record<string, EditFieldDef[]> = {
+  staff: [
+    { key: 'first_name',      label: 'First name',      inputType: 'text' },
+    { key: 'last_name',       label: 'Last name',       inputType: 'text' },
+    { key: 'preferred_name',  label: 'Preferred name',  inputType: 'text' },
+    { key: 'email',           label: 'Email',           inputType: 'email' },
+    { key: 'phone',           label: 'Phone',           inputType: 'tel' },
+    { key: 'employment_type', label: 'Employment type', inputType: 'text' },
+    { key: 'trade',           label: 'Trade',           inputType: 'text' },
+    { key: 'level',           label: 'Level',           inputType: 'text' },
+    { key: 'home_base',       label: 'Home base',       inputType: 'text' },
+    { key: 'notes',           label: 'Notes',           inputType: 'textarea' },
+    { key: 'active',          label: 'Active',          inputType: 'bool' },
+  ],
+  leave_request: [
+    { key: 'status',         label: 'Status',         inputType: 'select', options: ['pending', 'approved', 'rejected'] },
+    { key: 'decision_notes', label: 'Decision notes', inputType: 'textarea' },
+  ],
+  timesheet: [
+    { key: 'status', label: 'Status', inputType: 'select', options: ['draft', 'submitted', 'approved', 'paid'] },
+    { key: 'notes',  label: 'Notes',  inputType: 'textarea' },
+  ],
+};
+
 // Slide-out drawer showing the full row. Floating UI (not static),
 // so per the design spec it CAN have a drop-shadow.
 function EntityDetailDrawer({
@@ -542,6 +584,7 @@ function EntityDetailDrawer({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
   const canEdit = useCan('entity.edit');
+  const canFieldDispatch = useCan('field.dispatch');
   const view = ENTITY_VIEW[entity];
   const [isEditing, setIsEditing] = useState(false);
   const [editFields, setEditFields] = useState<Record<string, string>>({});
@@ -571,14 +614,17 @@ function EntityDetailDrawer({
 
   const startEditing = useCallback(() => {
     const initial: Record<string, string> = {};
-    for (const col of (view?.columns ?? [])) {
-      const v = row[col.key];
-      initial[col.key] = v === null || v === undefined ? '' : String(v);
+    // Use explicit edit-field definitions when available (field entities),
+    // otherwise fall back to view columns (CRM entities).
+    const fds: { key: string }[] = ENTITY_EDIT_FIELDS[entity] ?? (view?.columns ?? []);
+    for (const f of fds) {
+      const v = row[f.key];
+      initial[f.key] = v === null || v === undefined ? '' : String(v);
     }
     setEditFields(initial);
     setIsEditing(true);
     setActionErr(null);
-  }, [row, view]);
+  }, [entity, row, view]);
 
   const handleSave = useCallback(async () => {
     const id = row[`${entity}_id`] as string;
@@ -653,6 +699,8 @@ function EntityDetailDrawer({
 
   const isActive      = row.active !== false;
   const isManageable  = MANAGEABLE_ENTITIES.has(entity);
+  const isFieldEntity = FIELD_EDIT_ENTITIES.has(entity);
+  const editFormFields = ENTITY_EDIT_FIELDS[entity] ?? null;
 
   return (
     <>
@@ -838,6 +886,52 @@ function EntityDetailDrawer({
             </div>
           )}
 
+          {/* Field entity edit actions (staff / leave_request / timesheet — field.dispatch required) */}
+          {isFieldEntity && (
+            <div style={{
+              display: 'flex',
+              gap: 8,
+              paddingBottom: 16,
+              marginBottom: 4,
+              borderBottom: '1px solid #E2E8F0',
+              flexWrap: 'wrap',
+            }}>
+              {canFieldDispatch && !isEditing && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={actionLoading !== null}
+                  onClick={startEditing}
+                >
+                  Edit
+                </Button>
+              )}
+              {isEditing && (
+                <>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    disabled={actionLoading !== null}
+                    onClick={() => void handleSave()}
+                  >
+                    {actionLoading === 'save' ? 'Saving…' : 'Save'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={actionLoading !== null}
+                    onClick={() => setIsEditing(false)}
+                  >
+                    Cancel
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
           {actionErr && (
             <div style={{
               background: '#fdf2f2',
@@ -857,66 +951,136 @@ function EntityDetailDrawer({
 
         {isEditing ? (
           <div style={{ padding: '0 24px 24px', flex: 1 }}>
-            {(view?.columns ?? []).map((col) => {
-              const isBool = col.key === 'active';
-              const isDate = col.key.endsWith('_date') || col.key.endsWith('_due');
-              const isEmail = col.key === 'email';
-              const isTel = col.key.includes('phone');
-              return (
-                <div key={col.key} style={{ marginBottom: 14 }}>
-                  <label
-                    htmlFor={`edit-${col.key}`}
-                    style={{
-                      display: 'block',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: '#64748B',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      marginBottom: 4,
-                    }}
-                  >
-                    {col.label}
-                  </label>
-                  {isBool ? (
-                    <select
-                      id={`edit-${col.key}`}
-                      value={editFields[col.key] ?? ''}
-                      onChange={(e) => setEditFields((f) => ({ ...f, [col.key]: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        padding: '7px 10px',
-                        border: '1px solid var(--eq-border, #E2E8F0)',
-                        borderRadius: 6,
-                        fontSize: 13,
-                        background: 'var(--eq-bg, #fff)',
-                        color: 'var(--eq-ink, #1A1A2E)',
-                      }}
-                    >
-                      <option value="true">Yes</option>
-                      <option value="false">No</option>
-                    </select>
-                  ) : (
-                    <input
-                      id={`edit-${col.key}`}
-                      type={isDate ? 'date' : isEmail ? 'email' : isTel ? 'tel' : 'text'}
-                      value={editFields[col.key] ?? ''}
-                      onChange={(e) => setEditFields((f) => ({ ...f, [col.key]: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        padding: '7px 10px',
-                        border: '1px solid var(--eq-border, #E2E8F0)',
-                        borderRadius: 6,
-                        fontSize: 13,
-                        background: 'var(--eq-bg, #fff)',
-                        color: 'var(--eq-ink, #1A1A2E)',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  )}
-                </div>
-              );
-            })}
+            {editFormFields
+              // ── Field-entity form: uses ENTITY_EDIT_FIELDS definitions ──────
+              ? editFormFields.map((fd) => {
+                  const inputStyle: React.CSSProperties = {
+                    width: '100%',
+                    padding: '7px 10px',
+                    border: '1px solid var(--eq-border, #E2E8F0)',
+                    borderRadius: 6,
+                    fontSize: 13,
+                    background: 'var(--eq-bg, #fff)',
+                    color: 'var(--eq-ink, #1A1A2E)',
+                    boxSizing: 'border-box',
+                  };
+                  const labelStyle: React.CSSProperties = {
+                    display: 'block',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#64748B',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    marginBottom: 4,
+                  };
+                  return (
+                    <div key={fd.key} style={{ marginBottom: 14 }}>
+                      <label htmlFor={`edit-${fd.key}`} style={labelStyle}>{fd.label}</label>
+                      {fd.inputType === 'bool' ? (
+                        <select
+                          id={`edit-${fd.key}`}
+                          value={editFields[fd.key] ?? ''}
+                          onChange={(e) => setEditFields((f) => ({ ...f, [fd.key]: e.target.value }))}
+                          style={inputStyle}
+                        >
+                          <option value="true">Yes</option>
+                          <option value="false">No</option>
+                        </select>
+                      ) : fd.inputType === 'select' ? (
+                        <select
+                          id={`edit-${fd.key}`}
+                          value={editFields[fd.key] ?? ''}
+                          onChange={(e) => setEditFields((f) => ({ ...f, [fd.key]: e.target.value }))}
+                          style={inputStyle}
+                        >
+                          {(fd.options ?? []).map((o) => (
+                            <option key={o} value={o}>
+                              {o.charAt(0).toUpperCase() + o.slice(1).replace(/_/g, ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      ) : fd.inputType === 'textarea' ? (
+                        <textarea
+                          id={`edit-${fd.key}`}
+                          value={editFields[fd.key] ?? ''}
+                          onChange={(e) => setEditFields((f) => ({ ...f, [fd.key]: e.target.value }))}
+                          rows={3}
+                          style={{ ...inputStyle, resize: 'vertical' }}
+                        />
+                      ) : (
+                        <input
+                          id={`edit-${fd.key}`}
+                          type={fd.inputType}
+                          value={editFields[fd.key] ?? ''}
+                          onChange={(e) => setEditFields((f) => ({ ...f, [fd.key]: e.target.value }))}
+                          style={inputStyle}
+                        />
+                      )}
+                    </div>
+                  );
+                })
+              // ── CRM entity form: uses view.columns (existing behaviour) ─────
+              : (view?.columns ?? []).map((col) => {
+                  const isBool = col.key === 'active';
+                  const isDate = col.key.endsWith('_date') || col.key.endsWith('_due');
+                  const isEmail = col.key === 'email';
+                  const isTel = col.key.includes('phone');
+                  return (
+                    <div key={col.key} style={{ marginBottom: 14 }}>
+                      <label
+                        htmlFor={`edit-${col.key}`}
+                        style={{
+                          display: 'block',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: '#64748B',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                          marginBottom: 4,
+                        }}
+                      >
+                        {col.label}
+                      </label>
+                      {isBool ? (
+                        <select
+                          id={`edit-${col.key}`}
+                          value={editFields[col.key] ?? ''}
+                          onChange={(e) => setEditFields((f) => ({ ...f, [col.key]: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '7px 10px',
+                            border: '1px solid var(--eq-border, #E2E8F0)',
+                            borderRadius: 6,
+                            fontSize: 13,
+                            background: 'var(--eq-bg, #fff)',
+                            color: 'var(--eq-ink, #1A1A2E)',
+                          }}
+                        >
+                          <option value="true">Yes</option>
+                          <option value="false">No</option>
+                        </select>
+                      ) : (
+                        <input
+                          id={`edit-${col.key}`}
+                          type={isDate ? 'date' : isEmail ? 'email' : isTel ? 'tel' : 'text'}
+                          value={editFields[col.key] ?? ''}
+                          onChange={(e) => setEditFields((f) => ({ ...f, [col.key]: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '7px 10px',
+                            border: '1px solid var(--eq-border, #E2E8F0)',
+                            borderRadius: 6,
+                            fontSize: 13,
+                            background: 'var(--eq-bg, #fff)',
+                            color: 'var(--eq-ink, #1A1A2E)',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })
+            }
           </div>
         ) : (
           <dl style={{ margin: 0, padding: '0 24px 24px', flex: 1 }}>

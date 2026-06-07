@@ -1451,6 +1451,20 @@
   font-size: 13px;
 }
 
+/* ──────────────────────────────────────────────────────────────────
+ * Intake — table preview header override (v9 alignment)
+ * Targets table.prev th rendered by @eq/intake-demo inside HubLayout.
+ * ────────────────────────────────────────────────────────────────── */
+
+table.prev th {
+  background: var(--eq-sky);
+  color: #fff;
+  border-bottom: 1px solid var(--eq-deep);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
 
 /* ──────────────────────────────────────────────────────────────────
  * Responsive layout — mobile
@@ -1605,7 +1619,7 @@
 .eq-hub__sidebar {
   width: 260px;
   min-width: 260px;
-  background: #0F1117;
+  background: #1A1A2E;
   border-right: 1px solid rgba(255,255,255,0.06);
   display: flex;
   flex-direction: column;
@@ -1828,7 +1842,7 @@
 
 .eq-hub__content {
   flex: 1;
-  background: #F5F4F0;
+  background: #F6F3EE;
   overflow-y: auto;
 }
 

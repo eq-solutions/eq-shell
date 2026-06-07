@@ -10,7 +10,8 @@
 //   4. tenant_routing.status -> 'active'
 //   5. module_entitlements upserted for the chosen modules
 //   6. user_invites row inserted for the first admin
-//   7. invite URL printed for paste-into-email
+//   7. public.organisations row created/updated (EQ Field routing, `field` module only)
+//   8. invite URL printed for paste-into-email
 //
 // Idempotent for steps 3-6; steps 1-2 are guarded by the underlying scripts'
 // own idempotency. Re-running on a tenant that's already onboarded will
@@ -36,6 +37,8 @@
 //   --modules          Optional. Comma-separated. Default: cards,intake,field.
 //                      Allowed: cards, intake, field, service, quotes.
 //   --region           Optional. Supabase region for the new project. Default: ap-southeast-2.
+//   --field-hostname   Optional. Override the EQ Field subdomain written to public.organisations.
+//                      Default: field.{slug}.eq.solutions
 //   --skip-provision   Optional. Skip step 1 (use when re-running on an existing tenant).
 //   --skip-migrate     Optional. Skip step 2.
 //
@@ -75,6 +78,7 @@ const { values: args } = parseArgs({
     tier:               { type: 'string', default: 'trial' },
     modules:            { type: 'string', default: 'cards,intake,field' },
     region:             { type: 'string', default: 'ap-southeast-2' },
+    'field-hostname':   { type: 'string' },
     'skip-provision':   { type: 'boolean', default: false },
     'skip-migrate':     { type: 'boolean', default: false },
   },
@@ -110,7 +114,7 @@ log('');
 // ─── step 1 ─ provision ────────────────────────────────────────────────
 
 if (!args['skip-provision']) {
-  log('━━━ Step 1/5: Provisioning Supabase project (~2-3 min) ━━━');
+  log('━━━ Step 1/6: Provisioning Supabase project (~2-3 min) ━━━');
   await spawnStep('node', [
     'scripts/provision-tenant.mjs',
     `--slug=${args.slug}`,
@@ -125,7 +129,7 @@ log('');
 // ─── step 2 ─ migrate ──────────────────────────────────────────────────
 
 if (!args['skip-migrate']) {
-  log('━━━ Step 2/5: Applying per-tenant schema migrations ━━━');
+  log('━━━ Step 2/6: Applying per-tenant schema migrations ━━━');
   await spawnStep('node', [
     'scripts/migrate-tenants.mjs',
     `--slug=${args.slug}`,
@@ -142,8 +146,14 @@ const control = createClient(env.CONTROL_SUPABASE_URL, env.CONTROL_SUPABASE_SERV
   db:   { schema: 'shell_control' },
 });
 
+// Separate client for public schema writes (organisations table).
+const controlPublic = createClient(env.CONTROL_SUPABASE_URL, env.CONTROL_SUPABASE_SERVICE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+  db:   { schema: 'public' },
+});
+
 // step 3 — tenant exists, tier set
-log('━━━ Step 3/5: Activating tenant + setting tier ━━━');
+log('━━━ Step 3/6: Activating tenant + setting tier ━━━');
 const { data: tenant, error: tenErr } = await control
   .from('tenants')
   .select('id, slug, name, tier')
@@ -159,16 +169,18 @@ if (tenant.tier !== args.tier) {
   log(`Tier already correct: ${args.tier}`);
 }
 
-const { error: routingErr } = await control
+const { data: routing, error: routingErr } = await control
   .from('tenant_routing')
   .update({ status: 'active' })
-  .eq('tenant_id', tenant.id);
+  .eq('tenant_id', tenant.id)
+  .select('supabase_url, anon_key')
+  .single();
 if (routingErr) fail(3, `tenant_routing activation failed: ${routingErr.message}`);
 log('tenant_routing.status = active');
 log('');
 
 // step 4 — module entitlements
-log('━━━ Step 4/5: Seeding module entitlements ━━━');
+log('━━━ Step 4/6: Seeding module entitlements ━━━');
 const entRows = modules.map(m => ({ tenant_id: tenant.id, module: m, enabled: true }));
 const { error: entErr } = await control
   .from('module_entitlements')
@@ -178,7 +190,7 @@ log(`Enabled modules: ${modules.join(', ')}`);
 log('');
 
 // step 5 — admin invite
-log('━━━ Step 5/5: Creating admin invite ━━━');
+log('━━━ Step 5/6: Creating admin invite ━━━');
 const rawToken  = randomBytes(32).toString('hex');
 const tokenHash = createHash('sha256').update(rawToken).digest('hex');
 const expiresAt = new Date(Date.now() + INVITE_TTL_HOURS * 60 * 60 * 1000).toISOString();
@@ -196,6 +208,61 @@ const { error: invErr } = await control
 if (invErr) fail(3, `user_invites insert failed: ${invErr.message}`);
 log(`Invite created (expires ${expiresAt})`);
 log('');
+
+// step 6 — public.organisations row (EQ Field routing)
+// Required for EQ Field to resolve hostname → tenant data plane.
+// Only inserted when the `field` module is included.
+// Default hostname pattern: field.{slug}.eq.solutions (override via --field-hostname flag).
+if (modules.includes('field')) {
+  log('━━━ Step 6/6: Seeding Field organisations row ━━━');
+
+  const fieldHostname = args['field-hostname'] ?? `field.${args.slug}.eq.solutions`;
+  const tenantSupabaseUrl  = routing?.supabase_url  ?? null;
+  const tenantAnonKey      = routing?.anon_key       ?? null;
+
+  if (!tenantSupabaseUrl) {
+    log('  ⚠  tenant_routing.supabase_url is null — organisations row will lack DB connection details.');
+    log('     Run this script again (--skip-provision --skip-migrate) after the data plane is fully provisioned.');
+  }
+
+  // Check if a row already exists (slug has a unique index on lower(slug)).
+  const { data: existingOrg } = await controlPublic
+    .from('organisations')
+    .select('id')
+    .eq('slug', args.slug)
+    .maybeSingle();
+
+  if (existingOrg) {
+    const { error: orgUpdErr } = await controlPublic
+      .from('organisations')
+      .update({
+        name:             args.name,
+        hostname:         fieldHostname,
+        supabase_url:     tenantSupabaseUrl,
+        supabase_anon_key: tenantAnonKey,
+        tenant_id:        tenant.id,
+        updated_at:       new Date().toISOString(),
+      })
+      .eq('id', existingOrg.id);
+    if (orgUpdErr) fail(3, `organisations update failed: ${orgUpdErr.message}`);
+    log(`organisations row updated (id=${existingOrg.id})`);
+  } else {
+    const { error: orgInsErr } = await controlPublic
+      .from('organisations')
+      .insert({
+        name:             args.name,
+        slug:             args.slug,
+        hostname:         fieldHostname,
+        supabase_url:     tenantSupabaseUrl,
+        supabase_anon_key: tenantAnonKey,
+        tenant_id:        tenant.id,
+      });
+    if (orgInsErr) fail(3, `organisations insert failed: ${orgInsErr.message}`);
+    log(`organisations row created (slug=${args.slug}, hostname=${fieldHostname})`);
+  }
+
+  log('');
+}
 
 // ─── done ──────────────────────────────────────────────────────────────
 

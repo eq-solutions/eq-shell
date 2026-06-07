@@ -20,18 +20,6 @@
   isolation: isolate;
 }
 
-/* Faint sky radial glow, top-right. Decorative — sits behind content. */
-.eq-hub__sidebar::before {
-  content: '';
-  position: absolute;
-  top: -40px;
-  right: -60px;
-  width: 220px;
-  height: 220px;
-  background: radial-gradient(circle, rgba(var(--eq-sky-rgb), 0.10), transparent 65%);
-  pointer-events: none;
-  z-index: -1;
-}
 
 /* Brand row gets a collapse toggle pinned to the right. */
 .eq-hub-sidebar__brand-row {
