@@ -1,0 +1,279 @@
+/* Records tree — hierarchical Customer → Sites → Contacts left pane.
+ * Companion to records-redesign.css (which holds .crm-pane / .crm-row etc.)
+ * All values use --eq-* tokens. No gradients, no box-shadows except named
+ * floating-UI shadows.
+ */
+
+/* ── Level filter tabs ──────────────────────────────────────────────────── */
+.crm-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--eq-border);
+  background: var(--eq-white);
+}
+.crm-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--eq-grey);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+  white-space: nowrap;
+}
+.crm-tab:hover { color: var(--eq-ink); }
+.crm-tab.is-active {
+  color: var(--eq-deep);
+  border-bottom-color: var(--eq-sky);
+}
+
+/* ── Tree container ─────────────────────────────────────────────────────── */
+.crm-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Customer (root) node ───────────────────────────────────────────────── */
+.crm-tree__customer {
+  border-bottom: 1px solid var(--eq-border);
+}
+
+.crm-tree__customer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px 10px 14px;
+  border: none;
+  border-left: 3px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.crm-tree__customer-row:hover { background: var(--eq-gray-50); }
+.crm-tree__customer-row.is-active {
+  background: var(--eq-ice);
+  border-left-color: var(--eq-sky);
+}
+
+.crm-tree__chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--eq-grey);
+  flex-shrink: 0;
+  transition: transform 150ms ease;
+}
+.crm-tree__chevron.is-open { transform: rotate(90deg); }
+
+.crm-tree__customer-body {
+  background: var(--eq-white);
+}
+
+/* ── Branch nodes (Sites / Contacts headers under a customer) ─────────── */
+.crm-tree__branch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px 6px 32px;
+  border: none;
+  background: var(--eq-gray-50);
+  border-top: 1px solid var(--eq-border);
+  cursor: pointer;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--eq-grey);
+  transition: background 150ms ease, color 150ms ease;
+}
+.crm-tree__branch:hover { background: var(--eq-gray-100); color: var(--eq-ink); }
+.crm-tree__branch svg { color: var(--eq-grey); transition: transform 150ms ease; }
+.crm-tree__branch.is-open svg { transform: rotate(90deg); }
+
+.crm-tree__branch-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--eq-gray-100);
+  color: var(--eq-grey);
+  margin-left: 2px;
+}
+.crm-tree__branch-count.has-items {
+  background: var(--eq-ink);
+  color: var(--eq-white);
+}
+
+/* ── Site leaf node ─────────────────────────────────────────────────────── */
+.crm-tree__site-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px 8px 48px;
+  border: none;
+  border-left: 3px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  border-top: 1px solid var(--eq-border);
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.crm-tree__site-row:hover { background: var(--eq-gray-50); }
+.crm-tree__site-row.is-active {
+  background: var(--eq-ice);
+  border-left-color: var(--eq-sky);
+}
+
+/* On-site contact chip inside a site row */
+.crm-tree__onsite-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--eq-deep);
+  background: var(--eq-ice);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+/* ── Contact leaf node ──────────────────────────────────────────────────── */
+.crm-tree__contact-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px 8px 48px;
+  border: none;
+  border-left: 3px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  border-top: 1px solid var(--eq-border);
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.crm-tree__contact-row:hover { background: var(--eq-gray-50); }
+.crm-tree__contact-row.is-active {
+  background: var(--eq-ice);
+  border-left-color: var(--eq-sky);
+}
+
+/* Reach buttons appear on hover */
+.crm-tree__reach {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.crm-tree__contact-row:hover .crm-tree__reach,
+.crm-tree__contact-row:focus-within .crm-tree__reach {
+  display: flex;
+}
+
+/* ── Unassigned root node ───────────────────────────────────────────────── */
+.crm-tree__unassigned {
+  border-bottom: 1px solid var(--eq-border);
+}
+.crm-tree__unassigned-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px 10px 14px;
+  border: none;
+  border-left: 3px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.crm-tree__unassigned-row:hover { background: var(--eq-gray-50); }
+.crm-tree__unassigned-row.is-active {
+  background: var(--eq-ice);
+  border-left-color: var(--eq-sky);
+}
+
+/* ── Flat list modes (Customers / Sites / Contacts filter) ──────────────── */
+.crm-tree__flat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--eq-grey);
+  background: var(--eq-gray-50);
+  border-bottom: 1px solid var(--eq-border);
+}
+
+/* ── Mobile: slide-up detail sheet ─────────────────────────────────────── */
+@media (max-width: 767px) {
+  .crm-pane {
+    grid-template-columns: 1fr !important;
+  }
+  .crm-pane__detail-col {
+    display: none;
+  }
+  .crm-detail-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: var(--eq-white);
+    border-top: 1px solid var(--eq-border);
+    border-radius: 12px 12px 0 0;
+    max-height: 80dvh;
+    overflow-y: auto;
+    transform: translateY(100%);
+    transition: transform 200ms ease;
+    overscroll-behavior: contain;
+  }
+  .crm-detail-sheet.is-open {
+    transform: translateY(0);
+  }
+  .crm-detail-sheet__handle {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0 4px;
+    cursor: grab;
+    flex-shrink: 0;
+  }
+  .crm-detail-sheet__handle::before {
+    content: '';
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--eq-border);
+  }
+}
+@media (min-width: 768px) {
+  .crm-detail-sheet {
+    display: contents;
+  }
+  .crm-detail-sheet__handle { display: none; }
+}
