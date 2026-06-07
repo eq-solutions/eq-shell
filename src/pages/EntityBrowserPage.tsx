@@ -175,6 +175,16 @@ const ENTITY_VIEW: Record<
       { key: 'next_service_due', label: 'Next service' },
     ],
   },
+  // ── Field entities (require field.view to browse) ─────────────────────────
+  team: {
+    table: 'teams',
+    label: 'Teams',
+    columns: [
+      { key: 'name', label: 'Team' },
+      { key: 'color', label: 'Colour' },
+      { key: 'created_at', label: 'Created' },
+    ],
+  },
 };
 
 function formatCell(value: unknown, key: string): string {

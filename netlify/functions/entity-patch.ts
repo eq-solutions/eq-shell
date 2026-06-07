@@ -8,12 +8,15 @@
 //   Tenant is resolved from the session — never from the body.
 //
 // Authorisation
-//   Requires entity.edit (manager or supervisor).
+//   CRM/Equipment entities: entity.edit (manager or supervisor).
+//   Field entities (staff, leave_request, timesheet): field.dispatch (manager or supervisor).
+//   Permission is resolved per-entity after the entity name is known.
 //
 // Body
-//   { entity: 'customer'|'site'|'contact'|'asset', id: uuid, fields: Record<string, unknown> }
+//   { entity: 'customer'|'site'|'contact'|'asset'|'staff'|'leave_request'|'timesheet',
+//     id: uuid, fields: Record<string, unknown> }
 //
-// Only fields in EDITABLE_FIELDS[entity] are written — anything else is silently
+// Only fields in ENTITY_META[entity].fields are written — anything else is silently
 // stripped, so there is no way to clobber tenant_id, PKs, or audit columns.
 
 import type { Context } from '@netlify/functions';
@@ -51,7 +54,35 @@ const ENTITY_META: Record<string, { table: string; pk: string; fields: readonly 
     pk: 'asset_id',
     fields: ['name', 'external_id', 'asset_type', 'make', 'serial_number', 'next_service_due', 'active'],
   },
+  // ── Field entities (require field.dispatch permission) ────────────────────
+  staff: {
+    table: 'staff',
+    pk: 'staff_id',
+    fields: [
+      'first_name', 'last_name', 'preferred_name',
+      'email', 'phone',
+      'employment_type', 'trade', 'level',
+      'home_base', 'notes',
+      'active',
+    ],
+  },
+  leave_request: {
+    // Allow managers/supervisors to set status (approve/reject) and add decision notes.
+    // from_date, to_date, hours_requested etc. are immutable once submitted.
+    table: 'leave_requests',
+    pk: 'leave_request_id',
+    fields: ['status', 'decision_notes'],
+  },
+  timesheet: {
+    // Allow managers to update status (submitted→approved/paid) and add notes.
+    table: 'timesheets',
+    pk: 'timesheet_id',
+    fields: ['status', 'notes'],
+  },
 };
+
+// Field entities require field.dispatch rather than entity.edit.
+const FIELD_EDIT_ENTITIES = new Set<string>(['staff', 'leave_request', 'timesheet']);
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -65,10 +96,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const session = verifySessionToken(readSessionCookie(req));
   if (!session) return json(401, { ok: false, error: 'not_signed_in' });
-
-  if (!can(session, 'entity.edit')) {
-    return json(403, { ok: false, error: 'forbidden' });
-  }
 
   let body: { entity?: unknown; id?: unknown; fields?: unknown };
   try {
@@ -86,6 +113,12 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       ok: false, error: 'unknown_entity',
       detail: `entity must be one of: ${Object.keys(ENTITY_META).join(', ')}`,
     });
+  }
+
+  // Per-entity permission gate: field entities need field.dispatch; CRM/equipment need entity.edit.
+  const requiredPerm = FIELD_EDIT_ENTITIES.has(entity) ? 'field.dispatch' : 'entity.edit';
+  if (!can(session, requiredPerm)) {
+    return json(403, { ok: false, error: 'forbidden' });
   }
 
   if (!UUID_RE.test(id)) {

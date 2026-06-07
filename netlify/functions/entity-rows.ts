@@ -16,6 +16,7 @@ import {
   TenantRoutingMisconfiguredError,
 } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 // Allow-list mirrors the RPC's CASE. Reject early so a typo doesn't reach
@@ -24,6 +25,15 @@ const ALLOWED_ENTITIES = new Set<string>([
   'customer', 'contact', 'site', 'staff',
   'schedule', 'timesheet', 'leave_request', 'tender',
   'prestart', 'toolbox_talk', 'licence', 'asset',
+  'team',
+]);
+
+// Field entities gate: browsing staff/roster/leave/teams data requires
+// field.view (manager, supervisor, employee, apprentice, labour_hire).
+// CRM/equipment/tender entities are open to all logged-in users.
+const FIELD_ENTITIES = new Set<string>([
+  'staff', 'schedule', 'timesheet', 'leave_request', 'team',
+  'prestart', 'toolbox_talk', 'licence',
 ]);
 
 const MAX_LIMIT = 200;
@@ -55,6 +65,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       error: 'unknown_entity',
       detail: `entity must be one of: ${[...ALLOWED_ENTITIES].join(', ')}`,
     });
+  }
+
+  // Field entities require field.view permission.
+  if (FIELD_ENTITIES.has(entity) && !can(session, 'field.view')) {
+    return json(403, { ok: false, error: 'forbidden', detail: 'field.view permission required' });
   }
 
   const limitRaw  = url.searchParams.get('limit');
