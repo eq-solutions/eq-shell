@@ -25,6 +25,12 @@ import { EqError } from '../components/EqError';
 import { createSupabaseClient } from '../lib/supabaseJwt';
 import type { EqRole } from '../session';
 
+interface SecurityGroup {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
 interface UserRow {
   id: string;
   email: string;
@@ -58,6 +64,11 @@ function AdminEditUserInner() {
   const [resetErr, setResetErr] = useState<string | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
 
+  const [allGroups, setAllGroups] = useState<SecurityGroup[]>([]);
+  const [userGroupIds, setUserGroupIds] = useState<Set<string>>(new Set());
+  const [groupBusy, setGroupBusy] = useState<string | null>(null);
+  const [groupErr, setGroupErr] = useState<string | null>(null);
+
   const load = async () => {
     if (!userId) return;
     setLoadErr(null);
@@ -84,6 +95,20 @@ function AdminEditUserInner() {
 
   useEffect(() => {
     void load();
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    void (async () => {
+      const [allRes, userRes] = await Promise.all([
+        fetch('/.netlify/functions/security-groups?action=list', { credentials: 'include' }),
+        fetch(`/.netlify/functions/security-groups?action=user_groups&user_id=${userId}`, { credentials: 'include' }),
+      ]);
+      const allBody = (await allRes.json()) as { ok: boolean; groups?: SecurityGroup[] };
+      const userBody = (await userRes.json()) as { ok: boolean; groups?: SecurityGroup[] };
+      if (allBody.ok) setAllGroups(allBody.groups ?? []);
+      if (userBody.ok) setUserGroupIds(new Set((userBody.groups ?? []).map((g) => g.id)));
+    })();
   }, [userId]);
 
   if (loadErr) {
@@ -325,6 +350,86 @@ function AdminEditUserInner() {
           </div>
         )}
       </section>
+      {allGroups.length > 0 && (
+        <section className="eq-section" style={{ marginTop: 40, maxWidth: 480 }}>
+          <h2 className="eq-section__heading">Security groups</h2>
+          <p style={{ fontSize: 14, color: 'var(--eq-grey)', marginBottom: 16 }}>
+            Extra permissions granted on top of this user's role. Changes take
+            effect on their next page load.
+          </p>
+
+          {groupErr && (
+            <div className="eq-err" role="alert" style={{ marginBottom: 12 }}>
+              {groupErr}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {allGroups.map((group) => {
+              const isMember = userGroupIds.has(group.id);
+              const isThisGroupBusy = groupBusy === group.id;
+              return (
+                <label
+                  key={group.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    padding: '10px 12px',
+                    border: '1px solid var(--eq-border)',
+                    borderRadius: 6,
+                    cursor: isThisGroupBusy ? 'wait' : 'pointer',
+                    background: isMember ? 'var(--eq-ice)' : 'var(--eq-bg)',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isMember}
+                    disabled={isThisGroupBusy}
+                    style={{ marginTop: 2, flexShrink: 0 }}
+                    onChange={async () => {
+                      if (!target) return;
+                      setGroupErr(null);
+                      setGroupBusy(group.id);
+                      try {
+                        const action = isMember ? 'remove_member' : 'add_member';
+                        const res = await fetch('/.netlify/functions/security-groups', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ action, id: group.id, user_id: target.id }),
+                        });
+                        const body = (await res.json()) as { ok: boolean; error?: string };
+                        if (!body.ok) {
+                          setGroupErr(`Could not update group: ${body.error ?? 'unknown error'}`);
+                        } else {
+                          setUserGroupIds((prev) => {
+                            const next = new Set(prev);
+                            if (isMember) next.delete(group.id); else next.add(group.id);
+                            return next;
+                          });
+                        }
+                      } catch {
+                        setGroupErr('Network error — please try again.');
+                      } finally {
+                        setGroupBusy(null);
+                      }
+                    }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>{group.name}</div>
+                    {group.description && (
+                      <div style={{ fontSize: 12, color: 'var(--eq-grey)', marginTop: 2 }}>
+                        {group.description}
+                      </div>
+                    )}
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </HubLayout>
   );
 }
