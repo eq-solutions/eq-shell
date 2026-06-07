@@ -182,6 +182,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const workerIdByEmail = new Map<string, string>();
   if (candidateEmails.length > 0) {
     const { data: workerRows } = await sb
+      .schema('public')
       .from('workers')
       .select('id, email')
       .in('email', candidateEmails);

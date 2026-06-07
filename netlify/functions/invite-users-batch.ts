@@ -134,7 +134,9 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   // Org id for this tenant — used when creating worker_invites records so
   // Cards can pre-populate the profile on first open. Best-effort only.
+  // organisations is in the public schema; must call .schema('public').
   const { data: orgRow } = await sb
+    .schema('public')
     .from('organisations')
     .select('id')
     .eq('tenant_id', session.tenant_id)
@@ -293,8 +295,10 @@ If you weren't expecting this, you can ignore this email.
 
   // Link to canonical workers + create Cards pre-population record.
   // Best-effort — never fails the invite if the worker isn't found.
+  // Note: workers + worker_invites are in the public schema.
   if (orgId) {
     const { data: worker } = await sb
+      .schema('public')
       .from('workers')
       .select('id, first_name, last_name, phone, role')
       .eq('email', email)
@@ -309,6 +313,7 @@ If you weren't expecting this, you can ignore this email.
 
       // Create the Cards-side pre-population record (idempotent — skip if one exists)
       const { data: existingWi } = await sb
+        .schema('public')
         .from('worker_invites')
         .select('id')
         .eq('worker_id', worker.id)
@@ -316,7 +321,7 @@ If you weren't expecting this, you can ignore this email.
         .maybeSingle<{ id: string }>();
 
       if (!existingWi) {
-        await sb.from('worker_invites').insert({
+        await sb.schema('public').from('worker_invites').insert({
           org_id: orgId,
           worker_id: worker.id,
           created_by: invitedBy,
