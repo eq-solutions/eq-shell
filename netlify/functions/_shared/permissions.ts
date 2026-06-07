@@ -14,13 +14,14 @@
 // the Principal interface and the server-side can() wrapper that handles the
 // is_platform_admin short-circuit and extra_perms extension points.
 
-// The role→perm matrix lives in ./roles-matrix.ts — a local, bundle-safe copy
-// of @eq-solutions/roles. We can't import the package at function runtime:
-// Netlify externalizes it and ships raw source, so its `.ts`/`.json` entries
-// fail to load (see roles-matrix.ts). Drift is guarded by check-perm-sync.mjs.
+// Effective permissions are resolved by @eq-solutions/roles (the single source
+// of truth). As of v2.3.0 the package ships a compiled `roles.js` as its default
+// export condition, so Netlify functions can import it at runtime — the prior
+// bundling trap (default condition resolved to raw `.ts` → 502 on load) is gone.
+// This retires the old local `roles-matrix.ts` hand-copy.
+import { resolveEffectivePermissions } from '@eq-solutions/roles';
 import type { PermKey } from '@eq-solutions/roles';
 export type { PermKey } from '@eq-solutions/roles';
-import { MATRIX } from './roles-matrix.js';
 import type { EqRole } from './supabase.js';
 
 /**
@@ -38,15 +39,21 @@ export interface Principal {
 
 /**
  * Can this principal perform `perm`? Mirrors the browser useCan(): platform
- * admins short-circuit to true; extra_perms are checked before the role matrix;
- * a missing or unrecognised role is denied.
+ * admins short-circuit to true; otherwise the package resolves role-defaults ∪
+ * group grants (extra_perms), validating each key and applying any future
+ * revokes. A null role yields no role-defaults but still honours extra_perms
+ * (guest invites) — resolveEffectivePermissions tolerates an absent role at
+ * runtime (MATRIX[undefined] ?? []).
  */
 export function can(principal: Principal, perm: PermKey): boolean {
   if (principal.is_platform_admin === true) return true;
-  if (principal.extra_perms?.includes(perm)) return true;
-  const role = principal.role;
-  if (!role) return false;
-  return MATRIX[role]?.includes(perm) ?? false;
+  const effective = resolveEffectivePermissions({
+    // Cast: the package types `role` as required, but its runtime tolerates an
+    // absent role (a no-role principal still gets its group grants).
+    role: (principal.role ?? undefined) as EqRole,
+    groupPerms: (principal.extra_perms ?? undefined) as readonly PermKey[] | undefined,
+  });
+  return effective.includes(perm);
 }
 
 /**
