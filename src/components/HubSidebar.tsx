@@ -241,7 +241,7 @@ export function HubSidebar({ apps, records }: Props) {
           <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>PLATFORM</p>
           <nav className="eq-hub-sidebar__nav" aria-label="Platform navigation">
             <NavLink
-              to={`/${tenantSlug}/admin/tenants`}
+              to="/_platform/tenants"
               className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
             >
               <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Database size={16} aria-hidden="true" /></span>

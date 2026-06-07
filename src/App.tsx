@@ -254,6 +254,40 @@ function RootRoute() {
   return <LoginPage />;
 }
 
+// Gate for the platform-operator console (/_platform/*). Mirrors RequireSession
+// but has no tenant slug to match — instead it requires is_platform_admin.
+// Non-operators bounce to their own tenant home.
+function RequirePlatformSession({ children }: { children: ReactNode }) {
+  const { session, loading } = useSession();
+  const location = useLocation();
+  if (loading && !session) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
+        <Skeleton variant="text" width={120} />
+      </div>
+    );
+  }
+  if (!session) {
+    return <Navigate to="/" replace state={{ from: location.pathname }} />;
+  }
+  if (!session.user.is_platform_admin) {
+    return <Navigate to={`/${session.tenant.slug}`} replace />;
+  }
+  return <>{children}</>;
+}
+
+// Platform-operator console — cross-tenant surfaces that don't belong in any one
+// tenant's URL space (tenant provisioning today; room for more operator tools).
+function PlatformTree() {
+  return (
+    <Routes>
+      <Route index element={<Navigate to="tenants" replace />} />
+      <Route path="tenants" element={<AdminTenantsPage />} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+}
+
 function TenantTree() {
   const { session } = useSession();
   const location = useLocation();
@@ -420,8 +454,9 @@ function TenantTree() {
             route is reachable to any signed-in tenant user, but the
             UI shows "Not allowed" when the role doesn't grant it.
             Order matters: 'invite' (static) before ':userId' (param). */}
-        {/* Platform-admin: tenant provisioning dashboard */}
-        <Route path="admin/tenants" element={<AdminTenantsPage />} />
+        {/* Platform-operator console moved to /_platform/tenants. Redirect old
+            in-tenant links/bookmarks so nothing breaks. */}
+        <Route path="admin/tenants" element={<Navigate to="/_platform/tenants" replace />} />
         <Route path="admin/users" element={<AdminUserList />} />
         <Route path="admin/users/invite" element={<AdminInviteUser />} />
         <Route path="admin/users/invite-bulk" element={<AdminBulkInvite />} />
@@ -486,6 +521,17 @@ function App() {
           <Route path="/select-tenant" element={<TenantPicker />} />
           {/* Phase 1.G: TOTP challenge shown after PIN login when 2FA is enrolled */}
           <Route path="/totp-challenge" element={<TotpChallenge />} />
+          {/* Platform-operator console — top-level, tenant-less, operator-gated.
+              Registered before /:tenantSlug/* so '_platform' is never parsed as
+              a tenant slug. */}
+          <Route
+            path="/_platform/*"
+            element={
+              <RequirePlatformSession>
+                <PlatformTree />
+              </RequirePlatformSession>
+            }
+          />
           <Route
             path="/:tenantSlug/*"
             element={
