@@ -26,6 +26,7 @@ import {
   getServiceClient,
   getUserMemberships,
   getEnrichedMemberships,
+  getUserSecurityGroupPerms,
 } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import {
@@ -173,6 +174,12 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     p_detail: { role: activeMembership.role },
   });
 
+  // Security-group perms — same additive widening shell-login mints. Without
+  // this, a forced-TOTP user (every SKS manager) would start the session with
+  // role-only perms until the first verify-shell-session refresh. Non-blocking:
+  // missing table → [].
+  const extra_perms = await getUserSecurityGroupPerms(user.id, tenant.id);
+
   const exp = Date.now() + SESSION_TTL_MS;
   const cookieValue = signSessionToken({
     user_id: user.id,
@@ -183,6 +190,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     memberships: memberships.map((m) => ({ tenant_id: m.tenant_id, role: m.role })),
     email: user.email,
     name: user.name ?? null,
+    ...(extra_perms.length > 0 ? { extra_perms } : {}),
     config: DEFAULT_TENANT_CONFIG,
     exp,
   });
