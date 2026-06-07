@@ -34,6 +34,7 @@ import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
 import AdminTenantsPage from './pages/AdminTenantsPage';
 import EntityBrowserPage from './pages/EntityBrowserPage';
+import CustomersHubPage from './pages/CustomersHubPage';
 import ServiceIframe from './pages/ServiceIframe';
 import QuotesIframe from './pages/QuotesIframe';
 import StorageBrowser from './pages/StorageBrowser';
@@ -495,6 +496,9 @@ function TenantTree() {
             </Suspense>
           }
         />
+        {/* Customers CRM hub — the primary way into customer→sites→contacts.
+            The flat /data/site + /data/contact routes stay for power users. */}
+        <Route path="customers" element={<CustomersHubPage />} />
         <Route path="data/:entity" element={<EntityBrowserPage />} />
         {/* D3.3d — Shell-hosted licence OCR onboarding (browser fallback for Cards OCR) */}
         <Route path="onboarding/licence" element={<LicenceOcrPage />} />

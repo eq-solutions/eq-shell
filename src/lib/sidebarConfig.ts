@@ -7,7 +7,8 @@ import type { RecordLink } from '../components/HubSidebar';
 // Static record links — counts are null by default; pages that fetch dashboard
 // data should provide live counts when available.
 export const SIDEBAR_RECORDS: Omit<RecordLink, 'count'>[] = [
-  { key: 'customer',  label: 'Customers',         entity: 'customer'  },
+  // Customers opens the CRM hub (customer → sites → contacts), not the flat list.
+  { key: 'customer',  label: 'Customers',         entity: 'customer', to: 'customers' },
   { key: 'site',      label: 'Sites',             entity: 'site'      },
   { key: 'contact',   label: 'Contacts',          entity: 'contact'   },
   { key: 'staff',     label: 'Staff',             entity: 'staff'     },
