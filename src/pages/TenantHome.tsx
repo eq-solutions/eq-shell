@@ -110,7 +110,47 @@ const EVENT_META: Record<string, { label: string; dot: 'ok' | 'warn' | 'err' | '
   'maintenance_check.overdue':     { label: 'Maintenance check overdue', dot: 'err'     },
   'asset.imported':                { label: 'Equipment imported',        dot: 'ok'      },
   'asset.service_due':             { label: 'Equipment due for service', dot: 'warn'    },
+  'shift.started':                 { label: 'Shift roster',              dot: 'default' },
 };
+
+// Humanise an unmapped event id (e.g. "timesheet.submitted" → "Timesheet
+// submitted") so the feed never shows a raw dotted string.
+function humanizeEvent(raw: string): string {
+  const s = raw.replace(/[._]+/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : raw;
+}
+
+// Pull the human-meaningful bit out of an event's payload when present, so the
+// feed says something useful ("Shift roster — 50 scheduled · 22 on leave")
+// rather than just naming the event. Keys verified against live canonical_events.
+function eventDetail(event: string, payload: Record<string, unknown>): string | null {
+  const n = (k: string) => (typeof payload[k] === 'number' ? (payload[k] as number) : null);
+  const s = (k: string) => (typeof payload[k] === 'string' && payload[k] ? (payload[k] as string) : null);
+  switch (event) {
+    case 'shift.started': {
+      const scheduled = n('scheduled_count');
+      const leave = n('leave_count');
+      if (scheduled === null) return null;
+      return leave ? `${scheduled} scheduled · ${leave} on leave` : `${scheduled} scheduled`;
+    }
+    case 'maintenance_check.overdue': {
+      const d = n('days_overdue');
+      return d === null ? null : `${d} day${d === 1 ? '' : 's'} overdue`;
+    }
+    case 'quote.created': {
+      const num = s('quote_number');
+      const by = s('estimator');
+      return [num, by && `by ${by}`].filter(Boolean).join(' · ') || null;
+    }
+    case 'quote.sent':
+    case 'quote.accepted': {
+      const by = s('estimator');
+      return by ? `by ${by}` : null;
+    }
+    default:
+      return null;
+  }
+}
 
 const APP_LABELS: Record<string, string> = {
   quotes:  'EQ Quotes',
@@ -599,7 +639,7 @@ export default function TenantHome() {
 
           {/* KPI strip — values stubbed until cross-app RPCs are wired */}
           <div className="eq-hub-kpis">
-            <div className="eq-hub-kpi">
+            <Link to={`/${tenantSlug}/data/staff`} className="eq-hub-kpi eq-hub-kpi--link">
               <p className="eq-hub-kpi__label">Team</p>
               {loading ? (
                 <Skeleton variant="text" width={60} />
@@ -608,8 +648,8 @@ export default function TenantHome() {
                   {staffCount !== null ? staffCount : '—'}
                 </p>
               )}
-              <p className="eq-hub-kpi__sub">active staff</p>
-            </div>
+              <p className="eq-hub-kpi__sub">all staff →</p>
+            </Link>
             <Link to={`/${tenantSlug}/data/customer`} className="eq-hub-kpi eq-hub-kpi--link">
               <p className="eq-hub-kpi__label">Customers</p>
               {loading ? (
@@ -706,11 +746,12 @@ export default function TenantHome() {
               ) : (
                 <div className="eq-hub-activity__list">
                   {(feed ?? []).map((e) => {
-                    const meta = EVENT_META[e.event] ?? { label: e.event, dot: 'default' as const };
+                    const meta = EVENT_META[e.event] ?? { label: humanizeEvent(e.event), dot: 'default' as const };
+                    const detail = eventDetail(e.event, e.payload);
                     return (
                       <div key={e.id} className="eq-hub-activity__item">
                         <span className={`eq-hub-activity__dot eq-hub-activity__dot--${meta.dot}`} aria-hidden="true" />
-                        <div className="eq-hub-activity__name">{meta.label}</div>
+                        <div className="eq-hub-activity__name">{detail ? `${meta.label} — ${detail}` : meta.label}</div>
                         <span className="eq-hub-activity__source">
                           {APP_LABELS[e.app_source] ?? e.app_source}
                         </span>
