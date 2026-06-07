@@ -148,9 +148,17 @@ export default function FieldIframe() {
   useEffect(() => {
     if (!selectedTenant) return;
 
+    // One correlation id per Field-iframe load. It rides ALONGSIDE the signed
+    // #sh= handoff (a query param in cookie mode) so a single sign-in is
+    // traceable core→Field: Field reads `cid` at boot and tags its own Sentry
+    // events with it. Tagging Shell's scope here means the handoff captureMessage
+    // calls below carry the same id.
+    const cid = crypto.randomUUID();
+    Sentry.getCurrentScope().setTag('cid', cid);
+
     // Cookie auth — no token minting needed. Just set the src directly.
     if (tenantUsesCookieAuth(selectedTenant)) {
-      setSrc(buildFieldCookieSrc(selectedTenant));
+      setSrc(buildFieldCookieSrc(selectedTenant, cid));
       setState({ phase: 'waiting' });
       return;
     }
@@ -171,7 +179,7 @@ export default function FieldIframe() {
         }
         const body = (await res.json()) as { token: string; tenant_slug: string };
         if (!cancelled) {
-          setSrc(buildFieldSrc(body.tenant_slug, body.token));
+          setSrc(buildFieldSrc(body.tenant_slug, body.token, cid));
           setState({ phase: 'waiting' });
         }
       } catch {
