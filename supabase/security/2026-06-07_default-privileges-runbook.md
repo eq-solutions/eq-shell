@@ -130,10 +130,16 @@ this default-privilege fix together close the recurrence loop. Going forward, an
 needs anon/authenticated access must declare it explicitly (grant + RLS policy) in its own
 migration — see the "Canonical DDL governance" section in `CLAUDE.md`.
 
-# Open follow-up (not in this change — needs a decision)
+# zaap (EQ Field data plane) — censused and APPLIED 2026-06-07
 
-`zaap` (eq-canonical-internal, `zaapmfdkgedqupfjtchl`) was **not** part of the 2026-06-07
-diagnosis and is **not** touched here. It very likely carries the same open-by-default posture,
-but its legacy EQ Field model actively runs as the `anon` role (see `KNOWN_LEGACY_ANON` in the
-drift gate), so flipping its default needs its own analysis. Census it (step 1) and decide
-separately before extending this fix to that plane.
+`zaap` (eq-canonical-internal, `zaapmfdkgedqupfjtchl`) was censused after the initial two planes
+and carried the **same** footgun (public · postgres + supabase_admin → full anon/authenticated
+default). The census showed flipping it is safe: 33 anon/authenticated-granting public tables
+exist (EQ Field legacy surface) but **all 33 have RLS enabled**, and `ALTER DEFAULT PRIVILEGES`
+only affects FUTURE tables, so none are touched. Their existing exposure stays on the SEPARATE
+Field anon burn-down track (`KNOWN_LEGACY_ANON`), unaffected either way.
+
+Applied the `FOR ROLE postgres` revoke on zaap public; verified born-closed. Same `supabase_admin`
+residual (dashboard SQL editor). See `2026-06-07_default-privileges-field.sql`. Going forward, a new
+Field public table needing anon access must grant it explicitly (new Field work targets `app_data`,
+already clean). **The recurrence loop is now closed on all three canonical planes.**

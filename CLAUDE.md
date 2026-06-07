@@ -72,11 +72,13 @@ When you change anything in this list, also verify the downstream consumer:
 
 - **New tables are born CLOSED.** Per the 2026-06-07 default-privilege lockdown
   (`supabase/security/2026-06-07_default-privileges-*.sql`), `ALTER DEFAULT
-  PRIVILEGES` on the control plane (jvkn: `public` + `shell_control`) and the
-  SKS plane (ehow: `public`) no longer grant `anon`/`authenticated` on freshly
-  created tables. This replaced the old "open by default" posture that let
-  `sks_quotes_*`, `sks_quotes_pricing_*`, and `tenant_role_overrides` ship
-  anon-exposed until someone remembered to `REVOKE`.
+  PRIVILEGES` on all three canonical planes — control (jvkn: `public` +
+  `shell_control`), SKS (ehow: `public`), and EQ Field (zaap: `public`) — no
+  longer grants `anon`/`authenticated` on freshly created tables. This replaced
+  the old "open by default" posture that let `sks_quotes_*`,
+  `sks_quotes_pricing_*`, and `tenant_role_overrides` ship anon-exposed until
+  someone remembered to `REVOKE`. (One residual per plane: the `supabase_admin`
+  grantor line needs the dashboard SQL editor — `postgres` can't alter it.)
 - **Anon/authenticated access is now opt-in.** A new table that genuinely needs
   it must add an EXPLICIT `GRANT` **plus** an RLS policy in its own migration —
   never rely on a schema default. Bootstrap reads (login-page org lookup,
