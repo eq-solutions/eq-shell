@@ -39,13 +39,12 @@
 //   site code     → status='planned',  task=verbatim label, leave_type=null
 //   <day>_job pin → notes "job:<n>" (lossless)
 //
-// ⚠ SCHEMA GAP (flagged, NOT silently worked around): the LIVE table has
-//   `site_id uuid NOT NULL` and `hours_planned numeric NOT NULL`. The Field
-//   roster surface has NO site_id resolver (label kept in `task`) and the wide
-//   cell carries no planned-hours value. So every emitted row carries site_id =
-//   null and hours_planned = 0, and the row is flagged 'site_id_required_not_null'
-//   (a blocker the apply path must resolve — a real site_id resolver or a relaxed
-//   constraint — before any write lands). Surfaced like the leave RDO gap.
+// NOTE: the LIVE table has `site_id uuid NULL` (nullable — verified 2026-06-08)
+//   and `hours_planned numeric NOT NULL`. The Field roster surface has NO site_id
+//   resolver (no sites table seeded for SKS tenant yet), so the label is kept in
+//   `task` and site_id is emitted as null. hours_planned = 0 as a placeholder.
+//   Both land cleanly; site_id_required_not_null warnings are informational only
+//   (not apply-blockers). Site resolution can be added once sites are seeded.
 
 import { makeUuid } from './transform-teams.ts';
 import type { IdentityResolver } from './identity-bridge.ts';

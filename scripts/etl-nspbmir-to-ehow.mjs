@@ -119,11 +119,18 @@ const target = createClient(EHOW_URL, EHOW_KEY, {
 
 log('Loading identity bridge (ehow app_data.staff)…');
 const staffRows = await readAll(
-  target.schema('app_data').from('staff').select('staff_id, external_id, name').eq('tenant_id', TENANT_ID),
+  target.schema('app_data').from('staff').select('staff_id, external_id, first_name, last_name').eq('tenant_id', TENANT_ID),
   'ehow staff',
 );
+// ehow staff has first_name + last_name, not a combined `name` column.
+// Combine them so the identity bridge can match on display name (requester_name,
+// name fields in nspbmir leave / timesheets / schedule).
 const resolver = buildResolver(
-  staffRows.map((s) => ({ staff_id: s.staff_id, external_id: s.external_id, name: s.name })),
+  staffRows.map((s) => ({
+    staff_id:    s.staff_id,
+    external_id: s.external_id,
+    name:        [s.first_name, s.last_name].filter(Boolean).join(' ').trim() || null,
+  })),
 );
 const bridgeStats = resolver.stats();
 
@@ -258,7 +265,7 @@ if (want('timesheets')) {
 
 if (want('schedule')) {
   const sched = await readAll(
-    source.from('schedule').select('*').eq('org_id', SKS_ORG_ID),
+    source.from('schedule').select('*').eq('org_id', SKS_ORG_ID).is('deleted_at', null),
     'nspbmir schedule',
   );
 
@@ -266,9 +273,8 @@ if (want('schedule')) {
   const ok = results.filter((r) => r.ok);
   const rows = ok.flatMap((r) => r.rows.map(stampImported));
 
-  // schedule_entries.site_id is NOT NULL live but we emit null → a real apply
-  // would fail. Surface it as a blocker count; the apply UPSERT will report the
-  // write error rather than silently dropping (gate documented in PR notes).
+  // schedule_entries.site_id is NULLABLE (verified 2026-06-08) so null is fine.
+  // We still surface the count for observability; it is informational, NOT a blocker.
   const siteGap = results.filter((r) => r.warnings.includes('site_id_required_not_null')).length;
 
   const upserted = APPLY ? await upsert('schedule_entries', 'schedule_id', rows) : null;
@@ -419,7 +425,7 @@ function printHuman(r) {
     console.log(`    unmatched staff ....... ${s.unmatched_staff.length}`);
     console.log(`    ambiguous staff ....... ${s.ambiguous_staff.length}`);
     console.log(`    bad week .............. ${s.bad_week.length}`);
-    console.log(`  ! site_id NOT NULL gap (blocks apply): ${s.site_id_required_not_null}`);
+    console.log(`  ! site_id unresolved (label in task; nullable — does not block apply): ${s.site_id_required_not_null}`);
   }
 
   console.log(bar);
