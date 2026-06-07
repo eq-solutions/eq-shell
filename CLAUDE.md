@@ -68,6 +68,33 @@ When you change anything in this list, also verify the downstream consumer:
 - **Iframe pages (`FieldIframe`, `CardsIframe`, `ServiceIframe`) mint a fresh
   token on mount.** Don't cache; the handshake is the contract.
 
+## Canonical schema / DDL governance (read before touching tenant DBs)
+
+The tenant data planes are **production × two entities** — zaap (EQ ·
+`zaapmfdkgedqupfjtchl`) and ehow (separate SKS entity · `ehowgjardagevnrluult`).
+
+- **No canonical DDL outside the One Pipe.** Schema changes reach a tenant plane
+  ONLY via `tenant-migrate.yml` (workflow_dispatch, `production`-gated) running
+  `migrate-tenants.mjs`. Applying `ALTER`/`CREATE`/RLS toggles by hand — Supabase
+  dashboard or the Supabase MCP — is the anti-pattern that caused the 2026-06-07
+  `migration_baseline` RLS drift/oscillation. Use the MCP for **reads**; fix
+  posture in a migration, not by hand.
+- **RLS norm = ON for every `app_data` table, on every plane.** No exceptions.
+  `check-tenant-drift.mjs` CHECK 4 enforces this **absolutely** (not just
+  tenant-vs-tenant), so a "both planes wrong together" state fails the build.
+  Never blind-toggle RLS on prod to chase a green check — green now means
+  genuinely converged; if it's red, fix the migration.
+- **Service-role-only table** (no browser path, e.g. `migration_baseline`,
+  `_eq_migrations`): enable RLS with **no** policy, `REVOKE` from
+  PUBLIC/anon/authenticated, `GRANT` to service_role only. Add it to
+  `SERVICE_ROLE_ONLY` in **both** `regen-tenant-baseline.mjs` and
+  `check-tenant-drift.mjs` (the lists must stay identical).
+- **New migrations must not self-`INSERT` into `_eq_migrations`** — the runner is
+  the single ledger writer (the `migration-hygiene` CI job blocks it).
+- The drift gate runs every 3 hours; out-of-band changes surface within hours,
+  not on merge. Note: `postgres` is **not superuser** here, so in-DB event
+  triggers / DDL audit are infeasible — detection is via the gate, not a trigger.
+
 ## Module convention
 
 - Every new lazy React module: add `React.lazy()` import + `<ModuleGate
