@@ -1,178 +1,17 @@
-/* MobileTabBar — fixed bottom tab bar for phones (<=767px).
-   Hidden on desktop; the icon rail / sidebar take over there. */
+/* MobileTabBar — mobile chrome: top bar (all pages) + bottom tab bar
+   (home/non-iframe pages). Hidden above 767px — the icon rail / sidebar
+   take over there.
 
-.eq-mtabs {
-  display: none;
-}
+   Naming conventions:
+   .eq-mtopbar  — slim 48px ink top bar (both home and iframe modes)
+   .eq-mtabs    — 72px ink bottom tab bar (home/non-iframe only)
+   .eq-mob-*    — account sheet, admin sheet, scrim (shared)
+*/
 
-@media (max-width: 767px) {
-  .eq-mtabs {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 56px;
-    background: var(--eq-ink, #1A1A2E);
-    border-top: 1px solid rgba(255, 255, 255, 0.10);
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
-    z-index: 200;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-}
+/* ═══════════════════════════════════════════════════════
+   TOP BAR
+═══════════════════════════════════════════════════════ */
 
-.eq-mtabs__item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  text-decoration: none;
-  color: rgba(255, 255, 255, 0.50);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  transition: color 100ms ease;
-  border-top: 2px solid transparent;
-  background: none;
-  border-left: none;
-  border-right: none;
-  border-bottom: none;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.eq-mtabs__item--active {
-  color: #3DA8D8;
-  border-top-color: #3DA8D8;
-}
-
-.eq-mtabs__item:focus-visible {
-  outline: 2px solid rgba(61, 168, 216, 0.40);
-  outline-offset: -2px;
-}
-
-/* ── Account sheet ── */
-
-.eq-mtabs__backdrop {
-  display: none;
-}
-
-.eq-mtabs__sheet {
-  display: none;
-}
-
-@media (max-width: 767px) {
-  .eq-mtabs__backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.40);
-    z-index: 205;
-  }
-
-  .eq-mtabs__sheet {
-    display: flex;
-    flex-direction: column;
-    position: fixed;
-    left: 8px;
-    right: 8px;
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 8px);
-    z-index: 210;
-    background: var(--eq-ink, #1A1A2E);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 12px;
-    overflow: hidden;
-  }
-}
-
-.eq-mtabs__sheet-id {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.eq-mtabs__sheet-avatar {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: #2986B4;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  letter-spacing: 0.04em;
-}
-
-.eq-mtabs__sheet-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.eq-mtabs__sheet-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.92);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.eq-mtabs__sheet-email {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.eq-mtabs__sheet-action {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  background: none;
-  border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.80);
-  font-size: 14px;
-  font-weight: 500;
-  font-family: inherit;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-  width: 100%;
-  transition: background 100ms ease;
-}
-
-.eq-mtabs__sheet-action:last-child { border-bottom: none; }
-.eq-mtabs__sheet-action:hover { background: rgba(255, 255, 255, 0.06); }
-
-.eq-mtabs__sheet-action:focus-visible {
-  outline: 2px solid rgba(61, 168, 216, 0.40);
-  outline-offset: -2px;
-}
-
-.eq-mtabs__sheet-action--signout {
-  color: #FCA5A5;
-}
-
-/* ── Slim top bar (iframe modules on mobile) ──
-   On iframe-module pages the embedded app owns the bottom of the screen, so
-   Shell yields the bottom tab bar and shows this slim top bar instead: an Apps
-   control (back to the launcher), the current app name, and Account. Hidden on
-   desktop, where the icon rail takes over. Respects the iOS notch via
-   safe-area-inset-top. */
 .eq-mtopbar {
   display: none;
 }
@@ -188,24 +27,26 @@
     flex-direction: row;
     align-items: center;
     gap: 8px;
-    padding: 0 8px;
+    padding: 0 14px;
     padding-top: env(safe-area-inset-top, 0px);
     box-sizing: content-box;
     background: var(--eq-ink, #1A1A2E);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     z-index: 200;
   }
 }
 
+/* "Apps ←" pill (iframe mode) */
 .eq-mtopbar__apps {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  height: 32px;
+  height: 34px;
   padding: 0 12px 0 10px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
   color: rgba(255, 255, 255, 0.92);
   font-family: inherit;
   font-size: 13px;
@@ -214,37 +55,57 @@
   transition: background 100ms ease;
 }
 
-.eq-mtopbar__apps:hover { background: rgba(255, 255, 255, 0.10); }
+.eq-mtopbar__apps:hover { background: rgba(255, 255, 255, 0.08); }
 
 .eq-mtopbar__apps:focus-visible {
   outline: 2px solid rgba(61, 168, 216, 0.40);
   outline-offset: 1px;
 }
 
+/* Centred app/page title (iframe mode) */
 .eq-mtopbar__title {
-  flex: 1;
-  min-width: 0;
+  position: absolute;
+  left: 0;
+  right: 0;
   text-align: center;
-  color: rgba(255, 255, 255, 0.92);
+  pointer-events: none;
+  color: #fff;
   font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 0 80px; /* stop text overlapping buttons */
 }
 
+/* EQ wordmark (home mode) */
+.eq-mtopbar__logo {
+  font-size: 15px;
+  font-weight: 800;
+  color: #3DA8D8;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* Flexible spacer between wordmark and account button (home mode) */
+.eq-mtopbar__sp {
+  flex: 1;
+}
+
+/* Account icon button — shared between home and iframe top bars */
 .eq-mtopbar__account {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
-  border: none;
-  background: none;
-  color: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: transparent;
+  color: #94A3B8;
   cursor: pointer;
   transition: color 100ms ease, background 100ms ease;
 }
@@ -260,10 +121,302 @@
   outline-offset: -2px;
 }
 
-/* Account sheet anchored under the top bar (instead of above the bottom bar). */
+/* ═══════════════════════════════════════════════════════
+   BOTTOM TAB BAR  (home / non-iframe pages only)
+═══════════════════════════════════════════════════════ */
+
+.eq-mtabs {
+  display: none;
+}
+
 @media (max-width: 767px) {
-  .eq-mtabs__sheet--top {
-    top: calc(48px + env(safe-area-inset-top, 0px) + 8px);
-    bottom: auto;
+  .eq-mtabs {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 72px;
+    background: var(--eq-ink, #1A1A2E);
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    z-index: 200;
+    padding: 4px 0 env(safe-area-inset-bottom, 0px);
   }
 }
+
+.eq-mtabs__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 6px;
+  gap: 4px;
+  text-decoration: none;
+  color: #475569;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 100ms ease;
+}
+
+/* Active tab: sky colour + 2.5px strip anchored to the very top of the tab */
+.eq-mtabs__item--active {
+  color: #3DA8D8;
+}
+
+.eq-mtabs__item--active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 2.5px;
+  background: #3DA8D8;
+  border-radius: 0 0 3px 3px;
+}
+
+.eq-mtabs__item:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: -2px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   SCRIM  (shared — both home and iframe modes)
+═══════════════════════════════════════════════════════ */
+
+.eq-mob-scrim {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .eq-mob-scrim {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    z-index: 210;
+    background: rgba(0, 0, 0, 0.46);
+  }
+
+  /* Home: scrim stops at the tab bar so tabs remain interactive beneath */
+  .eq-mob-scrim--above-tabs {
+    top: 0;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Iframe: no tab bar, scrim is full screen */
+  .eq-mob-scrim--full {
+    top: 0;
+    bottom: 0;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   ACCOUNT SHEET & ADMIN/MORE SHEET  (Frames 4 & 6)
+═══════════════════════════════════════════════════════ */
+
+.eq-mob-sheet {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .eq-mob-sheet {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border-radius: 18px 18px 0 0;
+    z-index: 215;
+    overflow: hidden;
+  }
+
+  /* Home: sheet floats above the 72px tab bar */
+  .eq-mob-sheet--above-tabs {
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Iframe: sheet anchored below the 48px top bar (no tab bar present) */
+  .eq-mob-sheet--top {
+    top: calc(48px + env(safe-area-inset-top, 0px) + 8px);
+    bottom: auto;
+    border-radius: 18px;
+    margin: 0 8px;
+  }
+}
+
+/* Drag handle */
+.eq-mob-sheet__handle {
+  width: 38px;
+  height: 4px;
+  background: #E5E7EB;
+  border-radius: 99px;
+  margin: 10px auto 0;
+  flex-shrink: 0;
+}
+
+/* Account row (full-size avatar variant) */
+.eq-mob-sheet__acct {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 18px 16px;
+  flex-shrink: 0;
+}
+
+/* Compact avatar variant (admin sheet) */
+.eq-mob-sheet__acct--compact {
+  padding: 12px 18px;
+}
+
+/* Sky round avatar */
+.eq-mob-sheet__avatar {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #3DA8D8;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.02em;
+}
+
+.eq-mob-sheet__avatar--sm {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+}
+
+.eq-mob-sheet__acct-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.eq-mob-sheet__name {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1A1A2E;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eq-mob-sheet__email {
+  font-size: 12.5px;
+  color: #6B7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Full-width 1px divider */
+.eq-mob-sheet__divider {
+  height: 1px;
+  background: #F3F4F6;
+  flex-shrink: 0;
+}
+
+/* Admin section label */
+.eq-mob-sheet__sect-label {
+  padding: 9px 18px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9CA3AF;
+  background: #F9FAFB;
+  border-top: 1px solid #F3F4F6;
+  border-bottom: 1px solid #F3F4F6;
+  flex-shrink: 0;
+}
+
+/* Sheet row — link or button */
+.eq-mob-sheet__row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #F3F4F6;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  color: #1A1A2E;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  width: 100%;
+  transition: background 100ms ease;
+  flex-shrink: 0;
+}
+
+.eq-mob-sheet__row:last-child { border-bottom: none; }
+.eq-mob-sheet__row:hover { background: #F9FAFB; }
+
+.eq-mob-sheet__row:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: -2px;
+}
+
+/* Icon tile — 36×36, rounded corners */
+.eq-mob-sheet__row-ic {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: #F3F4F6;
+  color: #4B5563;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Ice tile (EQ sky-tinted background) */
+.eq-mob-sheet__row-ic--ice {
+  background: #EAF5FB;
+  color: #2986B4;
+}
+
+/* Red tile for sign-out */
+.eq-mob-sheet__row-ic--err {
+  background: #FEF2F2;
+  color: #B91C1C;
+}
+
+.eq-mob-sheet__row-label {
+  flex: 1;
+}
+
+.eq-mob-sheet__row-label--err {
+  color: #B91C1C;
+}
+
+.eq-mob-sheet__row-chev {
+  flex-shrink: 0;
+  color: #D1D5DB;
+}
+
+/* Sign-out row — red text, no chevron */
+.eq-mob-sheet__row--signout {
+  border-bottom: none;
+}
+
+/* ── Icon rail offset is managed in IconRail.css ── */
