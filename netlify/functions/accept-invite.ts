@@ -227,13 +227,17 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   // Link canonical worker to the new shell user so Cards can pre-populate
   // the profile on first open. Best-effort — never blocks the accept flow.
+  // Note: workers + worker_invites are in the public schema; the service
+  // client defaults to shell_control so we must call .schema('public') here.
   if (invite.worker_id) {
     await sb
+      .schema('public')
       .from('workers')
       .update({ user_id: created.id })
       .eq('id', invite.worker_id);
 
     const { data: workerInvite } = await sb
+      .schema('public')
       .from('worker_invites')
       .select('id')
       .eq('worker_id', invite.worker_id)
@@ -242,6 +246,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
     if (workerInvite) {
       await sb
+        .schema('public')
         .from('worker_invites')
         .update({ claimed_at: new Date().toISOString(), claimed_by: created.id })
         .eq('id', workerInvite.id);
