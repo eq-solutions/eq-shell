@@ -1,0 +1,13 @@
+{
+  "tenant_id": "7dee117c-98bd-4d39-af8c-2c81d02a1e85",
+  "teams": [
+    { "id": 1, "org_id": "1eb831f9-aeae-4e57-b49e-9681e8f51e15", "name": "Day Crew", "color": "#3DA8D8" },
+    { "id": 2, "org_id": "1eb831f9-aeae-4e57-b49e-9681e8f51e15", "name": "Night Crew", "color": null }
+  ],
+  "team_members": [
+    { "team_id": 1, "person_id": 101, "org_id": "1eb831f9-aeae-4e57-b49e-9681e8f51e15" },
+    { "team_id": 1, "person_id": 102, "org_id": "1eb831f9-aeae-4e57-b49e-9681e8f51e15" },
+    { "team_id": 2, "person_id": 999, "org_id": "1eb831f9-aeae-4e57-b49e-9681e8f51e15" },
+    { "team_id": 7, "person_id": 103, "org_id": "1eb831f9-aeae-4e57-b49e-9681e8f51e15" }
+  ]
+}

@@ -46,6 +46,9 @@ const SINGULAR_TO_TABLE: Record<string, string> = {
   leave_request: 'leave_requests', leave_balance: 'leave_balances',
   checkin: 'checkins', tender: 'tenders', site_diary: 'site_diaries',
   weekly_report: 'weekly_reports', apprentice_profile: 'apprentice_profiles',
+  // nspbmir → ehow ETL surfaces (teams + leave). leave_request already mapped
+  // above; teams/team_members are new and self-named.
+  team: 'teams', team_member: 'team_members',
 };
 
 // app_data table name → the singular entity the /data/:entity browser accepts
