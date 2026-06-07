@@ -50,7 +50,7 @@ try {
       sg.name     AS group_name,
       sg.tenant_id
     FROM shell_control.security_group_perms sgp
-    JOIN shell_control.security_groups sg ON sg.id = sgp.security_group_id
+    JOIN shell_control.security_groups sg ON sg.id = sgp.group_id
     ORDER BY sgp.perm_key, sg.tenant_id;
   `);
 } catch (e) {
