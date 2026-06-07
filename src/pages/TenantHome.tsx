@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AlertTriangle, Check } from 'lucide-react';
-import { useSession, moduleEnabled, type EqTier } from '../session';
+import { useSession, moduleEnabled, type EqTier, type EqRole } from '../session';
 import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
 import { MobileTabBar } from '../components/MobileTabBar';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
@@ -366,7 +366,12 @@ export default function TenantHome() {
     icon: HUB_APP_ICONS[a.key],
   }));
 
-  const enabledApps = visibleApps;
+  // Field-first ordering for workers who primarily need roster/timesheet access.
+  // Managers and admins see the default order (Cards → Field → Service → Quotes).
+  const WORKER_ROLES: EqRole[] = ['employee', 'labour_hire'];
+  const enabledApps = WORKER_ROLES.includes(session.user.role)
+    ? [...visibleApps].sort((a, b) => (a.key === 'field' ? -1 : b.key === 'field' ? 1 : 0))
+    : visibleApps;
 
   return (
     <div className="eq-hub">
