@@ -114,6 +114,50 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       });
     }
 
+    if (action === 'user_perms') {
+      // Returns all perm keys held by a specific user via their group memberships
+      // for this tenant. Used by the "Preview permissions" UI.
+      const userId = url.searchParams.get('user_id');
+      if (!userId) return json(400, { ok: false, error: 'missing_user_id' });
+
+      // Verify the target user belongs to this tenant before revealing anything.
+      const { data: mem } = await sb
+        .schema('shell_control')
+        .from('user_tenant_memberships')
+        .select('user_id, role')
+        .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .maybeSingle();
+      if (!mem) return json(404, { ok: false, error: 'user_not_in_tenant' });
+
+      const { data: groupRows, error: grpErr } = await sb
+        .schema('shell_control')
+        .from('user_security_groups')
+        .select('group_id, security_groups!inner(tenant_id, security_group_perms(perm_key))')
+        .eq('user_id', userId)
+        .eq('security_groups.tenant_id', tenantId);
+      if (grpErr) return json(500, { ok: false, error: 'db_error' });
+
+      const permSet = new Set<string>();
+      type PermGroup = { security_group_perms?: { perm_key: string }[] };
+      for (const row of (groupRows ?? []) as unknown as Array<{ security_groups?: PermGroup | PermGroup[] | null }>) {
+        const sg = row.security_groups;
+        const groups: PermGroup[] = Array.isArray(sg) ? sg : sg ? [sg] : [];
+        for (const g of groups) {
+          for (const p of g.security_group_perms ?? []) {
+            permSet.add(p.perm_key);
+          }
+        }
+      }
+      return json(200, {
+        ok: true,
+        user_id: userId,
+        role: (mem as { user_id: string; role: string }).role,
+        group_perm_keys: [...permSet],
+      });
+    }
+
     return json(400, { ok: false, error: 'unknown_action' });
   }
 

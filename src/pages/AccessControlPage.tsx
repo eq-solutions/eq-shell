@@ -11,11 +11,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { ShieldCheck, Plus, Trash2, ChevronRight, X, RotateCcw } from 'lucide-react';
+import { ShieldCheck, Plus, Trash2, ChevronRight, X, RotateCcw, Eye } from 'lucide-react';
+import { resolveEffectivePermissions } from '@eq-solutions/roles';
 import { HubLayout } from '../components/HubLayout';
 import { Gate } from '../permissions/Gate';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 import { EqError } from '../components/EqError';
+import { createSupabaseClient } from '../lib/supabaseJwt';
+import type { EqRole } from '../session';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
@@ -437,6 +440,9 @@ function AccessControlInner() {
 
       {/* ── Custom groups ─────────────────────────────────────────────────── */}
       <GroupsSection />
+
+      {/* ── Permission preview ────────────────────────────────────────────── */}
+      <PermPreviewSection />
     </div>
   );
 }
@@ -533,6 +539,156 @@ function CellDetailPanel({
         })}
       </div>
     </div>
+  );
+}
+
+// ── Permission preview ────────────────────────────────────────────────────────
+//
+// Lets an admin select any tenant user and see what their effective permissions
+// would be (role defaults ∪ group grants ∖ denied overrides) using the same
+// resolveEffectivePermissions call the server uses. Zero network calls after
+// the initial user + group-perm fetch — the computation is client-side.
+
+interface TenantUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: EqRole;
+}
+
+function PermPreviewSection() {
+  const [users, setUsers] = useState<TenantUser[] | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewResult, setPreviewResult] = useState<{
+    role: string;
+    group_perm_keys: string[];
+    effective: string[];
+  } | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  // Load tenant users on mount (same RPC as AdminUserList)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const sb = await createSupabaseClient();
+        const { data } = await sb.rpc('eq_list_tenant_users');
+        if (!cancelled) setUsers((data as TenantUser[] | null) ?? []);
+      } catch {
+        if (!cancelled) setUsers([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const preview = async () => {
+    if (!selectedUserId) return;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewResult(null);
+    try {
+      const res = await fetch(`/.netlify/functions/security-groups?action=user_perms&user_id=${encodeURIComponent(selectedUserId)}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as { ok: boolean; role: string; group_perm_keys: string[] };
+      const effective = resolveEffectivePermissions({
+        role: data.role as EqRole,
+        // group_perm_keys from the API may include unknown keys — the function
+        // filters them internally; cast to satisfy the type.
+        groupPerms: data.group_perm_keys as unknown as readonly import('@eq-solutions/roles').PermKey[],
+      });
+      setPreviewResult({ role: data.role, group_perm_keys: data.group_perm_keys, effective: [...effective] });
+    } catch (e) {
+      setPreviewError(e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  return (
+    <section style={{ marginTop: 40 }}>
+      <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--eq-ink)', margin: 0 }}>Preview user permissions</h2>
+      <p style={{ fontSize: 13, color: 'var(--eq-grey)', margin: '4px 0 16px' }}>
+        Select a user to see their effective permissions — role defaults plus any group grants.
+      </p>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <select
+          value={selectedUserId}
+          onChange={e => { setSelectedUserId(e.target.value); setPreviewResult(null); }}
+          style={{ ...inputStyle, width: 280, display: 'inline-block', margin: 0 }}
+          disabled={!users}
+        >
+          <option value="">{users === null ? 'Loading users…' : 'Select a user'}</option>
+          {(users ?? []).map(u => (
+            <option key={u.id} value={u.id}>
+              {u.name ?? u.email} — {u.role.replace('_', ' ')}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => void preview()}
+          disabled={!selectedUserId || previewLoading}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            background: selectedUserId && !previewLoading ? 'var(--eq-sky)' : '#e0e0e0',
+            color: selectedUserId && !previewLoading ? '#fff' : 'var(--eq-grey)',
+            border: 'none', borderRadius: 6, padding: '8px 14px',
+            fontSize: 13, fontWeight: 600, cursor: selectedUserId && !previewLoading ? 'pointer' : 'not-allowed',
+          }}
+        >
+          <Eye size={14} />
+          {previewLoading ? 'Loading…' : 'Preview'}
+        </button>
+      </div>
+
+      {previewError && (
+        <p style={{ color: 'var(--eq-danger, #e53935)', fontSize: 13, marginTop: 12 }}>
+          Error: {previewError}
+        </p>
+      )}
+
+      {previewResult && (
+        <div style={{ marginTop: 16, border: '1px solid var(--eq-border)', borderRadius: 8, padding: '16px 20px', background: '#fafafa' }}>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 12, fontSize: 13 }}>
+            <span>
+              <span style={{ fontWeight: 600, color: 'var(--eq-ink)' }}>Role:</span>{' '}
+              <span style={{ color: 'var(--eq-grey)' }}>{previewResult.role.replace('_', ' ')}</span>
+            </span>
+            <span>
+              <span style={{ fontWeight: 600, color: 'var(--eq-ink)' }}>Group grants:</span>{' '}
+              <span style={{ color: 'var(--eq-grey)' }}>
+                {previewResult.group_perm_keys.length > 0
+                  ? previewResult.group_perm_keys.join(', ')
+                  : 'none'}
+              </span>
+            </span>
+          </div>
+          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--eq-ink)', marginBottom: 8 }}>
+            Effective permissions ({previewResult.effective.length})
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {previewResult.effective.map(p => (
+              <span
+                key={p}
+                style={{
+                  background: 'var(--eq-ice)', color: 'var(--eq-deep)',
+                  border: '1px solid var(--eq-sky)', borderRadius: 4,
+                  padding: '3px 8px', fontSize: 11, fontFamily: 'monospace',
+                }}
+              >
+                {p}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
