@@ -1,0 +1,42 @@
+{
+  "tenant_id": "7dee117c-98bd-4d39-af8c-2c81d02a1e85",
+  "schedule": [
+    {
+      "id": 8001,
+      "name": "Jordan Reyes",
+      "week": "06.07.26",
+      "mon": "D5384",
+      "mon_job": "5384",
+      "tue": "RDO",
+      "wed": "A/L",
+      "thu": "TAFE",
+      "fri": "OFF",
+      "sat": "",
+      "sun": ""
+    },
+    {
+      "id": 8002,
+      "name": "Casey Lin",
+      "week": "06.07.26",
+      "mon": "SICK",
+      "tue": "U/L",
+      "wed": "PH",
+      "thu": "D6001",
+      "fri": "JURY",
+      "sat": "",
+      "sun": ""
+    },
+    {
+      "id": 8003,
+      "name": "Ghost Worker",
+      "week": "06.07.26",
+      "mon": "D9999",
+      "tue": "",
+      "wed": "",
+      "thu": "",
+      "fri": "",
+      "sat": "",
+      "sun": ""
+    }
+  ]
+}

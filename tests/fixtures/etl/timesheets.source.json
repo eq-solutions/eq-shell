@@ -1,0 +1,62 @@
+{
+  "tenant_id": "7dee117c-98bd-4d39-af8c-2c81d02a1e85",
+  "timesheets": [
+    {
+      "id": 7001,
+      "name": "Jordan Reyes",
+      "week": "06.07.26",
+      "mon_job": "D5384",
+      "mon_hrs": 8,
+      "tue_job": "D5384:4|D5385:4",
+      "tue_hrs": 8,
+      "wed_job": "",
+      "wed_hrs": 0,
+      "thu_job": null,
+      "thu_hrs": null,
+      "fri_job": "D5384",
+      "fri_hrs": 7.5,
+      "sat_job": "",
+      "sat_hrs": 0,
+      "sun_job": "",
+      "sun_hrs": 0,
+      "approved": true,
+      "approved_by": "Sam O'Neil",
+      "approved_at": "2026-07-13T09:00:00Z",
+      "notes": "On the city job all week"
+    },
+    {
+      "id": 7002,
+      "name": "Casey Lin",
+      "week": "06.07.26",
+      "mon_job": "D6001",
+      "mon_hrs": 8,
+      "tue_job": "",
+      "tue_hrs": 0,
+      "wed_job": "",
+      "wed_hrs": 0,
+      "thu_job": "",
+      "thu_hrs": 0,
+      "fri_job": "",
+      "fri_hrs": 0,
+      "sat_job": "",
+      "sat_hrs": 0,
+      "sun_job": "",
+      "sun_hrs": 0,
+      "approved": false,
+      "approved_by": null,
+      "approved_at": null,
+      "notes": null
+    },
+    {
+      "id": 7003,
+      "name": "Ghost Worker",
+      "week": "06.07.26",
+      "mon_job": "D9999",
+      "mon_hrs": 8,
+      "approved": false,
+      "approved_by": null,
+      "approved_at": null,
+      "notes": null
+    }
+  ]
+}
