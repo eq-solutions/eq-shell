@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, NavLink, useMatch, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, House, CircleUser, Settings, LogOut, Grid3x3 } from 'lucide-react';
-import { useSession } from '../session';
+import {
+  Users, Wrench, FileText, CreditCard, House, CircleUser, Settings, LogOut,
+  Grid3x3, ShieldCheck, BarChart2, Download, ClipboardList, ArrowRightLeft,
+  ChevronRight,
+} from 'lucide-react';
+import { useSession, moduleEnabled } from '../session';
 import './MobileTabBar.css';
 
 // Iframe modules (Field / Service / Cards / Quotes) embed a full app that owns
@@ -16,6 +20,16 @@ const IFRAME_MODULES: Record<string, string> = {
   cards: 'EQ Cards',
 };
 
+// Tab definitions — each entry's key is matched against moduleEnabled() so
+// entitlement-disabled apps are filtered out automatically at render time.
+const ALL_TABS = [
+  { key: 'home',    label: 'Home',    Icon: House,      to: '' },
+  { key: 'field',   label: 'Field',   Icon: Users,      to: 'field'   },
+  { key: 'service', label: 'Service', Icon: Wrench,     to: 'service' },
+  { key: 'quotes',  label: 'Quotes',  Icon: FileText,   to: 'quotes'  },
+  { key: 'cards',   label: 'Cards',   Icon: CreditCard, to: 'cards'   },
+];
+
 function initials(name: string | null, email: string): string {
   if (name) {
     const parts = name.trim().split(' ');
@@ -24,19 +38,18 @@ function initials(name: string | null, email: string): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-const NAV_TABS = [
-  { key: 'home',    label: 'Home',    icon: <House size={20} strokeWidth={2} aria-hidden="true" />,      to: '' },
-  { key: 'field',   label: 'Field',   icon: <Users size={20} strokeWidth={2} aria-hidden="true" />,      to: 'field'   },
-  { key: 'service', label: 'Service', icon: <Wrench size={20} strokeWidth={2} aria-hidden="true" />,     to: 'service' },
-  { key: 'quotes',  label: 'Quotes',  icon: <FileText size={20} strokeWidth={2} aria-hidden="true" />,   to: 'quotes'  },
-  { key: 'cards',   label: 'Cards',   icon: <CreditCard size={20} strokeWidth={2} aria-hidden="true" />, to: 'cards'   },
-];
-
 /**
- * Mobile-only bottom tab bar (<=767px). Rendered on the dashboard and on
- * iframe module pages so navigation + Sign out are reachable on phones, where
- * the desktop sidebar / icon rail are hidden. The Account tab opens a small
- * sheet because Sign out is an action, not a route.
+ * Mobile-only chrome (<=767px).
+ *
+ * Non-iframe pages (home, records, admin): slim top bar (EQ logo + account
+ * button) + entitlement-filtered 5-tab bottom bar.
+ *
+ * Iframe-module pages (Field / Service / Quotes / Cards): slim top bar with
+ * "Apps ←" + app name + account button. No bottom tabs — the embedded app owns
+ * its bottom chrome.
+ *
+ * Both top bars share the account sheet (Frame 4) and the admin/more sheet
+ * (Frame 6, admins only).
  */
 export function MobileTabBar() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
@@ -44,90 +57,237 @@ export function MobileTabBar() {
   const match = useMatch('/:tenantSlug/:module/*');
   const activeModule = match?.params?.module ?? null;
   const [accountOpen, setAccountOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
 
-  const closeAccount = useCallback(() => setAccountOpen(false), []);
+  const closeAll = useCallback(() => { setAccountOpen(false); setAdminOpen(false); }, []);
 
   useEffect(() => {
-    if (!accountOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeAccount();
-    };
+    if (!accountOpen && !adminOpen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeAll(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [accountOpen, closeAccount]);
+  }, [accountOpen, adminOpen, closeAll]);
 
   if (!session || !tenantSlug) return null;
 
   const isAdmin = (session.user.role as string) === 'manager' || session.user.is_platform_admin;
   const userInitials = initials(session.user.name, session.user.email);
   const userName = session.user.name ?? session.user.email.split('@')[0].replace('.', ' ');
-  const accountActive = activeModule === 'admin';
-
-  // Iframe-module case: yield the bottom bar to the embedded app. On mobile we
-  // render a slim top bar (Apps ← + app name + Account) instead of the bottom
-  // tabs, so the embedded app's own bottom nav is reachable. Desktop is
-  // unaffected — both bars are display:none above 767px.
   const iframeAppName = activeModule ? IFRAME_MODULES[activeModule] : undefined;
+
+  // Bottom tabs: home always visible, others filtered by entitlement
+  const visibleTabs = ALL_TABS.filter(
+    (t) => t.key === 'home' || moduleEnabled(session, t.key),
+  );
+
+  // Account sheet — white card, floats above tabs or below iframe top bar
+  const AccountSheet = ({ aboveTabs }: { aboveTabs: boolean }) => (
+    <>
+      <div
+        className={`eq-mob-scrim${aboveTabs ? ' eq-mob-scrim--above-tabs' : ' eq-mob-scrim--full'}`}
+        onClick={closeAll}
+        aria-hidden="true"
+      />
+      <div
+        className={`eq-mob-sheet${aboveTabs ? ' eq-mob-sheet--above-tabs' : ' eq-mob-sheet--top'}`}
+        role="menu"
+        aria-label="Account"
+      >
+        <div className="eq-mob-sheet__handle" />
+        <div className="eq-mob-sheet__acct">
+          <span className="eq-mob-sheet__avatar">{userInitials}</span>
+          <div className="eq-mob-sheet__acct-info">
+            <div className="eq-mob-sheet__name">{userName}</div>
+            <div className="eq-mob-sheet__email">{session.user.email}</div>
+          </div>
+        </div>
+        <div className="eq-mob-sheet__divider" />
+
+        {isAdmin && (
+          <NavLink
+            to={`/${tenantSlug}/admin/settings`}
+            className="eq-mob-sheet__row"
+            role="menuitem"
+            onClick={closeAll}
+          >
+            <span className="eq-mob-sheet__row-ic"><Settings size={18} strokeWidth={2} aria-hidden="true" /></span>
+            <span className="eq-mob-sheet__row-label">Settings</span>
+            <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
+          </NavLink>
+        )}
+
+        <NavLink
+          to={`/${tenantSlug}/admin/security-groups`}
+          className="eq-mob-sheet__row"
+          role="menuitem"
+          onClick={closeAll}
+        >
+          <span className="eq-mob-sheet__row-ic"><ShieldCheck size={18} strokeWidth={2} aria-hidden="true" /></span>
+          <span className="eq-mob-sheet__row-label">Security</span>
+          <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
+        </NavLink>
+
+        {isAdmin && (
+          <button
+            type="button"
+            className="eq-mob-sheet__row"
+            role="menuitem"
+            onClick={() => { setAccountOpen(false); setAdminOpen(true); }}
+          >
+            <span className="eq-mob-sheet__row-ic eq-mob-sheet__row-ic--ice">
+              <BarChart2 size={18} strokeWidth={2} aria-hidden="true" />
+            </span>
+            <span className="eq-mob-sheet__row-label">Reports & admin</span>
+            <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
+          </button>
+        )}
+
+        <button
+          type="button"
+          className="eq-mob-sheet__row eq-mob-sheet__row--signout"
+          role="menuitem"
+          onClick={() => { closeAll(); void logout(); }}
+        >
+          <span className="eq-mob-sheet__row-ic eq-mob-sheet__row-ic--err">
+            <LogOut size={18} strokeWidth={2} aria-hidden="true" />
+          </span>
+          <span className="eq-mob-sheet__row-label eq-mob-sheet__row-label--err">Sign out</span>
+        </button>
+      </div>
+    </>
+  );
+
+  // More / Admin sheet (Frame 6) — visible to managers + platform admins
+  const AdminSheet = ({ aboveTabs }: { aboveTabs: boolean }) => (
+    <>
+      <div
+        className={`eq-mob-scrim${aboveTabs ? ' eq-mob-scrim--above-tabs' : ' eq-mob-scrim--full'}`}
+        onClick={closeAll}
+        aria-hidden="true"
+      />
+      <div
+        className={`eq-mob-sheet${aboveTabs ? ' eq-mob-sheet--above-tabs' : ' eq-mob-sheet--top'}`}
+        role="menu"
+        aria-label="More"
+      >
+        <div className="eq-mob-sheet__handle" />
+        <div className="eq-mob-sheet__acct eq-mob-sheet__acct--compact">
+          <span className="eq-mob-sheet__avatar eq-mob-sheet__avatar--sm">{userInitials}</span>
+          <div className="eq-mob-sheet__acct-info">
+            <div className="eq-mob-sheet__name">{userName}</div>
+            <div className="eq-mob-sheet__email">{session.user.email}</div>
+          </div>
+        </div>
+        <div className="eq-mob-sheet__divider" />
+
+        <NavLink
+          to={`/${tenantSlug}/reports`}
+          className="eq-mob-sheet__row"
+          role="menuitem"
+          onClick={closeAll}
+        >
+          <span className="eq-mob-sheet__row-ic eq-mob-sheet__row-ic--ice">
+            <BarChart2 size={18} strokeWidth={2} aria-hidden="true" />
+          </span>
+          <span className="eq-mob-sheet__row-label">GM Reports</span>
+          <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
+        </NavLink>
+
+        <NavLink
+          to={`/${tenantSlug}/intake`}
+          className="eq-mob-sheet__row"
+          role="menuitem"
+          onClick={closeAll}
+        >
+          <span className="eq-mob-sheet__row-ic eq-mob-sheet__row-ic--ice">
+            <Download size={18} strokeWidth={2} aria-hidden="true" />
+          </span>
+          <span className="eq-mob-sheet__row-label">Import</span>
+          <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
+        </NavLink>
+
+        <div className="eq-mob-sheet__sect-label">Admin</div>
+
+        <NavLink
+          to={`/${tenantSlug}/admin/users`}
+          className="eq-mob-sheet__row"
+          role="menuitem"
+          onClick={closeAll}
+        >
+          <span className="eq-mob-sheet__row-ic">
+            <Users size={18} strokeWidth={2} aria-hidden="true" />
+          </span>
+          <span className="eq-mob-sheet__row-label">Users</span>
+          <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
+        </NavLink>
+
+        <NavLink
+          to={`/${tenantSlug}/admin/audit`}
+          className="eq-mob-sheet__row"
+          role="menuitem"
+          onClick={closeAll}
+        >
+          <span className="eq-mob-sheet__row-ic">
+            <ClipboardList size={18} strokeWidth={2} aria-hidden="true" />
+          </span>
+          <span className="eq-mob-sheet__row-label">Audit log</span>
+          <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
+        </NavLink>
+
+        <NavLink
+          to={`/${tenantSlug}/admin/migration`}
+          className="eq-mob-sheet__row"
+          role="menuitem"
+          onClick={closeAll}
+        >
+          <span className="eq-mob-sheet__row-ic">
+            <ArrowRightLeft size={18} strokeWidth={2} aria-hidden="true" />
+          </span>
+          <span className="eq-mob-sheet__row-label">Migration</span>
+          <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
+        </NavLink>
+
+        <NavLink
+          to={`/${tenantSlug}/admin/security-groups`}
+          className="eq-mob-sheet__row"
+          role="menuitem"
+          onClick={closeAll}
+        >
+          <span className="eq-mob-sheet__row-ic">
+            <ShieldCheck size={18} strokeWidth={2} aria-hidden="true" />
+          </span>
+          <span className="eq-mob-sheet__row-label">Security groups</span>
+          <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
+        </NavLink>
+      </div>
+    </>
+  );
+
+  // ── Iframe-module layout (Frames 2 & 3) ────────────────────────────────────
   if (iframeAppName) {
     return (
       <>
-        {accountOpen && (
-          <div className="eq-mtabs__backdrop" onClick={closeAccount} aria-hidden="true" />
-        )}
-
-        {accountOpen && (
-          <div className="eq-mtabs__sheet eq-mtabs__sheet--top" role="menu" aria-label="Account">
-            <div className="eq-mtabs__sheet-id">
-              <span className="eq-mtabs__sheet-avatar" aria-hidden="true">{userInitials}</span>
-              <div className="eq-mtabs__sheet-info">
-                <span className="eq-mtabs__sheet-name">{userName}</span>
-                <span className="eq-mtabs__sheet-email">{session.user.email}</span>
-              </div>
-            </div>
-
-            {isAdmin && (
-              <NavLink
-                to={`/${tenantSlug}/admin/settings`}
-                className="eq-mtabs__sheet-action"
-                role="menuitem"
-                onClick={closeAccount}
-              >
-                <Settings size={18} strokeWidth={2} aria-hidden="true" />
-                <span>Settings</span>
-              </NavLink>
-            )}
-
-            <button
-              className="eq-mtabs__sheet-action eq-mtabs__sheet-action--signout"
-              role="menuitem"
-              onClick={() => { closeAccount(); void logout(); }}
-            >
-              <LogOut size={18} strokeWidth={2} aria-hidden="true" />
-              <span>Sign out</span>
-            </button>
-          </div>
-        )}
+        {accountOpen && <AccountSheet aboveTabs={false} />}
+        {adminOpen && <AdminSheet aboveTabs={false} />}
 
         <header className="eq-mtopbar" role="navigation" aria-label="App navigation">
           <Link
             to={`/${tenantSlug}`}
             className="eq-mtopbar__apps"
-            onClick={closeAccount}
+            onClick={closeAll}
             aria-label="Back to all apps"
           >
             <Grid3x3 size={18} strokeWidth={2} aria-hidden="true" />
             <span>Apps</span>
           </Link>
-
           <span className="eq-mtopbar__title">{iframeAppName}</span>
-
           <button
             type="button"
             className={`eq-mtopbar__account${accountOpen ? ' eq-mtopbar__account--active' : ''}`}
             aria-haspopup="menu"
             aria-expanded={accountOpen}
             aria-label="Account"
-            onClick={() => setAccountOpen((o) => !o)}
+            onClick={() => { setAdminOpen(false); setAccountOpen((o) => !o); }}
           >
             <CircleUser size={20} strokeWidth={2} aria-hidden="true" />
           </button>
@@ -136,76 +296,49 @@ export function MobileTabBar() {
     );
   }
 
+  // ── Home / non-iframe layout (Frames 1, 4, 6) ──────────────────────────────
   return (
     <>
-      {accountOpen && (
-        <div className="eq-mtabs__backdrop" onClick={closeAccount} aria-hidden="true" />
-      )}
+      {accountOpen && <AccountSheet aboveTabs />}
+      {adminOpen && <AdminSheet aboveTabs />}
 
-      {accountOpen && (
-        <div className="eq-mtabs__sheet" role="menu" aria-label="Account">
-          <div className="eq-mtabs__sheet-id">
-            <span className="eq-mtabs__sheet-avatar" aria-hidden="true">{userInitials}</span>
-            <div className="eq-mtabs__sheet-info">
-              <span className="eq-mtabs__sheet-name">{userName}</span>
-              <span className="eq-mtabs__sheet-email">{session.user.email}</span>
-            </div>
-          </div>
+      {/* Slim top bar: EQ wordmark + account button */}
+      <header className="eq-mtopbar eq-mtopbar--home" role="banner" aria-label="EQ Shell">
+        <span className="eq-mtopbar__logo" aria-label="EQ Solutions">EQ</span>
+        <span className="eq-mtopbar__sp" aria-hidden="true" />
+        <button
+          type="button"
+          className={`eq-mtopbar__account${accountOpen ? ' eq-mtopbar__account--active' : ''}`}
+          aria-haspopup="menu"
+          aria-expanded={accountOpen}
+          aria-label="Account"
+          onClick={() => { setAdminOpen(false); setAccountOpen((o) => !o); }}
+        >
+          <CircleUser size={20} strokeWidth={2} aria-hidden="true" />
+        </button>
+      </header>
 
-          {isAdmin && (
-            <NavLink
-              to={`/${tenantSlug}/admin/settings`}
-              className="eq-mtabs__sheet-action"
-              role="menuitem"
-              onClick={closeAccount}
-            >
-              <Settings size={18} strokeWidth={2} aria-hidden="true" />
-              <span>Settings</span>
-            </NavLink>
-          )}
-
-          <button
-            className="eq-mtabs__sheet-action eq-mtabs__sheet-action--signout"
-            role="menuitem"
-            onClick={() => { closeAccount(); void logout(); }}
-          >
-            <LogOut size={18} strokeWidth={2} aria-hidden="true" />
-            <span>Sign out</span>
-          </button>
-        </div>
-      )}
-
+      {/* Bottom tab bar */}
       <nav className="eq-mtabs" aria-label="App navigation" role="navigation">
-        {NAV_TABS.map((item) => {
+        {visibleTabs.map((item) => {
           const href = item.to ? `/${tenantSlug}/${item.to}` : `/${tenantSlug}`;
           const isActive = item.key === 'home'
             ? activeModule === null
             : activeModule === item.key;
-
+          const { Icon } = item;
           return (
             <NavLink
               key={item.key}
               to={href}
               className={`eq-mtabs__item${isActive ? ' eq-mtabs__item--active' : ''}`}
               aria-current={isActive ? 'page' : undefined}
-              onClick={closeAccount}
+              onClick={closeAll}
             >
-              {item.icon}
+              <Icon size={20} strokeWidth={2} aria-hidden="true" />
               <span>{item.label}</span>
             </NavLink>
           );
         })}
-
-        <button
-          type="button"
-          className={`eq-mtabs__item${accountActive || accountOpen ? ' eq-mtabs__item--active' : ''}`}
-          aria-haspopup="menu"
-          aria-expanded={accountOpen}
-          onClick={() => setAccountOpen((o) => !o)}
-        >
-          <CircleUser size={20} strokeWidth={2} aria-hidden="true" />
-          <span>Account</span>
-        </button>
       </nav>
     </>
   );

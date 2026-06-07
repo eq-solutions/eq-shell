@@ -2537,8 +2537,12 @@
  * Breakpoint matches the tab bar so there's no overlap zone. */
 @media (max-width: 767px) {
   .eq-hub__sidebar { display: none; }
-  /* Clear the fixed 56px tab bar (+ a little breathing room). */
-  .eq-hub__content { overflow-y: auto; padding-bottom: 72px; }
+  /* Clear both bars: 48px top (home top bar) + 72px bottom tab bar. */
+  .eq-hub__content {
+    overflow-y: auto;
+    padding-top: calc(48px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
   .eq-hub-content { padding: 20px 16px; }
   .eq-hub-content__greeting { font-size: 24px; margin-bottom: 18px; }
 
@@ -2568,6 +2572,91 @@
   .eq-hub-panels { grid-template-columns: 1fr; }
   .eq-hub-action { padding: 10px 12px; }
   .eq-hub-action__btn { width: 32px; height: 32px; }
+}
+
+/* ── Mobile Records section (Frame 5 trigger, home screen only) ──
+ * A list card showing CRM entity types. Tapping a row opens the Records
+ * drawer. Replaced by the sidebar records section on desktop. */
+.eq-mob-records { display: none; }
+
+@media (max-width: 767px) {
+  .eq-mob-records {
+    display: block;
+    margin-bottom: 20px;
+  }
+
+  .eq-mob-records__head {
+    padding: 0 2px 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #9CA3AF;
+    margin: 0;
+  }
+
+  .eq-mob-records__card {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .eq-mob-records__row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 16px;
+    border-bottom: 1px solid #F3F4F6;
+    background: none;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    cursor: pointer;
+    width: 100%;
+    font-family: inherit;
+    text-align: left;
+    transition: background 100ms ease;
+  }
+
+  .eq-mob-records__row:last-child { border-bottom: none; }
+  .eq-mob-records__row:hover { background: #F9FAFB; }
+
+  .eq-mob-records__row-ic {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: #EAF5FB;
+    color: #2986B4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .eq-mob-records__row-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .eq-mob-records__row-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1A1A2E;
+  }
+
+  .eq-mob-records__row-badge {
+    font-size: 13px;
+    font-weight: 700;
+    color: #3DA8D8;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .eq-mob-records__row-chev {
+    flex-shrink: 0;
+    color: #D1D5DB;
+  }
 }
 
 /* ── Icon rail: sidebar collapses to 52px icon strip in iframe mode ──

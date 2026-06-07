@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AlertTriangle, Check } from 'lucide-react';
+import { AlertTriangle, Check, Building2, MapPin, User, Users, BadgeCheck, ChevronRight } from 'lucide-react';
 import { useSession, moduleEnabled, type EqTier, type EqRole } from '../session';
 import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
 import { MobileTabBar } from '../components/MobileTabBar';
+import { MobileRecordsDrawer } from '../components/MobileRecordsDrawer';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
@@ -224,6 +225,9 @@ export default function TenantHome() {
   const [regenerating, setRegenerating] = useState(false);
   // Optimistic local state for dismissed/actioned items
   const [actionedTitles, setActionedTitles] = useState<Set<string>>(new Set());
+  // Mobile Records drawer (Frame 5)
+  const [recordsOpen, setRecordsOpen] = useState(false);
+  const [recordsEntity, setRecordsEntity] = useState<'customer' | 'site' | 'contact' | 'staff' | 'licence'>('customer');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -413,9 +417,24 @@ export default function TenantHome() {
     ? [...visibleApps].sort((a, b) => (a.key === 'field' ? -1 : b.key === 'field' ? 1 : 0))
     : visibleApps;
 
+  // Mobile records drawer counts map
+  const mobileRecordsCounts: Partial<Record<string, number | null>> = {
+    customer: customerCount,
+    site: siteCount,
+    contact: contactCount,
+    staff: staffCount,
+    licence: licenceCount,
+  };
+
   return (
     <div className="eq-hub">
       <MobileTabBar />
+      <MobileRecordsDrawer
+        open={recordsOpen}
+        initialEntity={recordsEntity}
+        counts={mobileRecordsCounts}
+        onClose={() => setRecordsOpen(false)}
+      />
       <HubSidebar apps={sidebarApps} records={sidebarRecords} />
 
       <div className="eq-hub__content">
@@ -641,6 +660,42 @@ export default function TenantHome() {
               )}
             </div>
           )}
+
+          {/* Mobile-only Records section (Frame 5 trigger).
+              Desktop uses the sidebar; mobile gets a list card here
+              that opens the Records drawer on tap. */}
+          <div className="eq-mob-records">
+            <p className="eq-mob-records__head">Records</p>
+            <div className="eq-mob-records__card">
+              {[
+                { key: 'customer' as const, label: 'Customers', Icon: Building2, count: customerCount },
+                { key: 'site' as const,     label: 'Sites',     Icon: MapPin,     count: siteCount     },
+                { key: 'contact' as const,  label: 'Contacts',  Icon: User,       count: contactCount  },
+                { key: 'staff' as const,    label: 'Staff',     Icon: Users,      count: staffCount    },
+                { key: 'licence' as const,  label: 'Licences',  Icon: BadgeCheck, count: licenceCount  },
+              ].map(({ key, label, Icon, count }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="eq-mob-records__row"
+                  onClick={() => { setRecordsEntity(key); setRecordsOpen(true); }}
+                >
+                  <span className="eq-mob-records__row-ic" aria-hidden="true">
+                    <Icon size={17} strokeWidth={2} />
+                  </span>
+                  <span className="eq-mob-records__row-main">
+                    <span className="eq-mob-records__row-name">{label}</span>
+                  </span>
+                  {count !== null && (
+                    <span className="eq-mob-records__row-badge">
+                      {loading ? '…' : count}
+                    </span>
+                  )}
+                  <ChevronRight size={16} strokeWidth={2} className="eq-mob-records__row-chev" aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* KPI strip — values stubbed until cross-app RPCs are wired */}
           <div className="eq-hub-kpis">
