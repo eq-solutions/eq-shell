@@ -1,0 +1,65 @@
+{
+  "tenant_id": "7dee117c-98bd-4d39-af8c-2c81d02a1e85",
+  "leave_requests": [
+    {
+      "id": 5001,
+      "requester_name": "Jordan Reyes",
+      "leave_type": "Annual Leave",
+      "date_start": "2026-07-01",
+      "date_end": "2026-07-05",
+      "note": "Family holiday",
+      "approver_name": "Sam O'Neil",
+      "individual_days": null,
+      "status": "approved",
+      "archived": false
+    },
+    {
+      "id": 5002,
+      "requester_name": "Casey Lin",
+      "leave_type": "Sick",
+      "date_start": "12/08/2026",
+      "date_end": "12/08/2026",
+      "note": null,
+      "approver_name": null,
+      "individual_days": null,
+      "status": "Requested",
+      "archived": false
+    },
+    {
+      "id": 5003,
+      "requester_name": "Jordan Reyes",
+      "leave_type": "TAFE",
+      "date_start": null,
+      "date_end": null,
+      "note": "Block release, non-contiguous",
+      "approver_name": "Sam O'Neil",
+      "individual_days": ["2026-09-02", "2026-09-09", "2026-09-16"],
+      "status": "pending",
+      "archived": false
+    },
+    {
+      "id": 5004,
+      "requester_name": "Ghost Worker",
+      "leave_type": "annual",
+      "date_start": "2026-10-01",
+      "date_end": "2026-10-02",
+      "note": "should not match",
+      "approver_name": null,
+      "individual_days": null,
+      "status": "approved",
+      "archived": true
+    },
+    {
+      "id": 5005,
+      "requester_name": "Pat Quinn",
+      "leave_type": "annual",
+      "date_start": "2026-11-01",
+      "date_end": "2026-11-02",
+      "note": "ambiguous name — two Pat Quinns",
+      "approver_name": null,
+      "individual_days": null,
+      "status": "approved",
+      "archived": false
+    }
+  ]
+}
