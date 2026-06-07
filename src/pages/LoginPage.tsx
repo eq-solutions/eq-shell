@@ -1,4 +1,4 @@
-import React, { useState, useRef, type FormEvent } from 'react';
+import React, { useState, type FormEvent } from 'react';
 import './auth.css';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
@@ -59,20 +59,15 @@ export default function LoginPage() {
   const [linkEmail, setLinkEmail] = useState('');
   const [linkSent, setLinkSent] = useState(false);
 
-  // Email + 4-box PIN
+  // Email + PIN
   const [email, setEmail] = useState('');
-  const [pinDigits, setPinDigits] = useState(['', '', '', '']);
+  const [pin, setPin] = useState('');
   const [staySignedIn, setStaySignedIn] = useState(false);
   const [showForgotPin, setShowForgotPin] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotBusy, setForgotBusy] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotErr, setForgotErr] = useState<string | null>(null);
-  const pinRef0 = useRef<HTMLInputElement>(null);
-  const pinRef1 = useRef<HTMLInputElement>(null);
-  const pinRef2 = useRef<HTMLInputElement>(null);
-  const pinRef3 = useRef<HTMLInputElement>(null);
-  const pinRefs = [pinRef0, pinRef1, pinRef2, pinRef3];
 
   // Phone OTP
   const [phoneRaw, setPhoneRaw] = useState('');
@@ -109,45 +104,6 @@ export default function LoginPage() {
     setLinkSent(true);
   }
 
-  // Password managers autofill the whole PIN into a single field. The visible
-  // boxes are maxLength=1, which clips the fill to one digit — so we keep a
-  // hidden full-length password input as the autofill target and distribute
-  // its value across the four boxes here.
-  function setPinFromString(raw: string) {
-    const digits = raw.replace(/\D/g, '').slice(0, 4).split('');
-    const next = ['', '', '', ''];
-    digits.forEach((d, i) => { next[i] = d; });
-    setPinDigits(next);
-    const target = Math.min(digits.length, 3);
-    pinRefs[target].current?.focus();
-  }
-
-  function onPinChange(index: number, value: string) {
-    const digits = value.replace(/\D/g, '');
-    // Autofill / paste dumps multiple chars into one box — distribute from here.
-    if (digits.length > 1) {
-      const next = [...pinDigits];
-      digits.slice(0, 4 - index).split('').forEach((d, i) => { next[index + i] = d; });
-      setPinDigits(next);
-      const lastFilled = Math.min(index + digits.length - 1, 3);
-      pinRefs[lastFilled].current?.focus();
-      return;
-    }
-    const digit = digits;
-    const next = [...pinDigits];
-    next[index] = digit;
-    setPinDigits(next);
-    if (digit && index < 3) {
-      pinRefs[index + 1].current?.focus();
-    }
-  }
-
-  function onPinKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Backspace' && !pinDigits[index] && index > 0) {
-      pinRefs[index - 1].current?.focus();
-    }
-  }
-
   async function onForgotSubmit(e: FormEvent) {
     e.preventDefault();
     if (!forgotEmail) return;
@@ -173,7 +129,6 @@ export default function LoginPage() {
 
   async function onEmailSubmit(e: FormEvent) {
     e.preventDefault();
-    const pin = pinDigits.join('');
     if (pin.length < 4) return;
     setBusy(true);
     setErr(null);
@@ -299,8 +254,6 @@ export default function LoginPage() {
     }
   }
 
-  const pin = pinDigits.join('');
-
   return (
     <div className="eq-login-page">
       <div className="eq-login-card-wrap">
@@ -416,20 +369,6 @@ export default function LoginPage() {
                   />
                 </div>
 
-                {/* Hidden autofill target — password managers fill the full PIN
-                    here; setPinFromString distributes it into the visible boxes. */}
-                <input
-                  type="password"
-                  name="pin"
-                  autoComplete="current-password"
-                  inputMode="numeric"
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  value={pin}
-                  onChange={(e) => setPinFromString(e.target.value)}
-                  style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-                />
-
                 <div className="eq-login-field">
                   <div className="eq-login-pin-header">
                     <span className="eq-login-label" style={{ margin: 0 }}>PIN</span>
@@ -441,23 +380,18 @@ export default function LoginPage() {
                       Forgot PIN?
                     </button>
                   </div>
-                  <div className="eq-login-pin-row">
-                    {pinRefs.map((ref, i) => (
-                      <input
-                        key={i}
-                        ref={ref}
-                        type="password"
-                        inputMode="numeric"
-                        autoComplete="off"
-                        maxLength={1}
-                        value={pinDigits[i]}
-                        onChange={(e) => onPinChange(i, e.target.value)}
-                        onKeyDown={(e) => onPinKeyDown(i, e)}
-                        className="eq-login-pin-box"
-                        disabled={busy}
-                      />
-                    ))}
-                  </div>
+                  <input
+                    id="pin"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    minLength={4}
+                    maxLength={12}
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 12))}
+                    className="eq-login-input"
+                    disabled={busy}
+                  />
                 </div>
 
                 <label className="eq-login-stay">
