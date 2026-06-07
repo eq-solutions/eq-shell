@@ -33,6 +33,7 @@ import AccessControlPage from './pages/AccessControlPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
 import AdminTenantsPage from './pages/AdminTenantsPage';
+import AdminWorkersPage from './pages/AdminWorkersPage';
 import EntityBrowserPage from './pages/EntityBrowserPage';
 import CustomersHubPage from './pages/CustomersHubPage';
 import ServiceIframe from './pages/ServiceIframe';
@@ -285,6 +286,7 @@ function PlatformTree() {
     <Routes>
       <Route index element={<Navigate to="tenants" replace />} />
       <Route path="tenants" element={<AdminTenantsPage />} />
+      <Route path="workers" element={<AdminWorkersPage />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
