@@ -19,7 +19,7 @@ import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import { hasSecretSalt } from './_shared/token.js';
 import { sendEmail } from './_shared/email.js';
-import { withSentry } from './_shared/sentry.js';
+import { withSentry, captureServerError } from './_shared/sentry.js';
 
 const RESET_TTL_HOURS = 1;
 const RESET_TTL_MS = RESET_TTL_HOURS * 60 * 60 * 1000;
@@ -96,7 +96,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const resetUrl = resetUrlFor(req, rawToken);
 
-  await sendEmail({
+  const emailResult = await sendEmail({
     to: user.email,
     subject: 'Reset your EQ Solutions PIN',
     text:
@@ -110,6 +110,24 @@ This link expires in ${RESET_TTL_HOURS} hour. If you didn't request this, ignore
 
 — EQ Solutions`,
   });
+
+  if (!emailResult.delivered) {
+    // Not user-visible (we still return ok:true to prevent enumeration) but captured
+    // so the failure shows up in Sentry — most likely cause is eq.solutions domain
+    // not verified in Resend, producing a 422 from the Resend API.
+    // eslint-disable-next-line no-console
+    console.error('[shell-request-pin-reset] email not delivered:', emailResult.reason, {
+      user_id: user.id,
+    });
+    captureServerError(
+      new Error(`PIN reset email not delivered: ${emailResult.reason}`),
+      {
+        user_id: user.id,
+        // Domain only — no full address in Sentry (PII)
+        to_domain: user.email.split('@')[1] ?? 'unknown',
+      },
+    );
+  }
 
   // eslint-disable-next-line no-console
   console.info('[shell-request-pin-reset]', JSON.stringify({

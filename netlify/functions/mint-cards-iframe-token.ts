@@ -19,7 +19,7 @@
 // Spec: eq/cards/canonical-migration/plan.md §Unit 5.
 
 import type { Context } from '@netlify/functions';
-import { getServiceClient } from './_shared/supabase.js';
+import { getServiceClient, getUserMemberships } from './_shared/supabase.js';
 import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
@@ -108,7 +108,19 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .eq('active', true)
     .maybeSingle<Pick<CanonicalUser, 'id' | 'email' | 'tenant_id' | 'role' | 'is_platform_admin' | 'active'>>();
 
-  if (userErr || !user || user.tenant_id !== session.tenant_id) {
+  if (userErr || !user) {
+    return jsonResponse(401, { valid: false });
+  }
+
+  let memberships;
+  try {
+    memberships = await getUserMemberships(user.id);
+  } catch {
+    return jsonResponse(401, { valid: false });
+  }
+
+  const activeMembership = memberships.find((m) => m.tenant_id === session.tenant_id);
+  if (!activeMembership) {
     return jsonResponse(401, { valid: false });
   }
 
@@ -122,8 +134,8 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const { token, jti, exp } = signSupabaseJwt(
     user.id,
-    user.tenant_id,
-    user.role,
+    session.tenant_id,
+    activeMembership.role,
     user.is_platform_admin,
     CARDS_IFRAME_TTL_SECONDS,
     'cards',
@@ -137,7 +149,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     // shell_control (see _shared/supabase.ts). Mirrors the fix in
     // mint-supabase-jwt.ts.
     await sb.schema('public').rpc('eq_record_mint', {
-      p_tenant_id: user.tenant_id,
+      p_tenant_id: session.tenant_id,
       p_user_id: user.id,
       p_token_type: 'iframe_cards',
       p_jti: jti,
