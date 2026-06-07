@@ -591,7 +591,10 @@ function CustomersHubInner() {
         </div>
 
         {/* ── Right: detail pane (desktop) ── */}
-        <div className="crm-pane__detail-col" style={{ overflowY: 'auto', background: 'var(--eq-content-bg, #f6f3ee)' }}>
+        <div
+          className="crm-pane__detail-col"
+          style={{ overflowY: 'auto', background: 'var(--eq-content-bg, #f6f3ee)' }}
+        >
           <DetailPane
             resolved={detailResolved}
             detailLoading={!!detailLoading}
