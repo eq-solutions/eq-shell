@@ -166,3 +166,104 @@
 .eq-mtabs__sheet-action--signout {
   color: #FCA5A5;
 }
+
+/* ── Slim top bar (iframe modules on mobile) ──
+   On iframe-module pages the embedded app owns the bottom of the screen, so
+   Shell yields the bottom tab bar and shows this slim top bar instead: an Apps
+   control (back to the launcher), the current app name, and Account. Hidden on
+   desktop, where the icon rail takes over. Respects the iOS notch via
+   safe-area-inset-top. */
+.eq-mtopbar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .eq-mtopbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    padding-top: env(safe-area-inset-top, 0px);
+    box-sizing: content-box;
+    background: var(--eq-ink, #1A1A2E);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    z-index: 200;
+  }
+}
+
+.eq-mtopbar__apps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 100ms ease;
+}
+
+.eq-mtopbar__apps:hover { background: rgba(255, 255, 255, 0.10); }
+
+.eq-mtopbar__apps:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: 1px;
+}
+
+.eq-mtopbar__title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eq-mtopbar__account {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+  transition: color 100ms ease, background 100ms ease;
+}
+
+.eq-mtopbar__account--active,
+.eq-mtopbar__account:hover {
+  color: #3DA8D8;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.eq-mtopbar__account:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: -2px;
+}
+
+/* Account sheet anchored under the top bar (instead of above the bottom bar). */
+@media (max-width: 767px) {
+  .eq-mtabs__sheet--top {
+    top: calc(48px + env(safe-area-inset-top, 0px) + 8px);
+    bottom: auto;
+  }
+}

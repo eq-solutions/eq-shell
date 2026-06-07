@@ -1,8 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
-import { NavLink, useMatch, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, House, CircleUser, Settings, LogOut } from 'lucide-react';
+import { Link, NavLink, useMatch, useParams } from 'react-router-dom';
+import { Users, Wrench, FileText, CreditCard, House, CircleUser, Settings, LogOut, Grid3x3 } from 'lucide-react';
 import { useSession } from '../session';
 import './MobileTabBar.css';
+
+// Iframe modules (Field / Service / Cards / Quotes) embed a full app that owns
+// its own bottom controls. On mobile, Shell's fixed bottom tab bar would sit on
+// top of those controls and trap the user. For these modules Shell "yields the
+// bottom bar": it hides the bottom tabs and surfaces an Apps / app-name control
+// in a slim top bar instead, leaving the bottom of the screen to the embedded app.
+const IFRAME_MODULES: Record<string, string> = {
+  field: 'EQ Field',
+  service: 'EQ Service',
+  quotes: 'EQ Quotes',
+  cards: 'EQ Cards',
+};
 
 function initials(name: string | null, email: string): string {
   if (name) {
@@ -50,6 +62,79 @@ export function MobileTabBar() {
   const userInitials = initials(session.user.name, session.user.email);
   const userName = session.user.name ?? session.user.email.split('@')[0].replace('.', ' ');
   const accountActive = activeModule === 'admin';
+
+  // Iframe-module case: yield the bottom bar to the embedded app. On mobile we
+  // render a slim top bar (Apps ← + app name + Account) instead of the bottom
+  // tabs, so the embedded app's own bottom nav is reachable. Desktop is
+  // unaffected — both bars are display:none above 767px.
+  const iframeAppName = activeModule ? IFRAME_MODULES[activeModule] : undefined;
+  if (iframeAppName) {
+    return (
+      <>
+        {accountOpen && (
+          <div className="eq-mtabs__backdrop" onClick={closeAccount} aria-hidden="true" />
+        )}
+
+        {accountOpen && (
+          <div className="eq-mtabs__sheet eq-mtabs__sheet--top" role="menu" aria-label="Account">
+            <div className="eq-mtabs__sheet-id">
+              <span className="eq-mtabs__sheet-avatar" aria-hidden="true">{userInitials}</span>
+              <div className="eq-mtabs__sheet-info">
+                <span className="eq-mtabs__sheet-name">{userName}</span>
+                <span className="eq-mtabs__sheet-email">{session.user.email}</span>
+              </div>
+            </div>
+
+            {isAdmin && (
+              <NavLink
+                to={`/${tenantSlug}/admin/settings`}
+                className="eq-mtabs__sheet-action"
+                role="menuitem"
+                onClick={closeAccount}
+              >
+                <Settings size={18} strokeWidth={2} aria-hidden="true" />
+                <span>Settings</span>
+              </NavLink>
+            )}
+
+            <button
+              className="eq-mtabs__sheet-action eq-mtabs__sheet-action--signout"
+              role="menuitem"
+              onClick={() => { closeAccount(); void logout(); }}
+            >
+              <LogOut size={18} strokeWidth={2} aria-hidden="true" />
+              <span>Sign out</span>
+            </button>
+          </div>
+        )}
+
+        <header className="eq-mtopbar" role="navigation" aria-label="App navigation">
+          <Link
+            to={`/${tenantSlug}`}
+            className="eq-mtopbar__apps"
+            onClick={closeAccount}
+            aria-label="Back to all apps"
+          >
+            <Grid3x3 size={18} strokeWidth={2} aria-hidden="true" />
+            <span>Apps</span>
+          </Link>
+
+          <span className="eq-mtopbar__title">{iframeAppName}</span>
+
+          <button
+            type="button"
+            className={`eq-mtopbar__account${accountOpen ? ' eq-mtopbar__account--active' : ''}`}
+            aria-haspopup="menu"
+            aria-expanded={accountOpen}
+            aria-label="Account"
+            onClick={() => setAccountOpen((o) => !o)}
+          >
+            <CircleUser size={20} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </header>
+      </>
+    );
+  }
 
   return (
     <>
