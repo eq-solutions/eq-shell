@@ -61,9 +61,13 @@ function quote(name) {
 // must have no access at all. Emitting a tenant_isolation policy here would
 // re-introduce the exact spine drift fixed in tenant-migration 0039
 // (migration_baseline diverged because a regen pass kept re-adding the policy).
-// Keep this list in sync with the migrations that set the same posture.
+// Keep this list in sync with the migrations that set the same posture AND with
+// SERVICE_ROLE_ONLY in scripts/check-tenant-drift.mjs (the CI invariant).
+// _eq_migrations is the ledger table — same posture; it is normally in --exclude
+// so regen won't emit it, but it is listed here so the two lists stay identical.
 const SERVICE_ROLE_ONLY = new Set([
   'migration_baseline',
+  '_eq_migrations',
 ]);
 
 const { values: args } = parseArgs({

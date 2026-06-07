@@ -533,6 +533,75 @@ if (!args['anon-only']) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CHECK 4 — Service-role-only RLS invariant (ABSOLUTE, per plane)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// CHECK 1's effective_rls dimension is RELATIVE — it only flags when two tenants
+// DISAGREE. That misses a wrong-but-CONSISTENT state: if a service-role-only
+// table has RLS disabled on EVERY plane (the original 0037 bug — migration_baseline
+// shipped grants-only, no ENABLE RLS), the planes match and the spine looks clean
+// while the table is actually unprotected. This check is ABSOLUTE: the listed
+// tables MUST be RLS=on, with no anon/authenticated grant and no unconditional
+// (USING true) policy, on EVERY data plane. A violation always fails the build —
+// there is no flag to downgrade it, because there is no correct state where these
+// tables are not RLS-protected.
+//
+// Keep this list in sync with scripts/regen-tenant-baseline.mjs SERVICE_ROLE_ONLY.
+const SERVICE_ROLE_ONLY = ['migration_baseline', '_eq_migrations'];
+
+const SERVICE_ROLE_ONLY_SQL = `
+  select t.tablename,
+    c.relrowsecurity as rls_enabled,
+    exists(select 1 from information_schema.role_table_grants g
+           where g.table_schema='app_data' and g.table_name=t.tablename
+             and g.grantee in ('anon','authenticated')) as caller_grant,
+    exists(select 1 from pg_policies p
+           where p.schemaname='app_data' and p.tablename=t.tablename
+             and p.permissive='PERMISSIVE'
+             and (trim(coalesce(p.qual,''))='true' or trim(coalesce(p.with_check,''))='true')) as open_policy
+  from (values ${SERVICE_ROLE_ONLY.map(t => `('${t}')`).join(',')}) as t(tablename)
+  join pg_class c on c.relname = t.tablename
+  join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'app_data';
+`;
+
+async function checkServiceRoleOnly() {
+  const planes = [];
+  for (const plane of TENANT_DATA_PLANES) {
+    if (!plane.ref) { planes.push({ ...plane, skipped: true, violations: [], missing: [] }); continue; }
+    let rows;
+    try {
+      rows = await mgmtRows(plane.ref, SERVICE_ROLE_ONLY_SQL);
+    } catch (e) {
+      planes.push({ ...plane, error: e.message, violations: [], missing: [] });
+      continue;
+    }
+    const violations = [];
+    for (const r of rows) {
+      const reasons = [];
+      if (r.rls_enabled === false) reasons.push('RLS disabled');
+      if (r.caller_grant === true) reasons.push('anon/authenticated grant');
+      if (r.open_policy === true)  reasons.push('USING(true) policy');
+      if (reasons.length) violations.push({ table: r.tablename, reasons });
+    }
+    const present = new Set(rows.map(r => r.tablename));
+    const missing = SERVICE_ROLE_ONLY.filter(t => !present.has(t));   // absent = not on this plane (informational)
+    planes.push({ ...plane, violations, missing });
+  }
+  return planes;
+}
+
+let serviceRoleResult = [];
+let serviceRoleFailed = false;
+if (!args['anon-only']) {
+  log('');
+  log('running service-role-only RLS invariant …');
+  serviceRoleResult = await checkServiceRoleOnly();
+  for (const p of serviceRoleResult) {
+    if (p.error || p.violations.length) serviceRoleFailed = true;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Output
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -550,7 +619,7 @@ const identityFailed = identityError || (identityDrift && args['strict-identity'
 
 const driftFails = driftResult.drift && args['strict-drift'];
 const spineFails = driftResult.spineDrift && args['strict-spine'];
-const anyFailure = driftFails || spineFails || anonFailed || identityFailed;
+const anyFailure = driftFails || spineFails || anonFailed || identityFailed || serviceRoleFailed;
 
 if (args.json) {
   console.log(JSON.stringify({
@@ -575,6 +644,11 @@ if (args.json) {
           tenants: identityResult.tenants,
         }
       : { skip: true },
+    service_role_only: {
+      skip: args['anon-only'],
+      failed: serviceRoleFailed,
+      planes: serviceRoleResult,
+    },
   }, null, 2));
 } else {
   // ── drift output ──
@@ -668,6 +742,22 @@ if (args.json) {
             for (const o of t.outOfBand) console.log(`        + ${o}`);
           }
         }
+      }
+    }
+  }
+
+  // ── service-role-only invariant output ──
+  if (!args['anon-only']) {
+    console.log('\n── Service-role-only RLS invariant ─────────────────────────');
+    for (const p of serviceRoleResult) {
+      if (p.skipped) { console.log(`  - ${p.label}: skipped (${p.envKey} not set)`); continue; }
+      if (p.error)   { console.log(`  ✗ ${p.label}: query error — ${p.error}`); continue; }
+      if (!p.violations.length) {
+        const miss = p.missing.length ? ` (absent: ${p.missing.join(', ')})` : '';
+        console.log(`  ✓ ${p.label}: ${SERVICE_ROLE_ONLY.length - p.missing.length}/${SERVICE_ROLE_ONLY.length} present, all RLS-on with no caller exposure${miss}`);
+      } else {
+        console.log(`  ✗ ${p.label}: ${p.violations.length} table(s) violate the service-role-only invariant`);
+        for (const v of p.violations) console.log(`      ${v.table} — ${v.reasons.join(', ')}`);
       }
     }
   }
