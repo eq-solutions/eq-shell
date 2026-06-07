@@ -64,6 +64,13 @@ function cleanFields(raw: Record<string, unknown>): { fields: Record<string, unk
     out.site_id = s || null;
   }
 
+  // Custodian (migration 0040). Optional; empty clears the assignment.
+  if ('assigned_to' in raw) {
+    const s = str(raw.assigned_to);
+    if (s && !UUID_RE.test(s)) return { fields: out, error: 'assigned_to must be a UUID' };
+    out.assigned_to = s || null;
+  }
+
   for (const key of ['last_service_date', 'next_service_due'] as const) {
     if (key in raw) {
       const s = str(raw[key]);
