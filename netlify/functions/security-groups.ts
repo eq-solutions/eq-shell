@@ -114,6 +114,37 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       });
     }
 
+    if (action === 'user_groups') {
+      // Returns all groups the user currently belongs to (for this tenant).
+      const userId = url.searchParams.get('user_id');
+      if (!userId) return json(400, { ok: false, error: 'missing_user_id' });
+
+      const { data: mem } = await sb
+        .schema('shell_control')
+        .from('user_tenant_memberships')
+        .select('user_id')
+        .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .maybeSingle();
+      if (!mem) return json(404, { ok: false, error: 'user_not_in_tenant' });
+
+      const { data, error } = await sb
+        .from('user_security_groups')
+        .select('group_id, security_groups!inner(id, name, description)')
+        .eq('user_id', userId)
+        .eq('security_groups.tenant_id', tenantId);
+      if (error) return json(500, { ok: false, error: 'db_error' });
+
+      type GroupRef = { id: string; name: string; description: string | null };
+      const groups = ((data ?? []) as unknown as Array<{ security_groups: GroupRef | GroupRef[] | null }>).flatMap((r) => {
+        const sg = r.security_groups;
+        return Array.isArray(sg) ? sg : sg ? [sg] : [];
+      });
+
+      return json(200, { ok: true, groups });
+    }
+
     if (action === 'user_perms') {
       // Returns all perm keys held by a specific user via their group memberships
       // for this tenant. Used by the "Preview permissions" UI.
