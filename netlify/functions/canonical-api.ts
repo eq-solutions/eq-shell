@@ -422,7 +422,7 @@ async function handleGet(
 //
 // Body shape:
 //   {
-//     resource:    'customers' | 'sites' | 'contacts' |
+//     resource:    'customers' | 'sites' | 'contacts' | 'jobs' |
 //                  'assets' | 'asset_test_results' | 'asset_defects',
 //     external_id: string,          // upsert key (required)
 //     ...fields                     // any writable columns for that resource
@@ -435,9 +435,8 @@ async function handleGet(
 // tenant_id from the routing layer — callers must not supply tenant_id in
 // the body (it's silently stripped).
 //
-// Depends on migration 022 unique partial indexes:
-//   (tenant_id, external_id) WHERE external_id IS NOT NULL
-// on customers, sites, contacts.
+// Depends on unique partial indexes (tenant_id, external_id) WHERE external_id
+// IS NOT NULL: customers, sites, contacts (migration 022); jobs (migration 040).
 // ──────────────────────────────────────────────────────────────────────
 
 // Allowed writable fields per resource.
@@ -473,6 +472,15 @@ const WRITABLE_FIELDS: Record<string, Set<string>> = {
     'is_default_invoice_contact', 'is_default_statement_contact',
     'active',
   ]),
+  // The operational work-order spine. Written by the quote.accepted consumer
+  // (quote-job-consumer) as external_id = 'eq-quotes:job:<quote_id>' so the
+  // upsert is idempotent per quote. customer_id/site_id are canonical UUIDs;
+  // quote_id is the soft link back to the originating quote. jobs has no `active`
+  // column (filterableActive is false in RESOURCES), so it is not writable here.
+  jobs: new Set([
+    'external_id', 'customer_id', 'site_id', 'quote_id',
+    'title', 'status', 'started_at', 'target_completion',
+  ]),
   assets: new Set([
     'external_id', 'site_id', 'parent_asset_id',
     'asset_type', 'name', 'make', 'model', 'serial_number', 'rating',
@@ -504,6 +512,7 @@ const RESOURCE_PK: Record<string, string> = {
   customers:           'customer_id',
   sites:               'site_id',
   contacts:            'contact_id',
+  jobs:                'job_id',
   assets:              'asset_id',
   asset_test_results:  'result_id',
   asset_defects:       'defect_id',
