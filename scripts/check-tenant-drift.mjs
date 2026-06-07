@@ -76,6 +76,13 @@ const { values: args } = parseArgs({ options: {
   // Migration-identity gaps / out-of-band are likewise informational by default
   // (divergent lineages). --strict-identity makes them fail. Query errors always fail.
   'strict-identity': { type: 'boolean', default: false },
+  // CHECK 5 — tenant-isolation policy lint (Phase 5.2).
+  // Every app_data table that has RLS ON and is NOT service-role-only MUST have
+  // at least one permissive policy whose USING or WITH CHECK clause references
+  // tenant_id. A table without such a policy blocks all browser reads (deny-all)
+  // which is almost always a migration bug rather than intentional. ABSOLUTE by
+  // default: --no-policy-lint skips it entirely.
+  'no-policy-lint': { type: 'boolean', default: false },
 }});
 
 requireAccessToken();
@@ -613,6 +620,104 @@ if (!args['anon-only']) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CHECK 5 — Tenant-isolation policy lint (Phase 5.2, ABSOLUTE)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Every app_data table with RLS=on that is NOT service-role-only MUST have at
+// least one permissive policy whose USING or WITH CHECK clause references
+// tenant_id. A table without such a policy quietly denies ALL browser reads
+// (deny-all = RLS-on + no permissive policy), which is almost always a
+// forgotten policy rather than intentional. This check is ABSOLUTE — no flag
+// downgrades it — because there is no valid state where a user-readable
+// app_data table has RLS=on and zero tenant-scoped policies.
+//
+// Tables in SERVICE_ROLE_ONLY are exempt: deny-all is the correct posture for
+// service-role-only ledger tables (_eq_migrations, migration_baseline).
+//
+// Tables with RLS=off are already caught by CHECK 4 (spine-RLS). This check
+// is complementary: it finds tables that passed CHECK 4 (RLS=on) but are
+// missing the positive tenant-isolation policy that actually routes reads.
+//
+// Absent tables (lineage divergence) are informational (same as CHECK 4).
+
+const POLICY_LINT_SQL = `
+  SELECT
+    t.tablename,
+    c.relrowsecurity AS rls_on,
+    (
+      SELECT count(*)::int
+      FROM pg_policies p
+      WHERE p.schemaname = 'app_data' AND p.tablename = t.tablename
+        AND p.permissive = 'PERMISSIVE'
+        AND (
+          (p.qual       IS NOT NULL AND p.qual       LIKE '%tenant_id%') OR
+          (p.with_check IS NOT NULL AND p.with_check LIKE '%tenant_id%')
+        )
+    ) AS tenant_policy_count
+  FROM pg_tables t
+  JOIN pg_class     c ON c.relname = t.tablename
+  JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'app_data'
+  WHERE t.schemaname = 'app_data'
+  ORDER BY t.tablename;
+`;
+
+async function checkPolicyLint() {
+  const spine = await loadSpineTables();
+  const planes = [];
+
+  for (const plane of TENANT_DATA_PLANES) {
+    if (!plane.ref) {
+      planes.push({ ...plane, skipped: true, violations: [], missing: [] });
+      continue;
+    }
+
+    let rows;
+    try {
+      rows = await mgmtRows(plane.ref, POLICY_LINT_SQL);
+    } catch (e) {
+      planes.push({ ...plane, error: e.message, violations: [], missing: [] });
+      continue;
+    }
+
+    const violations = [];
+    const missing    = [];
+
+    for (const r of rows) {
+      const tbl = r.tablename;
+      // Service-role-only tables: deny-all is the correct posture — skip.
+      if (SERVICE_ROLE_ONLY.has(tbl)) continue;
+      // RLS-off tables are caught by CHECK 4 — skip here (avoid double-reporting).
+      if (r.rls_on === false) continue;
+      // RLS=on + no tenant_id policy = isolation gap.
+      if (r.tenant_policy_count === 0) {
+        const isSpine = spine.has(tbl);
+        violations.push({ table: tbl, isSpine });
+      }
+    }
+
+    // Spine tables absent on this plane (lineage divergence) — informational.
+    const presentSet = new Set(rows.map(r => r.tablename));
+    const missingSpine = [...spine].filter(t => !presentSet.has(t));
+    missing.push(...missingSpine);
+
+    planes.push({ ...plane, violations, missing });
+  }
+
+  return { planes };
+}
+
+let policyLintResult = { planes: [] };
+let policyLintFailed = false;
+if (!args['anon-only'] && !args['no-policy-lint']) {
+  log('');
+  log('running tenant-isolation policy lint …');
+  policyLintResult = await checkPolicyLint();
+  for (const p of policyLintResult.planes) {
+    if (p.error || p.violations.length) policyLintFailed = true;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Output
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -630,7 +735,7 @@ const identityFailed = identityError || (identityDrift && args['strict-identity'
 
 const driftFails = driftResult.drift && args['strict-drift'];
 const spineFails = driftResult.spineDrift && args['strict-spine'];
-const anyFailure = driftFails || spineFails || anonFailed || identityFailed || spineRlsFailed;
+const anyFailure = driftFails || spineFails || anonFailed || identityFailed || spineRlsFailed || policyLintFailed;
 
 if (args.json) {
   console.log(JSON.stringify({
@@ -660,6 +765,11 @@ if (args.json) {
       failed: spineRlsFailed,
       spine_table_count: spineRlsResult.spineCount,
       planes: spineRlsResult.planes,
+    },
+    policy_lint: {
+      skip: args['anon-only'] || args['no-policy-lint'],
+      failed: policyLintFailed,
+      planes: policyLintResult.planes,
     },
   }, null, 2));
 } else {
@@ -770,6 +880,27 @@ if (args.json) {
       } else {
         console.log(`  ✗ ${p.label}: ${p.violations.length} spine table(s) violate the RLS invariant`);
         for (const v of p.violations) console.log(`      ${v.table} — ${v.reasons.join(', ')}`);
+      }
+    }
+  }
+
+  // ── tenant-isolation policy lint output ──
+  if (!args['anon-only'] && !args['no-policy-lint']) {
+    console.log(`\n── Tenant-isolation policy lint (ABSOLUTE) ─────────────────`);
+    for (const p of policyLintResult.planes) {
+      if (p.skipped) { console.log(`  - ${p.label}: skipped (${p.envKey} not set)`); continue; }
+      if (p.error)   { console.log(`  ✗ ${p.label}: query error — ${p.error}`); continue; }
+      if (!p.violations.length) {
+        const miss = p.missing?.length ? ` (${p.missing.length} spine tables absent — lineage divergence)` : '';
+        console.log(`  ✓ ${p.label}: all RLS-on app_data tables have a tenant_id policy${miss}`);
+      } else {
+        const spineCount = p.violations.filter(v => v.isSpine).length;
+        console.log(`  ✗ ${p.label}: ${p.violations.length} table(s) with RLS=on but NO tenant_id policy (${spineCount} spine):`);
+        for (const v of p.violations) {
+          const tag = v.isSpine ? ' [SPINE]' : '';
+          console.log(`      app_data.${v.table}${tag} — RLS-on, zero tenant_id-scoped policies → deny-all for browser`);
+        }
+        console.log(`    Fix: add a permissive policy with USING (tenant_id = ...) to each table above.`);
       }
     }
   }
