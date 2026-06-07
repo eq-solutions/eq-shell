@@ -1,0 +1,24 @@
+-- Migration: 0041_schedule_entries_site_id_nullable
+-- Target:    every tenant data-plane project (app_data schema)
+-- Purpose:   Relax app_data.schedule_entries.site_id from NOT NULL to nullable,
+--            so roster entries that legitimately have no site can be stored.
+--
+-- WHY (live-verified against the SKS source, 2026-06-07):
+--   The roster surface migrates a wide weekly grid where each day cell is free
+--   text. ~25% of SKS cells are leave/off markers with NO site by nature —
+--   A/L (272), PH (138), RDO (69), PUBLIC (51), SICK (38), TAFE (25), OFF (15).
+--   A leave/off day cannot carry a site_id, so NOT NULL makes those rows
+--   un-insertable. The remaining work-day cells use SKS internal site/job codes
+--   (SLDC, SYD53, STG, EC6 …) that do not map to the canonical sites table, so a
+--   resolver can't backfill them either. Nullable is the correct shape; it also
+--   matches app_data.timesheets.site_id, which is already nullable (the prior
+--   asymmetry was an oversight).
+--
+--   This unblocks BOTH the live roster canonical adapter (eq-field PR #225) and
+--   the nspbmir->ehow schedule ETL (eq-shell PR #220), which both emit
+--   site_id = NULL for site-less roster entries.
+--
+-- Idempotent: DROP NOT NULL on an already-nullable column is a no-op.
+-- The runner records the ledger row on apply; this file writes no ledger row.
+
+ALTER TABLE app_data.schedule_entries ALTER COLUMN site_id DROP NOT NULL;
