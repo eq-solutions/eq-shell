@@ -448,9 +448,53 @@ export function buildTotpChallengeIfEnrolled(user: {
   };
 }
 
-// Parses the eq_shell_session cookie value out of a Cookie header.
+/**
+ * "Remember this device" token. Set as the eq_shell_trusted_device cookie by
+ * challenge-totp ONLY after a user passes a real authenticator code with the
+ * 30-day box ticked. On a later login the PIN / phone-OTP doors read it and,
+ * if it's valid and bound to the same user, skip the second-factor challenge.
+ *
+ * Security model — this NEVER replaces the first factor. The doors only consult
+ * it once the user has already passed PIN/OTP in the same request, so the cookie
+ * alone is useless to a thief: it can only suppress the 2FA step for someone who
+ * already proved factor one. The HMAC over { user_id, exp } binds it to one user,
+ * so it can't be replayed for a different account, and it's HttpOnly so page JS
+ * can't read it. Survives logout by design (that's the point of "remember").
+ */
+export interface TrustedDeviceTokenPayload {
+  kind: 'trusted-device';
+  user_id: string;
+  exp: number;
+}
+
+/** 30 days — the "remember this device" window the 2FA screen offers. */
+export const TRUSTED_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+const TRUSTED_DEVICE_COOKIE_NAME = 'eq_shell_trusted_device';
+
+export function signTrustedDeviceToken(payload: TrustedDeviceTokenPayload): string {
+  const json = JSON.stringify(payload);
+  const sig = sign(json);
+  return Buffer.from(json).toString('base64') + '.' + sig;
+}
+
+export function verifyTrustedDeviceToken(token: string | null | undefined): TrustedDeviceTokenPayload | null {
+  return verifyKindToken<TrustedDeviceTokenPayload>(token, 'trusted-device', (d) => !!d.user_id);
+}
+
+/**
+ * True when the request carries a valid, unexpired trusted-device cookie bound
+ * to this exact user. Used by the login doors to decide whether the 2FA step
+ * can be skipped for an already-PIN/OTP-authenticated user.
+ */
+export function hasTrustedDeviceFor(req: Request, userId: string): boolean {
+  const payload = verifyTrustedDeviceToken(readNamedCookie(req, TRUSTED_DEVICE_COOKIE_NAME));
+  return !!payload && payload.user_id === userId;
+}
+
+// Parses a named cookie value out of a Cookie header.
 // Cookie header looks like: "foo=bar; eq_shell_session=<token>; baz=qux".
-export function readSessionCookie(req: Request): string | null {
+function readNamedCookie(req: Request, target: string): string | null {
   const header = req.headers.get('cookie');
   if (!header) return null;
   const pairs = header.split(/;\s*/);
@@ -458,11 +502,15 @@ export function readSessionCookie(req: Request): string | null {
     const eq = pair.indexOf('=');
     if (eq === -1) continue;
     const name = pair.slice(0, eq);
-    if (name === 'eq_shell_session') {
+    if (name === target) {
       return pair.slice(eq + 1);
     }
   }
   return null;
+}
+
+export function readSessionCookie(req: Request): string | null {
+  return readNamedCookie(req, 'eq_shell_session');
 }
 
 export function hasSecretSalt(): boolean {

@@ -7,11 +7,13 @@
 // challenge-totp which verifies the code and issues the session cookie.
 // On success, SessionContext.refresh() is called and the user is routed
 // to their tenant home.
+//
+// Layout mirrors LoginPage's .eq-login-split shell so the two screens are
+// visually consistent (same dark panel + white form card).
 
 import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './auth.css';
-import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { EqLogo } from '../components/EqLogo';
 
@@ -26,23 +28,25 @@ export default function TotpChallenge() {
   const redirectTo = state?.redirectTo;
 
   const [code, setCode] = useState('');
+  const [trustDevice, setTrustDevice] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   if (!token) {
     return (
       <TotpShell>
-        <h2>Something went wrong</h2>
-        <p className="lede">
-          Open this page directly from the sign-in form. Go back and sign in again.
+        <p className="eq-login-right__eyebrow">Two-step verification</p>
+        <h2 className="eq-login-right__title">Something went wrong.</h2>
+        <p className="eq-login-right__sub">
+          Open this page from the sign-in form. Go back and sign in again.
         </p>
-        <Button
+        <button
           type="button"
-          variant="primary"
+          className="eq-login-submit"
           onClick={() => navigate('/login', { replace: true })}
         >
           Back to sign in
-        </Button>
+        </button>
       </TotpShell>
     );
   }
@@ -60,7 +64,7 @@ export default function TotpChallenge() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ totp_challenge_token: token, code }),
+        body: JSON.stringify({ totp_challenge_token: token, code, trust_device: trustDevice }),
       });
       const body = (await res.json()) as { valid: boolean };
       if (!body.valid) {
@@ -85,45 +89,62 @@ export default function TotpChallenge() {
 
   return (
     <TotpShell>
-      <form className="eq-login-form" onSubmit={onSubmit}>
-        <h2>Two-step verification</h2>
-        <p className="lede">
-          Open your authenticator app and enter the 6-digit code for EQ Solutions.
-        </p>
-        <label htmlFor="totp-code">Authenticator code</label>
-        <input
-          id="totp-code"
-          type="text"
-          inputMode="numeric"
-          pattern="\d{6}"
-          autoComplete="one-time-code"
-          autoFocus
-          required
-          maxLength={6}
-          value={code}
-          onChange={handleCodeChange}
-          disabled={busy}
-          placeholder="000000"
-          style={{ letterSpacing: '0.2em', fontSize: 22, textAlign: 'center' }}
-        />
-        <Button
+      <p className="eq-login-right__eyebrow">Verify it's you</p>
+      <h2 className="eq-login-right__title">Enter your code.</h2>
+      <p className="eq-login-right__sub">
+        Open your authenticator app and enter the 6-digit code for EQ Solutions.
+      </p>
+
+      <form onSubmit={onSubmit}>
+        <div className="eq-login-field">
+          <label htmlFor="totp-code" className="eq-login-label">Authenticator code</label>
+          <input
+            id="totp-code"
+            type="text"
+            inputMode="numeric"
+            pattern="\d{6}"
+            autoComplete="one-time-code"
+            autoFocus
+            required
+            maxLength={6}
+            value={code}
+            onChange={handleCodeChange}
+            disabled={busy}
+            placeholder="000000"
+            className="eq-login-input"
+            style={{ letterSpacing: '0.3em', fontSize: 20, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}
+          />
+        </div>
+
+        <label className="eq-login-stay">
+          <input
+            type="checkbox"
+            checked={trustDevice}
+            onChange={(e) => setTrustDevice(e.target.checked)}
+            disabled={busy}
+          />
+          Don't ask again on this device for 30 days
+        </label>
+
+        <button
           type="submit"
-          variant="primary"
+          className="eq-login-submit"
           disabled={busy || code.length !== 6}
-          style={{ width: '100%' }}
         >
           {busy ? 'Verifying…' : 'Verify →'}
-        </Button>
-        {err && (
-          <div className="eq-err" role="alert">
-            {err}
-          </div>
-        )}
-        <p className="eq-login-form__foot">
-          Lost access to your authenticator?{' '}
-          <a href="mailto:support@eq.solutions">support@eq.solutions</a>
-        </p>
+        </button>
       </form>
+
+      {err && (
+        <div className="eq-err" role="alert" style={{ marginTop: 16 }}>
+          {err}
+        </div>
+      )}
+
+      <p className="eq-login-foot">
+        Lost access to your authenticator?{' '}
+        <a href="mailto:support@eq.solutions">support@eq.solutions</a>
+      </p>
     </TotpShell>
   );
 }
@@ -131,29 +152,34 @@ export default function TotpChallenge() {
 function TotpShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="eq-login-page">
-      <aside className="eq-login-hero">
-        <header className="eq-login-hero__top">
-          <EqLogo size={32} onDark variant="wordmark" />
-        </header>
-        <div className="eq-login-hero__main">
-          <span className="eq-login-hero__eyebrow">
-            <span className="eq-login-hero__eyebrow-dot" />
-            SECURE · TWO-STEP VERIFICATION
-          </span>
-          <h1 className="eq-login-hero__headline">
-            One more step to keep your account{' '}
-            <span className="eq-login-hero__accent">secure</span>.
-          </h1>
-          <p className="eq-login-hero__sub">
-            Your account is protected with two-step verification. Enter the
-            code from your authenticator app to continue.
-          </p>
+      <div className="eq-login-card-wrap">
+        <div className="eq-login-split">
+
+          {/* Dark left panel — same treatment as the sign-in screen. */}
+          <div className="eq-login-left">
+            <div className="eq-login-left__brand">
+              <EqLogo size={28} variant="wordmark" onDark />
+            </div>
+            <p className="eq-login-left__eyebrow">Two-step verification</p>
+            <h1 className="eq-login-left__heading">
+              One more step.<br /><strong>Keep your account secure.</strong>
+            </h1>
+            <ul className="eq-login-left__apps">
+              <li>Protects every EQ app</li>
+              <li>Takes a few seconds</li>
+            </ul>
+          </div>
+
+          {/* White right panel — form content. */}
+          <div className="eq-login-right">
+            {children}
+          </div>
         </div>
-        <footer className="eq-login-hero__foot">
-          © EQ Solutions · {new Date().getFullYear()} · 2FA
-        </footer>
-      </aside>
-      <div className="eq-login-form-wrap">{children}</div>
+
+        <p className="eq-login-page__copy">
+          © EQ Solutions · {new Date().getFullYear()}
+        </p>
+      </div>
     </div>
   );
 }

@@ -28,7 +28,7 @@ import bcrypt from 'bcryptjs';
 import type { Context } from '@netlify/functions';
 import { getServiceClient, getUserMemberships, getEnrichedMemberships, getUserSecurityGroupPerms } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement, UserTenantMembership } from './_shared/supabase.js';
-import { signSessionToken, signTenantSelectionToken, buildTotpChallengeIfEnrolled, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
+import { signSessionToken, signTenantSelectionToken, buildTotpChallengeIfEnrolled, hasTrustedDeviceFor, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
 import type { TenantConfig } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
@@ -170,11 +170,17 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   // Phase 1.G: if the user has TOTP enrolled, gate the session cookie
   // behind a short-lived challenge token. The client navigates to
-  // /totp-challenge and posts back with the 6-digit code.
+  // /totp-challenge and posts back with the 6-digit code — UNLESS this
+  // device was remembered for 30 days (hasTrustedDeviceFor), in which case
+  // the PIN they just passed is sufficient and we fall through to mint the
+  // session directly.
   const totpChallenge = buildTotpChallengeIfEnrolled(user);
-  if (totpChallenge) {
+  if (totpChallenge && !hasTrustedDeviceFor(req, user.id)) {
     logShellLogin(req, email, 'success', 'totp-challenge-issued');
     return jsonResponse(200, totpChallenge);
+  }
+  if (totpChallenge) {
+    logShellLogin(req, email, 'success', 'totp-skipped-trusted-device');
   }
 
   if (memberships.length > 1) {

@@ -1,5 +1,5 @@
 import { Link, NavLink, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database, ListChecks } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database, ListChecks, BadgeCheck } from 'lucide-react';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
 import { useDensity } from '../lib/useDensity';
@@ -95,6 +95,8 @@ export function HubSidebar({ apps, records }: Props) {
                   {r.key === 'customer' && <Building2 size={16} aria-hidden="true" />}
                   {r.key === 'site'     && <MapPin size={16} aria-hidden="true" />}
                   {r.key === 'contact'  && <User size={16} aria-hidden="true" />}
+                  {r.key === 'staff'    && <Users2 size={16} aria-hidden="true" />}
+                  {r.key === 'licence'  && <BadgeCheck size={16} aria-hidden="true" />}
                 </span>
                 <span className="eq-hub-sidebar__nav-label">{r.label}</span>
                 {r.count !== null && (
