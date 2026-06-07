@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Users, Plus, Trash2, ChevronRight, X, UserPlus, Eye } from 'lucide-react';
-import { PERMISSIONS, labelFor, resolveEffectivePermissions } from '@eq-solutions/roles';
+import { PERMISSIONS, labelFor, resolveEffectivePermissions, ROLES, MATRIX } from '@eq-solutions/roles';
 import type { PermKey, EqRole } from '@eq-solutions/roles';
 import { HubLayout } from '../components/HubLayout';
 import { Gate } from '../permissions/Gate';
@@ -24,6 +24,8 @@ interface SecurityGroup {
   name: string;
   description: string | null;
   created_at: string;
+  perm_keys: string[];
+  member_count: number;
 }
 
 interface GroupDetail {
@@ -172,7 +174,8 @@ function SecurityGroupsInner() {
       <div className="eq-page__header">
         <h1 className="eq-page__title">Security groups</h1>
         <p className="eq-page__lede">
-          Assign named permission bundles to users beyond their default role access.
+          Every user has one of 5 base roles. Groups add extra access on top, for
+          specific people — without changing their role.
         </p>
       </div>
 
@@ -184,14 +187,22 @@ function SecurityGroupsInner() {
         />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+      <RolesReference />
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--eq-ink)', margin: 0 }}>Add-on groups</h2>
+          <p style={{ fontSize: 13, color: 'var(--eq-grey)', margin: '2px 0 0' }}>
+            Named bundles of extra abilities you assign to people.
+          </p>
+        </div>
         <button
           onClick={() => setCreateOpen(true)}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             background: 'var(--eq-sky)', color: '#fff', border: 'none',
             borderRadius: 6, padding: '8px 14px', fontSize: 13,
-            fontWeight: 600, cursor: 'pointer',
+            fontWeight: 600, cursor: 'pointer', flexShrink: 0,
           }}
         >
           <Plus size={14} />
@@ -218,18 +229,37 @@ function SecurityGroupsInner() {
               key={g.id}
               onClick={() => void openDetail(g.id)}
               style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
                 padding: '12px 16px', border: '1px solid var(--eq-border)', borderRadius: 6,
                 marginBottom: 8, cursor: 'pointer', background: '#fff',
               }}
             >
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--eq-ink)' }}>{g.name}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--eq-ink)' }}>{g.name}</span>
+                  <span style={{ fontSize: 12, color: 'var(--eq-grey)' }}>
+                    {g.member_count} {g.member_count === 1 ? 'member' : 'members'}
+                  </span>
+                </div>
                 {g.description && (
                   <div style={{ fontSize: 13, color: 'var(--eq-grey)', marginTop: 2 }}>{g.description}</div>
                 )}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {g.perm_keys.length === 0 ? (
+                    <span style={{ fontSize: 12, color: 'var(--eq-grey)' }}>No abilities yet</span>
+                  ) : (
+                    g.perm_keys.map((k) => (
+                      <span key={k} title={k} style={{
+                        fontSize: 12, padding: '2px 8px', borderRadius: 4,
+                        background: 'var(--eq-ice, #eaf5fb)', color: 'var(--eq-deep, #2986b4)',
+                      }}>
+                        {labelFor(k as PermKey) ?? k}
+                      </span>
+                    ))
+                  )}
+                </div>
               </div>
-              <ChevronRight size={16} style={{ color: 'var(--eq-grey)', flexShrink: 0 }} />
+              <ChevronRight size={16} style={{ color: 'var(--eq-grey)', flexShrink: 0, marginLeft: 12, marginTop: 2 }} />
             </li>
           ))}
         </ul>
@@ -572,6 +602,51 @@ function SeeAsPreview({ role, groupPerms }: { role: EqRole; groupPerms: PermKey[
         })}
       </div>
     </div>
+  );
+}
+
+// ── Base-roles reference ──────────────────────────────────────────────────────
+
+// Read-only: the 5 base roles and what each can do, straight from
+// @eq-solutions/roles (the same source can() resolves from). Collapsible so it
+// orients without crowding the group management below.
+function RolesReference() {
+  return (
+    <details style={{
+      marginBottom: 20, border: '1px solid var(--eq-border)', borderRadius: 8,
+      padding: '12px 16px', background: '#fff',
+    }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 14, color: 'var(--eq-ink)' }}>
+        Base roles — what each can do ({ROLES.length})
+      </summary>
+      <p style={{ fontSize: 13, color: 'var(--eq-grey)', margin: '8px 0 4px' }}>
+        Every user has one of these, set in Users. Groups below add extra access on top.
+      </p>
+      {ROLES.map((r) => {
+        const perms = MATRIX[r.key] ?? [];
+        return (
+          <div key={r.key} style={{ padding: '10px 0', borderTop: '1px solid var(--eq-border)' }}>
+            <div style={{ fontSize: 13, color: 'var(--eq-ink)' }}>
+              <span style={{ fontWeight: 600 }}>{r.label}</span>
+              <span style={{ color: 'var(--eq-grey)' }}> · {perms.length} abilities</span>
+            </div>
+            {r.description && (
+              <div style={{ fontSize: 12, color: 'var(--eq-grey)', marginTop: 2 }}>{r.description}</div>
+            )}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+              {perms.map((k) => (
+                <span key={k} title={k} style={{
+                  fontSize: 11, padding: '2px 7px', borderRadius: 4,
+                  background: '#f5f7fa', color: 'var(--eq-ink)',
+                }}>
+                  {labelFor(k) ?? k}
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </details>
   );
 }
 

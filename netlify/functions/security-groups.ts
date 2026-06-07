@@ -51,13 +51,29 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     const action = url.searchParams.get('action') ?? 'list';
 
     if (action === 'list') {
+      // Embed each group's perms + member count so the list shows abilities at a
+      // glance (no click-through needed). security_group_perms FKs group_id;
+      // user_security_groups(count) is a PostgREST aggregate embed.
       const { data, error } = await sb
         .from('security_groups')
-        .select('id, name, description, created_at')
+        .select('id, name, description, created_at, security_group_perms(perm_key), user_security_groups(count)')
         .eq('tenant_id', tenantId)
         .order('name');
       if (error) return json(500, { ok: false, error: 'db_error' });
-      return json(200, { ok: true, groups: data ?? [] });
+      type Row = {
+        id: string; name: string; description: string | null; created_at: string;
+        security_group_perms?: { perm_key: string }[] | null;
+        user_security_groups?: { count: number }[] | null;
+      };
+      const groups = ((data ?? []) as Row[]).map((g) => ({
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        created_at: g.created_at,
+        perm_keys: (g.security_group_perms ?? []).map((p) => p.perm_key),
+        member_count: g.user_security_groups?.[0]?.count ?? 0,
+      }));
+      return json(200, { ok: true, groups });
     }
 
     if (action === 'detail') {
