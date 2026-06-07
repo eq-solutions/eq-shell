@@ -12,7 +12,9 @@ export const SIDEBAR_RECORDS: Omit<RecordLink, 'count'>[] = [
   { key: 'site',      label: 'Sites',             entity: 'site'      },
   { key: 'contact',   label: 'Contacts',          entity: 'contact'   },
   { key: 'staff',     label: 'Staff',             entity: 'staff'     },
-  { key: 'licence',   label: 'Licences',          entity: 'licence'   },
+  // Licences carry a warn affordance — they expire, so the count gets an amber
+  // dot to flag "something here needs a look".
+  { key: 'licence',   label: 'Licences',          entity: 'licence', warn: true },
   // Plant & equipment is its own module route, not /data/:entity — folded into
   // Records (was its own EQUIPMENT group). Gated on equipment.view in HubSidebar.
   { key: 'equipment', label: 'Plant & equipment', entity: 'equipment', to: 'equipment' },

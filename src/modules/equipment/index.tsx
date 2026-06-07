@@ -18,8 +18,11 @@
 // Status is computed in the browser on purpose: there is no calibration
 // "overdue" event in the canonical feed yet (that would need an emitter).
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X, FileText, MapPin, User } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  X, FileText, FileCheck2, FileX2, MapPin, User, ChevronRight, ChevronDown,
+  Check, Clock, AlertTriangle, Gauge, CalendarDays, ArrowRightLeft,
+} from 'lucide-react';
 import { Button } from '@eq-solutions/ui';
 import { useCan } from '../../permissions';
 import { HubLayout } from '../../components/HubLayout';
@@ -28,6 +31,20 @@ import { defaultSidebarRecords } from '../../lib/sidebarConfig';
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 import { Skeleton } from '../../components/Skeleton';
 import { EqError } from '../../components/EqError';
+
+// Deterministic custodian avatar colour from the staff id. Stays within the
+// brand-blue family (sky → deep) so it never reads as a status colour.
+const AVATAR_PALETTE = ['#2986B4', '#1F4E6C', '#3DA8D8', '#5AC0E6', '#2E6E94'];
+function avatarColour(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+function nameInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return ((parts[0][0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
+}
 
 interface AssetRow {
   asset_id?: string;
@@ -62,13 +79,14 @@ interface EntityRowsResponse {
 
 type Tone = 'overdue' | 'soon' | 'ok' | 'none';
 
-// Flat tints (no gradients/shadows, per brand). Value is the text colour;
-// the chip background is the same colour at ~8% alpha.
-const TONE_COLOR: Record<Tone, string> = {
-  overdue: '#c0392b',
-  soon:    '#b7791f',
-  ok:      '#2e7d32',
-  none:    '#64748b',
+// Chip class + icon per status. Status reads by dot + label + icon, never
+// colour alone (per spec + WCAG). Colours come from --eq-success/warning/error
+// tokens via the .eq-rc-chip--* classes in records-redesign.css.
+const TONE_CHIP: Record<Tone, { cls: string; icon: React.ReactNode }> = {
+  ok:      { cls: 'eq-rc-chip--ok',   icon: <Check size={13} aria-hidden="true" /> },
+  soon:    { cls: 'eq-rc-chip--soon', icon: <Clock size={13} aria-hidden="true" /> },
+  overdue: { cls: 'eq-rc-chip--over', icon: <AlertTriangle size={13} aria-hidden="true" /> },
+  none:    { cls: 'eq-rc-chip--none', icon: <Clock size={13} aria-hidden="true" /> },
 };
 
 const DUE_SOON_DAYS = 30;
@@ -139,20 +157,11 @@ function addInterval(fromYMD: string, interval: string | null | undefined): stri
 }
 
 function StatusChip({ tone, label }: { tone: Tone; label: string }) {
-  const color = TONE_COLOR[tone];
+  const { cls, icon } = TONE_CHIP[tone];
   return (
-    <span
-      style={{
-        display: 'inline-block',
-        fontSize: 12,
-        fontWeight: 600,
-        padding: '2px 8px',
-        borderRadius: 6,
-        color,
-        background: `${color}14`,
-        whiteSpace: 'nowrap',
-      }}
-    >
+    <span className={`eq-rc-chip ${cls}`}>
+      <span className="eq-rc-chip__dot" aria-hidden="true" />
+      {icon}
       {label}
     </span>
   );
@@ -490,12 +499,14 @@ function EquipmentFormDrawer({
 }
 
 type StatusFilter = 'all' | 'overdue' | 'soon' | 'nocert';
-type GroupBy = 'none' | 'site' | 'person';
+// Site = one register table (Site/location column). Person = one collapsible
+// card per custodian with rollups; the custodian owns cert/calibration.
+type GroupBy = 'site' | 'person';
 
 const UNASSIGNED_KEY = '__unassigned__';
-const NO_LOCATION_KEY = '__nolocation__';
 
-function FilterChip({
+// Status segmented filter — All / Overdue / Due soon / No cert, each with a count.
+function SegFilter({
   active,
   label,
   count,
@@ -511,27 +522,16 @@ function FilterChip({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        fontSize: 13,
-        fontWeight: 600,
-        padding: '5px 12px',
-        borderRadius: 999,
-        cursor: 'pointer',
-        border: `1px solid ${active ? '#2986b4' : 'var(--eq-border)'}`,
-        background: active ? '#2986b414' : 'transparent',
-        color: active ? '#2986b4' : 'var(--eq-mute)',
-      }}
+      className={`eq-seg__btn${active ? ' is-active' : ''}`}
     >
       {label}
-      <span style={{ opacity: 0.8, fontWeight: 500 }}>{count}</span>
+      <span className="eq-seg__n">{count.toLocaleString('en-AU')}</span>
     </button>
   );
 }
 
-function SegBtn({
+// Group-by pill toggle button (Site | Person).
+function PillToggle({
   active,
   onClick,
   children,
@@ -545,22 +545,54 @@ function SegBtn({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 5,
-        fontSize: 13,
-        fontWeight: 600,
-        padding: '5px 12px',
-        cursor: 'pointer',
-        border: 'none',
-        background: active ? 'white' : 'transparent',
-        color: active ? 'var(--eq-ink)' : 'var(--eq-mute)',
-        borderRadius: 6,
-        boxShadow: active ? '0 0 0 1px var(--eq-border)' : 'none',
-      }}
+      className={`eq-pilltoggle__btn${active ? ' is-active' : ''}`}
     >
       {children}
+    </button>
+  );
+}
+
+// Custodian avatar + name cell (used in the table + drawer).
+function Custodian({ id, name }: { id: string | null | undefined; name: string }) {
+  if (!id) {
+    return (
+      <span className="eq-rc-custodian eq-rc-custodian--none">
+        <span className="eq-rc-avatar eq-rc-avatar--none" aria-hidden="true">?</span>
+        <span className="eq-rc-custodian-name">Unassigned</span>
+      </span>
+    );
+  }
+  return (
+    <span className="eq-rc-custodian">
+      <span className="eq-rc-avatar" style={{ background: avatarColour(id) }} aria-hidden="true">
+        {nameInitials(name)}
+      </span>
+      <span className="eq-rc-custodian-name">{name}</span>
+    </span>
+  );
+}
+
+// Merged Calibration cell — status chip + "Next <date>" sub.
+function CalibrationCell({ tone, label, next }: { tone: Tone; label: string; next: string }) {
+  return (
+    <span className="eq-rc-cal">
+      <StatusChip tone={tone} label={label} />
+      <span className="eq-rc-calsub">Next <b>{next}</b></span>
+    </span>
+  );
+}
+
+// Cert affordance — filled file-check (has) / dashed file-x (missing) icon button.
+function CertButton({ has, onOpen, label }: { has: boolean; onOpen: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      className={`eq-rc-cert ${has ? 'eq-rc-cert--has' : 'eq-rc-cert--missing'}`}
+      onClick={(e) => { e.stopPropagation(); onOpen(); }}
+      aria-label={has ? `View certificate for ${label}` : `No certificate on file for ${label}`}
+      title={has ? 'View certificate' : 'No certificate on file'}
+    >
+      {has ? <FileCheck2 size={16} aria-hidden="true" /> : <FileX2 size={16} aria-hidden="true" />}
     </button>
   );
 }
@@ -575,8 +607,12 @@ export default function EquipmentModule() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; row: AssetRow | null } | null>(null);
+  const [detail, setDetail] = useState<AssetRow | null>(null);
   const [filter, setFilter] = useState<StatusFilter>('all');
-  const [groupBy, setGroupBy] = useState<GroupBy>('none');
+  // Group by Site (default) or by custodian (Person). Site keeps the single
+  // table; Person renders one collapsible card per custodian with rollups.
+  const [groupBy, setGroupBy] = useState<GroupBy>('site');
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(() => new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -676,22 +712,12 @@ export default function EquipmentModule() {
 
   const visibleRows = useMemo(() => (rows ?? []).filter(matchesFilter), [rows, matchesFilter]);
 
-  // Group the visible rows by the chosen key, each with a rollup. A single
-  // "flat" group is returned when grouping is off.
-  const groups = useMemo(() => {
-    const keyOf = (r: AssetRow): string => {
-      if (groupBy === 'site') return r.site_id || NO_LOCATION_KEY;
-      if (groupBy === 'person') return r.assigned_to || UNASSIGNED_KEY;
-      return '__all__';
-    };
-    const labelOf = (key: string): string => {
-      if (groupBy === 'site') return key === NO_LOCATION_KEY ? 'No location' : siteName(key);
-      if (groupBy === 'person') return key === UNASSIGNED_KEY ? 'Unassigned' : staffName(key);
-      return '';
-    };
+  // Group the visible rows by custodian (Person mode), each with a rollup of
+  // its overdue / due-soon counts. Unassigned items group last.
+  const personGroups = useMemo(() => {
     const byKey = new Map<string, AssetRow[]>();
     for (const r of visibleRows) {
-      const k = keyOf(r);
+      const k = r.assigned_to || UNASSIGNED_KEY;
       const arr = byKey.get(k);
       if (arr) arr.push(r);
       else byKey.set(k, [r]);
@@ -704,14 +730,24 @@ export default function EquipmentModule() {
         if (tone === 'overdue') overdue += 1;
         else if (tone === 'soon') soon += 1;
       }
-      return { key, label: labelOf(key), items, overdue, soon };
+      const isNone = key === UNASSIGNED_KEY;
+      return {
+        key,
+        label: isNone ? 'Unassigned' : staffName(key),
+        role: isNone ? 'No custodian — needs assigning' : 'Custodian',
+        isNone,
+        items,
+        overdue,
+        soon,
+      };
     });
-    // Sort: most-overdue first when grouped; leave flat as-is (already date-sorted).
-    if (groupBy !== 'none') {
-      out.sort((a, b) => b.overdue - a.overdue || b.soon - a.soon || a.label.localeCompare(b.label));
-    }
+    // Most-overdue first; Unassigned always last.
+    out.sort((a, b) => {
+      if (a.isNone !== b.isNone) return a.isNone ? 1 : -1;
+      return b.overdue - a.overdue || b.soon - a.soon || a.label.localeCompare(b.label);
+    });
     return out;
-  }, [visibleRows, groupBy, siteName, staffName]);
+  }, [visibleRows, staffName]);
 
   if (!canView) {
     return (
@@ -733,74 +769,75 @@ export default function EquipmentModule() {
     return parts.join(' · ');
   })();
 
-  const COL_COUNT = 9;
-
-  const renderRow = (r: AssetRow, i: number) => {
+  // One register row. `showCustodian` is off inside person-group cards (the
+  // card head already names the custodian). Clicking a row opens the read-only
+  // detail drawer; the cert button opens the same drawer (stops propagation).
+  const renderRow = (r: AssetRow, i: number, showCustodian: boolean) => {
     const status = calStatus(r.next_service_due);
-    const makeModel = [r.make, r.model].filter(Boolean).join(' ') || '—';
+    const overdue = status.tone === 'overdue';
+    const itemId = r.name || r.serial_number || (r.asset_id ?? '').slice(0, 8) || '—';
     return (
       <tr
         key={r.asset_id ?? i}
-        onClick={canEdit ? () => setForm({ mode: 'edit', row: r }) : undefined}
-        style={canEdit ? { cursor: 'pointer' } : undefined}
+        onClick={() => setDetail(r)}
+        className={overdue ? 'is-overdue' : undefined}
+        style={{ cursor: 'pointer' }}
       >
         <td>
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setForm({ mode: 'edit', row: r }); }}
-              aria-label={`Edit ${r.name || 'item'}`}
-              style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left' }}
-            >
-              {r.name || '—'}
-            </button>
-          ) : (
-            r.name || '—'
-          )}
+          <span className="eq-rc-itemid">
+            {overdue && <span className="eq-rc-reddot" aria-label="Overdue" />}
+            {itemId}
+          </span>
         </td>
-        <td>{makeModel}</td>
-        <td>{r.serial_number || '—'}</td>
+        <td>
+          <span className="eq-rc-model">
+            <b>{r.model || '—'}</b>
+            {r.make && <span>{r.make}</span>}
+          </span>
+        </td>
+        <td><span className="eq-rc-serial">{r.serial_number || '—'}</span></td>
+        {showCustodian && (
+          <td><Custodian id={r.assigned_to} name={staffName(r.assigned_to)} /></td>
+        )}
         <td>{siteName(r.site_id)}</td>
         <td>
-          {r.assigned_to ? (
-            staffName(r.assigned_to)
-          ) : (
-            <span style={{ color: 'var(--eq-mute)' }}>Unassigned</span>
-          )}
+          <CalibrationCell tone={status.tone} label={status.label} next={fmtDate(r.next_service_due)} />
         </td>
-        <td>{fmtDate(r.last_service_date)}</td>
-        <td>{fmtDate(r.next_service_due)}</td>
-        <td><StatusChip tone={status.tone} label={status.label} /></td>
-        <td>
-          {r.cert_url ? (
-            <a
-              href={r.cert_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              aria-label="View certificate"
-              title="View certificate"
-              style={{ color: '#2986b4', display: 'inline-flex', alignItems: 'center' }}
-            >
-              <FileText size={16} aria-hidden="true" />
-            </a>
-          ) : (
-            <span style={{ color: 'var(--eq-mute)' }}>—</span>
-          )}
+        <td style={{ textAlign: 'center' }}>
+          <CertButton has={Boolean(r.cert_url)} onOpen={() => setDetail(r)} label={String(itemId)} />
+        </td>
+        <td style={{ width: 28 }}>
+          <span className="eq-rc-rowchev" aria-hidden="true"><ChevronRight size={16} /></span>
         </td>
       </tr>
     );
   };
 
+  const tableHead = (showCustodian: boolean) => (
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th>Make / model</th>
+        <th>Serial</th>
+        {showCustodian && <th>Assigned to</th>}
+        <th>Site / location</th>
+        <th>Calibration</th>
+        <th style={{ textAlign: 'center' }}>Cert</th>
+        <th aria-label="Open" />
+      </tr>
+    </thead>
+  );
+
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
       <div className="eq-page__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
         <div>
-          <h1 className="eq-page__title">Plant &amp; Equipment</h1>
+          <p className="eq-page__eyebrow">Records · Register</p>
+          <h1 className="eq-page__title">Plant &amp; equipment</h1>
           <p className="eq-page__lede">{lede}</p>
         </div>
         {canEdit && (
-          <Button type="button" onClick={() => setForm({ mode: 'create', row: null })}>
+          <Button type="button" icon={<Gauge size={16} />} onClick={() => setForm({ mode: 'create', row: null })}>
             Add item
           </Button>
         )}
@@ -809,86 +846,117 @@ export default function EquipmentModule() {
       {err && <EqError message={err} onRetry={load} />}
 
       {rows && counts.all > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap', margin: '4px 0 16px' }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <FilterChip active={filter === 'all'} label="All" count={counts.all} onClick={() => setFilter('all')} />
-            <FilterChip active={filter === 'overdue'} label="Overdue" count={counts.overdue} onClick={() => setFilter('overdue')} />
-            <FilterChip active={filter === 'soon'} label="Due soon" count={counts.soon} onClick={() => setFilter('soon')} />
-            <FilterChip active={filter === 'nocert'} label="No cert" count={counts.nocert} onClick={() => setFilter('nocert')} />
+        <div className="eq-rc-toolbar">
+          <div className="eq-seg" role="tablist" aria-label="Filter by status">
+            <SegFilter active={filter === 'all'} label="All" count={counts.all} onClick={() => setFilter('all')} />
+            <SegFilter active={filter === 'overdue'} label="Overdue" count={counts.overdue} onClick={() => setFilter('overdue')} />
+            <SegFilter active={filter === 'soon'} label="Due soon" count={counts.soon} onClick={() => setFilter('soon')} />
+            <SegFilter active={filter === 'nocert'} label="No cert" count={counts.nocert} onClick={() => setFilter('nocert')} />
           </div>
-          <div role="group" aria-label="Group by" style={{ display: 'inline-flex', gap: 2, padding: 2, background: 'var(--eq-bg-subtle, #f1f5f9)', borderRadius: 8 }}>
-            <SegBtn active={groupBy === 'none'} onClick={() => setGroupBy('none')}>Flat</SegBtn>
-            <SegBtn active={groupBy === 'site'} onClick={() => setGroupBy('site')}>
-              <MapPin size={14} aria-hidden="true" /> Location
-            </SegBtn>
-            <SegBtn active={groupBy === 'person'} onClick={() => setGroupBy('person')}>
-              <User size={14} aria-hidden="true" /> Person
-            </SegBtn>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--eq-grey)' }}>Group by</span>
+            <div className="eq-pilltoggle" role="group" aria-label="Group by">
+              <PillToggle active={groupBy === 'site'} onClick={() => setGroupBy('site')}>
+                <MapPin size={14} aria-hidden="true" /> Site
+              </PillToggle>
+              <PillToggle active={groupBy === 'person'} onClick={() => setGroupBy('person')}>
+                <User size={14} aria-hidden="true" /> Person
+              </PillToggle>
+            </div>
           </div>
         </div>
       )}
 
-      <div
-        className="eq-table-wrap"
-        style={{ opacity: loading && rows !== null ? 0.6 : 1, transition: 'opacity 150ms' }}
-      >
-        <table className="eq-table">
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Make / model</th>
-              <th>Serial</th>
-              <th>Location</th>
-              <th>Assigned to</th>
-              <th>Last calibrated</th>
-              <th>Next due</th>
-              <th>Status</th>
-              <th>Cert</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && !rows ? (
-              <tr>
-                <td colSpan={COL_COUNT}>
-                  <Skeleton variant="row" count={8} />
-                </td>
-              </tr>
-            ) : counts.all === 0 ? (
-              <tr>
-                <td colSpan={COL_COUNT} style={{ textAlign: 'center', padding: 32, color: 'var(--eq-mute)' }}>
-                  {canEdit
-                    ? 'No equipment recorded yet — use “Add item” to start tracking calibration.'
-                    : 'No equipment recorded yet.'}
-                </td>
-              </tr>
-            ) : visibleRows.length === 0 ? (
-              <tr>
-                <td colSpan={COL_COUNT} style={{ textAlign: 'center', padding: 32, color: 'var(--eq-mute)' }}>
-                  Nothing matches this filter.
-                </td>
-              </tr>
-            ) : groupBy === 'none' ? (
-              visibleRows.map(renderRow)
-            ) : (
-              groups.map((g) => (
-                <Fragment key={g.key}>
-                  <tr style={{ background: 'var(--eq-bg-subtle, #f8fafc)' }}>
-                    <td colSpan={COL_COUNT} style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--eq-ink)' }}>
-                      {g.label}
-                      <span style={{ marginLeft: 10, fontWeight: 500, fontSize: 13, color: 'var(--eq-mute)' }}>
-                        {g.items.length} item{g.items.length === 1 ? '' : 's'}
-                        {g.overdue ? ` · ${g.overdue} overdue` : ''}
-                        {g.soon ? ` · ${g.soon} due soon` : ''}
-                      </span>
-                    </td>
-                  </tr>
-                  {g.items.map(renderRow)}
-                </Fragment>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Loading / empty states */}
+      {loading && !rows ? (
+        <div className="eq-table-wrap"><div style={{ padding: 8 }}><Skeleton variant="row" count={8} /></div></div>
+      ) : counts.all === 0 ? (
+        <div className="eq-table-wrap">
+          <div style={{ textAlign: 'center', padding: 48, color: 'var(--eq-mute)' }}>
+            {canEdit
+              ? 'No equipment recorded yet — use “Add item” to start tracking calibration.'
+              : 'No equipment recorded yet.'}
+          </div>
+        </div>
+      ) : visibleRows.length === 0 ? (
+        <div className="eq-table-wrap">
+          <div style={{ textAlign: 'center', padding: 48, color: 'var(--eq-mute)' }}>Nothing matches this filter.</div>
+        </div>
+      ) : groupBy === 'site' ? (
+        // ── Group by Site: one register table ──
+        <div className="eq-table-wrap eq-rc-tablescroll" style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 150ms' }}>
+          <table className="eq-table">
+            {tableHead(true)}
+            <tbody>{visibleRows.map((r, i) => renderRow(r, i, true))}</tbody>
+          </table>
+        </div>
+      ) : (
+        // ── Group by Person: one collapsible card per custodian ──
+        <div style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 150ms' }}>
+          {personGroups.map((g) => {
+            const closed = closedGroups.has(g.key);
+            return (
+              <div key={g.key} className={`eq-pgroup${closed ? ' is-closed' : ''}`}>
+                <button
+                  type="button"
+                  className="eq-pgroup__head"
+                  aria-expanded={!closed}
+                  onClick={() => setClosedGroups((s) => {
+                    const next = new Set(s);
+                    if (next.has(g.key)) next.delete(g.key); else next.add(g.key);
+                    return next;
+                  })}
+                >
+                  <span
+                    className={`eq-pgroup__av${g.isNone ? ' eq-pgroup__av--none' : ''}`}
+                    style={g.isNone ? undefined : { background: avatarColour(g.key) }}
+                    aria-hidden="true"
+                  >
+                    {g.isNone ? '?' : nameInitials(g.label)}
+                  </span>
+                  <div className="eq-pgroup__main">
+                    <div className="eq-pgroup__nm">{g.label}</div>
+                    <div className="eq-pgroup__role">{g.role}</div>
+                  </div>
+                  <div className="eq-pgroup__roll">
+                    <span className="eq-rollchip"><b>{g.items.length}</b> {g.items.length === 1 ? 'tool' : 'tools'}</span>
+                    {g.overdue > 0 && (
+                      <span className="eq-rollchip eq-rollchip--over"><span className="eq-rollchip__dot" aria-hidden="true" />{g.overdue} overdue</span>
+                    )}
+                    {g.overdue === 0 && g.soon > 0 && (
+                      <span className="eq-rollchip eq-rollchip--soon"><span className="eq-rollchip__dot" aria-hidden="true" />{g.soon} due soon</span>
+                    )}
+                    {g.overdue === 0 && g.soon === 0 && (
+                      <span className="eq-rollchip eq-rollchip--ok"><span className="eq-rollchip__dot" aria-hidden="true" />all current</span>
+                    )}
+                  </div>
+                  <span className="eq-pgroup__chev" aria-hidden="true"><ChevronDown size={18} /></span>
+                </button>
+                <div className="eq-pgroup__body">
+                  <div className="eq-rc-tablescroll">
+                    <table className="eq-table">
+                      {tableHead(false)}
+                      <tbody>{g.items.map((r, i) => renderRow(r, i, false))}</tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {detail && (
+        <AssetDetailDrawer
+          row={detail}
+          siteName={siteName(detail.site_id)}
+          custodianName={staffName(detail.assigned_to)}
+          canEdit={canEdit}
+          onClose={() => setDetail(null)}
+          onReassign={() => { const r = detail; setDetail(null); setForm({ mode: 'edit', row: r }); }}
+          onLogCalibration={() => { const r = detail; setDetail(null); setForm({ mode: 'edit', row: r }); }}
+        />
+      )}
 
       {form && (
         <EquipmentFormDrawer
@@ -901,5 +969,139 @@ export default function EquipmentModule() {
         />
       )}
     </HubLayout>
+  );
+}
+
+// ── Asset detail drawer (read-only) — EntityBrowserPage slide-over pattern.
+// Identity & custody · Calibration (mini track) · Certificate, plus Reassign /
+// Log-calibration actions that hand off to the existing edit form.
+function AssetDetailDrawer({
+  row,
+  siteName,
+  custodianName,
+  canEdit,
+  onClose,
+  onReassign,
+  onLogCalibration,
+}: {
+  row: AssetRow;
+  siteName: string;
+  custodianName: string;
+  canEdit: boolean;
+  onClose: () => void;
+  onReassign: () => void;
+  onLogCalibration: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    rafRef.current = requestAnimationFrame(() => setOpen(true));
+    return () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); };
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const status = calStatus(row.next_service_due);
+  const { cls, icon } = TONE_CHIP[status.tone];
+  const itemId = row.name || row.serial_number || (row.asset_id ?? '').slice(0, 8) || 'Item';
+  const makeModel = [row.make, row.model].filter(Boolean).join(' ') || '—';
+  const hasCert = Boolean(row.cert_url);
+  // Mini track fill: OK ~40%, due ~86%, overdue 100% (illustrative position in
+  // the calibration interval), coloured by status.
+  const pct = status.tone === 'overdue' ? 100 : status.tone === 'soon' ? 86 : status.tone === 'ok' ? 40 : 12;
+  const barColour =
+    status.tone === 'overdue' ? 'var(--eq-error-text)'
+    : status.tone === 'soon'  ? 'var(--eq-warning-text)'
+    : status.tone === 'ok'    ? 'var(--eq-success-text)'
+    : 'var(--eq-gray-400)';
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'var(--eq-overlay)', zIndex: 40 }} />
+      <aside
+        role="dialog"
+        aria-label={`${itemId} detail`}
+        style={{
+          position: 'fixed', right: 0, top: 0, height: '100vh',
+          width: 'min(560px, 94vw)', background: 'var(--eq-content-bg, #F6F3EE)',
+          borderLeft: '1px solid var(--eq-border)', zIndex: 50,
+          display: 'flex', flexDirection: 'column', overflowY: 'auto',
+          boxShadow: 'var(--eq-shadow-lg)',
+          transform: open ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 220ms ease',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 20px', borderBottom: '1px solid var(--eq-border)', background: 'var(--eq-white)' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--eq-ink)', fontVariantNumeric: 'tabular-nums' }}>{itemId}</span>
+          <span style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--eq-gray-500)', display: 'inline-flex', padding: 4 }}>
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div style={{ padding: 20, flex: 1 }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--eq-ink)' }}>{row.name || itemId}</div>
+            <div style={{ fontSize: 13, color: 'var(--eq-grey)' }}>{makeModel}</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 'var(--eq-radius-input)', background: 'var(--eq-ice)', color: 'var(--eq-deep)' }}>
+                <MapPin size={12} aria-hidden="true" /> {siteName}
+              </span>
+              <span className={`eq-rc-chip ${cls}`}>
+                <span className="eq-rc-chip__dot" aria-hidden="true" />{icon}{status.label}
+              </span>
+            </div>
+          </div>
+
+          {/* Identity & custody */}
+          <div className="eq-rc-drawer-card">
+            <div className="eq-rc-drawer-card__h"><Gauge size={16} aria-hidden="true" /><h3>Identity &amp; custody</h3></div>
+            <div className="eq-rc-kv"><span className="eq-rc-kv__k">Make / model</span><span className="eq-rc-kv__v">{makeModel}</span></div>
+            <div className="eq-rc-kv"><span className="eq-rc-kv__k">Serial</span><span className="eq-rc-kv__v" style={{ fontVariantNumeric: 'tabular-nums' }}>{row.serial_number || '—'}</span></div>
+            <div className="eq-rc-kv"><span className="eq-rc-kv__k">Site / location</span><span className="eq-rc-kv__v">{siteName}</span></div>
+            <div className="eq-rc-kv"><span className="eq-rc-kv__k">Assigned to</span><span className="eq-rc-kv__v"><Custodian id={row.assigned_to} name={custodianName} /></span></div>
+          </div>
+
+          {/* Calibration */}
+          <div className="eq-rc-drawer-card">
+            <div className="eq-rc-drawer-card__h"><CalendarDays size={16} aria-hidden="true" /><h3>Calibration</h3></div>
+            <div className="eq-rc-kv"><span className="eq-rc-kv__k">Last calibrated</span><span className="eq-rc-kv__v">{fmtDate(row.last_service_date)}</span></div>
+            <div className="eq-rc-kv"><span className="eq-rc-kv__k">Next due</span><span className="eq-rc-kv__v">{fmtDate(row.next_service_due)}</span></div>
+            <div className="eq-rc-track__bar"><i style={{ width: `${pct}%`, background: barColour }} /></div>
+            <div className="eq-rc-track__meta"><span>Last cal</span><span><b>{status.label}</b></span><span>Next due</span></div>
+          </div>
+
+          {/* Certificate */}
+          <div className="eq-rc-drawer-card">
+            <div className="eq-rc-drawer-card__h">{hasCert ? <FileCheck2 size={16} aria-hidden="true" /> : <FileX2 size={16} aria-hidden="true" />}<h3>Certificate</h3></div>
+            <div className={`eq-rc-certtile ${hasCert ? 'eq-rc-certtile--has' : 'eq-rc-certtile--missing'}`}>
+              <span className="eq-rc-certtile__ic">{hasCert ? <FileCheck2 size={22} aria-hidden="true" /> : <FileX2 size={22} aria-hidden="true" />}</span>
+              <div style={{ flex: 1 }}>
+                <div className="eq-rc-certtile__t">{hasCert ? 'Calibration certificate on file' : 'No certificate on file'}</div>
+                <div className="eq-rc-certtile__m">{hasCert ? 'PDF or image — open to view the issued certificate.' : 'Upload the latest certificate to clear this flag.'}</div>
+              </div>
+              {hasCert ? (
+                <a href={row.cert_url ?? '#'} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+                  <Button type="button" variant="ghost" size="sm" icon={<FileText size={14} />}>View</Button>
+                </a>
+              ) : (
+                canEdit && <Button type="button" variant="primary" size="sm" onClick={onLogCalibration}>Upload</Button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {canEdit && (
+          <div style={{ display: 'flex', gap: 8, padding: 16, borderTop: '1px solid var(--eq-border)', background: 'var(--eq-white)' }}>
+            <Button type="button" variant="ghost" icon={<ArrowRightLeft size={15} />} onClick={onReassign}>Reassign custodian</Button>
+            <Button type="button" variant="primary" icon={<CalendarDays size={15} />} onClick={onLogCalibration}>Log calibration</Button>
+          </div>
+        )}
+      </aside>
+    </>
   );
 }

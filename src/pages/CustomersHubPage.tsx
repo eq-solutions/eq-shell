@@ -9,7 +9,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Building2, MapPin, User, Phone, Mail, ChevronDown, AlertTriangle, Search,
+  Pencil, Download, Plus,
 } from 'lucide-react';
+import { Button } from '@eq-solutions/ui';
 import { HubLayout } from '../components/HubLayout';
 import { Gate } from '../permissions/Gate';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
@@ -17,6 +19,15 @@ import { EqError } from '../components/EqError';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 const UNASSIGNED = '__unassigned__';
+
+// Deterministic squared-avatar colour from the customer name — stays in the
+// brand-blue family so it reads as decoration, never status.
+const BRAND_PALETTE = ['#2986B4', '#1F4E6C', '#3DA8D8', '#5AC0E6', '#2E6E94'];
+function brandColour(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return BRAND_PALETTE[h % BRAND_PALETTE.length];
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface CustomerListItem {
@@ -117,28 +128,37 @@ function CustomersHubInner() {
     <div>
       <div className="eq-page__header">
         <p style={eyebrow}>RECORDS · CRM</p>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <h1 className="eq-page__title">Customers</h1>
             <p className="eq-page__lede">The spine of your records — each customer owns its sites and contacts.</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="ghost" size="sm" icon={<Download size={15} />}>Export</Button>
+            <Button variant="primary" size="sm" icon={<Plus size={15} />}>Add customer</Button>
           </div>
         </div>
       </div>
 
       {error && <EqError title="Something went wrong" message={error} onRetry={() => void loadList()} />}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 360px) 1fr', gap: 0, border: '1px solid var(--eq-border)', borderRadius: 8, overflow: 'hidden', minHeight: 480 }}>
+      <div className="crm-pane">
         {/* Left — list */}
-        <div style={{ borderRight: '1px solid var(--eq-border)', display: 'flex', flexDirection: 'column', background: '#fff' }}>
+        <div className="crm-pane__list">
           <div style={{ padding: 12, borderBottom: '1px solid var(--eq-border)' }}>
             <div style={{ position: 'relative' }}>
               <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: 'var(--eq-grey)' }} />
               <input
+                className="crm-searchbox"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder={`Search ${customers.length} customers…`}
                 style={{ width: '100%', padding: '8px 10px 8px 30px', border: '1px solid var(--eq-border)', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }}
               />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontSize: 11.5, color: 'var(--eq-grey)' }}>
+              <span>{customers.length} customer{customers.length === 1 ? '' : 's'}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: 600 }}>A–Z <ChevronDown size={12} /></span>
             </div>
           </div>
           <div style={{ overflowY: 'auto', flex: 1 }}>
@@ -150,8 +170,12 @@ function CustomersHubInner() {
                   <CustomerRow key={c.id} c={c} active={selectedId === c.id} onClick={() => setSelectedId(c.id)} />
                 ))}
                 {(orphan.sites > 0 || orphan.contacts > 0) && (
-                  <button onClick={() => setSelectedId(UNASSIGNED)} style={{ ...rowBtn, background: selectedId === UNASSIGNED ? 'var(--eq-ice, #eaf5fb)' : '#fff', borderLeft: selectedId === UNASSIGNED ? '3px solid var(--eq-sky)' : '3px solid transparent' }}>
-                    <span style={{ ...avatar, background: 'transparent', border: '1px dashed var(--eq-g300, #d4ccbe)', color: 'var(--eq-grey)' }}><AlertTriangle size={15} /></span>
+                  <button
+                    onClick={() => setSelectedId(UNASSIGNED)}
+                    className={`crm-row${selectedId === UNASSIGNED ? ' is-active' : ''}`}
+                    style={{ ...rowBtn, borderLeft: selectedId === UNASSIGNED ? '3px solid var(--eq-sky)' : '3px solid transparent' }}
+                  >
+                    <span style={{ ...avatar, background: 'transparent', border: '1px dashed var(--eq-gray-300)', color: 'var(--eq-grey)' }}><AlertTriangle size={15} /></span>
                     <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                       <span style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--eq-ink)' }}>Unassigned</span>
                       <span style={{ display: 'block', fontSize: 11.5, color: 'var(--eq-grey)' }}>Orphan records</span>
@@ -168,7 +192,7 @@ function CustomersHubInner() {
         </div>
 
         {/* Right — detail */}
-        <div style={{ overflowY: 'auto', background: 'var(--eq-canvas, #f5f4f0)' }}>
+        <div style={{ overflowY: 'auto', background: 'var(--eq-content-bg, #f6f3ee)' }}>
           {detailLoading ? (
             <p style={{ color: 'var(--eq-grey)', fontSize: 13, padding: 24 }}>Loading…</p>
           ) : selectedId === UNASSIGNED && unassigned ? (
@@ -190,8 +214,12 @@ function CustomersHubInner() {
 // ── Left-pane row ──────────────────────────────────────────────────────────
 function CustomerRow({ c, active, onClick }: { c: CustomerListItem; active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} style={{ ...rowBtn, background: active ? 'var(--eq-ice, #eaf5fb)' : '#fff', borderLeft: active ? '3px solid var(--eq-sky)' : '3px solid transparent' }}>
-      <span style={avatar}>{initials(c.name)}</span>
+    <button
+      onClick={onClick}
+      className={`crm-row${active ? ' is-active' : ''}`}
+      style={{ ...rowBtn, borderLeft: active ? '3px solid var(--eq-sky)' : '3px solid transparent' }}
+    >
+      <span style={{ ...avatar, background: brandColour(c.name) }}>{initials(c.name)}</span>
       <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
         <span style={{ display: 'block', fontWeight: 700, fontSize: 13.5, color: 'var(--eq-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
         <span style={{ fontSize: 11.5, color: 'var(--eq-grey)' }}>{[c.group, c.state].filter(Boolean).join(' · ') || '—'}</span>
@@ -210,29 +238,30 @@ function CustomerDetailView({ d }: { d: CustomerDetail }) {
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
-        <span style={{ ...avatar, width: 48, height: 48, fontSize: 16, borderRadius: 10 }}>{initials(customer.name)}</span>
-        <div style={{ flex: 1 }}>
+        <span style={{ ...avatar, width: 54, height: 54, fontSize: 18, borderRadius: 10, background: brandColour(customer.name) }}>{initials(customer.name)}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: 'var(--eq-ink)' }}>{customer.name}</h2>
-            {customer.active && <span style={okPill}>● Active</span>}
+            <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: 'var(--eq-ink)' }}>{customer.name}</h2>
+            {customer.active && <span style={okPill}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} /> Active</span>}
             {customer.group && <span style={groupPill}>{customer.group}</span>}
           </div>
-          <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 13, color: 'var(--eq-deep, #2986b4)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 13, color: 'var(--eq-deep)', flexWrap: 'wrap' }}>
             {customer.phone && <a href={`tel:${customer.phone}`} style={metaLink}><Phone size={14} /> {customer.phone}</a>}
             {customer.email && <a href={`mailto:${customer.email}`} style={metaLink}><Mail size={14} /> {customer.email}</a>}
           </div>
         </div>
+        <Button variant="ghost" size="sm" icon={<Pencil size={14} />}>Edit</Button>
       </div>
 
       <Section icon={<MapPin size={15} />} title="Sites" count={sites.length} defaultOpen>
         {sites.length === 0
-          ? <EmptyNote icon={<MapPin size={28} />} text="No sites yet" />
+          ? <EmptyNote icon={<MapPin size={28} />} text="No sites yet" helper="Link the first site to start mapping work and contacts to it." cta="Link a site" />
           : sites.map((s, i) => <SiteAccordion key={s.id} s={s} defaultOpen={i === 0} />)}
       </Section>
 
       <Section icon={<User size={15} />} title="Contacts" count={contacts.length} defaultOpen={sites.length === 0}>
         {contacts.length === 0
-          ? <EmptyNote icon={<User size={28} />} text="No contacts yet" />
+          ? <EmptyNote icon={<User size={28} />} text="No contacts yet" helper="Add the people you deal with here — they show against this customer everywhere." />
           : contacts.map((c) => <ContactRow key={c.id} c={c} />)}
       </Section>
     </div>
@@ -244,7 +273,7 @@ function SiteAccordion({ s, defaultOpen }: { s: SiteItem; defaultOpen: boolean }
   return (
     <div style={{ border: '1px solid var(--eq-border)', borderRadius: 6, marginBottom: 8, background: '#fff', overflow: 'hidden' }}>
       <button onClick={() => setOpen((o) => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-        <span style={{ ...avatar, width: 30, height: 30, borderRadius: 6, background: 'var(--eq-surface, #eeecea)', color: 'var(--eq-ink)' }}><MapPin size={14} /></span>
+        <span style={{ ...avatar, width: 32, height: 32, borderRadius: 6, background: 'var(--eq-gray-100)', color: 'var(--eq-ink)' }}><MapPin size={14} /></span>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: 'block', fontWeight: 600, fontSize: 13.5, color: 'var(--eq-ink)' }}>{s.name}</span>
           <span style={{ fontSize: 12, color: 'var(--eq-grey)' }}>{[s.suburb, s.state].filter(Boolean).join(', ') || '—'}</span>
@@ -253,11 +282,11 @@ function SiteAccordion({ s, defaultOpen }: { s: SiteItem; defaultOpen: boolean }
         <ChevronDown size={16} style={{ color: 'var(--eq-grey)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms ease' }} />
       </button>
       {open && (
-        <div style={{ padding: '10px 12px 12px 52px', background: 'var(--eq-g50, #f6f3ee)', borderTop: '1px solid var(--eq-border)' }}>
+        <div style={{ padding: '10px 12px 12px 52px', background: 'var(--eq-gray-50)', borderTop: '1px solid var(--eq-border)' }}>
           {s.contact ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--eq-grey)' }}>ON-SITE</span>
-              <span style={{ ...avatar, width: 30, height: 30 }}>{initials(s.contact.name)}</span>
+              <span style={{ ...avatar, width: 30, height: 30, borderRadius: '50%', background: brandColour(s.contact.name) }}>{initials(s.contact.name)}</span>
               <span style={{ flex: 1 }}>
                 <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--eq-ink)' }}>{s.contact.name}</span>
                 {s.contact.phone && <span style={{ fontSize: 12, color: 'var(--eq-grey)' }}>{s.contact.phone}</span>}
@@ -277,7 +306,7 @@ function SiteAccordion({ s, defaultOpen }: { s: SiteItem; defaultOpen: boolean }
 function ContactRow({ c }: { c: ContactItem }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: '1px solid var(--eq-border)', borderRadius: 6, marginBottom: 6, background: '#fff' }}>
-      <span style={{ ...avatar, width: 34, height: 34 }}>{initials(c.name)}</span>
+      <span style={{ ...avatar, width: 34, height: 34, borderRadius: '50%', background: brandColour(c.name) }}>{initials(c.name)}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', fontWeight: 600, fontSize: 13.5, color: 'var(--eq-ink)' }}>{c.name}</span>
         <span style={{ fontSize: 12, color: 'var(--eq-grey)' }}>{c.role ?? c.email ?? '—'}</span>
@@ -293,11 +322,12 @@ function UnassignedDetail({ data }: { data: { sites: SiteItem[]; contacts: Conta
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-        <span style={{ ...avatar, width: 48, height: 48, borderRadius: 10, background: 'transparent', border: '1px dashed var(--eq-g300, #d4ccbe)', color: 'var(--eq-grey)' }}><AlertTriangle size={20} /></span>
-        <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: 'var(--eq-ink)' }}>Unassigned</h2>
+        <span style={{ ...avatar, width: 54, height: 54, borderRadius: 10, background: 'transparent', border: '1px dashed var(--eq-gray-300)', color: 'var(--eq-grey)' }}><AlertTriangle size={22} /></span>
+        <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: 'var(--eq-ink)' }}>Unassigned</h2>
       </div>
-      <div style={{ padding: '10px 14px', background: 'var(--eq-warn-bg, #fffbeb)', border: '1px solid #f3e2bd', borderRadius: 6, fontSize: 13, color: 'var(--eq-ink)', marginBottom: 16 }}>
-        {data.sites.length} site{data.sites.length === 1 ? '' : 's'} and {data.contacts.length} contact{data.contacts.length === 1 ? '' : 's'} have no customer. Assign each to a customer to fold it into the hierarchy.
+      <div style={{ display: 'flex', gap: 10, padding: '10px 14px', background: 'var(--eq-warning-bg)', border: '1px solid color-mix(in srgb, var(--eq-warning-text) 30%, transparent)', borderRadius: 6, fontSize: 13, color: 'var(--eq-ink)', marginBottom: 16 }}>
+        <AlertTriangle size={16} style={{ color: 'var(--eq-warning-text)', flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
+        <span>{data.sites.length} site{data.sites.length === 1 ? '' : 's'} and {data.contacts.length} contact{data.contacts.length === 1 ? '' : 's'} have no customer yet. Assign each to a customer to fold it into the hierarchy.</span>
       </div>
       <Section icon={<MapPin size={15} />} title="Sites" count={data.sites.length} defaultOpen>
         {data.sites.map((s, i) => <SiteAccordion key={s.id} s={s} defaultOpen={i === 0} />)}
@@ -326,22 +356,24 @@ function Section({ icon, title, count, defaultOpen, children }: { icon: React.Re
   );
 }
 
-function EmptyNote({ icon, text }: { icon: React.ReactNode; text: string }) {
+function EmptyNote({ icon, text, helper, cta }: { icon: React.ReactNode; text: string; helper?: string; cta?: string }) {
   return (
-    <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--eq-grey)' }}>
-      <div style={{ marginBottom: 8 }}>{icon}</div>
-      <p style={{ fontSize: 13, margin: 0 }}>{text}</p>
+    <div style={{ textAlign: 'center', padding: '28px 0', color: 'var(--eq-grey)' }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 48, height: 48, borderRadius: 10, background: 'var(--eq-gray-100)', color: 'var(--eq-gray-400)', marginBottom: 10 }}>{icon}</div>
+      <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--eq-ink)', margin: '0 0 4px' }}>{text}</p>
+      {helper && <p style={{ fontSize: 12.5, margin: '0 auto 10px', maxWidth: 280 }}>{helper}</p>}
+      {cta && <Button variant="ghost" size="sm" icon={<Plus size={14} />}>{cta}</Button>}
     </div>
   );
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
-const eyebrow: React.CSSProperties = { fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--eq-deep, #2986b4)', margin: '0 0 4px' };
-const avatar: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, width: 38, height: 38, borderRadius: 8, background: 'var(--eq-sky)', color: '#fff', fontSize: 13, fontWeight: 700 };
-const rowBtn: React.CSSProperties = { width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', border: 'none', borderBottom: '1px solid var(--eq-border)', cursor: 'pointer' };
+const eyebrow: React.CSSProperties = { fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--eq-deep)', margin: '0 0 4px' };
+const avatar: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, width: 38, height: 38, borderRadius: 8, background: 'var(--eq-deep)', color: '#fff', fontSize: 13, fontWeight: 700 };
+const rowBtn: React.CSSProperties = { width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', border: 'none', borderBottom: '1px solid var(--eq-border)', cursor: 'pointer', background: 'transparent' };
 const countPills: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end', fontSize: 11, fontWeight: 700, color: 'var(--eq-grey)' };
-const okPill: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: '#15803D', background: '#F0FDF4', borderRadius: 9999, padding: '2px 9px' };
-const groupPill: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--eq-clay, #a8572b)', border: '1px solid var(--eq-clay, #a8572b)', background: 'var(--eq-clay-bg, #fbf1e9)', borderRadius: 9999, padding: '2px 9px', textTransform: 'uppercase' };
-const kindPill: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--eq-grey)', background: 'var(--eq-g100, #efeae1)', borderRadius: 4, padding: '2px 7px', textTransform: 'uppercase' };
-const metaLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--eq-deep, #2986b4)', textDecoration: 'none' };
+const okPill: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: 'var(--eq-success-text)', background: 'var(--eq-success-bg)', borderRadius: 9999, padding: '2px 9px' };
+const groupPill: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: 'var(--eq-clay)', border: '1px solid var(--eq-clay)', background: 'var(--eq-clay-bg)', borderRadius: 9999, padding: '2px 9px', textTransform: 'uppercase' };
+const kindPill: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--eq-grey)', background: 'var(--eq-gray-100)', borderRadius: 4, padding: '2px 7px', textTransform: 'uppercase' };
+const metaLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--eq-deep)', textDecoration: 'none' };
 const reachBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '5px 10px', border: '1px solid var(--eq-border)', borderRadius: 6, color: 'var(--eq-ink)', textDecoration: 'none', background: '#fff' };

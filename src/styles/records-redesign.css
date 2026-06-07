@@ -1,0 +1,661 @@
+/* Records redesign (hi-fi) — Areas 1·2·3.
+ *
+ * Visual layer over the structure already merged on main (HubSidebar 4-group,
+ * CustomersHubPage, equipment module). Every value references an --eq-* token
+ * from @eq-solutions/tokens; the dark-sidebar surface hexes (#0F1117 etc.) are
+ * the shell-frame theme values that already live in App.css's sidebar block —
+ * not new foundation tokens. No gradients/shadows beyond the named floating-UI
+ * shadows (drawer / tooltip), per the spec.
+ */
+
+/* ════════════════════════════════════════════════════════════════════
+   AREA 1 — Sidebar (View A)
+   Enriches the existing .eq-hub-sidebar__* block: icon-chip invert, sky
+   left-rail indicator, sky radial glow, group labels, count variants,
+   warn dot, and the 74px collapsed rail with hover tooltips.
+   ════════════════════════════════════════════════════════════════════ */
+
+.eq-hub__sidebar {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Faint sky radial glow, top-right. Decorative — sits behind content. */
+.eq-hub__sidebar::before {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -60px;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(var(--eq-sky-rgb), 0.10), transparent 65%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Brand row gets a collapse toggle pinned to the right. */
+.eq-hub-sidebar__brand-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 20px;
+}
+.eq-hub-sidebar__brand-row .eq-hub-sidebar__brand {
+  flex: 1;
+  padding: 0;
+  min-width: 0;
+}
+.eq-hub-sidebar__collapse {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--eq-radius-input);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: color var(--eq-duration-default) var(--eq-ease),
+              background var(--eq-duration-default) var(--eq-ease);
+}
+.eq-hub-sidebar__collapse:hover {
+  color: var(--eq-sky);
+  background: rgba(var(--eq-sky-rgb), 0.10);
+}
+.eq-hub-sidebar__collapse svg {
+  transition: transform var(--eq-duration-default) var(--eq-ease);
+}
+
+/* Group label — 10px/700 uppercase, wide tracking. */
+.eq-hub-sidebar__section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #64748B;
+}
+
+/* ── Nav item anatomy: icon chip · name · count · chevron ──
+   The structural rules (flex, padding) already live in App.css; here we add
+   the spec's chip border/bg, the left-rail indicator, and the invert states. */
+.eq-hub-sidebar__nav-item {
+  position: relative;
+  gap: 9px;
+  border-left: 0;          /* indicator drawn as ::before, not a border */
+  border-radius: 0;
+  transition: color var(--eq-duration-default) var(--eq-ease),
+              background var(--eq-duration-default) var(--eq-ease);
+}
+
+/* 2px sky left-rail indicator — fades in on hover/active. */
+.eq-hub-sidebar__nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--eq-sky);
+  opacity: 0;
+  transition: opacity var(--eq-duration-default) var(--eq-ease);
+}
+.eq-hub-sidebar__nav-item:hover::before,
+.eq-hub-sidebar__nav-item.active::before {
+  opacity: 1;
+}
+
+.eq-hub-sidebar__nav-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.eq-hub-sidebar__nav-item.active {
+  background: rgba(var(--eq-sky-rgb), 0.12);
+}
+
+/* Icon chip — 32px, faint border + sky tint, sky glyph. Inverts when active. */
+.eq-hub-sidebar__nav-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--eq-radius-input);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(var(--eq-sky-rgb), 0.08);
+  color: var(--eq-sky);
+  transition: background var(--eq-duration-default) var(--eq-ease),
+              color var(--eq-duration-default) var(--eq-ease);
+}
+.eq-hub-sidebar__nav-item:hover .eq-hub-sidebar__nav-icon,
+.eq-hub-sidebar__nav-item.active .eq-hub-sidebar__nav-icon {
+  background: var(--eq-sky);
+  color: #0F1117;
+}
+
+/* Name — 13px/600, ellipsis. */
+.eq-hub-sidebar__nav-label {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* Count — sky, tabular. Muted + warn variants. */
+.eq-hub-sidebar__nav-count {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--eq-sky);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.eq-hub-sidebar__nav-count--muted { color: var(--eq-slate); }
+
+/* Warn dot — amber with a soft glow, sits before/with the count. */
+.eq-hub-sidebar__nav-warn {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--eq-amber);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+  flex-shrink: 0;
+}
+/* The in-chip copy only appears in the collapsed rail (absolute, top-right). */
+.eq-hub-sidebar__nav-warn--chip { display: none; }
+
+.eq-hub-sidebar__nav-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Forward chevron — quiet, slides +2px and turns sky on hover. */
+.eq-hub-sidebar__nav-arrow {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+  transition: color var(--eq-duration-default) var(--eq-ease),
+              transform var(--eq-duration-default) var(--eq-ease);
+}
+.eq-hub-sidebar__nav-item:hover .eq-hub-sidebar__nav-arrow {
+  color: var(--eq-sky);
+  transform: translateX(2px);
+}
+
+/* User role line uses the slate token for the meta. */
+.eq-hub-sidebar__user-meta { color: var(--eq-slate); }
+
+/* ── Collapsed rail (74px) ──
+   Hides labels/counts/chevrons/meta; centres icon chips; swaps group text
+   labels for 1px dividers; reveals hover tooltips. The doubled selector wins
+   over App.css's later `.eq-hub__sidebar { width:260px }` on the same element. */
+.eq-hub__sidebar.eq-hub__sidebar--collapsed {
+  width: 74px;
+  min-width: 74px;
+  transition: width var(--eq-duration-default) var(--eq-ease);
+}
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__brand-label,
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-label,
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-count,
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-count--muted,
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-badge,
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-arrow,
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__live span:not(.eq-hub-sidebar__live-dot),
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__user-info,
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__user-logout,
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__density-toggle {
+  display: none;
+}
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__collapse svg {
+  transform: rotate(180deg);
+}
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__brand-row {
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 0 16px;
+}
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__brand {
+  justify-content: center;
+}
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__live {
+  margin: 0 auto 16px;
+  padding: 6px;
+  border-radius: 50%;
+}
+/* Group label → 1px divider in the rail. */
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__section-label {
+  height: 1px;
+  padding: 0;
+  margin: 12px 16px;
+  overflow: hidden;
+  text-indent: -9999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-item {
+  justify-content: center;
+  padding: 7px 0;
+}
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-item::before { display: none; }
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-icon {
+  position: relative;
+}
+/* Warn dot moves to the icon's top-right corner in the rail. The inline
+   (count-side) copy is hidden; the in-chip copy is revealed and positioned. */
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-item > .eq-hub-sidebar__nav-warn { display: none; }
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-warn--chip {
+  display: block;
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  z-index: 1;
+}
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__user {
+  justify-content: center;
+  padding: 14px 0;
+}
+
+/* Hover tooltip pill (rail only) — white, floating-UI shadow. */
+.eq-hub__sidebar--collapsed .eq-hub-sidebar__nav-item[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: var(--eq-white);
+  color: var(--eq-ink);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: var(--eq-radius-input);
+  box-shadow: var(--eq-shadow-lg);
+  z-index: 60;
+  pointer-events: none;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   AREA 2 — Customers CRM hub (View B) helpers
+   The page drives layout with inline styles; these classes carry the few
+   states that need pseudo-elements / hover (active row bar, row hover).
+   ════════════════════════════════════════════════════════════════════ */
+.crm-pane {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) 1fr;
+  border: 1px solid var(--eq-border);
+  border-radius: var(--eq-radius-card);
+  overflow: hidden;
+  min-height: 520px;
+}
+.crm-pane__list {
+  border-right: 1px solid var(--eq-border);
+  display: flex;
+  flex-direction: column;
+  background: var(--eq-white);
+}
+@media (max-width: 1080px) {
+  .crm-pane { grid-template-columns: 1fr; }
+  .crm-pane__list { max-height: 360px; border-right: none; border-bottom: 1px solid var(--eq-border); }
+}
+
+.crm-row {
+  transition: background var(--eq-duration-default) var(--eq-ease);
+}
+.crm-row:hover { background: var(--eq-gray-50); }
+.crm-row.is-active { background: var(--eq-ice); }
+
+.crm-searchbox:focus {
+  outline: none;
+  border-color: var(--eq-deep);
+  box-shadow: var(--eq-focus-ring);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   AREA 3 — Plant & equipment (View C)
+   Calibration chips, cert buttons, custodian avatars, person-group cards,
+   segmented controls, and the asset detail drawer cards.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Toolbar — status segmented + group-by toggle. */
+.eq-rc-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 4px 0 16px;
+}
+
+/* Status segmented control (mirrors the Service .svc-seg cornerstone). */
+.eq-seg {
+  display: inline-flex;
+  border: 1px solid var(--eq-border);
+  border-radius: var(--eq-radius-input);
+  overflow: hidden;
+  background: var(--eq-white);
+}
+.eq-seg__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-right: 1px solid var(--eq-border);
+  background: transparent;
+  color: var(--eq-grey);
+  cursor: pointer;
+  transition: background var(--eq-duration-default) var(--eq-ease),
+              color var(--eq-duration-default) var(--eq-ease);
+}
+.eq-seg__btn:last-child { border-right: none; }
+.eq-seg__btn:hover { background: var(--eq-gray-50); }
+.eq-seg__btn.is-active { background: var(--eq-ice); color: var(--eq-deep); }
+.eq-seg__btn .eq-seg__n {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+/* Group-by pill toggle — active = white card + sm shadow. */
+.eq-pilltoggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--eq-gray-100);
+  border-radius: var(--eq-radius-input);
+}
+.eq-pilltoggle__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  color: var(--eq-grey);
+  border-radius: var(--eq-radius-sm, 4px);
+  cursor: pointer;
+  transition: background var(--eq-duration-default) var(--eq-ease),
+              color var(--eq-duration-default) var(--eq-ease);
+}
+.eq-pilltoggle__btn.is-active {
+  background: var(--eq-white);
+  color: var(--eq-ink);
+  box-shadow: var(--eq-shadow-sm);
+}
+
+/* Overdue row tint + item red dot. Specificity must beat the zebra rule
+   (.eq-table tbody tr:nth-child(even)), so qualify with tbody + :nth-child. */
+.eq-table tbody tr.is-overdue,
+.eq-table tbody tr.is-overdue:nth-child(even) { background: #FFF6F6; }
+.eq-table tbody tr.is-overdue:hover { background: #FFEDED; }
+.eq-rc-itemid {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.eq-rc-reddot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--eq-error-text);
+  flex-shrink: 0;
+}
+
+/* Make / model two-line cell. */
+.eq-rc-model { line-height: 1.3; }
+.eq-rc-model b { font-weight: 700; color: var(--eq-ink); }
+.eq-rc-model span { display: block; font-size: 12px; color: var(--eq-grey); }
+.eq-rc-serial { font-variant-numeric: tabular-nums; }
+
+/* Custodian avatar + name. */
+.eq-rc-custodian {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.eq-rc-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--eq-white);
+  background: var(--eq-deep);
+  flex-shrink: 0;
+}
+.eq-rc-avatar--none {
+  background: transparent;
+  border: 1px dashed var(--eq-gray-300);
+  color: var(--eq-gray-400);
+}
+.eq-rc-custodian--none .eq-rc-custodian-name {
+  font-style: italic;
+  color: var(--eq-gray-400);
+}
+
+/* Merged Calibration column — chip + "Next <date>" sub. */
+.eq-rc-cal { display: flex; flex-direction: column; gap: 3px; }
+.eq-rc-calsub { font-size: 12px; color: var(--eq-grey); }
+.eq-rc-calsub b { color: var(--eq-ink); font-weight: 600; }
+
+/* Status chip — dot + label + icon, never colour alone. */
+.eq-rc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--eq-radius-input);
+  white-space: nowrap;
+  width: fit-content;
+}
+.eq-rc-chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.eq-rc-chip--ok   { background: var(--eq-success-bg); color: var(--eq-success-text); }
+.eq-rc-chip--soon { background: var(--eq-warning-bg); color: var(--eq-warning-text); }
+.eq-rc-chip--over { background: var(--eq-error-bg);   color: var(--eq-error-text); }
+.eq-rc-chip--none { background: var(--eq-gray-100);   color: var(--eq-gray-500); }
+
+/* Cert affordance — filled file-check / dashed file-x button. */
+.eq-rc-cert {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--eq-radius-input);
+  cursor: pointer;
+  transition: background var(--eq-duration-default) var(--eq-ease),
+              color var(--eq-duration-default) var(--eq-ease);
+}
+.eq-rc-cert--has {
+  background: var(--eq-ice);
+  border: 1px solid transparent;
+  color: var(--eq-deep);
+}
+.eq-rc-cert--has:hover { background: var(--eq-sky); color: var(--eq-white); }
+.eq-rc-cert--missing {
+  background: transparent;
+  border: 1px dashed var(--eq-gray-300);
+  color: var(--eq-gray-400);
+}
+.eq-rc-cert--missing:hover { border-color: var(--eq-gray-400); color: var(--eq-gray-500); }
+
+.eq-rc-rowchev {
+  color: var(--eq-gray-400);
+  display: inline-flex;
+}
+
+/* ── Group-by-Person cards ── */
+.eq-pgroup {
+  border: 1px solid var(--eq-border);
+  border-radius: var(--eq-radius-card);
+  background: var(--eq-white);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.eq-pgroup__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--eq-gray-50);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.eq-pgroup__av {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--eq-white);
+  background: var(--eq-deep);
+  flex-shrink: 0;
+}
+.eq-pgroup__av--none {
+  background: transparent;
+  border: 1px dashed var(--eq-gray-300);
+  color: var(--eq-gray-400);
+}
+.eq-pgroup__main { min-width: 0; }
+.eq-pgroup__nm { font-weight: 700; font-size: 14px; color: var(--eq-ink); }
+.eq-pgroup__role { font-size: 12px; color: var(--eq-grey); }
+.eq-pgroup__roll { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.eq-pgroup__chev {
+  color: var(--eq-gray-400);
+  transition: transform var(--eq-duration-default) var(--eq-ease);
+  flex-shrink: 0;
+}
+.eq-pgroup.is-closed .eq-pgroup__chev { transform: rotate(-90deg); }
+.eq-pgroup.is-closed .eq-pgroup__body { display: none; }
+
+/* Rollup chips — dot + label. */
+.eq-rollchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: var(--eq-radius-pill);
+  background: var(--eq-gray-100);
+  color: var(--eq-gray-600);
+}
+.eq-rollchip b { font-weight: 800; }
+.eq-rollchip__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.eq-rollchip--over { background: var(--eq-error-bg);   color: var(--eq-error-text); }
+.eq-rollchip--soon { background: var(--eq-warning-bg); color: var(--eq-warning-text); }
+.eq-rollchip--ok   { background: var(--eq-success-bg); color: var(--eq-success-text); }
+
+/* Person-group inner table — grey header, no Assigned-to column. */
+.eq-pgroup__body .eq-table { border-radius: 0; }
+.eq-pgroup__body .eq-table thead { background: var(--eq-gray-100); }
+.eq-pgroup__body .eq-table th { color: var(--eq-gray-600); }
+
+/* ── Asset detail drawer (EntityBrowserPage pattern) ── */
+.eq-rc-drawer-card {
+  border: 1px solid var(--eq-border);
+  border-radius: var(--eq-radius-card);
+  background: var(--eq-white);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.eq-rc-drawer-card__h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: var(--eq-deep);
+}
+.eq-rc-drawer-card__h h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--eq-ink);
+  margin: 0;
+}
+.eq-rc-kv {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--eq-border-light, var(--eq-gray-100));
+  align-items: baseline;
+}
+.eq-rc-kv:last-child { border-bottom: none; }
+.eq-rc-kv__k {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--eq-gray-500);
+}
+.eq-rc-kv__v { font-size: 13px; color: var(--eq-ink); }
+
+/* Mini calibration progress track. */
+.eq-rc-track__bar {
+  height: 6px;
+  border-radius: var(--eq-radius-pill);
+  background: var(--eq-gray-100);
+  overflow: hidden;
+  margin-top: 8px;
+}
+.eq-rc-track__bar i { display: block; height: 100%; border-radius: var(--eq-radius-pill); }
+.eq-rc-track__meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--eq-grey);
+  margin-top: 5px;
+}
+
+/* Certificate tile in the drawer. */
+.eq-rc-certtile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--eq-radius-input);
+}
+.eq-rc-certtile--has { background: var(--eq-ice); }
+.eq-rc-certtile--missing { border: 1px dashed var(--eq-gray-300); }
+.eq-rc-certtile__ic {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.eq-rc-certtile--has .eq-rc-certtile__ic { color: var(--eq-deep); }
+.eq-rc-certtile--missing .eq-rc-certtile__ic { color: var(--eq-gray-400); }
+.eq-rc-certtile__t { font-size: 13px; font-weight: 600; color: var(--eq-ink); }
+.eq-rc-certtile__m { font-size: 12px; color: var(--eq-grey); }
+
+.eq-rc-drawer-actions {
+  display: flex;
+  gap: 8px;
+  padding: 16px 0 0;
+}
+
+/* Horizontal-scroll fallback for the register table. */
+.eq-rc-tablescroll { overflow-x: auto; }
+.eq-rc-tablescroll .eq-table { min-width: 920px; }

@@ -30,9 +30,9 @@ function setCachedDashboard(key: string, data: DashboardResponse): void {
 
 const HUB_APPS = [
   { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
-  { key: 'service', label: 'EQ Service', to: 'service', isBeta: false },
+  { key: 'service', label: 'EQ Service', to: 'service', isBeta: true  },
   { key: 'quotes',  label: 'EQ Quotes',  to: 'quotes',  isBeta: false },
-  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: false },
+  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: true  },
 ];
 
 interface DashboardCounts {
