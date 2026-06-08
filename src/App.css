@@ -1650,6 +1650,11 @@ table.prev th {
   white-space: nowrap;
 }
 
+@keyframes eq-live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); }
+  50%       { box-shadow: 0 0 0 5px rgba(74, 222, 128, 0); }
+}
+
 .eq-hub-sidebar__live {
   display: inline-flex;
   align-items: center;
@@ -1657,12 +1662,12 @@ table.prev th {
   margin: 0 20px 20px;
   padding: 6px 13px;
   border-radius: 9999px;
-  border: 1px solid rgba(var(--eq-sky-rgb),0.5);
-  background: rgba(var(--eq-sky-rgb),0.16);
-  font-size: 12px;
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  background: rgba(74, 222, 128, 0.12);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--eq-brand);
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.9);
   width: fit-content;
 }
 
@@ -1670,7 +1675,9 @@ table.prev th {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--eq-brand);
+  background: #4ADE80;
+  animation: eq-live-pulse 2.2s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
 .eq-hub-sidebar__section-label {
@@ -1680,6 +1687,57 @@ table.prev th {
   color: rgba(255,255,255,0.25);
   padding: 0 20px 8px;
   margin: 0;
+}
+
+.eq-hub-sidebar__sub-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.18);
+  padding: 0 20px 4px;
+  margin: 0;
+}
+
+.eq-hub-sidebar__admin-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 20px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.45);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  border-left: 2px solid transparent;
+  transition: color 0.12s, background 0.12s;
+}
+.eq-hub-sidebar__admin-toggle:hover {
+  color: rgba(255,255,255,0.85);
+  background: rgba(255,255,255,0.04);
+}
+
+.eq-hub-sidebar__admin-chevron {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+}
+
+.eq-hub-sidebar__admin-group {
+  background: rgba(0,0,0,0.12);
+  border-left: 2px solid rgba(255,255,255,0.06);
+  margin-left: 20px;
+  border-radius: 0 0 4px 0;
+}
+
+.eq-hub-sidebar__nav-item--sub {
+  padding: 7px 16px;
+  font-size: 13px;
 }
 
 .eq-hub-sidebar__nav {
@@ -2300,6 +2358,16 @@ table.prev th {
   margin: 3px 0 0;
 }
 
+.eq-hub-kpi--warn {
+  border-left: 3px solid var(--eq-warning-text, #D97706);
+  background: rgba(217, 119, 6, 0.04);
+}
+
+.eq-hub-kpi--warn .eq-hub-kpi__sub {
+  color: var(--eq-warning-text, #D97706) !important;
+  font-weight: 600;
+}
+
 .eq-hub-kpi--link {
   display: block;
   text-decoration: none;
@@ -2391,6 +2459,32 @@ table.prev th {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
+}
+
+@keyframes eq-feed-enter {
+  0%   { opacity: 0; transform: translateY(-5px); background-color: rgba(61, 168, 216, 0.1); }
+  40%  { opacity: 1; transform: translateY(0);    background-color: rgba(61, 168, 216, 0.06); }
+  100% { opacity: 1; transform: translateY(0);    background-color: transparent; }
+}
+
+.eq-hub-activity__item--new {
+  animation: eq-feed-enter 0.85s ease forwards;
+}
+
+.eq-hub-activity__subtitle {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--gray-400);
+  margin-left: 8px;
+}
+
+.eq-hub-activity__refresh {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--gray-400);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .eq-hub-activity__title {
@@ -2729,6 +2823,7 @@ table.prev th {
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__brand-label,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__live,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__section-label,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__sub-label,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-label,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-count,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-badge,
@@ -2744,6 +2839,7 @@ table.prev th {
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__brand-label,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__live,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__section-label,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__sub-label,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__nav-label,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__nav-count,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar:hover .eq-hub-sidebar__nav-badge,
