@@ -607,7 +607,7 @@ async function handlePut(
   // deterministic and compatible with partial indexes.
 
   // Step 1: look up existing row by (tenant_id, external_id)
-  const { data: existing, error: selectErr } = await cAny
+  const { data: byExtId, error: selectErr } = await cAny
     .schema('app_data')
     .from(def.table)
     .select(`${pk}, created_at`)
@@ -623,14 +623,64 @@ async function handlePut(
     return err(500, 'internal_error', selectErr.message);
   }
 
+  // Step 1b (customers only): if no external_id match, attempt a deterministic
+  // secondary match by email or ABN before creating a new record. Prevents
+  // cross-app fragmentation when the same physical customer exists under a
+  // different external_id (e.g. Service vs Quotes both create "Acme").
+  // Phone is intentionally excluded — too many shared numbers (receptions, mobiles).
+  // We return the matched canonical_id so the caller stamps it locally; the
+  // existing record's external_id is preserved (no overwrite).
+  let secondaryMatch: { customer_id: string } | null = null;
+  if (!byExtId && resourceName === 'customers') {
+    const email = typeof row.email === 'string' && row.email.trim() ? row.email.trim().toLowerCase() : null;
+    const abn   = typeof row.abn   === 'string' && row.abn.trim()   ? row.abn.trim().replace(/\s/g, '')  : null;
+
+    if (email || abn) {
+      let q = cAny
+        .schema('app_data')
+        .from('customers')
+        .select('customer_id')
+        .eq('tenant_id', routing.tenant_id);
+
+      if (email && abn) {
+        q = q.or(`email.eq.${email},abn.eq.${abn}`);
+      } else if (email) {
+        q = q.eq('email', email);
+      } else {
+        q = q.eq('abn', abn);
+      }
+
+      const { data: matched, error: matchErr } = await q.limit(1).maybeSingle();
+      if (matchErr) {
+        console.warn('[canonical-api] customer secondary match failed — proceeding to insert', {
+          app: caller.app, tenantSlug, error: matchErr.message,
+        });
+      } else if (matched) {
+        secondaryMatch = matched as { customer_id: string };
+        console.info('[canonical-api] customer secondary match (email/abn)', {
+          app: caller.app, tenantSlug, external_id: body.external_id,
+          matched_id: secondaryMatch.customer_id,
+        });
+      }
+    }
+  }
+
+  const existing = byExtId ?? secondaryMatch;
+
   let canonicalId: string;
   let created: boolean;
 
   if (existing) {
-    // Step 2a: UPDATE — merge incoming fields; strip immutable columns
+    // Step 2a: UPDATE — merge incoming fields; strip immutable columns.
+    // For a secondary match (email/abn), also stamp the caller's external_id
+    // so future lookups hit Step 1 directly and skip the secondary scan.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { tenant_id: _tid, external_id: _eid, ...mutableFields } = row as Record<string, unknown>;
-    const updateRow: Record<string, unknown> = { ...mutableFields, updated_at: new Date().toISOString() };
+    const updateRow: Record<string, unknown> = {
+      ...mutableFields,
+      updated_at: new Date().toISOString(),
+      ...(secondaryMatch ? { external_id: body.external_id } : {}),
+    };
 
     const { error: updateErr } = await cAny
       .schema('app_data')
