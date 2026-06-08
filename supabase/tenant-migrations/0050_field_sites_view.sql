@@ -17,9 +17,9 @@
 -- Write path: Field's save/delete operations still go to the legacy path
 -- until a proper write adapter is built. This view is SELECT-only.
 --
--- Safe on planes without app_data.sites (early-exit guard not needed —
--- the view CREATE will simply fail if the table is absent, which is fine;
--- only ehow/zaap have app_data).
+-- Zaap compat: zaap has app_data.field_sites as an empty legacy TABLE from
+-- the EQ Field boot migration (different column shape, 0 rows, no dependents).
+-- We drop it and replace with the view.
 
 DO $$
 BEGIN
@@ -28,6 +28,17 @@ BEGIN
     WHERE table_schema = 'app_data' AND table_name = 'sites'
   ) THEN
     RETURN;
+  END IF;
+
+  -- Drop the legacy empty table if it exists as a TABLE (not a view).
+  -- On zaap this was created by an earlier boot migration with a different
+  -- column shape. It is empty (0 rows) and has no dependents.
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'app_data' AND c.relname = 'field_sites' AND c.relkind = 'r'
+  ) THEN
+    EXECUTE 'DROP TABLE app_data.field_sites';
   END IF;
 
   EXECUTE $sql$
