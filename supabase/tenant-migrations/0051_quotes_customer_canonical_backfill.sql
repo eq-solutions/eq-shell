@@ -7,6 +7,13 @@
 -- mirror table — effectively a self-reference since both tables share the
 -- same UUID). This corrects all rows to point to the real canonical record.
 --
+-- Unique index dropped first: sks_quotes_customers_canonical_id_unique was
+-- created with a UNIQUE constraint which is wrong for a many-to-one link
+-- (multiple Quotes customer rows can legitimately reference the same canonical
+-- company — e.g. the same company entered twice, or name variants). A partial
+-- non-unique index (idx_sks_quotes_customers_canonical_id) already exists for
+-- lookup performance; the unique constraint is incorrect and is removed here.
+--
 -- Result after: ~519/520 rows linked. The 1 unmatched (no name match in
 -- app_data.customers) stays NULL — it is a Quotes-only prospect with no
 -- operational presence in canonical.
@@ -34,6 +41,11 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Drop the incorrect unique index if it still exists.
+  -- canonical_id is a many-to-one FK — uniqueness would prevent multiple
+  -- Quotes customer rows from linking to the same canonical company.
+  DROP INDEX IF EXISTS public.sks_quotes_customers_canonical_id_unique;
+
   -- Update all rows that have a canonical name match (covers both the 28
   -- stale self-reference rows and the 491 previously-null rows).
   UPDATE public.sks_quotes_customers qc
@@ -50,8 +62,8 @@ BEGIN
     WHERE lower(trim(c.company_name)) = lower(trim(qc.name))
   );
 
-  -- Index for canonical reverse lookup (find all Quotes customers for a
-  -- given app_data.customers row).
+  -- Non-unique index for canonical reverse lookup (find all Quotes customers
+  -- for a given app_data.customers row). Skip if already exists.
   IF NOT EXISTS (
     SELECT 1 FROM pg_indexes
     WHERE schemaname = 'public'
