@@ -101,7 +101,7 @@ export function HubSidebar({ apps, records }: Props) {
     <aside className={`eq-hub__sidebar${collapsed ? ' eq-hub__sidebar--collapsed' : ''}`}>
       <div className="eq-hub-sidebar__brand-row">
         <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand" aria-label="Go to dashboard">
-          <EqLogo size={30} onDark />
+          <EqLogo size={40} onDark />
           <span className="eq-hub-sidebar__brand-label">Shell</span>
         </Link>
         <button
@@ -192,21 +192,73 @@ export function HubSidebar({ apps, records }: Props) {
         ))}
       </nav>
 
-      {/* ── TOOLS (GM Reports · Import — folds the old single-item Reports + Intake groups) ── */}
-      {(canReports || canIntake) && (
+      {/* ── REPORTS ── */}
+      {canReports && (
         <>
-          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Tools</p>
-          <nav className="eq-hub-sidebar__nav" aria-label="Tools navigation">
-            {canReports && (
-              <NavLink
-                to={`/${tenantSlug}/reports`}
-                data-tip="GM Reports"
-                className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-              >
-                <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><BarChart2 size={16} aria-hidden="true" /></span>
-                <span className="eq-hub-sidebar__nav-label">GM Reports</span>
-                <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-              </NavLink>
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Reports</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Reports navigation">
+            <NavLink
+              to={`/${tenantSlug}/reports`}
+              data-tip="Reports"
+              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+            >
+              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><BarChart2 size={16} aria-hidden="true" /></span>
+              <span className="eq-hub-sidebar__nav-label">Reports</span>
+              <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+            </NavLink>
+          </nav>
+        </>
+      )}
+
+      {/* ── ADMIN (Import folded in here; admin links stay admin-gated, Import
+          stays intake-gated so non-admin importers keep access) ── */}
+      {(canAdmin || canIntake) && (
+        <>
+          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Admin</p>
+          <nav className="eq-hub-sidebar__nav" aria-label="Admin navigation">
+            {canAdmin && (
+              <>
+                <NavLink
+                  to={`/${tenantSlug}/admin/users`}
+                  data-tip="Users"
+                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+                >
+                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Users2 size={16} aria-hidden="true" /></span>
+                  <span className="eq-hub-sidebar__nav-label">Users</span>
+                </NavLink>
+                <NavLink
+                  to={`/${tenantSlug}/admin/audit`}
+                  data-tip="Audit log"
+                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+                >
+                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ClipboardList size={16} aria-hidden="true" /></span>
+                  <span className="eq-hub-sidebar__nav-label">Audit log</span>
+                </NavLink>
+                <NavLink
+                  to={`/${tenantSlug}/admin/migration`}
+                  data-tip="Migration"
+                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+                >
+                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ListChecks size={16} aria-hidden="true" /></span>
+                  <span className="eq-hub-sidebar__nav-label">Migration</span>
+                </NavLink>
+                <NavLink
+                  to={`/${tenantSlug}/admin/access-control`}
+                  data-tip="Security groups"
+                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+                >
+                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={16} aria-hidden="true" /></span>
+                  <span className="eq-hub-sidebar__nav-label">Security groups</span>
+                </NavLink>
+                <NavLink
+                  to={`/${tenantSlug}/admin/settings`}
+                  data-tip="Settings"
+                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+                >
+                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Settings size={16} aria-hidden="true" /></span>
+                  <span className="eq-hub-sidebar__nav-label">Settings</span>
+                </NavLink>
+              </>
             )}
             {canIntake && (
               <NavLink
@@ -223,54 +275,21 @@ export function HubSidebar({ apps, records }: Props) {
         </>
       )}
 
-      {/* ── ADMIN ── */}
-      {canAdmin && (
-        <>
-          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Admin</p>
-          <nav className="eq-hub-sidebar__nav" aria-label="Admin navigation">
-            <NavLink
-              to={`/${tenantSlug}/admin/users`}
-              data-tip="Users"
-              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-            >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Users2 size={16} aria-hidden="true" /></span>
-              <span className="eq-hub-sidebar__nav-label">Users</span>
-            </NavLink>
-            <NavLink
-              to={`/${tenantSlug}/admin/audit`}
-              data-tip="Audit log"
-              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-            >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ClipboardList size={16} aria-hidden="true" /></span>
-              <span className="eq-hub-sidebar__nav-label">Audit log</span>
-            </NavLink>
-            <NavLink
-              to={`/${tenantSlug}/admin/migration`}
-              data-tip="Migration"
-              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-            >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ListChecks size={16} aria-hidden="true" /></span>
-              <span className="eq-hub-sidebar__nav-label">Migration</span>
-            </NavLink>
-            <NavLink
-              to={`/${tenantSlug}/admin/access-control`}
-              data-tip="Security groups"
-              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-            >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={16} aria-hidden="true" /></span>
-              <span className="eq-hub-sidebar__nav-label">Security groups</span>
-            </NavLink>
-            <NavLink
-              to={`/${tenantSlug}/admin/settings`}
-              data-tip="Settings"
-              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-            >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Settings size={16} aria-hidden="true" /></span>
-              <span className="eq-hub-sidebar__nav-label">Settings</span>
-            </NavLink>
-          </nav>
-        </>
-      )}
+      {/* ── SECURITY (2FA enrollment — personal, available to every logged-in
+          user, so this group is intentionally ungated; grouped under its own
+          header beside Admin rather than left as an orphan link) ── */}
+      <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Security</p>
+      <nav className="eq-hub-sidebar__nav" aria-label="Security navigation">
+        <NavLink
+          to={`/${tenantSlug}/settings/2fa`}
+          data-tip="Two-factor security"
+          className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+        >
+          <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={16} aria-hidden="true" /></span>
+          <span className="eq-hub-sidebar__nav-label">Two-factor security</span>
+          <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+        </NavLink>
+      </nav>
 
       {/* ── PLATFORM (platform-admin only) ── */}
       {session.user.is_platform_admin && (
@@ -288,20 +307,6 @@ export function HubSidebar({ apps, records }: Props) {
           </nav>
         </>
       )}
-
-      {/* Phase 1.G: 2FA enrollment — a personal setting, available to every
-          logged-in user (Settings is admin-only, so this stays a standalone
-          link rather than folding inside that group). */}
-      <NavLink
-        to={`/${tenantSlug}/settings/2fa`}
-        data-tip="Two-factor security"
-        className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-        style={{ marginTop: 8 }}
-      >
-        <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={16} aria-hidden="true" /></span>
-        <span className="eq-hub-sidebar__nav-label">Two-factor security</span>
-        <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-      </NavLink>
 
       <div className="eq-hub-sidebar__user">
         <div className="eq-hub-sidebar__user-avatar" aria-hidden="true">
