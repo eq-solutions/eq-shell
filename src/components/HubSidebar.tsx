@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Link, NavLink, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database, ListChecks, BadgeCheck, ChevronLeft, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database, ListChecks, BadgeCheck, ChevronLeft, ChevronDown, ChevronRight, Home } from 'lucide-react';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
 import { useDensity } from '../lib/useDensity';
@@ -78,6 +78,8 @@ export function HubSidebar({ apps, records }: Props) {
   const { compact, toggle: toggleDensity } = useDensity();
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const [adminExpanded, setAdminExpanded] = useState(false);
+  const [customersOpen, setCustomersOpen] = useState(true);
+  const [internalOpen, setInternalOpen] = useState(true);
 
   if (!session) return null;
 
@@ -126,69 +128,110 @@ export function HubSidebar({ apps, records }: Props) {
         <span>Live</span>
       </div>
 
+      {/* ── HOME ── */}
+      <nav className="eq-hub-sidebar__nav" aria-label="Main navigation">
+        <NavLink
+          to={`/${tenantSlug}`}
+          end
+          data-tip="Home"
+          className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+        >
+          <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Home size={16} aria-hidden="true" /></span>
+          <span className="eq-hub-sidebar__nav-label">Home</span>
+          <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+        </NavLink>
+      </nav>
 
-      {/* ── RECORDS — split into Customers (external) and Internal (workforce) ── */}
+      {/* ── RECORDS — collapsible Customers + Internal accordion groups ── */}
       {visibleRecords.length > 0 && (
         <>
           <p className="eq-hub-sidebar__section-label">Records</p>
 
           {customerRecords.length > 0 && (
             <>
-              <p className="eq-hub-sidebar__sub-label">Customers</p>
-              <nav className="eq-hub-sidebar__nav" aria-label="Customer records">
-                {customerRecords.map((r) => (
-                  <NavLink
-                    key={r.key}
-                    to={`/${tenantSlug}/${r.to ?? `data/${r.entity}`}`}
-                    data-tip={r.label}
-                    className={({ isActive }) =>
-                      `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`
-                    }
-                  >
-                    <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
-                      {RECORD_ICONS[r.key]}
-                    </span>
-                    <span className="eq-hub-sidebar__nav-label">{r.label}</span>
-                    {r.count !== null && (
-                      <span className={`eq-hub-sidebar__nav-count${r.muted ? ' eq-hub-sidebar__nav-count--muted' : ''}`}>
-                        {r.count}
+              <button
+                type="button"
+                className="eq-hub-sidebar__admin-toggle"
+                onClick={() => setCustomersOpen((v) => !v)}
+                aria-expanded={customersOpen}
+              >
+                <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
+                  <Building2 size={16} aria-hidden="true" />
+                </span>
+                <span className="eq-hub-sidebar__nav-label">Customers</span>
+                <span className="eq-hub-sidebar__admin-chevron" aria-hidden="true">
+                  {customersOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                </span>
+              </button>
+              {customersOpen && (
+                <div className="eq-hub-sidebar__admin-group">
+                  {customerRecords.map((r) => (
+                    <NavLink
+                      key={r.key}
+                      to={`/${tenantSlug}/${r.to ?? `data/${r.entity}`}`}
+                      data-tip={r.label}
+                      className={({ isActive }) =>
+                        `eq-hub-sidebar__nav-item eq-hub-sidebar__nav-item--sub${isActive ? ' active' : ''}`
+                      }
+                    >
+                      <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
+                        {RECORD_ICONS[r.key]}
                       </span>
-                    )}
-                    <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-                  </NavLink>
-                ))}
-              </nav>
+                      <span className="eq-hub-sidebar__nav-label">{r.label}</span>
+                      {r.count !== null && (
+                        <span className={`eq-hub-sidebar__nav-count${r.muted ? ' eq-hub-sidebar__nav-count--muted' : ''}`}>
+                          {r.count}
+                        </span>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
             </>
           )}
 
           {internalRecords.length > 0 && (
             <>
-              <p className="eq-hub-sidebar__sub-label" style={{ marginTop: 10 }}>Internal</p>
-              <nav className="eq-hub-sidebar__nav" aria-label="Internal records">
-                {internalRecords.map((r) => (
-                  <NavLink
-                    key={r.key}
-                    to={`/${tenantSlug}/${r.to ?? `data/${r.entity}`}`}
-                    data-tip={r.label}
-                    className={({ isActive }) =>
-                      `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`
-                    }
-                  >
-                    <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
-                      {RECORD_ICONS[r.key]}
-                      {r.warn && <span className="eq-hub-sidebar__nav-warn eq-hub-sidebar__nav-warn--chip" aria-hidden="true" />}
-                    </span>
-                    <span className="eq-hub-sidebar__nav-label">{r.label}</span>
-                    {r.warn && <span className="eq-hub-sidebar__nav-warn" aria-label="Needs attention" />}
-                    {r.count !== null && (
-                      <span className={`eq-hub-sidebar__nav-count${r.muted ? ' eq-hub-sidebar__nav-count--muted' : ''}`}>
-                        {r.count}
+              <button
+                type="button"
+                className="eq-hub-sidebar__admin-toggle"
+                onClick={() => setInternalOpen((v) => !v)}
+                aria-expanded={internalOpen}
+              >
+                <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
+                  <Users2 size={16} aria-hidden="true" />
+                </span>
+                <span className="eq-hub-sidebar__nav-label">Internal</span>
+                <span className="eq-hub-sidebar__admin-chevron" aria-hidden="true">
+                  {internalOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                </span>
+              </button>
+              {internalOpen && (
+                <div className="eq-hub-sidebar__admin-group">
+                  {internalRecords.map((r) => (
+                    <NavLink
+                      key={r.key}
+                      to={`/${tenantSlug}/${r.to ?? `data/${r.entity}`}`}
+                      data-tip={r.label}
+                      className={({ isActive }) =>
+                        `eq-hub-sidebar__nav-item eq-hub-sidebar__nav-item--sub${isActive ? ' active' : ''}`
+                      }
+                    >
+                      <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
+                        {RECORD_ICONS[r.key]}
+                        {r.warn && <span className="eq-hub-sidebar__nav-warn eq-hub-sidebar__nav-warn--chip" aria-hidden="true" />}
                       </span>
-                    )}
-                    <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-                  </NavLink>
-                ))}
-              </nav>
+                      <span className="eq-hub-sidebar__nav-label">{r.label}</span>
+                      {r.warn && <span className="eq-hub-sidebar__nav-warn" aria-label="Needs attention" />}
+                      {r.count !== null && (
+                        <span className={`eq-hub-sidebar__nav-count${r.muted ? ' eq-hub-sidebar__nav-count--muted' : ''}`}>
+                          {r.count}
+                        </span>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </>
