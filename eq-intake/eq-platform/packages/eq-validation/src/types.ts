@@ -37,7 +37,9 @@ export type CoerceErrorCode =
   | 'state_unrecognised'
   | 'country_unrecognised'
   | 'enum_unrecognised'
-  | 'string_too_long';
+  | 'string_too_long'
+  | 'abn_invalid'
+  | 'email_invalid';
 
 export type Locale = 'en-AU' | 'en-US' | 'en-GB';
 

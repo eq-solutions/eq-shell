@@ -59,3 +59,23 @@ export type {
   ParseFileMeta,
   FileFormat,
 } from "./parse-file.js";
+
+// ── Tidy Our Data ─────────────────────────────────────────────────────────
+export { runTidyPass, commitTidyFixes, TIDY_ENTITY_TABLES } from "./tidy-pass.js";
+export { runOrphanCheck } from "./orphan-check.js";
+export type {
+  TidyEntity,
+  TidyFix,
+  TidyFixType,
+  GapItem,
+  GapType,
+  OrphanItem,
+  OrphanType,
+  ReviewFlag,
+  TidyReport,
+  TidyPassOpts,
+  TidyCommitOpts,
+  TidyCommitResult,
+  OrphanCheckOpts,
+  OrphanCheckResult,
+} from "./tidy-types.js";

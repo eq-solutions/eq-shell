@@ -9,6 +9,9 @@
  *
  * Rows flatten across entities (one line per reason), with a free-text filter
  * and a click-to-toggle row-number sort. EQ palette, no shadows/gradients.
+ *
+ * NOTE: accentColor and hintColor are dynamic props — they must stay as inline
+ * styles. Everything else uses CSS classes.
  */
 
 import { useMemo, useState, type JSX } from "react";
@@ -65,10 +68,10 @@ export function RowsDisclosure({
   const allRows = useMemo(() => {
     const out: Array<{ rowNum: number; entity: string; reason: string }> = [];
     for (const { entity, rows } of perEntity) {
-      const label = entityLabel(entity);
+      const lbl = entityLabel(entity);
       for (const r of rows) {
         for (const reason of r.reasons) {
-          out.push({ rowNum: r.source_row_index + 1, entity: label, reason });
+          out.push({ rowNum: r.source_row_index + 1, entity: lbl, reason });
         }
       }
     }
@@ -91,19 +94,22 @@ export function RowsDisclosure({
   }, [allRows, filter, sortAsc]);
 
   return (
-    <details style={{ marginTop: 12 }}>
-      <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 500, color: accentColor }}>
+    <details className="eq-rows-disclosure">
+      {/* accentColor is a dynamic prop — must stay inline */}
+      <summary style={{ color: accentColor }}>
         {label}{" "}
-        <span style={{ fontWeight: 400, opacity: 0.7 }}>({allRows.length})</span>
+        <span className="eq-rows-disclosure__count">({allRows.length})</span>
       </summary>
       {hint && (
-        <p style={{ fontSize: 12, color: hintColor ?? accentColor, margin: "6px 0 8px" }}>
+        /* hintColor is also dynamic */
+        <p className="eq-rows-disclosure__hint" style={{ color: hintColor ?? accentColor }}>
           {hint}
         </p>
       )}
       {showDownload && allRows.length > 0 && (
         <button
           type="button"
+          className="eq-rows-disclosure__download"
           onClick={() =>
             downloadCsv(
               downloadFilename ?? "eq-rows.csv",
@@ -115,68 +121,45 @@ export function RowsDisclosure({
               })),
             )
           }
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "5px 12px",
-            fontSize: 12,
-            background: "white",
-            color: "#1A1A2E",
-            border: "1px solid #EAF5FB",
-            borderRadius: 4,
-            cursor: "pointer",
-            marginBottom: 8,
-            fontFamily: "inherit",
-          }}
         >
           ↓ Download as CSV ({allRows.length} rows)
         </button>
       )}
-      <div style={{ marginTop: 8 }}>
+      <div className="eq-rows-disclosure__body">
         <input
           type="text"
+          className="eq-rows-disclosure__filter"
           placeholder="Filter by row number, entity, or reason…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            padding: "5px 8px",
-            fontSize: 12,
-            border: "1px solid #EAF5FB",
-            borderRadius: 4,
-            fontFamily: "inherit",
-            marginBottom: 6,
-          }}
         />
-        <div style={{ overflowX: "auto", border: "1px solid #EAF5FB", borderRadius: 4 }}>
-          <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+        <div className="eq-rows-disclosure__table-wrap">
+          <table className="eq-rows-disclosure__table">
             <thead>
-              <tr style={{ background: "#EAF5FB" }}>
+              <tr>
                 <th
-                  style={{ padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}
+                  className="eq-sortable"
                   onClick={() => setSortAsc((a) => !a)}
                 >
                   Row {sortAsc ? "↑" : "↓"}
                 </th>
-                <th style={{ padding: "4px 8px", textAlign: "left" }}>Type</th>
-                <th style={{ padding: "4px 8px", textAlign: "left" }}>Reason</th>
+                <th>Type</th>
+                <th>Reason</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={3} style={{ padding: "8px", color: "#1A1A2E", opacity: 0.5, textAlign: "center" }}>
+                  <td colSpan={3} className="eq-rows-disclosure__empty">
                     No rows match
                   </td>
                 </tr>
               ) : (
                 filtered.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #F4F4F8" }}>
-                    <td style={{ padding: "4px 8px", fontFamily: "monospace" }}>{r.rowNum}</td>
-                    <td style={{ padding: "4px 8px", whiteSpace: "nowrap" }}>{r.entity}</td>
-                    <td style={{ padding: "4px 8px" }}>{r.reason}</td>
+                  <tr key={i}>
+                    <td className="eq-monospace">{r.rowNum}</td>
+                    <td className="eq-nowrap">{r.entity}</td>
+                    <td>{r.reason}</td>
                   </tr>
                 ))
               )}
@@ -184,7 +167,7 @@ export function RowsDisclosure({
           </table>
         </div>
         {filtered.length < allRows.length && (
-          <div style={{ fontSize: 11, color: "#1A1A2E", opacity: 0.5, marginTop: 4 }}>
+          <div className="eq-rows-disclosure__showing">
             Showing {filtered.length} of {allRows.length} rows
           </div>
         )}

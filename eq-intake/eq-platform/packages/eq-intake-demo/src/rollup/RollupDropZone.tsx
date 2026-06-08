@@ -445,7 +445,7 @@ export function RollupDropZone(): JSX.Element {
               border: "1px solid #fcd34d",
               borderRadius: 4,
               background: "white",
-              color: "#1A1A2E",
+              color: "var(--eq-ink)",
             }}
           >
             <option value="include-as-pseudo-customer">
