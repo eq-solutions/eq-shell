@@ -108,7 +108,6 @@ export function HubSidebar({ apps, records }: Props) {
       <div className="eq-hub-sidebar__brand-row">
         <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand" aria-label="Go to dashboard">
           <EqLogo size={52} onDark />
-          <span className="eq-hub-sidebar__brand-label">Shell</span>
         </Link>
         <button
           type="button"
@@ -127,11 +126,6 @@ export function HubSidebar({ apps, records }: Props) {
         <span>Live</span>
       </div>
 
-      {!collapsed && session.memberships && session.memberships.length > 1 && (
-        <div style={{ margin: '8px 0 12px' }}>
-          <TenantSwitcher />
-        </div>
-      )}
 
       {/* ── RECORDS — split into Customers (external) and Internal (workforce) ── */}
       {visibleRecords.length > 0 && (
@@ -366,6 +360,10 @@ export function HubSidebar({ apps, records }: Props) {
         </>
       )}
 
+      <div className="eq-hub-sidebar__bottom">
+      {session.memberships && session.memberships.length > 1 && (
+        <TenantSwitcher />
+      )}
       <div className="eq-hub-sidebar__user">
         <div className="eq-hub-sidebar__user-avatar" aria-hidden="true">
           {userInitials}
@@ -393,6 +391,7 @@ export function HubSidebar({ apps, records }: Props) {
         >
           <LogOut size={15} aria-hidden="true" />
         </button>
+      </div>
       </div>
     </aside>
   );
