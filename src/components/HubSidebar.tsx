@@ -1,27 +1,15 @@
-import { useState, useCallback } from 'react';
-import { Link, NavLink, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database, ListChecks, BadgeCheck, ChevronLeft } from 'lucide-react';
+import { useParams, useLocation } from 'react-router-dom';
+import {
+  Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings,
+  Download, Users2, ClipboardList, Gauge, BarChart2, ShieldCheck, Database,
+  ListChecks, BadgeCheck,
+} from 'lucide-react';
+import { AppSidebar, type AppSidebarSection } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
 import { useDensity } from '../lib/useDensity';
 import { EqLogo } from './EqLogo';
 import { TenantSwitcher } from './TenantSwitcher';
-
-// Sidebar collapse state — persisted so the rail choice survives navigation.
-const COLLAPSE_KEY = 'eq-shell-sidebar-collapsed';
-function useSidebarCollapsed(): [boolean, () => void] {
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch { return false; }
-  });
-  const toggle = useCallback(() => {
-    setCollapsed((c) => {
-      const next = !c;
-      try { localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0'); } catch { /* private mode */ }
-      return next;
-    });
-  }, []);
-  return [collapsed, toggle];
-}
 
 export interface HubApp {
   key: string;
@@ -36,22 +24,11 @@ export interface HubApp {
 export interface RecordLink {
   key: string;
   label: string;
-  entity: string;   // matches /data/:entity route
+  entity: string;
   count: number | null;
-  /** Optional path suffix override (default: data/:entity). e.g. 'equipment'. */
   to?: string;
-  /** Render the count in the muted (slate) variant instead of sky. */
   muted?: boolean;
-  /** Show an amber warn dot beside the count (e.g. expiring licences). */
   warn?: boolean;
-}
-
-function initials(name: string | null, email: string): string {
-  if (name) {
-    const parts = name.trim().split(' ');
-    return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
-  }
-  return email.slice(0, 2).toUpperCase();
 }
 
 export const HUB_APP_ICONS: Record<string, React.ReactNode> = {
@@ -61,7 +38,22 @@ export const HUB_APP_ICONS: Record<string, React.ReactNode> = {
   cards:   <CreditCard size={16} aria-hidden="true" />,
 };
 
-// ── Component ─────────────────────────────────────────────────────────────────
+const RECORD_ICONS: Record<string, React.ReactNode> = {
+  customer:  <Building2 size={16} aria-hidden="true" />,
+  site:      <MapPin size={16} aria-hidden="true" />,
+  contact:   <User size={16} aria-hidden="true" />,
+  staff:     <Users2 size={16} aria-hidden="true" />,
+  licence:   <BadgeCheck size={16} aria-hidden="true" />,
+  equipment: <Gauge size={16} aria-hidden="true" />,
+};
+
+function initials(name: string | null, email: string): string {
+  if (name) {
+    const parts = name.trim().split(' ');
+    return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
+  }
+  return email.slice(0, 2).toUpperCase();
+}
 
 interface Props {
   apps: HubApp[];
@@ -70,272 +62,131 @@ interface Props {
 
 export function HubSidebar({ apps, records }: Props) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
+  const location = useLocation();
   const { session, logout } = useSession();
   const canEquipment = useCan('equipment.view');
   const canIntake = useCan('intake.view');
   const canReports = useCan('reports.view');
   const canAdmin = useCan('admin.list_users');
   const { compact, toggle: toggleDensity } = useDensity();
-  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
 
-  if (!session) return null;
+  if (!session || !tenantSlug) return null;
+
+  function active(href: string): boolean {
+    return location.pathname === href || location.pathname.startsWith(href + '/');
+  }
 
   const userInitials = initials(session.user.name, session.user.email);
   const userName = session.user.name ?? session.user.email.split('@')[0].replace('.', ' ');
   const roleLabel = session.user.role.replace(/_/g, ' ').toUpperCase();
 
-  // Plant & equipment is now a Record (folded out of its own group); only show it
-  // to users who can view equipment.
   const visibleRecords = (records ?? []).filter((r) => r.key !== 'equipment' || canEquipment);
 
-  const RECORD_ICONS: Record<string, React.ReactNode> = {
-    customer:  <Building2 size={16} aria-hidden="true" />,
-    site:      <MapPin size={16} aria-hidden="true" />,
-    contact:   <User size={16} aria-hidden="true" />,
-    staff:     <Users2 size={16} aria-hidden="true" />,
-    licence:   <BadgeCheck size={16} aria-hidden="true" />,
-    equipment: <Gauge size={16} aria-hidden="true" />,
-  };
+  const sections: AppSidebarSection[] = [];
+
+  if (visibleRecords.length > 0) {
+    sections.push({
+      key: 'records',
+      label: 'Records',
+      items: visibleRecords.map((r) => {
+        const href = `/${tenantSlug}/${r.to ?? `data/${r.entity}`}`;
+        return {
+          key: r.key,
+          label: r.label,
+          href,
+          icon: RECORD_ICONS[r.key],
+          isActive: active(href),
+          count: r.count ?? undefined,
+          muted: r.muted,
+          warn: r.warn,
+          arrow: true,
+        };
+      }),
+    });
+  }
+
+  sections.push({
+    key: 'apps',
+    label: 'Apps',
+    items: apps.map((app) => {
+      const href = `/${tenantSlug}/${app.to}`;
+      return {
+        key: app.key,
+        label: app.label,
+        href,
+        icon: app.icon,
+        isActive: active(href),
+        count: app.count ?? undefined,
+        badge: app.isBeta ? 'BETA' : undefined,
+        hasAlert: app.hasAlert,
+        arrow: true,
+      };
+    }),
+  });
+
+  if (canReports) {
+    const href = `/${tenantSlug}/reports`;
+    sections.push({
+      key: 'reports',
+      label: 'Reports',
+      items: [{ key: 'reports', label: 'Reports', href, icon: <BarChart2 size={16} aria-hidden="true" />, isActive: active(href), arrow: true }],
+    });
+  }
+
+  if (canAdmin || canIntake) {
+    const adminItems = [];
+    if (canAdmin) {
+      adminItems.push(
+        { key: 'users',          label: 'Users',           href: `/${tenantSlug}/admin/users`,          icon: <Users2 size={16} aria-hidden="true" />,       isActive: active(`/${tenantSlug}/admin/users`) },
+        { key: 'audit',          label: 'Audit log',       href: `/${tenantSlug}/admin/audit`,          icon: <ClipboardList size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/admin/audit`) },
+        { key: 'migration',      label: 'Migration',       href: `/${tenantSlug}/admin/migration`,      icon: <ListChecks size={16} aria-hidden="true" />,    isActive: active(`/${tenantSlug}/admin/migration`) },
+        { key: 'access-control', label: 'Security groups', href: `/${tenantSlug}/admin/access-control`, icon: <ShieldCheck size={16} aria-hidden="true" />,   isActive: active(`/${tenantSlug}/admin/access-control`) },
+        { key: 'settings',       label: 'Settings',        href: `/${tenantSlug}/admin/settings`,       icon: <Settings size={16} aria-hidden="true" />,      isActive: active(`/${tenantSlug}/admin/settings`) },
+      );
+    }
+    if (canIntake) {
+      adminItems.push({ key: 'import', label: 'Import', href: `/${tenantSlug}/intake`, icon: <Download size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/intake`), arrow: true as const });
+    }
+    sections.push({ key: 'admin', label: 'Admin', items: adminItems });
+  }
+
+  sections.push({
+    key: 'security',
+    label: 'Security',
+    items: [{
+      key: '2fa', label: 'Two-factor security',
+      href: `/${tenantSlug}/settings/2fa`,
+      icon: <ShieldCheck size={16} aria-hidden="true" />,
+      isActive: active(`/${tenantSlug}/settings/2fa`),
+      arrow: true,
+    }],
+  });
+
+  if (session.user.is_platform_admin) {
+    sections.push({
+      key: 'platform',
+      label: 'Platform',
+      items: [{ key: 'tenants', label: 'Tenants', href: '/_platform/tenants', icon: <Database size={16} aria-hidden="true" />, isActive: active('/_platform/tenants') }],
+    });
+  }
 
   return (
-    <aside className={`eq-hub__sidebar${collapsed ? ' eq-hub__sidebar--collapsed' : ''}`}>
-      <div className="eq-hub-sidebar__brand-row">
-        <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand" aria-label="Go to dashboard">
-          <EqLogo size={40} onDark />
-          <span className="eq-hub-sidebar__brand-label">Shell</span>
-        </Link>
-        <button
-          type="button"
-          className="eq-hub-sidebar__collapse"
-          onClick={toggleCollapsed}
-          aria-pressed={collapsed}
-          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-          title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-        >
-          <ChevronLeft size={16} aria-hidden="true" />
-        </button>
-      </div>
-
-      <div className="eq-hub-sidebar__live">
-        <span className="eq-hub-sidebar__live-dot" aria-hidden="true" />
-        <span>Live</span>
-      </div>
-
-      {!collapsed && session.memberships && session.memberships.length > 1 && (
-        <div style={{ margin: '8px 0 12px' }}>
-          <TenantSwitcher />
-        </div>
-      )}
-
-      {/* ── RECORDS (Customers · Sites · Contacts · Staff · Licences · Plant & equipment) ── */}
-      {visibleRecords.length > 0 && (
-        <>
-          <p className="eq-hub-sidebar__section-label">Records</p>
-          <nav className="eq-hub-sidebar__nav" aria-label="Records navigation">
-            {visibleRecords.map((r) => (
-              <NavLink
-                key={r.key}
-                to={`/${tenantSlug}/${r.to ?? `data/${r.entity}`}`}
-                data-tip={r.label}
-                className={({ isActive }) =>
-                  `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`
-                }
-              >
-                <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
-                  {RECORD_ICONS[r.key]}
-                  {r.warn && <span className="eq-hub-sidebar__nav-warn eq-hub-sidebar__nav-warn--chip" aria-hidden="true" />}
-                </span>
-                <span className="eq-hub-sidebar__nav-label">{r.label}</span>
-                {r.warn && <span className="eq-hub-sidebar__nav-warn" aria-label="Needs attention" />}
-                {r.count !== null && (
-                  <span className={`eq-hub-sidebar__nav-count${r.muted ? ' eq-hub-sidebar__nav-count--muted' : ''}`}>
-                    {r.count}
-                  </span>
-                )}
-                <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-              </NavLink>
-            ))}
-          </nav>
-        </>
-      )}
-
-      {/* ── APPS ── */}
-      <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>
-        Apps
-      </p>
-      <nav className="eq-hub-sidebar__nav" aria-label="App navigation">
-        {apps.map((app) => (
-          <NavLink
-            key={app.key}
-            to={`/${tenantSlug}/${app.to}`}
-            data-tip={app.label}
-            className={({ isActive }) =>
-              `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`
-            }
-          >
-            <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
-              {app.icon}
-              {app.hasAlert && <span className="eq-hub-sidebar__nav-warn eq-hub-sidebar__nav-warn--chip" aria-hidden="true" />}
-            </span>
-            <span className="eq-hub-sidebar__nav-label">{app.label}</span>
-            {app.isBeta && (
-              <span className="eq-hub-sidebar__nav-badge">BETA</span>
-            )}
-            {app.hasAlert && (
-              <span className="eq-hub-sidebar__nav-warn" aria-label="Needs attention" />
-            )}
-            {app.count !== null && (
-              <span className="eq-hub-sidebar__nav-count">{app.count}</span>
-            )}
-            <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-          </NavLink>
-        ))}
-      </nav>
-
-      {/* ── REPORTS ── */}
-      {canReports && (
-        <>
-          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Reports</p>
-          <nav className="eq-hub-sidebar__nav" aria-label="Reports navigation">
-            <NavLink
-              to={`/${tenantSlug}/reports`}
-              data-tip="Reports"
-              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-            >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><BarChart2 size={16} aria-hidden="true" /></span>
-              <span className="eq-hub-sidebar__nav-label">Reports</span>
-              <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-            </NavLink>
-          </nav>
-        </>
-      )}
-
-      {/* ── ADMIN (Import folded in here; admin links stay admin-gated, Import
-          stays intake-gated so non-admin importers keep access) ── */}
-      {(canAdmin || canIntake) && (
-        <>
-          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Admin</p>
-          <nav className="eq-hub-sidebar__nav" aria-label="Admin navigation">
-            {canAdmin && (
-              <>
-                <NavLink
-                  to={`/${tenantSlug}/admin/users`}
-                  data-tip="Users"
-                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-                >
-                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Users2 size={16} aria-hidden="true" /></span>
-                  <span className="eq-hub-sidebar__nav-label">Users</span>
-                </NavLink>
-                <NavLink
-                  to={`/${tenantSlug}/admin/audit`}
-                  data-tip="Audit log"
-                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-                >
-                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ClipboardList size={16} aria-hidden="true" /></span>
-                  <span className="eq-hub-sidebar__nav-label">Audit log</span>
-                </NavLink>
-                <NavLink
-                  to={`/${tenantSlug}/admin/migration`}
-                  data-tip="Migration"
-                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-                >
-                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ListChecks size={16} aria-hidden="true" /></span>
-                  <span className="eq-hub-sidebar__nav-label">Migration</span>
-                </NavLink>
-                <NavLink
-                  to={`/${tenantSlug}/admin/access-control`}
-                  data-tip="Security groups"
-                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-                >
-                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={16} aria-hidden="true" /></span>
-                  <span className="eq-hub-sidebar__nav-label">Security groups</span>
-                </NavLink>
-                <NavLink
-                  to={`/${tenantSlug}/admin/settings`}
-                  data-tip="Settings"
-                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-                >
-                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Settings size={16} aria-hidden="true" /></span>
-                  <span className="eq-hub-sidebar__nav-label">Settings</span>
-                </NavLink>
-              </>
-            )}
-            {canIntake && (
-              <NavLink
-                to={`/${tenantSlug}/intake`}
-                data-tip="Import"
-                className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-              >
-                <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Download size={16} aria-hidden="true" /></span>
-                <span className="eq-hub-sidebar__nav-label">Import</span>
-                <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-              </NavLink>
-            )}
-          </nav>
-        </>
-      )}
-
-      {/* ── SECURITY (2FA enrollment — personal, available to every logged-in
-          user, so this group is intentionally ungated; grouped under its own
-          header beside Admin rather than left as an orphan link) ── */}
-      <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Security</p>
-      <nav className="eq-hub-sidebar__nav" aria-label="Security navigation">
-        <NavLink
-          to={`/${tenantSlug}/settings/2fa`}
-          data-tip="Two-factor security"
-          className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-        >
-          <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={16} aria-hidden="true" /></span>
-          <span className="eq-hub-sidebar__nav-label">Two-factor security</span>
-          <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-        </NavLink>
-      </nav>
-
-      {/* ── PLATFORM (platform-admin only) ── */}
-      {session.user.is_platform_admin && (
-        <>
-          <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Platform</p>
-          <nav className="eq-hub-sidebar__nav" aria-label="Platform navigation">
-            <NavLink
-              to="/_platform/tenants"
-              data-tip="Tenants"
-              className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-            >
-              <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Database size={16} aria-hidden="true" /></span>
-              <span className="eq-hub-sidebar__nav-label">Tenants</span>
-            </NavLink>
-          </nav>
-        </>
-      )}
-
-      <div className="eq-hub-sidebar__user">
-        <div className="eq-hub-sidebar__user-avatar" aria-hidden="true">
-          {userInitials}
-        </div>
-        <div className="eq-hub-sidebar__user-info">
-          <div className="eq-hub-sidebar__user-name">{userName}</div>
-          <div className="eq-hub-sidebar__user-meta">
-            {roleLabel} · {session.tenant.name}
-          </div>
-        </div>
-        <button
-          className={`eq-hub-sidebar__density-toggle${compact ? ' active' : ''}`}
-          onClick={toggleDensity}
-          aria-label="Compact view"
-          aria-pressed={compact}
-          title={compact ? 'Switch to normal view' : 'Switch to compact view'}
-        >
-          <AlignJustify size={16} aria-hidden="true" />
-        </button>
-        <button
-          className="eq-hub-sidebar__user-logout"
-          onClick={() => void logout()}
-          aria-label="Log out"
-          title="Log out"
-        >
-          <LogOut size={15} aria-hidden="true" />
-        </button>
-      </div>
-    </aside>
+    <AppSidebar
+      homeHref={`/${tenantSlug}`}
+      logo={<EqLogo size={40} onDark />}
+      brandLabel="Shell"
+      live
+      tenantSwitcher={session.memberships && session.memberships.length > 1 ? <TenantSwitcher /> : undefined}
+      sections={sections}
+      user={{
+        initials: userInitials,
+        name: userName,
+        meta: `${roleLabel} · ${session.tenant.name}`,
+      }}
+      compact={compact}
+      onToggleCompact={toggleDensity}
+      onLogout={() => void logout()}
+      storageKey="eq-shell-sidebar-collapsed"
+    />
   );
 }
