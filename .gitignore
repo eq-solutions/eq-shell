@@ -44,3 +44,6 @@ packages/eq-tokens/cdn/
 
 # Auth email-template backups (production config snapshots — restore-only, not source)
 scripts/auth-templates/backup-*.json
+
+# Supabase CLI temp artifacts
+supabase/.temp/
