@@ -33,6 +33,16 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Drop field_people if it was previously created as a base table
+  -- (zaap had a field_people table from an earlier ETL; can't CREATE OR REPLACE VIEW over a table).
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'app_data' AND table_name = 'field_people'
+    AND table_type = 'BASE TABLE'
+  ) THEN
+    EXECUTE 'DROP TABLE app_data.field_people CASCADE';
+  END IF;
+
   EXECUTE $sql$
     CREATE OR REPLACE VIEW app_data.field_people AS
     SELECT
