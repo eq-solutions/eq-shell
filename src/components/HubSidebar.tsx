@@ -92,7 +92,7 @@ export function HubSidebar({ apps, records }: Props) {
   const visibleRecords = (records ?? []).filter((r) => r.key !== 'equipment' || canEquipment);
 
   const CUSTOMER_KEYS = ['customer', 'site', 'contact'];
-  const INTERNAL_KEYS = ['staff', 'licence', 'equipment'];
+  const INTERNAL_KEYS = ['staff', 'equipment'];
   const customerRecords = visibleRecords.filter((r) => CUSTOMER_KEYS.includes(r.key));
   const internalRecords = visibleRecords.filter((r) => INTERNAL_KEYS.includes(r.key));
 
