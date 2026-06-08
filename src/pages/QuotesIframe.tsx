@@ -120,7 +120,7 @@ export default function QuotesIframe() {
             title="EQ Quotes"
             src={src}
             onLoad={onIframeLoad}
-            sandbox="allow-scripts allow-forms allow-downloads"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
             referrerPolicy="no-referrer"
             allow=""
           />

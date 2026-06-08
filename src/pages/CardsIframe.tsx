@@ -137,7 +137,7 @@ export default function CardsIframe() {
         style={{ flex: 1, minHeight: 0 }}
         title="EQ Cards"
         src={`${CARDS_URL}auth/handoff?shell=1`}
-        sandbox="allow-scripts allow-forms allow-downloads"
+        sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
         referrerPolicy="no-referrer"
         allow=""
         onLoad={onIframeLoad}
