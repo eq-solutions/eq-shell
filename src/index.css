@@ -30,11 +30,11 @@
  * No gradients on static backgrounds. No drop shadows on static cards.
  */
 
-/* Canonical design tokens — the single source of truth for every value
- * (brand, neutrals, status, shadows, type, spacing, radii, motion, focus).
- * Defines --eq-* on :root (and [data-tier] deltas). The @theme block inside
- * is inert outside Tailwind. Update the package, not this file. */
-@import "@eq-solutions/tokens/tokens.css";
+/* Single import: design tokens + all @eq-solutions/ui component styles.
+ * tokens.css defines --eq-* on :root (and [data-tier] deltas); component
+ * CSS follows. The @theme block inside tokens.css is inert outside Tailwind.
+ * Update @eq-solutions/tokens or @eq-solutions/ui — not this file. */
+@import "@eq-solutions/ui/src/index.css";
 
 :root {
   /* This block no longer holds literal values — it only BRIDGES Shell's
