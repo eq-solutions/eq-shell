@@ -34,6 +34,7 @@ import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
 import AdminTenantsPage from './pages/AdminTenantsPage';
 import AdminWorkersPage from './pages/AdminWorkersPage';
+import AdminDataActivationPage from './pages/AdminDataActivationPage';
 import EntityBrowserPage from './pages/EntityBrowserPage';
 import CustomersHubPage from './pages/CustomersHubPage';
 import { CustomersPage } from './pages/CustomersPage';
@@ -478,6 +479,7 @@ function TenantTree() {
         <Route path="admin/settings" element={<AdminTenantSettings />} />
         <Route path="admin/security-groups" element={<AdminSecurityGroups />} />
         <Route path="admin/access-control" element={<AccessControlPage />} />
+        <Route path="admin/data-activation" element={<AdminDataActivationPage />} />
         {/* Phase 1.G — TOTP 2FA enrollment (any logged-in user) */}
         <Route path="settings/2fa" element={<EnrollTotp />} />
         <Route
