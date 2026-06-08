@@ -17,6 +17,7 @@
 //   { ok: true, entity, id }   — id is the new record's PK UUID
 //   { ok: false, error, detail? }
 
+import { randomUUID } from 'node:crypto';
 import type { Context } from '@netlify/functions';
 import {
   getTenantDataClientById,
@@ -129,6 +130,18 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const newId = (data as any)[meta.pk] as string;
+
+  // Non-blocking: emit entity.inserted event for downstream consumers (C4).
+  void (db.schema('app_data').from('canonical_events').insert({
+    tenant_id:       session.tenant_id,
+    app_source:      'shell',
+    event:           'entity.inserted',
+    payload:         { entity, id: newId },
+    idempotency_key: randomUUID(),
+  }) as Promise<unknown>).catch((e: unknown) => {
+    console.warn('[entity-insert] canonical_event emit failed', (e as Error)?.message);
+  });
+
   return json(201, { ok: true, entity, id: newId });
 });
 

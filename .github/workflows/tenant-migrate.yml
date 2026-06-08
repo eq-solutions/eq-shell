@@ -48,6 +48,11 @@ on:
         type: boolean
         required: false
         default: false
+      allow_checksum_drift:
+        description: 'Accept changed migration files (use only to resolve accidental edits)'
+        type: boolean
+        required: false
+        default: false
 
 # Never let two applies overlap; never cancel an in-flight apply.
 concurrency:
@@ -122,8 +127,13 @@ jobs:
           if [ -n "$INPUT_SLUG" ]; then
             SLUG_FLAG="--slug=$INPUT_SLUG"
           fi
-          node scripts/migrate-tenants.mjs $SLUG_FLAG
+          DRIFT_FLAG=""
+          if [ "$INPUT_ALLOW_CHECKSUM_DRIFT" = "true" ]; then
+            DRIFT_FLAG="--allow-checksum-drift"
+          fi
+          node scripts/migrate-tenants.mjs $SLUG_FLAG $DRIFT_FLAG
         env:
           INPUT_SLUG: ${{ inputs.slug }}
+          INPUT_ALLOW_CHECKSUM_DRIFT: ${{ inputs.allow_checksum_drift }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}

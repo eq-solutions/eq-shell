@@ -19,6 +19,7 @@
 // Only fields in ENTITY_META[entity].fields are written — anything else is silently
 // stripped, so there is no way to clobber tenant_id, PKs, or audit columns.
 
+import { randomUUID } from 'node:crypto';
 import type { Context } from '@netlify/functions';
 import {
   getTenantDataClientById,
@@ -169,6 +170,18 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     }
     return json(500, { ok: false, error: 'db_error', detail: dbErr.message });
   }
+
+  // Non-blocking: emit entity.patched event for downstream consumers.
+  // Uses idempotency_key so retried requests don't duplicate events (C3/C4).
+  void (db.schema('app_data').from('canonical_events').insert({
+    tenant_id:       session.tenant_id,
+    app_source:      'shell',
+    event:           'entity.patched',
+    payload:         { entity, id, fields: Object.keys(patch) },
+    idempotency_key: randomUUID(),
+  }) as Promise<unknown>).catch((e: unknown) => {
+    console.warn('[entity-patch] canonical_event emit failed', (e as Error)?.message);
+  });
 
   return json(200, { ok: true, entity, id });
 });

@@ -47,6 +47,7 @@
 //
 // Error codes: auth_failed | missing_tenant | invalid_tenant |
 //              tenant_inactive | unknown_resource | invalid_filter |
+//              forbidden | forbidden_resource |
 //              method_not_allowed | rate_limited | internal_error
 //
 // Architecture: docs/ARCHITECTURE-V2.md "canonical-api design"
@@ -97,6 +98,40 @@ function constantTimeEqual(a: string, b: string): boolean {
   let r = 0;
   for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return r === 0;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Per-app resource ACL — aligned to ADR-002 system-of-record
+// Writes are tight (the app must OWN the resource per SoR).
+// Reads are broader (apps legitimately read context they don't write).
+// shell gets '*' as the platform escape hatch.
+// ──────────────────────────────────────────────────────────────────────
+
+const APP_RESOURCE_WRITE: Record<AppIdentity['app'], ReadonlySet<string>> = {
+  quotes:  new Set(['customers', 'contacts', 'sites', 'jobs']),
+  service: new Set(['assets', 'asset_test_results', 'asset_defects']),
+  cards:   new Set(['staff', 'licences']),
+  field:   new Set([]),   // Field writes app_data directly; no canonical-api PUT path yet
+  shell:   new Set(['*']),
+};
+
+const APP_RESOURCE_READ: Record<AppIdentity['app'], ReadonlySet<string>> = {
+  quotes:  new Set(['customers', 'contacts', 'sites', 'jobs', 'events']),
+  service: new Set(['customers', 'contacts', 'sites', 'jobs', 'assets',
+                    'asset_test_results', 'asset_defects', 'staff', 'events']),
+  cards:   new Set(['staff', 'licences', 'customers', 'events']),
+  field:   new Set(['staff', 'sites', 'customers', 'events']),
+  shell:   new Set(['*']),
+};
+
+function canReadResource(app: AppIdentity['app'], resource: string): boolean {
+  const allow = APP_RESOURCE_READ[app];
+  return allow.has('*') || allow.has(resource);
+}
+
+function canWriteResource(app: AppIdentity['app'], resource: string): boolean {
+  const allow = APP_RESOURCE_WRITE[app];
+  return allow.has('*') || allow.has(resource);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -366,6 +401,9 @@ async function handleGet(
 ): Promise<Response> {
   const resourceName = url.searchParams.get('resource');
   if (!resourceName) return err(400, 'unknown_resource', 'resource= query param is required');
+  if (!canReadResource(caller.app, resourceName)) {
+    return err(403, 'forbidden_resource', `app '${caller.app}' may not read '${resourceName}'`);
+  }
   const def = RESOURCES[resourceName];
   if (!def) return err(400, 'unknown_resource', `unknown resource '${resourceName}'`);
 
@@ -559,6 +597,9 @@ async function handlePut(
   if (!resourceName || !WRITABLE_FIELDS[resourceName]) {
     return err(400, 'unknown_resource',
       `resource must be one of: ${Object.keys(WRITABLE_FIELDS).join(', ')}`);
+  }
+  if (!canWriteResource(caller.app, resourceName)) {
+    return err(403, 'forbidden_resource', `app '${caller.app}' may not write '${resourceName}'`);
   }
 
   if (!body.external_id || typeof body.external_id !== 'string') {

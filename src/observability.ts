@@ -153,16 +153,14 @@ export interface IdentifyTraits {
  * Tag the current browser session with a stable identity once the
  * canonical user is hydrated. Idempotent: called every time the session
  * provider hydrates, including post-login.
+ *
+ * distinct_id is the Shell UUID (userId). This is the stable key that
+ * Field (via shell_user_id in the iframe token), Service, and Cards
+ * (via JWT sub) all carry — so events stitch across apps by UUID, not
+ * email. Email is aliased so pre-existing email-based PostHog profiles
+ * merge into the UUID person on first call.
  */
 export function identifyUser(userId: string, traits: IdentifyTraits = {}): void {
-  // PostHog/Clarity distinct_id is the lowercased email so the same human
-  // stitches across Shell / Field / Service. Those apps sit on three
-  // different identity backends (Shell = shell_control.users, Service = its
-  // own GoTrue, Field = a constructed handle) and so cannot share a UUID —
-  // email is the only key all three can emit. Sentry keeps the canonical
-  // user id for error grouping. Falls back to userId if email is absent.
-  const analyticsId = traits.email ? traits.email.toLowerCase() : userId;
-
   if (sentryReady) {
     try {
       Sentry.setUser({
@@ -180,7 +178,14 @@ export function identifyUser(userId: string, traits: IdentifyTraits = {}): void 
 
   if (posthogReady) {
     try {
-      posthog.identify(analyticsId, traits);
+      // UUID is the stable distinct_id across all EQ apps. Shell mints
+      // shell_user_id into every iframe token so Field + Service can match.
+      posthog.identify(userId, traits);
+      // Alias merges any pre-existing email-based person into this UUID
+      // person. Idempotent — PostHog ignores duplicate alias calls.
+      if (traits.email) {
+        posthog.alias(traits.email.toLowerCase());
+      }
       if (traits.tenant) {
         // Group-analytics-style tenant tag — lets Royce slice events
         // by tenant in PostHog without re-querying every chart.
@@ -198,7 +203,7 @@ export function identifyUser(userId: string, traits: IdentifyTraits = {}): void 
       // so heatmaps / replays can be filtered by user.
       const clarity = (window as unknown as { clarity?: (...args: unknown[]) => void }).clarity;
       if (typeof clarity === 'function') {
-        clarity('identify', analyticsId, undefined, undefined, traits.email ?? undefined);
+        clarity('identify', userId, undefined, undefined, traits.email ?? undefined);
         if (traits.tenant) clarity('set', 'tenant', traits.tenant);
         if (traits.role) clarity('set', 'role', traits.role);
       }
