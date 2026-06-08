@@ -2,22 +2,26 @@
 //
 // Body: { staff_id: string; action: 'approve' | 'reject'; rejection_reason?: string }
 //
-// Approve: reads the Cards profile from the tenant's data plane → writes a
-//   people row + qualifications rows to Field's Supabase → records the
-//   approval in shell_control.cards_field_approvals.
-// Reject:  records the rejection only (no Field writes).
+// Approve: reads the Cards profile from the tenant's data plane → flips
+//   field_approved on the canonical app_data.staff row → records the approval
+//   in shell_control.cards_field_approvals.
+// Reject:  records the rejection only (no data-plane writes).
 //
 // Manager + platform_admin only.
 //
-// Data plane (Phase 2.B post-cutover):
-//   - app_data.staff + app_data.licences  → tenant DB (via tenant_routing)
-//   - shell_control.cards_field_approvals → control plane (shared)
-//   - shell_control.tenants               → control plane (shared)
-//   - Field people + qualifications       → Field's Supabase (unchanged)
+// WHY no more legacy-Field write (2026-06-08): the approved staff member ALREADY
+// lives in app_data.staff — the tenant data plane that live Field reads via
+// tenant_routing (zaap for EQ, nspb for SKS). The old bridge copied the profile
+// into a second store, the standalone ktmj Field DB, which is now the dead
+// cold-backup that nothing reads. Approval is therefore a FLAG on the canonical
+// row (field_approved, migration 0046), not a second copy of the person.
+//
+// Data plane:
+//   - app_data.staff (field_approved flag)  → tenant DB (via tenant_routing)
+//   - shell_control.cards_field_approvals    → control plane (shared, audit)
 
 import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
-import { getFieldServiceClient } from './_shared/field-supabase.js';
 import {
   getTenantDataClientById,
   TenantNotFoundError,
@@ -106,12 +110,12 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const { data: staffRow, error: staffErr } = (await tenantAny
     .schema('app_data')
     .from('staff')
-    .select('staff_id, first_name, last_name, email, phone, date_of_birth, tenant_id')
+    .select('staff_id, field_approved, tenant_id')
     .eq('staff_id', staff_id)
     .eq('tenant_id', tenantId)
     .eq('active', true)
     .maybeSingle()) as {
-    data: { staff_id: string; first_name: string | null; last_name: string | null; email: string | null; phone: string | null; date_of_birth: string | null; tenant_id: string } | null;
+    data: { staff_id: string; field_approved: boolean | null; tenant_id: string } | null;
     error: { message: string } | null;
   };
 
@@ -119,107 +123,35 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(404, { error: 'Staff record not found or not in your tenant' });
   }
 
-  const { data: licences, error: licErr } = (await tenantAny
+  // Approval = flip the canonical field_approved flag. The staff member already
+  // lives in app_data.staff (the plane live Field reads); approval clears them
+  // onto the roster. No second copy into the dead legacy Field DB.
+  const { error: updErr } = await tenantAny
     .schema('app_data')
-    .from('licences')
-    .select('licence_id, licence_type, licence_number, issuing_authority, state, issue_date, expiry_date, notes')
-    .eq('staff_id', staff_id)
-    .eq('tenant_id', tenantId)
-    .eq('active', true)) as {
-    data: Array<{ licence_id: string; licence_type: string; licence_number: string | null; issuing_authority: string | null; state: string | null; issue_date: string | null; expiry_date: string | null; notes: string | null }> | null;
-    error: { message: string } | null;
-  };
-
-  if (licErr) return json(500, { error: licErr.message });
-
-  // Look up the Field org_id for this tenant.
-  const { data: tenant, error: tenantErr } = await sb
-    .from('tenants')
-    .select('field_org_id')
-    .eq('id', tenantId)
-    .maybeSingle();
-
-  if (tenantErr || !tenant?.field_org_id) {
-    return json(500, {
-      error: 'No Field organisation linked to this tenant. Set field_org_id on shell_control.tenants.',
-    });
-  }
-
-  const fieldOrgId = tenant.field_org_id as string;
-
-  // Build the name.
-  const fullName = (
-    [staffRow.first_name, staffRow.last_name].filter(Boolean).join(' ').trim() ||
-    staffRow.email
-  ) ?? 'Unknown';
-
-  // Parse dob into day/month if present.
-  let dobDay: number | null = null;
-  let dobMonth: number | null = null;
-  if (staffRow.date_of_birth) {
-    const d = new Date(staffRow.date_of_birth as string);
-    if (!Number.isNaN(d.getTime())) {
-      dobDay = d.getUTCDate();
-      dobMonth = d.getUTCMonth() + 1;
-    }
-  }
-
-  // Write to Field.
-  const field = getFieldServiceClient();
-
-  const { data: newPerson, error: personErr } = await field
-    .from('people')
-    .insert({
-      org_id: fieldOrgId,
-      name: fullName,
-      email: staffRow.email ?? null,
-      phone: staffRow.phone ?? null,
-      dob_day: dobDay,
-      dob_month: dobMonth,
-      role: 'employee',
-      cards_staff_id: staff_id,
+    .from('staff')
+    .update({
+      field_approved: true,
+      field_approved_at: new Date().toISOString(),
+      field_approved_by: session.user_id,
     })
-    .select('id')
-    .single();
+    .eq('staff_id', staff_id)
+    .eq('tenant_id', tenantId);
 
-  if (personErr || !newPerson) {
-    return json(500, { error: `Field people insert failed: ${personErr?.message ?? 'unknown'}` });
+  if (updErr) {
+    return json(500, { error: `Could not approve staff: ${updErr.message}` });
   }
 
-  const fieldPeopleId = newPerson.id as string;
-
-  // Write qualifications (one per Cards licence).
-  if (licences && licences.length > 0) {
-    const qualRows = licences.map((l) => ({
-      person_id: fieldPeopleId,
-      licence_type: l.licence_type,
-      licence_number: l.licence_number ?? null,
-      issuing_authority: l.issuing_authority ?? null,
-      state: l.state ?? null,
-      issue_date: l.issue_date ?? null,
-      expiry_date: l.expiry_date ?? null,
-      notes: l.notes ?? null,
-      cards_licence_id: l.licence_id,
-      source: 'cards',
-    }));
-
-    const { error: qualErr } = await field.from('qualifications').insert(qualRows);
-    if (qualErr) {
-      // Person was created — record partial state so admin can retry.
-      console.warn('[cards-approve-staff] qualifications insert failed:', qualErr.message);
-    }
-  }
-
-  // Record the approval in eq-canonical.
+  // Record the approval in the control plane (cross-tenant audit). field_people_id
+  // is retained for legacy rows but is no longer written — approval is canonical.
   await sb.from('cards_field_approvals').insert({
     staff_id,
     tenant_id: tenantId,
-    field_people_id: fieldPeopleId,
+    field_people_id: null,
     status: 'approved',
     approved_by_user_id: session.user_id,
   });
 
-  return json(200, { ok: true, action: 'approved', field_people_id: fieldPeopleId });
+  return json(200, { ok: true, action: 'approved', staff_id });
 });
 
 function tenantRoutingError(e: unknown): Response {
