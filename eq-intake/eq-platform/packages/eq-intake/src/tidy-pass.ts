@@ -22,7 +22,7 @@ import contactSchema  from '@eq/schemas/schemas/contact.schema.json';
 import staffSchema    from '@eq/schemas/schemas/staff.schema.json';
 import licenceSchema  from '@eq/schemas/schemas/licence.schema.json';
 
-import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
+import type { SupabaseLikeClient } from './tidy-types.js';
 import type {
   TidyEntity,
   TidyFix,
@@ -195,7 +195,7 @@ async function scanEntity(
       allowNonCurrentSchema: true,
       // Disable FK lookups — we're only checking field normalisation here,
       // not relational integrity (orphan-check handles that separately).
-      fkLookup: async () => [],
+      fkLookup: { list: async () => [], byId: async () => null },
     });
   } catch (e) {
     throw new Error(

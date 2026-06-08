@@ -5,11 +5,8 @@
  * No gradients, no shadows. Plus Jakarta Sans, brand palette.
  */
 
+/* Fonts loaded by host shell (Google Fonts / @fontsource at shell level) */
 @import "@eq-solutions/tokens/tokens.css";
-@import '@fontsource/plus-jakarta-sans/400.css';
-@import '@fontsource/plus-jakarta-sans/500.css';
-@import '@fontsource/plus-jakarta-sans/600.css';
-@import '@fontsource/plus-jakarta-sans/700.css';
 
 :root {
   --eq-paper: #ffffff;
