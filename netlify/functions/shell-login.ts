@@ -51,8 +51,9 @@ function jsonResponse(status: number, body: unknown, extraHeaders: Record<string
 // Best-effort structured log of every login attempt. Visible in the
 // Netlify Functions dashboard logs; grepable. A real audit_log table
 // is a follow-up — see header comment.
-function logShellLogin(req: Request, email: string, outcome: 'success' | 'failed' | 'malformed', detail?: string): void {
-  const ip = req.headers.get('x-forwarded-for') ?? req.headers.get('client-ip') ?? 'unknown';
+// ip should come from context.ip (Netlify-injected, not spoofable).
+// x-forwarded-for is NOT used here — it can be forged by the caller.
+function logShellLogin(ip: string, email: string, outcome: 'success' | 'failed' | 'malformed', detail?: string): void {
   // eslint-disable-next-line no-console
   console.info('[shell-login]', JSON.stringify({
     at: new Date().toISOString(),
@@ -63,7 +64,12 @@ function logShellLogin(req: Request, email: string, outcome: 'success' | 'failed
   }));
 }
 
-export default withSentry(async (req: Request, _context: Context): Promise<Response> => {
+export default withSentry(async (req: Request, context: Context): Promise<Response> => {
+  // Extract the real client IP from the Netlify context. context.ip is
+  // injected by Netlify's edge infrastructure and cannot be spoofed by the
+  // caller — unlike x-forwarded-for, which any client can forge.
+  const ip = context.ip ?? 'unknown';
+
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }
@@ -79,14 +85,14 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   try {
     body = (await req.json()) as { email?: string; pin?: string };
   } catch {
-    logShellLogin(req, '<unparseable-body>', 'malformed');
+    logShellLogin(ip, '<unparseable-body>', 'malformed');
     return jsonResponse(400, { valid: false });
   }
 
   const email = (body.email ?? '').trim().toLowerCase();
   const pin = (body.pin ?? '').trim();
   if (!email || !pin) {
-    logShellLogin(req, email || '<empty>', 'malformed', 'missing email or pin');
+    logShellLogin(ip, email || '<empty>', 'malformed', 'missing email or pin');
     return jsonResponse(400, { valid: false });
   }
 
@@ -100,9 +106,6 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Rate limiting: 5 attempts per IP per 15-minute window.
   // Keyed by IP so a single attacker can't enumerate all emails.
   // On success, the key is cleared so legitimate users start fresh.
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-           ?? req.headers.get('client-ip')
-           ?? 'unknown';
   const rlKey = `login::${ip}`;
 
   const { data: rlResult, error: rlErr } = await sb.schema('public').rpc('check_and_increment_rate_limit', {
@@ -115,7 +118,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   } else {
     const rl = rlResult as { blocked: boolean; retry_after_seconds: number } | null;
     if (rl?.blocked) {
-      logShellLogin(req, email, 'failed', `rate-limited (retry in ${rl.retry_after_seconds}s)`);
+      logShellLogin(ip, email, 'failed', `rate-limited (retry in ${rl.retry_after_seconds}s)`);
       return jsonResponse(429, { valid: false, error: 'too-many-attempts', retry_after: rl.retry_after_seconds });
     }
   }
@@ -135,18 +138,18 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   if (userErr) {
     // eslint-disable-next-line no-console
     console.error('[shell-login] supabase users lookup error:', userErr.message);
-    logShellLogin(req, email, 'failed', 'db-error');
+    logShellLogin(ip, email, 'failed', 'db-error');
     return jsonResponse(500, { error: 'Database error' });
   }
   if (!user || !user.pin_hash) {
-    logShellLogin(req, email, 'failed', 'no-user-or-no-pin');
+    logShellLogin(ip, email, 'failed', 'no-user-or-no-pin');
     void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.failed', p_ip: ip, p_detail: { reason: 'no-user-or-no-pin' } });
     return jsonResponse(200, { valid: false });
   }
 
   const pinOk = await bcrypt.compare(pin, user.pin_hash);
   if (!pinOk) {
-    logShellLogin(req, email, 'failed', 'bad-pin');
+    logShellLogin(ip, email, 'failed', 'bad-pin');
     void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.failed', p_ip: ip, p_detail: { reason: 'bad-pin' } });
     return jsonResponse(200, { valid: false });
   }
@@ -157,12 +160,12 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error('[shell-login] memberships lookup error:', (e as Error).message);
-    logShellLogin(req, email, 'failed', 'memberships-err');
+    logShellLogin(ip, email, 'failed', 'memberships-err');
     return jsonResponse(500, { error: 'Database error' });
   }
 
   if (memberships.length === 0) {
-    logShellLogin(req, email, 'failed', 'no-memberships');
+    logShellLogin(ip, email, 'failed', 'no-memberships');
     return jsonResponse(403, { valid: false, error: 'no-memberships' });
   }
 
@@ -176,11 +179,11 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // session directly.
   const totpChallenge = buildTotpChallengeIfEnrolled(user);
   if (totpChallenge && !hasTrustedDeviceFor(req, user.id)) {
-    logShellLogin(req, email, 'success', 'totp-challenge-issued');
+    logShellLogin(ip, email, 'success', 'totp-challenge-issued');
     return jsonResponse(200, totpChallenge);
   }
   if (totpChallenge) {
-    logShellLogin(req, email, 'success', 'totp-skipped-trusted-device');
+    logShellLogin(ip, email, 'success', 'totp-skipped-trusted-device');
   }
 
   if (memberships.length > 1) {
@@ -210,7 +213,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       .filter((m): m is { tenant_id: string; role: typeof memberships[0]['role']; tenant_slug: string; tenant_name: string } => m !== null);
 
     if (enrichedMemberships.length === 0) {
-      logShellLogin(req, email, 'failed', 'no-active-tenants');
+      logShellLogin(ip, email, 'failed', 'no-active-tenants');
       return jsonResponse(200, { valid: false });
     }
 
@@ -223,7 +226,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
         user_id: user.id,
         exp: selectionExp,
       });
-      logShellLogin(req, email, 'success', 'multi-tenant-pending-selection');
+      logShellLogin(ip, email, 'success', 'multi-tenant-pending-selection');
       return jsonResponse(200, {
         valid: true,
         requires_tenant_selection: true,
@@ -246,7 +249,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .maybeSingle<CanonicalTenant>();
 
   if (tenantErr || !tenant || !tenant.active) {
-    logShellLogin(req, email, 'failed', tenantErr ? 'tenant-err' : 'tenant-missing-or-inactive');
+    logShellLogin(ip, email, 'failed', tenantErr ? 'tenant-err' : 'tenant-missing-or-inactive');
     return jsonResponse(200, { valid: false });
   }
 
@@ -281,7 +284,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     console.warn('[shell-login] last_login_at update failed:', lastLoginErr.message);
   }
 
-  logShellLogin(req, email, 'success');
+  logShellLogin(ip, email, 'success');
   void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'login.success', p_actor_id: user.id, p_tenant_id: tenant.id, p_ip: ip, p_detail: { role: activeRole, method: 'pin' } });
 
   // Best-effort security group perm fetch. Non-blocking: if the table
