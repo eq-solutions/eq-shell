@@ -306,6 +306,12 @@ const INTENTIONAL_ANON_READS = {
 // anon on zaap (verified anon has no privilege) — they must now HARD-FAIL if anon access
 // ever returns. Remaining 25 are the tables EQ Field actively uses; they leave the baseline
 // one at a time as each surface cuts over to canonical app_data (see remediation sprint).
+//
+// app_data.field_* views (0052/0054/0055): security_invoker=on views — the check
+// flags rls_enabled=false on the view object but the underlying app_data tables
+// (staff, sites, timesheet_locks) all have RLS enabled with tenant_id policies,
+// so the view is NOT a real exposure. Authenticated access is intentional: Field
+// reads managers/people/sites via these views using the caller's JWT tenant_id.
 const KNOWN_LEGACY_ANON = {
   zaapmfdkgedqupfjtchl: new Set([
     'public.app_config', 'public.apprentice_journal', 'public.apprentice_profiles',
@@ -316,6 +322,13 @@ const KNOWN_LEGACY_ANON = {
     'public.roster_presence', 'public.rotations', 'public.schedule',
     'public.site_diaries', 'public.sites', 'public.skills_ratings',
     'public.timesheet_locks', 'public.timesheets', 'public.toolbox_talks',
+    // security_invoker views — RLS enforced on underlying tables (see comment above)
+    'app_data.field_managers', 'app_data.field_people', 'app_data.field_sites',
+  ]),
+  ehowgjardagevnrluult: new Set([
+    // security_invoker views — RLS enforced on underlying tables (see comment above)
+    'app_data.field_managers', 'app_data.field_people', 'app_data.field_sites',
+    'app_data.field_timesheet_locks',
   ]),
 };
 

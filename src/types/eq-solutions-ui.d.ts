@@ -152,4 +152,86 @@ declare module '@eq-solutions/ui' {
     onRowClick?: (row: T) => void
   }
   export function Table<T>(props: TableProps<T>): React.ReactElement
+
+  // ── AppShell / AppSidebar / AppRail ────────────────────────────────────────
+  export interface AppSidebarItem {
+    key: string
+    label: string
+    href: string
+    icon: ReactNode
+    isActive?: boolean
+    count?: number | null
+    badge?: string
+    warn?: boolean
+    muted?: boolean
+    arrow?: boolean
+  }
+
+  export interface AppSidebarSection {
+    key: string
+    label: string
+    items: AppSidebarItem[]
+  }
+
+  export interface AppSidebarUser {
+    initials: string
+    name: string
+    meta: string
+  }
+
+  export interface AppSidebarProps {
+    homeHref: string
+    logo?: ReactNode
+    brandLabel?: string
+    live?: boolean
+    tenantSwitcher?: ReactNode
+    sections: AppSidebarSection[]
+    user: AppSidebarUser
+    compact?: boolean
+    onToggleCompact?: () => void
+    onLogout: () => void
+    storageKey?: string
+  }
+
+  export function AppSidebar(props: AppSidebarProps): React.ReactElement
+
+  export interface AppRailItem {
+    key: string
+    label: string
+    icon: ReactNode
+    href: string
+    isActive?: boolean
+    isDisabled?: boolean
+    disabledTitle?: string
+  }
+
+  export interface AppRailProps {
+    homeHref: string
+    logo?: ReactNode
+    items: AppRailItem[]
+    settingsHref?: string
+    settingsActive?: boolean
+    user: { initials: string; name: string }
+    onLogout: () => void
+  }
+
+  export function AppRail(props: AppRailProps): React.ReactElement
+
+  type AppShellSidebarProps = {
+    mode?: 'sidebar'
+    sidebar: ReactNode
+    children: ReactNode
+    fullWidth?: boolean
+  }
+
+  type AppShellRailProps = {
+    mode: 'rail'
+    rail: ReactNode
+    children: ReactNode
+    fullWidth?: never
+  }
+
+  export type AppShellProps = AppShellSidebarProps | AppShellRailProps
+
+  export function AppShell(props: AppShellProps): React.ReactElement
 }

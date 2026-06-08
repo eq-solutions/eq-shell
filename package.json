@@ -19,7 +19,7 @@
   "dependencies": {
     "@eq-solutions/roles": "github:eq-solutions/eq-roles#v2.3.0",
     "@eq-solutions/tokens": "github:eq-solutions/eq-design-tokens#v1.3.2",
-    "@eq-solutions/ui": "github:eq-solutions/eq-ui#v1.1.2",
+    "@eq-solutions/ui": "github:eq-solutions/eq-ui#v1.3.1",
     "@eq/ai": "workspace:*",
     "@eq/confirm-ui": "workspace:*",
     "@eq/intake": "workspace:*",
