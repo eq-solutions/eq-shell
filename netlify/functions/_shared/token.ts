@@ -22,6 +22,12 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 // The empty-string case is caught at call time by sign(), which throws
 // 'EQ_SECRET_SALT is not set'. hasSecretSalt() lets callers probe before use.
 const SECRET_SALT = process.env.EQ_SECRET_SALT ?? '';
+// S1-3: Startup warning — missing salt should be visible in logs without
+// crashing cold starts (a throw here would break every function that imports
+// token.ts, even ones that don't sign/verify, e.g. health-check endpoints).
+if (!SECRET_SALT) {
+  console.warn('[token] WARNING: EQ_SECRET_SALT is not set — all token sign/verify calls will fail');
+}
 
 // Optional verify-only fallback for zero-downtime HMAC key rotation (Option A).
 // Two-step rotation:
