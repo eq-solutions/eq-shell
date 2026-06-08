@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Link, NavLink, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database, ListChecks, BadgeCheck, ChevronLeft } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database, ListChecks, BadgeCheck, ChevronLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
 import { useDensity } from '../lib/useDensity';
@@ -77,6 +77,7 @@ export function HubSidebar({ apps, records }: Props) {
   const canAdmin = useCan('admin.list_users');
   const { compact, toggle: toggleDensity } = useDensity();
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
+  const [adminExpanded, setAdminExpanded] = useState(false);
 
   if (!session) return null;
 
@@ -87,6 +88,11 @@ export function HubSidebar({ apps, records }: Props) {
   // Plant & equipment is now a Record (folded out of its own group); only show it
   // to users who can view equipment.
   const visibleRecords = (records ?? []).filter((r) => r.key !== 'equipment' || canEquipment);
+
+  const CUSTOMER_KEYS = ['customer', 'site', 'contact'];
+  const INTERNAL_KEYS = ['staff', 'licence', 'equipment'];
+  const customerRecords = visibleRecords.filter((r) => CUSTOMER_KEYS.includes(r.key));
+  const internalRecords = visibleRecords.filter((r) => INTERNAL_KEYS.includes(r.key));
 
   const RECORD_ICONS: Record<string, React.ReactNode> = {
     customer:  <Building2 size={16} aria-hidden="true" />,
@@ -101,7 +107,7 @@ export function HubSidebar({ apps, records }: Props) {
     <aside className={`eq-hub__sidebar${collapsed ? ' eq-hub__sidebar--collapsed' : ''}`}>
       <div className="eq-hub-sidebar__brand-row">
         <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand" aria-label="Go to dashboard">
-          <EqLogo size={40} onDark />
+          <EqLogo size={52} onDark />
           <span className="eq-hub-sidebar__brand-label">Shell</span>
         </Link>
         <button
@@ -127,35 +133,70 @@ export function HubSidebar({ apps, records }: Props) {
         </div>
       )}
 
-      {/* ── RECORDS (Customers · Sites · Contacts · Staff · Licences · Plant & equipment) ── */}
+      {/* ── RECORDS — split into Customers (external) and Internal (workforce) ── */}
       {visibleRecords.length > 0 && (
         <>
           <p className="eq-hub-sidebar__section-label">Records</p>
-          <nav className="eq-hub-sidebar__nav" aria-label="Records navigation">
-            {visibleRecords.map((r) => (
-              <NavLink
-                key={r.key}
-                to={`/${tenantSlug}/${r.to ?? `data/${r.entity}`}`}
-                data-tip={r.label}
-                className={({ isActive }) =>
-                  `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`
-                }
-              >
-                <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
-                  {RECORD_ICONS[r.key]}
-                  {r.warn && <span className="eq-hub-sidebar__nav-warn eq-hub-sidebar__nav-warn--chip" aria-hidden="true" />}
-                </span>
-                <span className="eq-hub-sidebar__nav-label">{r.label}</span>
-                {r.warn && <span className="eq-hub-sidebar__nav-warn" aria-label="Needs attention" />}
-                {r.count !== null && (
-                  <span className={`eq-hub-sidebar__nav-count${r.muted ? ' eq-hub-sidebar__nav-count--muted' : ''}`}>
-                    {r.count}
-                  </span>
-                )}
-                <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-              </NavLink>
-            ))}
-          </nav>
+
+          {customerRecords.length > 0 && (
+            <>
+              <p className="eq-hub-sidebar__sub-label">Customers</p>
+              <nav className="eq-hub-sidebar__nav" aria-label="Customer records">
+                {customerRecords.map((r) => (
+                  <NavLink
+                    key={r.key}
+                    to={`/${tenantSlug}/${r.to ?? `data/${r.entity}`}`}
+                    data-tip={r.label}
+                    className={({ isActive }) =>
+                      `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`
+                    }
+                  >
+                    <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
+                      {RECORD_ICONS[r.key]}
+                    </span>
+                    <span className="eq-hub-sidebar__nav-label">{r.label}</span>
+                    {r.count !== null && (
+                      <span className={`eq-hub-sidebar__nav-count${r.muted ? ' eq-hub-sidebar__nav-count--muted' : ''}`}>
+                        {r.count}
+                      </span>
+                    )}
+                    <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+                  </NavLink>
+                ))}
+              </nav>
+            </>
+          )}
+
+          {internalRecords.length > 0 && (
+            <>
+              <p className="eq-hub-sidebar__sub-label" style={{ marginTop: 10 }}>Internal</p>
+              <nav className="eq-hub-sidebar__nav" aria-label="Internal records">
+                {internalRecords.map((r) => (
+                  <NavLink
+                    key={r.key}
+                    to={`/${tenantSlug}/${r.to ?? `data/${r.entity}`}`}
+                    data-tip={r.label}
+                    className={({ isActive }) =>
+                      `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`
+                    }
+                  >
+                    <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
+                      {RECORD_ICONS[r.key]}
+                      {r.warn && <span className="eq-hub-sidebar__nav-warn eq-hub-sidebar__nav-warn--chip" aria-hidden="true" />}
+                    </span>
+                    <span className="eq-hub-sidebar__nav-label">{r.label}</span>
+                    {r.warn && <span className="eq-hub-sidebar__nav-warn" aria-label="Needs attention" />}
+                    {r.count !== null && (
+                      <span className={`eq-hub-sidebar__nav-count${r.muted ? ' eq-hub-sidebar__nav-count--muted' : ''}`}>
+                        {r.count}
+                      </span>
+                    )}
+                    <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
+                  </NavLink>
+                ))}
+              </nav>
+            </>
+          )}
         </>
       )}
 
@@ -210,46 +251,63 @@ export function HubSidebar({ apps, records }: Props) {
         </>
       )}
 
-      {/* ── ADMIN (Import folded in here; admin links stay admin-gated, Import
-          stays intake-gated so non-admin importers keep access) ── */}
+      {/* ── ADMIN — collapsible tools + always-visible Settings + Import ── */}
       {(canAdmin || canIntake) && (
         <>
           <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Admin</p>
           <nav className="eq-hub-sidebar__nav" aria-label="Admin navigation">
             {canAdmin && (
               <>
-                <NavLink
-                  to={`/${tenantSlug}/admin/users`}
-                  data-tip="Users"
-                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
+                <button
+                  type="button"
+                  className="eq-hub-sidebar__admin-toggle"
+                  onClick={() => setAdminExpanded((v) => !v)}
+                  aria-expanded={adminExpanded}
                 >
-                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Users2 size={16} aria-hidden="true" /></span>
-                  <span className="eq-hub-sidebar__nav-label">Users</span>
-                </NavLink>
-                <NavLink
-                  to={`/${tenantSlug}/admin/audit`}
-                  data-tip="Audit log"
-                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-                >
-                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ClipboardList size={16} aria-hidden="true" /></span>
-                  <span className="eq-hub-sidebar__nav-label">Audit log</span>
-                </NavLink>
-                <NavLink
-                  to={`/${tenantSlug}/admin/migration`}
-                  data-tip="Migration"
-                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-                >
-                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ListChecks size={16} aria-hidden="true" /></span>
-                  <span className="eq-hub-sidebar__nav-label">Migration</span>
-                </NavLink>
-                <NavLink
-                  to={`/${tenantSlug}/admin/access-control`}
-                  data-tip="Security groups"
-                  className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-                >
-                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={16} aria-hidden="true" /></span>
-                  <span className="eq-hub-sidebar__nav-label">Security groups</span>
-                </NavLink>
+                  <span className="eq-hub-sidebar__nav-icon" aria-hidden="true">
+                    <Users2 size={16} aria-hidden="true" />
+                  </span>
+                  <span className="eq-hub-sidebar__nav-label">Administration</span>
+                  <span className="eq-hub-sidebar__admin-chevron" aria-hidden="true">
+                    {adminExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                  </span>
+                </button>
+                {adminExpanded && (
+                  <div className="eq-hub-sidebar__admin-group">
+                    <NavLink
+                      to={`/${tenantSlug}/admin/users`}
+                      data-tip="Users"
+                      className={({ isActive }) => `eq-hub-sidebar__nav-item eq-hub-sidebar__nav-item--sub${isActive ? ' active' : ''}`}
+                    >
+                      <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Users2 size={14} aria-hidden="true" /></span>
+                      <span className="eq-hub-sidebar__nav-label">Users</span>
+                    </NavLink>
+                    <NavLink
+                      to={`/${tenantSlug}/admin/audit`}
+                      data-tip="Audit log"
+                      className={({ isActive }) => `eq-hub-sidebar__nav-item eq-hub-sidebar__nav-item--sub${isActive ? ' active' : ''}`}
+                    >
+                      <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ClipboardList size={14} aria-hidden="true" /></span>
+                      <span className="eq-hub-sidebar__nav-label">Audit log</span>
+                    </NavLink>
+                    <NavLink
+                      to={`/${tenantSlug}/admin/migration`}
+                      data-tip="Migration"
+                      className={({ isActive }) => `eq-hub-sidebar__nav-item eq-hub-sidebar__nav-item--sub${isActive ? ' active' : ''}`}
+                    >
+                      <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ListChecks size={14} aria-hidden="true" /></span>
+                      <span className="eq-hub-sidebar__nav-label">Migration</span>
+                    </NavLink>
+                    <NavLink
+                      to={`/${tenantSlug}/admin/access-control`}
+                      data-tip="Security groups"
+                      className={({ isActive }) => `eq-hub-sidebar__nav-item eq-hub-sidebar__nav-item--sub${isActive ? ' active' : ''}`}
+                    >
+                      <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={14} aria-hidden="true" /></span>
+                      <span className="eq-hub-sidebar__nav-label">Security groups</span>
+                    </NavLink>
+                  </div>
+                )}
                 <NavLink
                   to={`/${tenantSlug}/admin/settings`}
                   data-tip="Settings"

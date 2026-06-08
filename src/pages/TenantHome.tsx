@@ -168,7 +168,7 @@ const APP_LABELS: Record<string, string> = {
 const HUB_APPS: { key: string; label: string; to: string; isBeta: boolean; hideForTier?: EqTier[] }[] = [
   { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: false },
   { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
-  { key: 'service', label: 'EQ Service', to: 'service', isBeta: true,  hideForTier: ['trial'] },
+  { key: 'service', label: 'EQ Service', to: 'service', isBeta: false, hideForTier: ['trial'] },
   { key: 'quotes',  label: 'EQ Quotes',  to: 'quotes',  isBeta: false, hideForTier: ['trial'] },
 ];
 
@@ -178,6 +178,24 @@ const APP_DESCRIPTIONS: Record<string, string> = {
   quotes:  'Quoting and proposals.',
   cards:   'Staff profiles and licence cards.',
 };
+
+function CountUp({ value, duration = 700 }: { value: number; duration?: number }) {
+  const [display, setDisplay] = useState(0);
+  const rafRef = useRef<number>(0);
+  useEffect(() => {
+    const startTime = Date.now();
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      setDisplay(Math.round(value * eased));
+      if (t < 1) rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [value, duration]);
+  return <>{display.toLocaleString()}</>;
+}
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -230,6 +248,13 @@ export default function TenantHome() {
   const [recordsEntity, setRecordsEntity] = useState<'customer' | 'site' | 'contact' | 'staff' | 'licence'>('customer');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Live feed animation — track new rows arriving from poll
+  const isInitialFeedRef = useRef(true);
+  const prevFeedIdsRef   = useRef(new Set<string>());
+  const [newFeedIds, setNewFeedIds]         = useState(new Set<string>());
+  const [lastRefreshTime, setLastRefreshTime] = useState<number | null>(null);
+  const [refreshAge, setRefreshAge]         = useState('just now');
 
   const silentRefreshFeed = async () => {
     try {
@@ -322,6 +347,37 @@ export default function TenantHome() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  // Detect new Live feed rows arriving from poll refreshes, skip initial load
+  useEffect(() => {
+    if (!feed) return;
+    if (isInitialFeedRef.current) {
+      isInitialFeedRef.current = false;
+      prevFeedIdsRef.current = new Set(feed.map((e) => e.id));
+      return;
+    }
+    const fresh = new Set(
+      feed.filter((e) => !prevFeedIdsRef.current.has(e.id)).map((e) => e.id)
+    );
+    prevFeedIdsRef.current = new Set(feed.map((e) => e.id));
+    if (fresh.size > 0) {
+      setNewFeedIds(fresh);
+      setLastRefreshTime(Date.now());
+      setRefreshAge('just now');
+      setTimeout(() => setNewFeedIds(new Set()), 900);
+    }
+  }, [feed]);
+
+  // Tick the "Updated Xs ago" label every 15 seconds
+  useEffect(() => {
+    if (!lastRefreshTime) return;
+    const interval = setInterval(() => {
+      const s = Math.floor((Date.now() - lastRefreshTime) / 1000);
+      if (s < 60) setRefreshAge(`${s}s ago`);
+      else setRefreshAge(`${Math.floor(s / 60)}m ago`);
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [lastRefreshTime]);
 
   if (!session) return null;
 
@@ -697,7 +753,7 @@ export default function TenantHome() {
             </div>
           </div>
 
-          {/* KPI strip — values stubbed until cross-app RPCs are wired */}
+          {/* KPI strip */}
           <div className="eq-hub-kpis">
             <Link to={`/${tenantSlug}/data/staff`} className="eq-hub-kpi eq-hub-kpi--link">
               <p className="eq-hub-kpi__label">Team</p>
@@ -705,7 +761,7 @@ export default function TenantHome() {
                 <Skeleton variant="text" width={60} />
               ) : (
                 <p className="eq-hub-kpi__value">
-                  {staffCount !== null ? staffCount : '—'}
+                  {staffCount !== null ? <CountUp value={staffCount} /> : '—'}
                 </p>
               )}
               <p className="eq-hub-kpi__sub">all staff →</p>
@@ -716,7 +772,7 @@ export default function TenantHome() {
                 <Skeleton variant="text" width={60} />
               ) : (
                 <p className="eq-hub-kpi__value">
-                  {customerCount ?? '—'}
+                  {customerCount !== null ? <CountUp value={customerCount} /> : '—'}
                 </p>
               )}
               <p className="eq-hub-kpi__sub">all customers →</p>
@@ -727,7 +783,7 @@ export default function TenantHome() {
                 <Skeleton variant="text" width={60} />
               ) : (
                 <p className="eq-hub-kpi__value">
-                  {contactCount ?? '—'}
+                  {contactCount !== null ? <CountUp value={contactCount} /> : '—'}
                 </p>
               )}
               <p className="eq-hub-kpi__sub">all contacts →</p>
@@ -738,18 +794,21 @@ export default function TenantHome() {
                 <Skeleton variant="text" width={60} />
               ) : (
                 <p className="eq-hub-kpi__value">
-                  {siteCount ?? '—'}
+                  {siteCount !== null ? <CountUp value={siteCount} /> : '—'}
                 </p>
               )}
               <p className="eq-hub-kpi__sub">all sites →</p>
             </Link>
-            <Link to={`/${tenantSlug}/data/asset`} className="eq-hub-kpi eq-hub-kpi--link">
+            <Link
+              to={`/${tenantSlug}/data/asset`}
+              className={`eq-hub-kpi eq-hub-kpi--link${assetOverdue > 0 ? ' eq-hub-kpi--warn' : ''}`}
+            >
               <p className="eq-hub-kpi__label">Equipment</p>
               {loading ? (
                 <Skeleton variant="text" width={60} />
               ) : (
                 <p className="eq-hub-kpi__value">
-                  {assetCount ?? '—'}
+                  {assetCount !== null ? <CountUp value={assetCount} /> : '—'}
                 </p>
               )}
               <p className="eq-hub-kpi__sub">
@@ -793,6 +852,10 @@ export default function TenantHome() {
             <div>
               <div className="eq-hub-activity__head">
                 <span className="eq-hub-activity__title">Live feed</span>
+                <span className="eq-hub-activity__subtitle">Business events from your apps</span>
+                {lastRefreshTime && (
+                  <span className="eq-hub-activity__refresh">Updated {refreshAge}</span>
+                )}
               </div>
 
               {loading && !feed ? (
@@ -809,7 +872,7 @@ export default function TenantHome() {
                     const meta = EVENT_META[e.event] ?? { label: humanizeEvent(e.event), dot: 'default' as const };
                     const detail = eventDetail(e.event, e.payload);
                     return (
-                      <div key={e.id} className="eq-hub-activity__item">
+                      <div key={e.id} className={`eq-hub-activity__item${newFeedIds.has(e.id) ? ' eq-hub-activity__item--new' : ''}`}>
                         <span className={`eq-hub-activity__dot eq-hub-activity__dot--${meta.dot}`} aria-hidden="true" />
                         <div className="eq-hub-activity__name">{detail ? `${meta.label} — ${detail}` : meta.label}</div>
                         <span className="eq-hub-activity__source">
@@ -826,31 +889,18 @@ export default function TenantHome() {
             </div>
           )}
 
-          {/* Recent activity — intake pipeline events */}
-          <div>
-            <div className="eq-hub-activity__head">
-              <span className="eq-hub-activity__title">Recent activity</span>
-              <Link
-                to={`/${tenantSlug}/intake`}
-                className="eq-hub-activity__view-all"
-              >
-                View all →
-              </Link>
-            </div>
-
-            {loading && !events ? (
-              <div className="eq-hub-activity__list">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="eq-hub-activity__item">
-                    <Skeleton variant="text" width={280} />
-                  </div>
-                ))}
+          {/* Data imports — shown only when there's recent intake activity; full log lives in Import */}
+          {events && events.length > 0 && (
+            <div>
+              <div className="eq-hub-activity__head">
+                <span className="eq-hub-activity__title">Data imports</span>
+                <Link
+                  to={`/${tenantSlug}/intake`}
+                  className="eq-hub-activity__view-all"
+                >
+                  View all →
+                </Link>
               </div>
-            ) : !events || events.length === 0 ? (
-              <div className="eq-hub-activity__list eq-hub-activity__empty">
-                <p>No activity yet — <Link to={`/${tenantSlug}/intake`}>import some data</Link> to see it here.</p>
-              </div>
-            ) : (
               <div className="eq-hub-activity__list">
                 {events.map((e) => {
                   const dot = statusDot(e.status);
@@ -873,8 +923,8 @@ export default function TenantHome() {
                   );
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Sync bar — the green dot conveys "connected"; the visually-hidden
               text carries that meaning for screen readers since colour can't. */}
