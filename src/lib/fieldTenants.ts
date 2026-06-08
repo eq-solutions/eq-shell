@@ -21,7 +21,9 @@ export const FIELD_TENANT_URLS: Record<string, string> = {
   eq: FIELD_BASE_URL,
   'demo-trades': FIELD_BASE_URL,
   melbourne: FIELD_BASE_URL,
-  sks: FIELD_BASE_URL,   // eq-solves-field.netlify.app + token auth (#sh= handoff)
+  // SKS is hardcoded — must NOT inherit VITE_FIELD_URL (which points to field.eq.solutions,
+  // a cookie-auth domain). Token auth via #sh= requires a non-.eq.solutions host.
+  sks: 'https://eq-solves-field.netlify.app/',
 };
 
 export const TENANT_OPTIONS = [
