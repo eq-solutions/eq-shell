@@ -367,7 +367,7 @@ export default function FieldIframe() {
           style={{ flex: 1, minHeight: 0 }}
           title="EQ Field"
           src={src}
-          sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
+          sandbox="allow-scripts allow-forms allow-downloads"
           referrerPolicy="no-referrer"
           allow=""
         />

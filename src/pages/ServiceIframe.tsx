@@ -209,7 +209,7 @@ export default function ServiceIframe() {
             title="EQ Service"
             src={src}
             onLoad={onIframeLoad}
-            sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
+            sandbox="allow-scripts allow-forms allow-downloads"
             referrerPolicy="no-referrer"
             allow=""
           />
