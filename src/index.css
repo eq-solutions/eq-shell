@@ -34,7 +34,7 @@
  * tokens.css defines --eq-* on :root (and [data-tier] deltas); component
  * CSS follows. The @theme block inside tokens.css is inert outside Tailwind.
  * Update @eq-solutions/tokens or @eq-solutions/ui — not this file. */
-@import "@eq-solutions/ui/src/index.css";
+@import "@eq-solutions/ui/styles";
 
 :root {
   /* This block no longer holds literal values — it only BRIDGES Shell's
