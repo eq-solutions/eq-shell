@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
+import { DataTable, type ColDef, type RowAction } from '../components/DataTable';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
@@ -301,141 +302,229 @@ export function CustomersPage() {
 
 // ─── CUSTOMERS TAB ───────────────────────────────────────────────────────────
 
+const CUSTOMER_COLS: ColDef<CustomerItem>[] = [
+  {
+    key: 'company',
+    label: 'Company',
+    sortable: true,
+    sortValue: (c) => c.name,
+    render: (c) => (
+      <div style={s.nameCell}>
+        <div style={{ ...s.av, borderRadius: 7, background: avatarColour(c.id) }}>{initials(c.name)}</div>
+        <span style={s.pn}>{c.name}</span>
+      </div>
+    ),
+  },
+  {
+    key: 'group',
+    label: 'Group',
+    sortable: true,
+    sortValue: (c) => c.group,
+    render: (c) => <span style={{ color: '#64748B' }}>{c.group ?? '—'}</span>,
+  },
+  {
+    key: 'state',
+    label: 'State',
+    sortable: true,
+    sortValue: (c) => c.state,
+    render: (c) => <span style={{ color: '#64748B' }}>{c.state ?? '—'}</span>,
+  },
+  {
+    key: 'sites',
+    label: 'Sites',
+    sortable: true,
+    sortValue: (c) => c.site_count,
+    cellStyle: { textAlign: 'center' },
+    render: (c) =>
+      c.site_count > 0
+        ? <span style={s.countBadge}>{c.site_count}</span>
+        : <span style={{ color: '#CBD5E1' }}>—</span>,
+  },
+  {
+    key: 'contacts',
+    label: 'Contacts',
+    sortable: true,
+    sortValue: (c) => c.contact_count,
+    cellStyle: { textAlign: 'center' },
+    render: (c) =>
+      c.contact_count > 0
+        ? <span style={s.countBadge}>{c.contact_count}</span>
+        : <span style={{ color: '#CBD5E1' }}>—</span>,
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    sortable: true,
+    sortValue: (c) => (c.active ? 'Active' : 'Inactive'),
+    render: (c) => (
+      <span style={c.active ? s.badgeGreen : s.badgeGrey}>
+        {c.active ? 'Active' : 'Inactive'}
+      </span>
+    ),
+  },
+];
+
 function CustomersTab({ rows, loading, selId, onSelect }: {
   rows: CustomerItem[];
   loading: boolean;
   selId: string | null;
   onSelect: (id: string) => void;
 }) {
-  if (loading) return <LoadingState />;
-  if (!rows.length) return <EmptyState icon="🏢" msg="No customers found" />;
+  const actions = useMemo<RowAction<CustomerItem>[]>(() => [
+    { label: 'View', onClick: (c) => onSelect(c.id) },
+    { label: 'Edit', onClick: () => { /* TODO */ } },
+    {
+      label: 'Delete',
+      destructive: true,
+      onClick: (c) => {
+        if (window.confirm(`Delete "${c.name}"? This cannot be undone.`)) {
+          console.warn('[CustomersPage] customer delete not yet wired to backend:', c.id);
+        }
+      },
+    },
+  ], [onSelect]);
+
   return (
-    <table style={s.table}>
-      <thead>
-        <tr>
-          {['Company', 'Group', 'State', 'Sites', 'Contacts', 'Status', ''].map((h) => (
-            <th key={h} style={s.th}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((c) => (
-          <tr
-            key={c.id}
-            style={{ ...s.tr, ...(c.id === selId ? s.trSel : {}) }}
-            onClick={() => onSelect(c.id)}
-          >
-            <td style={s.td}>
-              <div style={s.nameCell}>
-                <div style={{ ...s.av, borderRadius: 7, background: avatarColour(c.id) }}>
-                  {initials(c.name)}
-                </div>
-                <div style={s.pn}>{c.name}</div>
-              </div>
-            </td>
-            <td style={{ ...s.td, color: '#64748B' }}>{c.group ?? '—'}</td>
-            <td style={{ ...s.td, color: '#64748B' }}>{c.state ?? '—'}</td>
-            <td style={{ ...s.td, textAlign: 'center' }}>
-              {c.site_count > 0
-                ? <span style={s.countBadge}>{c.site_count}</span>
-                : <span style={{ color: '#CBD5E1' }}>—</span>}
-            </td>
-            <td style={{ ...s.td, textAlign: 'center' }}>
-              {c.contact_count > 0
-                ? <span style={s.countBadge}>{c.contact_count}</span>
-                : <span style={{ color: '#CBD5E1' }}>—</span>}
-            </td>
-            <td style={s.td}>
-              <span style={c.active ? s.badgeGreen : s.badgeGrey}>
-                {c.active ? 'Active' : 'Inactive'}
-              </span>
-            </td>
-            <td style={s.td}>
-              <div style={s.rowActions}>
-                <button type="button" style={s.ra} onClick={(e) => { e.stopPropagation(); onSelect(c.id); }}>View</button>
-                <button type="button" style={s.ra}>Edit</button>
-              </div>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <DataTable
+      columns={CUSTOMER_COLS}
+      rows={rows}
+      rowKey={(c) => c.id}
+      rowActions={actions}
+      storageKey="customers"
+      loading={loading}
+      emptyIcon="🏢"
+      emptyMsg="No customers found"
+      onRowClick={(c) => onSelect(c.id)}
+      selectedId={selId}
+    />
   );
 }
 
 // ─── SITES TAB ───────────────────────────────────────────────────────────────
 
+const SITE_COLS: ColDef<SiteItem>[] = [
+  {
+    key: 'name',
+    label: 'Site name',
+    sortable: true,
+    sortValue: (site) => site.name,
+    render: (site) => <span style={s.pn}>{site.name}</span>,
+  },
+  {
+    key: 'kind',
+    label: 'Type',
+    sortable: true,
+    sortValue: (site) => site.kind,
+    render: (site) => <span style={{ color: '#64748B' }}>{site.kind ?? '—'}</span>,
+  },
+  {
+    key: 'suburb',
+    label: 'Suburb',
+    sortable: true,
+    sortValue: (site) => site.suburb,
+    render: (site) => <span style={{ color: '#64748B' }}>{site.suburb ?? '—'}</span>,
+  },
+  {
+    key: 'state',
+    label: 'State',
+    sortable: true,
+    sortValue: (site) => site.state,
+    render: (site) => <span style={{ color: '#64748B' }}>{site.state ?? '—'}</span>,
+  },
+];
+
 function SitesTab({ rows, loading }: { rows: SiteItem[]; loading: boolean }) {
-  if (loading) return <LoadingState />;
-  if (!rows.length) return <EmptyState icon="📍" msg="No sites found" />;
+  const actions = useMemo<RowAction<SiteItem>[]>(() => [
+    { label: 'View', onClick: () => { /* TODO */ } },
+    { label: 'Edit', onClick: () => { /* TODO */ } },
+    {
+      label: 'Delete',
+      destructive: true,
+      onClick: (site) => {
+        if (window.confirm(`Delete "${site.name}"? This cannot be undone.`)) {
+          console.warn('[CustomersPage] site delete not yet wired to backend:', site.id);
+        }
+      },
+    },
+  ], []);
+
   return (
-    <table style={s.table}>
-      <thead>
-        <tr>
-          {['Site name', 'Type', 'Suburb', 'State', ''].map((h) => (
-            <th key={h} style={s.th}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((site) => (
-          <tr key={site.id} style={s.tr}>
-            <td style={s.td}><div style={s.pn}>{site.name}</div></td>
-            <td style={{ ...s.td, color: '#64748B' }}>{site.kind ?? '—'}</td>
-            <td style={{ ...s.td, color: '#64748B' }}>{site.suburb ?? '—'}</td>
-            <td style={{ ...s.td, color: '#64748B' }}>{site.state ?? '—'}</td>
-            <td style={s.td}>
-              <div style={s.rowActions}>
-                <button type="button" style={s.ra}>View</button>
-                <button type="button" style={s.ra}>Edit</button>
-              </div>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <DataTable
+      columns={SITE_COLS}
+      rows={rows}
+      rowKey={(site) => site.id}
+      rowActions={actions}
+      storageKey="sites"
+      loading={loading}
+      emptyIcon="📍"
+      emptyMsg="No sites found"
+    />
   );
 }
 
 // ─── CONTACTS TAB ─────────────────────────────────────────────────────────────
 
+const CONTACT_COLS: ColDef<ContactItem>[] = [
+  {
+    key: 'name',
+    label: 'Name',
+    sortable: true,
+    sortValue: (c) => personName(c.first_name, c.last_name),
+    render: (c) => {
+      const name = personName(c.first_name, c.last_name);
+      return (
+        <div style={s.nameCell}>
+          <div style={{ ...s.av, background: avatarColour(c.id) }}>{initials(name)}</div>
+          <span style={s.pn}>{name}</span>
+        </div>
+      );
+    },
+  },
+  {
+    key: 'position',
+    label: 'Role',
+    sortable: true,
+    sortValue: (c) => c.position,
+    render: (c) => <span style={{ color: '#64748B' }}>{c.position ?? '—'}</span>,
+  },
+  {
+    key: 'phone',
+    label: 'Phone',
+    render: (c) => <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 11 }}>{c.phone ?? '—'}</span>,
+  },
+  {
+    key: 'email',
+    label: 'Email',
+    render: (c) => <span style={{ color: '#94A3B8', fontSize: 11 }}>{c.email ?? '—'}</span>,
+  },
+];
+
 function ContactsTab({ rows, loading }: { rows: ContactItem[]; loading: boolean }) {
-  if (loading) return <LoadingState />;
-  if (!rows.length) return <EmptyState icon="👤" msg="No contacts found" />;
+  const actions = useMemo<RowAction<ContactItem>[]>(() => [
+    { label: 'View', onClick: () => { /* TODO */ } },
+    { label: 'Edit', onClick: () => { /* TODO */ } },
+    {
+      label: 'Delete',
+      destructive: true,
+      onClick: (c) => {
+        if (window.confirm(`Delete "${personName(c.first_name, c.last_name)}"? This cannot be undone.`)) {
+          console.warn('[CustomersPage] contact delete not yet wired to backend:', c.id);
+        }
+      },
+    },
+  ], []);
+
   return (
-    <table style={s.table}>
-      <thead>
-        <tr>
-          {['Name', 'Role', 'Phone', 'Email', ''].map((h) => (
-            <th key={h} style={s.th}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((c) => {
-          const name = personName(c.first_name, c.last_name);
-          return (
-            <tr key={c.id} style={s.tr}>
-              <td style={s.td}>
-                <div style={s.nameCell}>
-                  <div style={{ ...s.av, background: avatarColour(c.id) }}>{initials(name)}</div>
-                  <div style={s.pn}>{name}</div>
-                </div>
-              </td>
-              <td style={{ ...s.td, color: '#64748B' }}>{c.position ?? '—'}</td>
-              <td style={{ ...s.td, color: '#475569', fontFamily: 'monospace', fontSize: 11 }}>{c.phone ?? '—'}</td>
-              <td style={{ ...s.td, color: '#94A3B8', fontSize: 11 }}>{c.email ?? '—'}</td>
-              <td style={s.td}>
-                <div style={s.rowActions}>
-                  <button type="button" style={s.ra}>View</button>
-                  <button type="button" style={s.ra}>Edit</button>
-                </div>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <DataTable
+      columns={CONTACT_COLS}
+      rows={rows}
+      rowKey={(c) => c.id}
+      rowActions={actions}
+      storageKey="contacts"
+      loading={loading}
+      emptyIcon="👤"
+      emptyMsg="No contacts found"
+    />
   );
 }
 
@@ -514,23 +603,6 @@ function CustomerPanel({ detail, loading, onClose }: {
 
 // ─── SHARED SUB-COMPONENTS ────────────────────────────────────────────────────
 
-function LoadingState() {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: '#94A3B8' }}>
-      Loading…
-    </div>
-  );
-}
-
-function EmptyState({ icon, msg }: { icon: string; msg: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 8, color: '#94A3B8' }}>
-      <span style={{ fontSize: 28 }}>{icon}</span>
-      <strong style={{ color: '#475569' }}>{msg}</strong>
-    </div>
-  );
-}
-
 function PField({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ marginBottom: 9 }}>
@@ -559,16 +631,9 @@ const s: Record<string, React.CSSProperties> = {
   searchIcon:  { position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 12, pointerEvents: 'none' },
   empty:       { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#94A3B8' },
   emptyNote:   { fontSize: 11, color: '#94A3B8', fontStyle: 'italic' },
-  table:       { width: '100%', borderCollapse: 'collapse' },
-  th:          { position: 'sticky', top: 0, zIndex: 1, background: 'white', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#94A3B8', padding: '8px 14px', borderBottom: '1px solid #E2E8F0', whiteSpace: 'nowrap' },
-  tr:          { cursor: 'pointer', borderBottom: '1px solid #F1F5F9' },
-  trSel:       { background: 'rgba(61,168,216,0.05)' },
-  td:          { padding: '8px 14px', verticalAlign: 'middle', fontSize: 13 },
   nameCell:    { display: 'flex', alignItems: 'center', gap: 10 },
   av:          { width: 28, height: 28, borderRadius: '50%', color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   pn:          { fontWeight: 700, color: '#1A1A2E', fontSize: 13 },
-  rowActions:  { display: 'flex', gap: 4 },
-  ra:          { padding: '3px 8px', borderRadius: 5, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
   countBadge:  { background: 'rgba(61,168,216,0.1)', color: '#2986B4', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, display: 'inline-block' },
   badgeGreen:  { background: '#DCFCE7', color: '#15803D', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, display: 'inline-block' },
   badgeGrey:   { background: '#F1F5F9', color: '#64748B', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, display: 'inline-block' },

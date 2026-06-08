@@ -168,6 +168,14 @@ export interface ShellTokenPayload {
    * is added, update both the allow-list and the picker cards.
    */
   tenant_slug: string;
+  /**
+   * 2026-06-08: Shell UUID of the authenticated user. Carried so Field
+   * (and future consumers) can emit a consistent PostHog distinct_id
+   * across all EQ apps — UUID is the stable key, email can change.
+   * Field reads this additively; existing verify-shell-token paths that
+   * don't reference it are unaffected (JSON.parse ignores unknown fields).
+   */
+  shell_user_id: string;
   exp: number;
 }
 
@@ -309,6 +317,13 @@ export interface BridgeTokenPayload {
   aud: 'service';
   email: string;
   tenant_slug: string;
+  /**
+   * 2026-06-08: Shell UUID of the authenticated user. Lets Service emit the
+   * same PostHog distinct_id as Shell — UUID over email for stability.
+   * Service's existing verifyBridgeToken only requires email + tenant_slug
+   * so existing in-flight tokens without this field still validate.
+   */
+  shell_user_id: string;
   exp: number;
 }
 

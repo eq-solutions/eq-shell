@@ -169,6 +169,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       aud: 'service',
       email: user.email,
       tenant_slug: tenantRow.slug,
+      shell_user_id: user.id,
       exp: Date.now() + IFRAME_TOKEN_TTL_MS,
     });
     return jsonResponse(200, { token: bridgeToken });
@@ -217,6 +218,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     // confused-deputy where a token minted for tenant A is replayed
     // against tenant B's URL.
     tenant_slug: tenantSlug!,
+    shell_user_id: user.id,
     exp: Date.now() + IFRAME_TOKEN_TTL_MS,
   });
 

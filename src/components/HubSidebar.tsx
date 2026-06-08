@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Link, NavLink, useParams } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database, ListChecks, BadgeCheck, ChevronLeft, ChevronDown, ChevronRight, Home } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings, Download, Users2, ClipboardList, LogOut, Gauge, BarChart2, AlignJustify, ShieldCheck, Database, ListChecks, BadgeCheck, ChevronLeft, ChevronDown, ChevronRight } from 'lucide-react';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
 import { useDensity } from '../lib/useDensity';
@@ -108,8 +108,9 @@ export function HubSidebar({ apps, records }: Props) {
   return (
     <aside className={`eq-hub__sidebar${collapsed ? ' eq-hub__sidebar--collapsed' : ''}`}>
       <div className="eq-hub-sidebar__brand-row">
-        <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand" aria-label="Go to dashboard">
+        <Link to={`/${tenantSlug}`} className="eq-hub-sidebar__brand" aria-label="Go to home">
           <EqLogo size={52} onDark />
+          <span className="eq-hub-sidebar__nav-label">Home</span>
         </Link>
         <button
           type="button"
@@ -127,20 +128,6 @@ export function HubSidebar({ apps, records }: Props) {
         <span className="eq-hub-sidebar__live-dot" aria-hidden="true" />
         <span>Live</span>
       </div>
-
-      {/* ── HOME ── */}
-      <nav className="eq-hub-sidebar__nav" aria-label="Main navigation">
-        <NavLink
-          to={`/${tenantSlug}`}
-          end
-          data-tip="Home"
-          className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-        >
-          <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><Home size={16} aria-hidden="true" /></span>
-          <span className="eq-hub-sidebar__nav-label">Home</span>
-          <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-        </NavLink>
-      </nav>
 
       {/* ── RECORDS — collapsible Customers + Internal accordion groups ── */}
       {visibleRecords.length > 0 && (
@@ -343,6 +330,14 @@ export function HubSidebar({ apps, records }: Props) {
                       <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={14} aria-hidden="true" /></span>
                       <span className="eq-hub-sidebar__nav-label">Security groups</span>
                     </NavLink>
+                    <NavLink
+                      to={`/${tenantSlug}/settings/2fa`}
+                      data-tip="Two-factor security"
+                      className={({ isActive }) => `eq-hub-sidebar__nav-item eq-hub-sidebar__nav-item--sub${isActive ? ' active' : ''}`}
+                    >
+                      <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={14} aria-hidden="true" /></span>
+                      <span className="eq-hub-sidebar__nav-label">Two-factor security</span>
+                    </NavLink>
                   </div>
                 )}
                 <NavLink
@@ -369,22 +364,6 @@ export function HubSidebar({ apps, records }: Props) {
           </nav>
         </>
       )}
-
-      {/* ── SECURITY (2FA enrollment — personal, available to every logged-in
-          user, so this group is intentionally ungated; grouped under its own
-          header beside Admin rather than left as an orphan link) ── */}
-      <p className="eq-hub-sidebar__section-label" style={{ marginTop: 16 }}>Security</p>
-      <nav className="eq-hub-sidebar__nav" aria-label="Security navigation">
-        <NavLink
-          to={`/${tenantSlug}/settings/2fa`}
-          data-tip="Two-factor security"
-          className={({ isActive }) => `eq-hub-sidebar__nav-item${isActive ? ' active' : ''}`}
-        >
-          <span className="eq-hub-sidebar__nav-icon" aria-hidden="true"><ShieldCheck size={16} aria-hidden="true" /></span>
-          <span className="eq-hub-sidebar__nav-label">Two-factor security</span>
-          <span className="eq-hub-sidebar__nav-arrow" aria-hidden="true">→</span>
-        </NavLink>
-      </nav>
 
       {/* ── PLATFORM (platform-admin only) ── */}
       {session.user.is_platform_admin && (
