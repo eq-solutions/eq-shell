@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ChevronsUpDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSession, type EqRole } from '../session';
 
@@ -57,6 +58,7 @@ export function TenantSwitcher() {
   }
 
   const others = session.memberships.filter((m) => m.tenant_id !== session.tenant.id);
+  const monogram = session.tenant.name.slice(0, 2).toUpperCase();
 
   return (
     <div ref={ref} style={wrapStyle}>
@@ -68,12 +70,12 @@ export function TenantSwitcher() {
         style={triggerStyle}
         title="Switch workspace"
       >
-        <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {session.tenant.name}
-        </span>
-        <span aria-hidden="true" style={{ marginLeft: 8, color: '#64748B' }}>
-          {open ? '▴' : '▾'}
-        </span>
+        <span style={avStyle}>{monogram}</span>
+        <div style={metaStyle}>
+          <span style={nameStyle}>{session.tenant.name}</span>
+          <span style={hintStyle}>Workspace</span>
+        </div>
+        <ChevronsUpDown size={14} aria-hidden="true" style={{ color: 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
       </button>
 
       {open && (
@@ -111,18 +113,58 @@ const wrapStyle: React.CSSProperties = {
 };
 
 const triggerStyle: React.CSSProperties = {
-  display: 'flex',
+  display: 'grid',
+  gridTemplateColumns: 'auto 1fr auto',
   alignItems: 'center',
+  gap: 10,
   width: '100%',
-  padding: '8px 10px',
-  background: '#FFFFFF',
-  border: '1px solid #E2E8F0',
-  borderRadius: 6,
+  padding: '11px 14px',
+  background: 'rgba(255,255,255,0.04)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: 10,
   cursor: 'pointer',
   fontFamily: 'inherit',
+  textAlign: 'left',
+  transition: 'background 200ms ease, border-color 200ms ease',
+};
+
+const avStyle: React.CSSProperties = {
+  width: 30,
+  height: 30,
+  borderRadius: 7,
+  background: '#3DA8D8',
+  color: '#fff',
+  fontSize: 11,
+  fontWeight: 800,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  letterSpacing: '0.04em',
+};
+
+const metaStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 1,
+  minWidth: 0,
+};
+
+const nameStyle: React.CSSProperties = {
   fontSize: 13,
+  fontWeight: 700,
+  color: '#F1F5F9',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
+const hintStyle: React.CSSProperties = {
+  fontSize: 9,
   fontWeight: 600,
-  color: 'var(--eq-ink, #1A1A2E)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.22em',
+  color: '#64748B',
 };
 
 const menuStyle: React.CSSProperties = {
