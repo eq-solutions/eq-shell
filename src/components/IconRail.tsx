@@ -1,5 +1,5 @@
 import { useParams, useMatch } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, Settings } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard } from 'lucide-react';
 import { AppRail, type AppRailItem } from '@eq-solutions/ui';
 import { useSession, type EqTier } from '../session';
 import { EqLogo } from './EqLogo';
