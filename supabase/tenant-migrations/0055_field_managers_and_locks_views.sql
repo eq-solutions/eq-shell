@@ -18,6 +18,15 @@ BEGIN
     SELECT 1 FROM information_schema.tables
     WHERE table_schema = 'app_data' AND table_name = 'staff'
   ) THEN
+    -- Drop if previously created as a base table (zaap had it from ETL)
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'app_data' AND table_name = 'field_managers'
+      AND table_type = 'BASE TABLE'
+    ) THEN
+      EXECUTE 'DROP TABLE app_data.field_managers CASCADE';
+    END IF;
+
     EXECUTE $sql$
       CREATE OR REPLACE VIEW app_data.field_managers AS
       SELECT
@@ -48,6 +57,15 @@ BEGIN
     SELECT 1 FROM information_schema.tables
     WHERE table_schema = 'app_data' AND table_name = 'timesheet_locks'
   ) THEN
+    -- Drop if previously created as a base table (zaap had it from ETL)
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'app_data' AND table_name = 'field_timesheet_locks'
+      AND table_type = 'BASE TABLE'
+    ) THEN
+      EXECUTE 'DROP TABLE app_data.field_timesheet_locks CASCADE';
+    END IF;
+
     EXECUTE $sql$
       CREATE OR REPLACE VIEW app_data.field_timesheet_locks AS
       SELECT * FROM app_data.timesheet_locks;
