@@ -22,6 +22,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@eq-solutions/tokens": "github:eq-solutions/eq-design-tokens#v1.3.2",
     "@eq/ai": "workspace:*",
     "@eq/confirm-ui": "workspace:*",
     "@eq/intake": "workspace:*",

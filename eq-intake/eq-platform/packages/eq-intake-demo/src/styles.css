@@ -5,13 +5,13 @@
  * No gradients, no shadows. Plus Jakarta Sans, brand palette.
  */
 
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+@import "@eq-solutions/tokens/tokens.css";
+@import '@fontsource/plus-jakarta-sans/400.css';
+@import '@fontsource/plus-jakarta-sans/500.css';
+@import '@fontsource/plus-jakarta-sans/600.css';
+@import '@fontsource/plus-jakarta-sans/700.css';
 
 :root {
-  --eq-sky: #3da8d8;
-  --eq-deep: #2986b4;
-  --eq-ice: #eaf5fb;
-  --eq-ink: #1a1a2e;
   --eq-paper: #ffffff;
   --eq-page: #f6f8fb;
   --eq-line: #e4e8ee;
@@ -1469,6 +1469,729 @@ button.eq-primary:hover {
   white-space: nowrap;
 }
 
+/* ===== Intake module — drop zone + destination picker + file slots ===== */
+
+/* The module-level section */
+.eq-intake-module {
+  padding: 24px 0;
+}
+
+/* Drop zone (idle) */
+.eq-intake-dropzone {
+  background: var(--eq-paper);
+  border: 2px dashed var(--eq-line);
+  border-radius: 12px;
+  padding: 44px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+  margin-bottom: 0;
+}
+
+.eq-intake-dropzone:hover,
+.eq-intake-dropzone:focus-visible {
+  border-color: var(--eq-sky);
+  background: var(--eq-ice);
+  outline: none;
+}
+
+.eq-intake-dropzone--over {
+  border-color: var(--eq-sky);
+  background: var(--eq-ice);
+}
+
+/* Drop zone (compact — when files are present) */
+.eq-intake-dropzone--compact {
+  padding: 12px 20px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--eq-deep);
+  font-size: 13px;
+}
+
+/* Icon tile inside the idle drop zone */
+.eq-intake-dropzone__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--eq-ice);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 10px;
+}
+
+.eq-intake-dropzone__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--eq-ink);
+  margin-bottom: 4px;
+}
+
+.eq-intake-dropzone__hint {
+  font-size: 13px;
+  color: var(--eq-muted);
+}
+
+/* File slot cards */
+.eq-intake-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.eq-intake-slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--eq-paper);
+  border: 1px solid var(--eq-line);
+  border-radius: 10px;
+}
+
+.eq-intake-slot--warn {
+  border-color: #fde68a;
+}
+
+.eq-intake-slot--err {
+  border-color: #fecaca;
+}
+
+.eq-intake-slot__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.eq-intake-slot__row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.eq-intake-slot__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--eq-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.eq-intake-slot__sheet {
+  font-size: 11px;
+  color: var(--eq-deep);
+}
+
+.eq-intake-slot__meta {
+  font-size: 11px;
+  color: var(--eq-muted);
+}
+
+.eq-intake-slot__warning {
+  font-size: 12px;
+  color: var(--eq-warn);
+  margin-top: 2px;
+}
+
+.eq-intake-slot__error {
+  font-size: 12px;
+  color: var(--eq-err);
+  margin-top: 2px;
+}
+
+/* Entity chip — used in file slots */
+.eq-entity-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.eq-entity-chip--typed {
+  background: var(--eq-ice);
+  color: var(--eq-deep);
+}
+
+.eq-entity-chip--unknown {
+  background: #fef2f2;
+  color: var(--eq-err);
+}
+
+/* Remove button on slot */
+.eq-intake-slot__remove {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--eq-ink);
+  opacity: 0.3;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  transition: opacity 0.1s, border-color 0.1s;
+}
+
+.eq-intake-slot__remove:hover {
+  opacity: 1;
+  border-color: var(--eq-line);
+  background: var(--eq-page);
+}
+
+/* Destination picker */
+.eq-intake-dest {
+  margin-top: 20px;
+}
+
+.eq-intake-dest__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--eq-muted);
+  margin-bottom: 10px;
+}
+
+.eq-intake-dest__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.eq-intake-dest__divider {
+  font-size: 11px;
+  color: var(--eq-muted);
+  opacity: 0.5;
+  padding: 0 2px;
+}
+
+/* Destination pill */
+.eq-dest-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--eq-line);
+  background: var(--eq-page);
+  color: var(--eq-ink);
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+  line-height: 1;
+}
+
+.eq-dest-pill:hover {
+  background: var(--eq-ice);
+  border-color: var(--eq-sky);
+  color: var(--eq-deep);
+}
+
+.eq-dest-pill--primary {
+  font-size: 14px;
+  padding: 7px 14px;
+  font-weight: 600;
+}
+
+.eq-dest-pill--active {
+  background: var(--eq-ice);
+  border-color: var(--eq-sky);
+  color: var(--eq-deep);
+}
+
+.eq-dest-pill--active-primary {
+  background: var(--eq-deep);
+  border-color: var(--eq-deep);
+  color: white;
+}
+
+.eq-dest-pill--active-primary:hover {
+  background: var(--eq-sky);
+  border-color: var(--eq-sky);
+  color: white;
+}
+
+.eq-dest-pill--disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Description + missing-file hint below the picker */
+.eq-intake-dest__footer {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.eq-intake-dest__desc {
+  font-size: 13px;
+  color: var(--eq-muted);
+  flex: 1;
+  min-width: 180px;
+}
+
+.eq-intake-dest__missing {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--eq-warn);
+  background: #fffbeb;
+  padding: 2px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* Action section below destination */
+.eq-intake-action {
+  margin-top: 20px;
+}
+
+/* Start over footer */
+.eq-intake-footer {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--eq-line);
+}
+
+/* Commit result banner */
+.eq-commit-result {
+  padding: 14px 16px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.eq-commit-result--ok  { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.eq-commit-result--warn { background: #fffbeb; border: 1px solid #fde68a; }
+.eq-commit-result--err { background: #fef2f2; border: 1px solid #fecaca; }
+
+.eq-commit-result__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.eq-commit-result--ok  .eq-commit-result__icon { background: #d1fae5; color: #059669; }
+.eq-commit-result--warn .eq-commit-result__icon { background: #fef3c7; color: #d97706; }
+.eq-commit-result--err  .eq-commit-result__icon { background: #fee2e2; color: var(--eq-err); }
+
+.eq-commit-result__body { flex: 1; min-width: 140px; }
+
+.eq-commit-result__title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--eq-ink);
+}
+
+.eq-commit-result__sub {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.eq-commit-result__sub-warn { font-size: 12px; color: #d97706; }
+.eq-commit-result__sub-err  { font-size: 12px; color: var(--eq-err); }
+
+.eq-commit-result__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.eq-commit-result__chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--eq-deep);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Intake preview table */
+.eq-intake-preview { margin-bottom: 16px; }
+
+.eq-intake-preview__hint {
+  font-size: 12px;
+  color: var(--eq-muted);
+  margin-bottom: 6px;
+}
+
+.eq-intake-preview__wrap {
+  overflow-x: auto;
+  border: 1px solid var(--eq-line);
+  border-radius: 10px;
+}
+
+.eq-intake-preview__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.eq-intake-preview__table th {
+  padding: 6px 10px;
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--eq-deep);
+  background: var(--eq-page);
+  border-bottom: 1px solid var(--eq-line);
+}
+
+.eq-intake-preview__table td {
+  padding: 5px 10px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--eq-ink);
+}
+
+.eq-intake-preview__table tr:not(:last-child) td {
+  border-bottom: 1px solid var(--eq-line);
+}
+
+/* Intake inline spinner (inside buttons / progress msgs) */
+.eq-intake-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: white;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.eq-intake-spinner--dark {
+  border-color: var(--eq-line);
+  border-top-color: var(--eq-deep);
+}
+
+/* Progress message */
+.eq-intake-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--eq-ice);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--eq-deep);
+  margin-bottom: 12px;
+}
+
+/* Warning/info banners */
+.eq-intake-notice {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.eq-intake-notice--warn {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #78350f;
+}
+
+.eq-intake-notice--err {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: var(--eq-err);
+}
+
+.eq-intake-notice--ok {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+/* ===== Mapping preview panel (.eq-mapping-panel) ===== */
+
+.eq-mapping-panel {
+  margin-bottom: 12px;
+}
+
+.eq-mapping-panel > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--eq-deep);
+  user-select: none;
+  list-style: none; /* hide browser triangle in some engines */
+}
+
+.eq-mapping-panel > summary::-webkit-details-marker { display: none; }
+
+.eq-mapping-panel__hint {
+  font-weight: 400;
+  opacity: 0.7;
+  margin-left: 4px;
+}
+
+.eq-mapping-panel__body {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eq-mapping-panel__entity {
+  border: 1px solid var(--eq-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.eq-mapping-panel__entity-header {
+  padding: 6px 10px;
+  background: var(--eq-ice);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.eq-mapping-panel__entity-name {
+  color: var(--eq-ink);
+}
+
+.eq-mapping-panel__entity-sheet {
+  color: var(--eq-deep);
+  margin-left: 6px;
+}
+
+.eq-mapping-panel__match-count {
+  font-weight: 400;
+  color: var(--eq-deep);
+}
+
+.eq-mapping-panel__match-count--warn {
+  color: var(--eq-warn);
+}
+
+.eq-mapping-panel__table-wrap {
+  overflow-x: auto;
+}
+
+.eq-mapping-panel__table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.eq-mapping-panel__table th {
+  padding: 4px 10px;
+  text-align: left;
+  font-weight: 500;
+  border-bottom: 1px solid var(--eq-line);
+  background: var(--eq-page);
+  color: var(--eq-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.eq-mapping-panel__table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--eq-line);
+}
+
+.eq-mapping-panel__table tr:last-child td {
+  border-bottom: none;
+}
+
+.eq-mapping-panel__col-source {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--eq-ink);
+}
+
+.eq-mapping-panel__col-field {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--eq-deep);
+}
+
+.eq-mapping-panel__col-unmatched {
+  font-size: 12px;
+  color: var(--eq-warn);
+  opacity: 0.85;
+  font-style: italic;
+}
+
+/* ===== Rows disclosure (.eq-rows-disclosure) ===== */
+
+.eq-rows-disclosure {
+  margin-top: 12px;
+}
+
+.eq-rows-disclosure > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  /* color is set inline — it's dynamic (accentColor prop) */
+  user-select: none;
+  list-style: none;
+}
+
+.eq-rows-disclosure > summary::-webkit-details-marker { display: none; }
+
+.eq-rows-disclosure__count {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.eq-rows-disclosure__hint {
+  font-size: 12px;
+  margin: 6px 0 8px;
+  /* color set inline via hintColor prop */
+}
+
+.eq-rows-disclosure__download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  background: var(--eq-paper);
+  color: var(--eq-ink);
+  border: 1px solid var(--eq-line);
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  font-family: inherit;
+}
+
+.eq-rows-disclosure__download:hover {
+  background: var(--eq-ice);
+  border-color: var(--eq-sky);
+}
+
+.eq-rows-disclosure__body {
+  margin-top: 8px;
+}
+
+.eq-rows-disclosure__filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid var(--eq-line);
+  border-radius: 6px;
+  font-family: inherit;
+  background: var(--eq-paper);
+  color: var(--eq-ink);
+  margin-bottom: 6px;
+}
+
+.eq-rows-disclosure__filter:focus {
+  outline: none;
+  border-color: var(--eq-sky);
+}
+
+.eq-rows-disclosure__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--eq-line);
+  border-radius: 8px;
+}
+
+.eq-rows-disclosure__table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.eq-rows-disclosure__table thead tr {
+  background: var(--eq-ice);
+}
+
+.eq-rows-disclosure__table th {
+  padding: 5px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--eq-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--eq-line);
+}
+
+.eq-rows-disclosure__table th.eq-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.eq-rows-disclosure__table th.eq-sortable:hover {
+  color: var(--eq-deep);
+}
+
+.eq-rows-disclosure__table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--eq-line);
+}
+
+.eq-rows-disclosure__table tr:last-child td {
+  border-bottom: none;
+}
+
+.eq-rows-disclosure__table td.eq-monospace {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.eq-rows-disclosure__table td.eq-nowrap {
+  white-space: nowrap;
+}
+
+.eq-rows-disclosure__empty {
+  padding: 10px;
+  color: var(--eq-muted);
+  text-align: center;
+  font-size: 13px;
+}
+
+.eq-rows-disclosure__showing {
+  font-size: 11px;
+  color: var(--eq-muted);
+  margin-top: 4px;
+}
+
 /* =========================================================================
  * Mobile rules (≤ 600px). The boys are on phones; the bookkeeper on a
  * laptop. Target: 360px Chrome dev-tools width works without horizontal
@@ -1715,6 +2438,81 @@ button.eq-primary:hover {
   .eq-commit-log {
     max-height: 160px;
     font-size: 11px;
+  }
+
+  /* ---- Intake module — new one-screen UI ---- */
+
+  /* Drop zone: less vertical padding on mobile */
+  .eq-intake-dropzone {
+    padding: 28px 16px;
+  }
+
+  .eq-intake-dropzone--compact {
+    padding: 10px 14px;
+  }
+
+  /* Destination pills — wrap to two columns then single column */
+  .eq-intake-dest__row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .eq-dest-pill {
+    flex: 0 0 auto;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  /* File slot — truncate long filenames properly */
+  .eq-intake-slot__name {
+    max-width: 160px;
+  }
+
+  /* Slots list — reduce gap on mobile */
+  .eq-intake-slots {
+    gap: 6px;
+  }
+
+  /* Preview table — allow horizontal scroll, don't force-shrink text */
+  .eq-intake-preview__wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .eq-intake-preview__table {
+    min-width: 480px;
+  }
+
+  /* Mapping panel table — same scroll treatment */
+  .eq-mapping-panel__table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .eq-mapping-panel__table {
+    min-width: 320px;
+  }
+
+  /* Rows disclosure table — scroll on narrow screens */
+  .eq-rows-disclosure__table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .eq-rows-disclosure__table {
+    min-width: 360px;
+  }
+
+  /* Commit result — reduce horizontal padding */
+  .eq-commit-result {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  /* Notice — smaller padding */
+  .eq-intake-notice {
+    font-size: 12px;
+    padding: 8px 10px;
   }
 }
 
