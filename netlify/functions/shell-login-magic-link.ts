@@ -6,12 +6,14 @@
 // Mirrors shell-login-phone-otp exactly, keyed by email instead of phone.
 //
 // Flow:
-//   1. Validate the Supabase access_token via auth.getUser() — Supabase verifies
+//   1. Rate-limit check: 5 attempts per email per 15-minute window, keyed by
+//      "magic-link:<email>". Returns 429 with Retry-After if exceeded.
+//   2. Validate the Supabase access_token via auth.getUser() — Supabase verifies
 //      the JWT signature + expiry server-side.
-//   2. Confirm the email in the Supabase auth user matches the submitted email —
+//   3. Confirm the email in the Supabase auth user matches the submitted email —
 //      prevents a stolen access_token targeting a different account.
-//   3. Look up the user in shell_control.users by email.
-//   4. Hydrate tenant + entitlements and mint the shell session cookie + Supabase JWT,
+//   4. Look up the user in shell_control.uses by email.
+//   5. Hydrate tenant + entitlements and mint the shell session cookie + Supabase JWT,
 //      returning the same payload shape as shell-login so the React session context
 //      works identically.
 
@@ -66,6 +68,27 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     sb = getServiceClient();
   } catch (e) {
     return jsonResponse(500, { error: (e as Error).message });
+  }
+
+  // Rate limiting: 5 attempts per email per 15-minute window.
+  // Keyed by email so a single attacker can't flood one account.
+  // On success, the key is cleared so legitimate users start fresh.
+  const rlKey = `magic-link::${email}`;
+
+  const { data: rlResult, error: rlErr } = await sb.schema('public').rpc('check_and_increment_rate_limit', {
+    p_key: rlKey,
+  });
+  if (rlErr) {
+    // eslint-disable-next-line no-console
+    console.error('[shell-login-magic-link] rate-limit check failed — blocking as precaution:', rlErr.message);
+    return jsonResponse(503, { valid: false, error: 'service-unavailable' });
+  } else {
+    const rl = rlResult as { blocked: boolean; retry_after_seconds: number } | null;
+    if (rl?.blocked) {
+      return jsonResponse(429, { valid: false, error: 'too-many-attempts', retry_after: rl.retry_after_seconds }, {
+        'Retry-After': String(rl.retry_after_seconds),
+      });
+    }
   }
 
   // Validate the access_token. getUser(jwt) hits /auth/v1/user with the token as
@@ -143,6 +166,10 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     p_ip: ip,
     p_detail: { method: 'magic-link', role: user.role },
   });
+
+  // Clear the rate-limit bucket on successful login so legitimate users
+  // start fresh the next time they need to authenticate.
+  void sb.schema('public').rpc('clear_rate_limit', { p_key: rlKey });
 
   const exp = Date.now() + SESSION_TTL_MS;
   const cookieValue = signSessionToken({
