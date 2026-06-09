@@ -238,9 +238,14 @@ function RequireSession({ children }: { children: ReactNode }) {
 }
 
 function ModuleGate({ module, children }: { module: string; children: ReactNode }) {
-  const { session } = useSession();
+  const { session, loading } = useSession();
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   if (!session) return null;
+  // Hold until verify-shell-session resolves. The stale sessionStorage session
+  // may have incomplete entitlements (e.g. after a hard refresh mid-flight).
+  // Redirecting before verify completes would bounce the user back to the tenant
+  // home even though the module is actually entitled.
+  if (loading) return null;
   if (!moduleEnabled(session, module)) {
     return <Navigate to={`/${tenantSlug}`} replace />;
   }
