@@ -332,6 +332,23 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     p_detail: { org_name: orgName, slug: finalSlug, method: 'provision-token' },
   });
 
+  // PostHog server-side event — provision funnel tracking
+  try {
+    await fetch('https://eu.i.posthog.com/capture/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: process.env.VITE_POSTHOG_KEY ?? '',
+        event: 'tenant_provisioned',
+        distinct_id: phone,
+        properties: {
+          tenant_slug: finalSlug,
+          $set: { tenant: finalSlug, role: 'admin' },
+        },
+      }),
+    }).catch(() => {/* non-fatal */});
+  } catch { /* non-fatal */ }
+
   // Return the GoTrue access_token so Cards can deep-link the admin
   // straight into their new workspace via #sh= (shell-handoff-provision).
   return jsonResponse(200, { valid: true, tenant_slug: finalSlug, access_token: accessToken });

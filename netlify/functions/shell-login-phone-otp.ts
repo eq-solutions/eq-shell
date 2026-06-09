@@ -76,12 +76,6 @@ function corsHeaders(origin: string | null): Record<string, string> {
 }
 
 async function core(req: Request, _ctx: Context): Promise<Response> {
-  if (process.env.ENABLE_PHONE_OTP !== 'true') {
-    return new Response(JSON.stringify({ error: 'Not available' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }
