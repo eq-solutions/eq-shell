@@ -154,6 +154,43 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     console.error('[shell-login-phone-otp] users lookup error:', userErr.message);
     return jsonResponse(500, { error: 'Database error' });
   }
+
+  // ── Email-based self-heal fallback ───────────────────────────────────────
+  // When phone-OTP succeeds (authUser is valid) but shell_control.users has no
+  // phone set yet (e.g. the user signed up via email before their worker record
+  // was created), look them up by email and patch the phone link on the fly.
+  // After this runs, future phone-OTP logins hit the fast path (phone lookup).
+  if (!user) {
+    const authEmail = (authUser as { email?: string | null }).email?.toLowerCase();
+    if (authEmail) {
+      const { data: emailUser, error: emailErr } = await sb
+        .from('users')
+        .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at, totp_secret, totp_enrolled_at, created_at')
+        .eq('email', authEmail)
+        .is('phone', null)
+        .eq('active', true)
+        .maybeSingle<UserRow>();
+
+      if (!emailErr && emailUser) {
+        // Patch phone on shell_control.users so the fast path works next time
+        void sb.from('users').update({ phone }).eq('id', emailUser.id);
+        // Patch auth.users via admin API (service role)
+        void (sb as unknown as {
+          auth: { admin: { updateUserById: (id: string, attrs: Record<string, unknown>) => Promise<unknown> } };
+        }).auth.admin.updateUserById(emailUser.id, { phone });
+        // Also claim the worker if it exists and is unclaimed
+        void sb.schema('public').from('workers')
+          .update({ user_id: emailUser.id })
+          .eq('email', authEmail)
+          .is('user_id', null);
+        // eslint-disable-next-line no-console
+        console.info('[shell-login-phone-otp] email-fallback self-heal for', authEmail);
+        user = emailUser as typeof user;
+      }
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   if (!user) {
     return jsonResponse(200, { valid: false });
   }
