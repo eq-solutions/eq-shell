@@ -34,6 +34,7 @@ import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
 import AdminWorkerInvites from './pages/AdminWorkerInvites';
 import AdminWorkerInviteForm from './pages/AdminWorkerInviteForm';
+import AdminWorkerQR from './pages/AdminWorkerQR';
 import AdminTenantsPage from './pages/AdminTenantsPage';
 import AdminWorkersPage from './pages/AdminWorkersPage';
 import AdminDataActivationPage from './pages/AdminDataActivationPage';
@@ -483,6 +484,7 @@ function TenantTree() {
         {/* Worker invite management — Cards activation links */}
         <Route path="admin/workers" element={<AdminWorkerInvites />} />
         <Route path="admin/workers/invite" element={<AdminWorkerInviteForm />} />
+        <Route path="admin/workers/qr" element={<AdminWorkerQR />} />
         {/* Cards → Field review queue */}
         <Route path="admin/cards-feed" element={<AdminCardsFeed />} />
         {/* Polish 2026-05-21 — tenant settings */}

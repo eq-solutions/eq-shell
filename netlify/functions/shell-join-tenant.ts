@@ -304,8 +304,9 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     return jsonResponse(500, { error: 'Database error' });
   }
 
-  // Step 10: create org_memberships row if we found an org.
+  // Step 10: create org_memberships + workers rows if we found an org.
   if (org) {
+    // Org membership — role must be 'member' | 'admin' (DB constraint).
     const { error: insertMemberErr } = await sb
       .schema('public')
       .from('org_memberships')
@@ -313,10 +314,9 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
         {
           org_id: org.id,
           user_id: authUser.id,
-          role: 'employee',
+          role: 'member',
           status: 'active',
           accepted_at: new Date().toISOString(),
-          tenant_id: tenant.id,
         },
         { onConflict: 'org_id,user_id', ignoreDuplicates: true },
       );
@@ -325,6 +325,57 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
       // eslint-disable-next-line no-console
       console.error('[shell-join-tenant] insert org_memberships error:', insertMemberErr.message);
       // Non-fatal: user is provisioned; membership can be repaired via admin tools.
+    }
+
+    // Worker record — ensures the joiner appears in the admin invite list.
+    // Find or create by phone so we don't duplicate if the admin pre-populated one.
+    let workerId: string | null = null;
+    const { data: existingWorker } = await sb
+      .schema('public')
+      .from('workers')
+      .select('id, user_id')
+      .eq('phone', phone)
+      .maybeSingle<{ id: string; user_id: string | null }>();
+
+    if (existingWorker) {
+      workerId = existingWorker.id;
+      if (!existingWorker.user_id) {
+        await sb.schema('public').from('workers')
+          .update({ user_id: authUser.id, updated_at: new Date().toISOString() })
+          .eq('id', workerId).is('user_id', null);
+      }
+    } else {
+      const { data: newWorker } = await sb
+        .schema('public')
+        .from('workers')
+        .insert({ user_id: authUser.id, phone })
+        .select('id')
+        .maybeSingle<{ id: string }>();
+      workerId = newWorker?.id ?? null;
+    }
+
+    // Audit invite row (source: 'self_join') — only if no claimed record exists.
+    if (workerId) {
+      const { data: existingClaim } = await sb
+        .schema('public')
+        .from('worker_invites')
+        .select('id')
+        .eq('worker_id', workerId)
+        .eq('org_id', org.id)
+        .not('claimed_at', 'is', null)
+        .maybeSingle<{ id: string }>();
+
+      if (!existingClaim) {
+        await sb.schema('public').from('worker_invites').insert({
+          worker_id: workerId,
+          org_id: org.id,
+          token: crypto.randomUUID(),
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+          claimed_at: new Date().toISOString(),
+          claimed_by: authUser.id,
+          profile_data: { phone, source: 'self_join' },
+        });
+      }
     }
   }
 

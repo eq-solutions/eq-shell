@@ -136,9 +136,22 @@ function AdminWorkerInvitesInner() {
             Activation links for EQ Cards. Share with workers so they can access their wallet.
           </p>
         </div>
-        <Link to={`/${tenantSlug}/admin/workers/invite`}>
-          <Button variant="primary" size="sm">Invite worker</Button>
-        </Link>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Link
+            to={`/${tenantSlug}/admin/workers/qr`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', height: 36,
+              padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+              border: '1px solid var(--eq-border)', color: 'var(--eq-deep)',
+              textDecoration: 'none', background: 'transparent',
+            }}
+          >
+            QR code
+          </Link>
+          <Link to={`/${tenantSlug}/admin/workers/invite`}>
+            <Button variant="primary" size="sm">Invite worker</Button>
+          </Link>
+        </div>
       </div>
 
       {resendErr && (
