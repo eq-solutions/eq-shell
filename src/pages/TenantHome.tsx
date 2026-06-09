@@ -69,14 +69,15 @@ interface PipelineSummary {
 }
 
 interface AiData {
-  brief:                string | null;
-  actions:              AiAction[];
-  on_shift:             AiOnShift[];
-  upcoming:             AiUpcoming[];
-  pipeline:             PipelineSummary | null;
-  contributing_sources: string[];
-  degraded:             string[];
-  generated_at:         string;
+  brief:                  string | null;
+  actions:                AiAction[];
+  on_shift:               AiOnShift[];
+  shift_scheduled_count:  number | null;
+  upcoming:               AiUpcoming[];
+  pipeline:               PipelineSummary | null;
+  contributing_sources:   string[];
+  degraded:               string[];
+  generated_at:           string;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -287,14 +288,15 @@ export default function TenantHome() {
       if (!body.ok) { setAiData(null); return; }
       setActionedTitles(new Set()); // reset optimistic state on fresh load
       setAiData({
-        brief:                body.brief                ?? null,
-        actions:              body.actions              ?? [],
-        on_shift:             body.on_shift             ?? [],
-        upcoming:             body.upcoming             ?? [],
-        pipeline:             body.pipeline             ?? null,
-        contributing_sources: body.contributing_sources ?? [],
-        degraded:             body.degraded             ?? [],
-        generated_at:         body.generated_at         ?? new Date().toISOString(),
+        brief:                  body.brief                  ?? null,
+        actions:                body.actions                ?? [],
+        on_shift:               body.on_shift               ?? [],
+        shift_scheduled_count:  body.shift_scheduled_count  ?? null,
+        upcoming:               body.upcoming               ?? [],
+        pipeline:               body.pipeline               ?? null,
+        contributing_sources:   body.contributing_sources   ?? [],
+        degraded:               body.degraded               ?? [],
+        generated_at:           body.generated_at           ?? new Date().toISOString(),
       });
     } catch {
       setAiData(null);
@@ -424,11 +426,15 @@ export default function TenantHome() {
     return r;
   });
 
-  const alertItems = events?.filter(
-    (e) => ['failed', 'rejected', 'rolled_back'].includes(e.status) || e.rows_flagged > 0 || e.rows_rejected > 0
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentIntakeEvents = events?.filter(
+    (e) => new Date(e.started_at).getTime() > sevenDaysAgo
   ) ?? [];
-  const hasAlerts = !loading && events !== null && alertItems.length > 0;
-  const allClear  = !loading && events !== null && alertItems.length === 0;
+  const alertItems = recentIntakeEvents.filter(
+    (e) => ['failed', 'rejected', 'rolled_back'].includes(e.status) || e.rows_flagged > 0 || e.rows_rejected > 0
+  );
+  const hasAlerts = !loading && alertItems.length > 0;
+  const allClear  = !loading && recentIntakeEvents.length > 0 && alertItems.length === 0;
 
   // Build sidebar apps — counts come from canonical app_data entities.
   // 0 is treated as null (badge hidden) for cross-app counts so the badge
@@ -504,6 +510,19 @@ export default function TenantHome() {
           </div>
         )}
 
+        {!loading && assetOverdue > 0 && (
+          <div className="eq-hub-alert eq-hub-alert--action">
+            <span className="eq-hub-alert__icon" aria-hidden="true"><AlertTriangle size={14} /></span>
+            <span className="eq-hub-alert__text">
+              {assetOverdue === 1
+                ? '1 item overdue for service'
+                : `${assetOverdue} items overdue for service`}
+              {' — '}
+              <Link to={`/${tenantSlug}/service`} className="eq-hub-alert__link">review in Service →</Link>
+            </span>
+          </div>
+        )}
+
         <div className="eq-hub-content">
 
           {/* ── Mobile hero card (Frame 1 — EQ Shell 15 mobile handoff) ──
@@ -554,9 +573,9 @@ export default function TenantHome() {
           <div className="eq-hub-stats">
             <div className="eq-hub-stat">
               <span className="eq-hub-stat__value">
-                {loading ? '…' : aiData && aiData.on_shift.length > 0 ? aiData.on_shift.length : (staffCount ?? '—')}
+                {loading ? '…' : (aiData?.shift_scheduled_count ?? staffCount ?? '—')}
               </span>
-              <span className="eq-hub-stat__label">on site today</span>
+              <span className="eq-hub-stat__label">scheduled today</span>
               <span className="eq-hub-stat__app">EQ FIELD</span>
             </div>
             <div className={`eq-hub-stat${assetOverdue > 0 ? ' eq-hub-stat--warn' : ''}`}>
@@ -843,8 +862,8 @@ export default function TenantHome() {
           </div>
 
 
-          {/* Data imports — shown only when there's recent intake activity; full log lives in Import */}
-          {events && events.length > 0 && (
+          {/* Data imports — shown only when there's intake activity in the last 7 days */}
+          {recentIntakeEvents.length > 0 && (
             <div>
               <div className="eq-hub-activity__head">
                 <span className="eq-hub-activity__title">Data imports</span>
@@ -856,7 +875,7 @@ export default function TenantHome() {
                 </Link>
               </div>
               <div className="eq-hub-activity__list">
-                {events.map((e) => {
+                {recentIntakeEvents.map((e) => {
                   const dot = statusDot(e.status);
                   return (
                     <div key={e.intake_id} className="eq-hub-activity__item">

@@ -210,18 +210,21 @@ interface OperationalSignals {
 }
 
 interface FullBriefingResponse {
-  ok:                   boolean;
-  brief:                string | null;
-  actions:              AiAction[];
-  on_shift:             AiOnShift[];
-  upcoming:             AiUpcoming[];
-  pipeline:             PipelineSummary | null;
-  contributing_sources: string[];
+  ok:                     boolean;
+  brief:                  string | null;
+  actions:                AiAction[];
+  on_shift:               AiOnShift[];
+  // scheduled_count from the most recent shift.started event — the real
+  // headcount from Field, not just the named-highlights array length.
+  shift_scheduled_count:  number | null;
+  upcoming:               AiUpcoming[];
+  pipeline:               PipelineSummary | null;
+  contributing_sources:   string[];
   // Sources that were configured/expected but could not be read this run (e.g. the
   // pipeline endpoint 500'd). Surfaced so a silent failure is visible to the UI and
   // caller instead of the block just vanishing from the brief.
-  degraded:             string[];
-  generated_at:         string;
+  degraded:               string[];
+  generated_at:           string;
 }
 
 interface AiAction {
@@ -828,9 +831,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     ...(incidents.total > 0 ? ['incidents'] : []),
   ];
 
+  const latestShiftEvent = events.find(e => e.event === 'shift.started' && e.app_source === 'field');
+  const shiftScheduledCount: number | null = latestShiftEvent
+    ? (typeof latestShiftEvent.payload.scheduled_count === 'number' ? latestShiftEvent.payload.scheduled_count : null)
+    : null;
+
   const emptyResponse: FullBriefingResponse = {
-    ok: true, brief: null, actions: [], on_shift: [], upcoming: [],
-    pipeline, contributing_sources, degraded, generated_at: new Date().toISOString(),
+    ok: true, brief: null, actions: [], on_shift: [], shift_scheduled_count: shiftScheduledCount,
+    upcoming: [], pipeline, contributing_sources, degraded, generated_at: new Date().toISOString(),
   };
 
   if (events.length === 0 && !pipeline && !hasSignals) {
@@ -884,15 +892,16 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     }
 
     const fullResponse: FullBriefingResponse = {
-      ok:                   true,
-      brief:                payload.brief ?? null,
-      actions:              payload.actions ?? [],
-      on_shift:             grounded.kept,
-      upcoming:             payload.upcoming ?? [],
+      ok:                     true,
+      brief:                  payload.brief ?? null,
+      actions:                payload.actions ?? [],
+      on_shift:               grounded.kept,
+      shift_scheduled_count:  shiftScheduledCount,
+      upcoming:               payload.upcoming ?? [],
       pipeline,
       contributing_sources,
       degraded,
-      generated_at:         new Date().toISOString(),
+      generated_at:           new Date().toISOString(),
     };
 
     await writeCache(tenantAny, tenantId, userId, fullResponse);
