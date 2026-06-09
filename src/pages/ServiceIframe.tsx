@@ -8,30 +8,26 @@ const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 // Embeds EQ Service (Next.js) as a Shell iframe.
 //
-// Two auth modes, selected by VITE_SERVICE_URL:
+// Auth mode: TOKEN MODE (Supabase JWT handshake).
 //
-// COOKIE MODE (VITE_SERVICE_URL=https://service.eq.solutions)
-//   The eq_shell_session cookie is Domain=.eq.solutions, so the browser
-//   sends it automatically when the iframe loads service.eq.solutions.
-//   Service's proxy.ts reads the cookie server-side and establishes a
-//   Supabase session before rendering any HTML. No token minting, no
-//   OTP round-trip, no client-visible auth loading. Activation steps:
-//     1. Add service.eq.solutions as Netlify custom domain on eq-solves-service.
-//     2. Set VITE_SERVICE_URL=https://service.eq.solutions in eq-shell Netlify env.
-//     3. Set VITE_SERVICE_URL=https://service.eq.solutions in Netlify env.
+// Shell mints a 60s Supabase JWT via /.netlify/functions/token-exchange?aud=service,
+// then embeds Service at /shell#sh=<token>. Service's /shell page POSTs to
+// /api/shell-auth, validates the JWT, sets the eq_shell_bridge cookie, and
+// redirects to /. Service's (app)/layout.tsx then fires ShellReadySignal which
+// postMessages EQ_SERVICE_READY back to Shell — Shell reveals the iframe.
 //
-// TOKEN MODE (fallback, any other VITE_SERVICE_URL value)
-//   Legacy HMAC handshake: Shell mints a 60s token → embeds Service at
-//   /shell#sh=<token> → Service's shell-auth function validates → OTP.
-//   Kept as fallback for deploy previews and before the custom domain is live.
+// COOKIE MODE was an optimisation for same-site (eq.solutions) deploys that
+// relied on eq_shell_session being auto-sent in the iframe. It was disabled
+// after investigation showed the cookie was not reliably present at iframe-load
+// time (Shell restores from Supabase cookies on refresh without re-minting the
+// shell session cookie). TOKEN MODE works on all domains including deploy previews.
 
 const SERVICE_URL = (import.meta.env.VITE_SERVICE_URL as string | undefined)
   ?? 'https://eq-solves-service.netlify.app';
 
-// Cookie auth is active when Service is on the eq.solutions domain.
-const COOKIE_AUTH = SERVICE_URL === 'https://service.eq.solutions'
-  || SERVICE_URL.endsWith('.eq.solutions')
-  || SERVICE_URL.endsWith('.eq.solutions/');
+// TOKEN MODE is always used. COOKIE_AUTH kept as a constant for the conditional
+// blocks below (all branches evaluate to the TOKEN path at compile time).
+const COOKIE_AUTH = false;
 
 const SERVICE_TIMEOUT_MS = COOKIE_AUTH ? 20_000 : 45_000;
 
