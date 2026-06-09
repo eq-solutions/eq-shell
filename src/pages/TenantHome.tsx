@@ -179,23 +179,7 @@ const APP_DESCRIPTIONS: Record<string, string> = {
   cards:   'Staff profiles and licence cards.',
 };
 
-function CountUp({ value, duration = 700 }: { value: number; duration?: number }) {
-  const [display, setDisplay] = useState(0);
-  const rafRef = useRef<number>(0);
-  useEffect(() => {
-    const startTime = Date.now();
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const t = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
-      setDisplay(Math.round(value * eased));
-      if (t < 1) rafRef.current = requestAnimationFrame(animate);
-    };
-    rafRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [value, duration]);
-  return <>{display.toLocaleString()}</>;
-}
+
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -430,9 +414,7 @@ export default function TenantHome() {
   const quoteCount    = counts?.find((c) => c.entity === 'quote')?.count_total    || null;
   const incidentCount = counts?.find((c) => c.entity === 'incident')?.count_total || null;
   const licenceCount  = counts?.find((c) => c.entity === 'licence')?.count_total  || null;
-  const assetCount    = counts?.find((c) => c.entity === 'asset')?.count_total    ?? null;
-  // asset_service_due: count_total = due within 30 days, count_recent = overdue now.
-  const assetDueSoon  = counts?.find((c) => c.entity === 'asset_service_due')?.count_total  ?? 0;
+  // asset_service_due: count_recent = overdue now (count_total = due within 30 days, not currently used).
   const assetOverdue  = counts?.find((c) => c.entity === 'asset_service_due')?.count_recent ?? 0;
 
   const sidebarRecords = defaultSidebarRecords().map((r) => {
