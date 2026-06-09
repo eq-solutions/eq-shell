@@ -45,6 +45,7 @@ import { getServiceClient } from './_shared/supabase.js';
 import type { CanonicalUser, EqRole } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { sendEmail } from './_shared/email.js';
+import { emailHtml } from './_shared/email/template.js';
 import { normalizeAuPhone } from './_shared/phone.js';
 import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
@@ -250,6 +251,13 @@ Next time you sign in to your EQ Solutions account, you'll be able to choose ${t
 If you weren't expecting this, you can ignore this email.
 
 — EQ Solutions`,
+      html: emailHtml({
+        preheader: `You now have access to ${tenantName} on EQ Solutions.`,
+        heading: `You've been added to ${tenantName}.`,
+        body: `<p style="margin:0 0 16px;">You now have access to <strong>${tenantName}</strong> on EQ Solutions.</p>
+<p style="margin:0;">Next time you sign in, you'll be able to choose <strong>${tenantName}</strong> as your workspace.</p>`,
+        footerNote: "If you weren't expecting this, you can ignore it — nothing else will change.",
+      }),
     });
 
     return { email, status: 'added-to-tenant', email_delivered: addedEmailResult.delivered };
@@ -344,7 +352,7 @@ If you weren't expecting this, you can ignore this email.
     to: email,
     subject: `You've been invited to EQ Solutions`,
     text:
-`You've been invited to join an EQ Solutions tenant.
+`You've been invited to join an EQ Solutions workspace.
 
 Click the link below to set your PIN and get started:
 
@@ -353,6 +361,15 @@ ${inviteUrl}
 This link expires in ${INVITE_TTL_DAYS} days. If you weren't expecting this email, you can ignore it.
 
 — EQ Solutions`,
+    html: emailHtml({
+      preheader: "You've been invited to EQ Solutions. Click to set your PIN and get started.",
+      heading: "You're invited.",
+      body: `<p style="margin:0 0 20px;">You've been invited to join an EQ Solutions workspace.</p>
+<p style="margin:0 0 4px;">Click the button below to set your PIN and sign in. This link expires in <strong>${INVITE_TTL_DAYS} days</strong>.</p>`,
+      ctaLabel: 'Accept invite →',
+      ctaUrl: inviteUrl,
+      footerNote: "If you weren't expecting this, you can ignore it — no account will be created.",
+    }),
   });
 
   return { email, status: 'invited', invite_url: inviteUrl, email_delivered: emailResult.delivered };
