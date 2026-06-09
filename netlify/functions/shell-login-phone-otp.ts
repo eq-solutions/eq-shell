@@ -6,13 +6,15 @@
 // supabase.auth.verifyOtp) for an eq_shell_session cookie.
 //
 // Flow:
-//   1. Validate the Supabase access_token by calling auth.getUser() —
+//   1. Rate-limit check: 5 attempts per phone per 15-minute window, keyed by
+//      "phone-otp:<phone>". Returns 429 with Retry-After if exceeded.
+//   2. Validate the Supabase access_token by calling auth.getUser() —
 //      this hits Supabase's /auth/v1/user endpoint, which verifies the
 //      JWT signature and expiry server-side.
-//   2. Confirm the phone in the Supabase auth user matches the submitted
+//   3. Confirm the phone in the Supabase auth user matches the submitted
 //      phone — prevents a stolen token from looking up a different number.
-//   3. Look up the user in shell_control.users by phone.
-//   4. Hydrate tenant + entitlements and mint the shell session cookie,
+//   4. Look up the user in shell_control.users by phone.
+//   5. Hydrate tenant + entitlements and mint the shell session cookie,
 //      returning the same payload shape as shell-login so the React
 //      session context works identically.
 //
@@ -108,6 +110,27 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     sb = getServiceClient();
   } catch (e) {
     return jsonResponse(500, { error: (e as Error).message });
+  }
+
+  // Rate limiting: 5 attempts per phone per 15-minute window.
+  // Keyed by phone so a single attacker can't flood one account.
+  // On success, the key is cleared so legitimate users start fresh.
+  const rlKey = `phone-otp::${phone}`;
+
+  const { data: rlResult, error: rlErr } = await sb.schema('public').rpc('check_and_increment_rate_limit', {
+    p_key: rlKey,
+  });
+  if (rlErr) {
+    // eslint-disable-next-line no-console
+    console.error('[shell-login-phone-otp] rate-limit check failed — blocking as precaution:', rlErr.message);
+    return jsonResponse(503, { valid: false, error: 'service-unavailable' });
+  } else {
+    const rl = rlResult as { blocked: boolean; retry_after_seconds: number } | null;
+    if (rl?.blocked) {
+      return jsonResponse(429, { valid: false, error: 'too-many-attempts', retry_after: rl.retry_after_seconds }, {
+        'Retry-After': String(rl.retry_after_seconds),
+      });
+    }
   }
 
   // Validate the Supabase access_token. getUser(jwt) calls /auth/v1/user
@@ -239,6 +262,10 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     p_ip: ip,
     p_detail: { method: 'phone-otp', role: user.role },
   });
+
+  // Clear the rate-limit bucket on successful login so legitimate users
+  // start fresh the next time they need to authenticate.
+  void sb.schema('public').rpc('clear_rate_limit', { p_key: rlKey });
 
   const exp = Date.now() + SESSION_TTL_MS;
   const cookieValue = signSessionToken({
