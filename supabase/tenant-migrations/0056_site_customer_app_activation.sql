@@ -81,8 +81,12 @@ BEGIN
     SELECT 1 FROM information_schema.tables
     WHERE table_schema = 'app_data' AND table_name = 'sites'
   ) THEN
+    -- Drop+recreate required: CREATE OR REPLACE VIEW cannot reorder columns
+    -- (adding field_enabled/service_enabled before slug would rename slug → error 42P16).
+    -- Append new columns at the end to preserve existing consumer column positions.
+    EXECUTE 'DROP VIEW IF EXISTS app_data.field_sites CASCADE';
     EXECUTE $sql$
-      CREATE OR REPLACE VIEW app_data.field_sites AS
+      CREATE VIEW app_data.field_sites AS
       SELECT
         site_id           AS id,
         tenant_id,
@@ -96,12 +100,12 @@ BEGIN
         site_contact_name  AS site_lead,
         site_contact_phone AS site_lead_phone,
         active,
-        field_enabled,
-        service_enabled,
         slug,
         notes,
         created_at,
-        updated_at
+        updated_at,
+        field_enabled,
+        service_enabled
       FROM app_data.sites
       WHERE field_enabled = true;
     $sql$;
