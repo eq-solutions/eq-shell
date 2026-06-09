@@ -193,7 +193,34 @@ function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const init = async () => {
+      // Post-provision handoff: Cards opens Shell with #sh=<goTrueToken>
+      // appended to the URL. Exchange it for a shell session cookie before
+      // running the normal session verify, so the admin lands already logged
+      // in — no second OTP required.
+      const hash = window.location.hash; // e.g. "#sh=eyJhb..."
+      if (hash.startsWith('#sh=')) {
+        const token = new URLSearchParams(hash.slice(1)).get('sh') ?? '';
+        // Strip the fragment immediately — don't leave JWTs in browser history.
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+        if (token) {
+          try {
+            await fetch('/.netlify/functions/shell-handoff-provision', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ access_token: token }),
+            });
+          } catch {
+            // Non-fatal — fall through to normal session check. If the
+            // exchange fails the admin sees the login page and can sign in
+            // with their phone number as before.
+          }
+        }
+      }
+      void refresh();
+    };
+    void init();
   }, [refresh]);
 
   // Background poll every 5 min so deactivated users / role changes

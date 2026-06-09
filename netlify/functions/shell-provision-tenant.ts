@@ -332,7 +332,9 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     p_detail: { org_name: orgName, slug: finalSlug, method: 'provision-token' },
   });
 
-  return jsonResponse(200, { valid: true, tenant_slug: finalSlug });
+  // Return the GoTrue access_token so Cards can deep-link the admin
+  // straight into their new workspace via #sh= (shell-handoff-provision).
+  return jsonResponse(200, { valid: true, tenant_slug: finalSlug, access_token: accessToken });
 }
 
 export default withSentry(async (req: Request, ctx: Context): Promise<Response> => {
