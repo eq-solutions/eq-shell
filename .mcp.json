@@ -2,7 +2,7 @@
   "mcpServers": {
     "sentry": {
       "type": "http",
-      "url": "https://mcp.sentry.dev/mcp/eq-solutions"
+      "url": "https://mcp.sentry.dev/mcp/eq-solutions/eq-shell"
     }
   }
 }

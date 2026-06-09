@@ -252,7 +252,6 @@ function PageShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function AdminWorkerInvites() {
-  const { tenantSlug } = useParams<{ tenantSlug: string }>();
   return (
     <Gate
       perm="admin.invite_user"
