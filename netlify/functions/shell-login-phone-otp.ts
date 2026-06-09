@@ -142,12 +142,14 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
 
   // Look up the Shell user by phone.
   type UserRow = Omit<CanonicalUser, 'pin_hash' | 'phone'>;
-  const { data: user, error: userErr } = await sb
+  let user: UserRow | null;
+  let userErr: { message: string } | null;
+  ({ data: user, error: userErr } = await sb
     .from('users')
     .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at, totp_secret, totp_enrolled_at, created_at')
     .eq('phone', phone)
     .eq('active', true)
-    .maybeSingle<UserRow>();
+    .maybeSingle<UserRow>());
 
   if (userErr) {
     // eslint-disable-next-line no-console
@@ -185,7 +187,7 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
           .is('user_id', null);
         // eslint-disable-next-line no-console
         console.info('[shell-login-phone-otp] email-fallback self-heal for', authEmail);
-        user = emailUser as typeof user;
+        user = emailUser;
       }
     }
   }
