@@ -18,9 +18,11 @@ import { useSession } from '../session';
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 const CARDS_BASE = 'https://cards.eq.solutions';
 
-function joinUrl(tenantSlug: string, orgName?: string): string {
-  const base = `${CARDS_BASE}/join?tenant=${encodeURIComponent(tenantSlug)}`;
-  return orgName ? `${base}&name=${encodeURIComponent(orgName)}` : base;
+function joinUrl(tenantSlug: string, _orgName?: string): string {
+  // Routes to /claim?tenant= so workers enter their phone and the app
+  // looks up their pre-existing invite. Falls back to an error screen if
+  // no invite is found — keeps open enrollment off by default.
+  return `${CARDS_BASE}/claim?tenant=${encodeURIComponent(tenantSlug)}`;
 }
 
 function whatsAppMsg(orgName: string, url: string): string {
