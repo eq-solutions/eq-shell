@@ -32,6 +32,8 @@ import AdminSecurityGroups from './pages/AdminSecurityGroups';
 import AccessControlPage from './pages/AccessControlPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
+import AdminWorkerInvites from './pages/AdminWorkerInvites';
+import AdminWorkerInviteForm from './pages/AdminWorkerInviteForm';
 import AdminTenantsPage from './pages/AdminTenantsPage';
 import AdminWorkersPage from './pages/AdminWorkersPage';
 import AdminDataActivationPage from './pages/AdminDataActivationPage';
@@ -478,6 +480,9 @@ function TenantTree() {
         <Route path="admin/audit" element={<AdminAuditPage />} />
         {/* Migration reconciliation — expected vs landed counts per entity */}
         <Route path="admin/migration" element={<AdminMigrationPage />} />
+        {/* Worker invite management — Cards activation links */}
+        <Route path="admin/workers" element={<AdminWorkerInvites />} />
+        <Route path="admin/workers/invite" element={<AdminWorkerInviteForm />} />
         {/* Cards → Field review queue */}
         <Route path="admin/cards-feed" element={<AdminCardsFeed />} />
         {/* Polish 2026-05-21 — tenant settings */}
