@@ -141,7 +141,7 @@
 }
 
 .eq-rec-drawer__row:last-child { border-bottom: none; }
-.eq-rec-drawer__row:hover { background: #F9FAFB; }
+.eq-rec-drawer__row:hover { background: #EEECEA; }
 
 /* Round avatar */
 .eq-rec-drawer__row-av {
