@@ -280,6 +280,30 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     // Non-fatal: the user row was created; continue and the profile can be filled later.
   }
 
+  // Step 9.5: create shell_control.user_tenant_memberships row.
+  // CRITICAL — verify-shell-session calls getUserMemberships() which queries
+  // this table exclusively. Without this row the session cookie is valid but
+  // the next verify returns 401 (activeMembership === undefined) and the user
+  // is immediately bounced to login with an effectively un-reachable workspace.
+  const { error: insertMembershipErr } = await sb
+    .schema('shell_control')
+    .from('user_tenant_memberships')
+    .upsert(
+      {
+        user_id: authUser.id!,
+        tenant_id: tenant.id,
+        role: 'employee' as const,
+        active: true,
+      },
+      { onConflict: 'user_id,tenant_id', ignoreDuplicates: true },
+    );
+
+  if (insertMembershipErr) {
+    // eslint-disable-next-line no-console
+    console.error('[shell-join-tenant] insert user_tenant_memberships error:', insertMembershipErr.message);
+    return jsonResponse(500, { error: 'Database error' });
+  }
+
   // Step 10: create org_memberships row if we found an org.
   if (org) {
     const { error: insertMemberErr } = await sb
