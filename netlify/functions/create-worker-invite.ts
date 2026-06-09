@@ -153,7 +153,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     .insert({
       org_id:        org.id,
       worker_id:     workerId,
-      profile_data:  { first_name: firstName, last_name: lastName, phone, email },
+      profile_data:  { first_name: firstName, last_name: lastName, phone, email, role },
       licences_data: [],
       created_by:    session.user_id,
       expires_at:    expiresAt,

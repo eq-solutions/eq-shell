@@ -339,7 +339,7 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #9CA3AF;
-  background: #F9FAFB;
+  background: #EEECEA;
   border-top: 1px solid #F3F4F6;
   border-bottom: 1px solid #F3F4F6;
   flex-shrink: 0;
@@ -369,7 +369,7 @@
 }
 
 .eq-mob-sheet__row:last-child { border-bottom: none; }
-.eq-mob-sheet__row:hover { background: #F9FAFB; }
+.eq-mob-sheet__row:hover { background: #EEECEA; }
 
 .eq-mob-sheet__row:focus-visible {
   outline: 2px solid rgba(61, 168, 216, 0.40);
