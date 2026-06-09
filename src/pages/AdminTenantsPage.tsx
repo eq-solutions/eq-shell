@@ -11,7 +11,7 @@
 //   - Poll provision-status every 3s while a tenant is in the `provisioning` state
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, RefreshCw, Plus, ChevronUp, Database } from 'lucide-react';
+import { Loader2, RefreshCw, Plus, ChevronUp, Database, Link2 } from 'lucide-react';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { PlatformLayout } from '../components/PlatformLayout';
@@ -76,6 +76,14 @@ export default function AdminTenantsPage() {
   const [newModules, setNewModules] = useState<Set<string>>(new Set(['cards', 'field', 'service']));
   const [addErr, setAddErr] = useState<string | null>(null);
   const [addLoading, setAddLoading] = useState(false);
+
+  // "Provision link" form state
+  const [showProvisionForm, setShowProvisionForm] = useState(false);
+  const [provisionOrgName, setProvisionOrgName] = useState('');
+  const [provisionLink, setProvisionLink] = useState<string | null>(null);
+  const [provisionErr, setProvisionErr] = useState<string | null>(null);
+  const [provisionLoading, setProvisionLoading] = useState(false);
+  const [provisionCopied, setProvisionCopied] = useState(false);
 
   const loadTenants = async () => {
     setErr(null);
@@ -175,6 +183,38 @@ export default function AdminTenantsPage() {
     }
   };
 
+  const handleGenerateProvisionLink = async () => {
+    setProvisionErr(null);
+    setProvisionLink(null);
+    setProvisionLoading(true);
+    try {
+      const res = await fetch('/.netlify/functions/shell-create-provision-token', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_name: provisionOrgName }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      setProvisionLink(body.url ?? null);
+    } catch (e) {
+      setProvisionErr((e as Error).message);
+    } finally {
+      setProvisionLoading(false);
+    }
+  };
+
+  const copyProvisionLink = async () => {
+    if (!provisionLink) return;
+    try {
+      await navigator.clipboard.writeText(provisionLink);
+      setProvisionCopied(true);
+      setTimeout(() => setProvisionCopied(false), 2500);
+    } catch {
+      // ignore — link visible for manual copy
+    }
+  };
+
   if (!session?.user.is_platform_admin) {
     return (
       <PlatformLayout>
@@ -196,6 +236,14 @@ export default function AdminTenantsPage() {
               <RefreshCw size={14} />
             </Button>
             <Button
+              variant="ghost"
+              onClick={() => { setShowProvisionForm((v) => !v); setProvisionLink(null); setProvisionErr(null); }}
+              style={{ gap: 6 }}
+            >
+              {showProvisionForm ? <ChevronUp size={14} /> : <Link2 size={14} />}
+              {showProvisionForm ? 'Cancel' : 'Provision link'}
+            </Button>
+            <Button
               variant="primary"
               onClick={() => setShowAddForm((v) => !v)}
               style={{ gap: 6 }}
@@ -209,6 +257,82 @@ export default function AdminTenantsPage() {
           All workspaces and their data-plane provisioning status.
         </p>
       </div>
+
+      {/* ── Provision link form ────────────────────────────────────────── */}
+      {showProvisionForm && (
+        <div className="eq-card" style={{ marginBottom: 24 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Generate self-serve provision link</h2>
+          <p style={{ fontSize: 13, color: 'var(--eq-ink-60)', marginBottom: 16 }}>
+            Send this link to an org admin. They verify their phone, and their workspace provisions automatically — no manual DB work.
+          </p>
+          {!provisionLink ? (
+            <>
+              <label className="eq-field" style={{ marginBottom: 12 }}>
+                <span className="eq-field__label">Organisation name</span>
+                <input
+                  className="eq-input"
+                  placeholder="e.g. Acme Corp"
+                  value={provisionOrgName}
+                  onChange={(e) => setProvisionOrgName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && provisionOrgName.trim()) void handleGenerateProvisionLink(); }}
+                  autoFocus
+                />
+              </label>
+              {provisionErr && <p style={{ color: 'var(--eq-err)', fontSize: 13, marginBottom: 12 }}>{provisionErr}</p>}
+              <Button
+                variant="primary"
+                onClick={() => void handleGenerateProvisionLink()}
+                disabled={provisionLoading || !provisionOrgName.trim()}
+                style={{ gap: 6 }}
+              >
+                {provisionLoading ? <Loader2 size={14} className="eq-spin" /> : <Link2 size={14} />}
+                {provisionLoading ? 'Generating…' : 'Generate link'}
+              </Button>
+            </>
+          ) : (
+            <div>
+              <p style={{ fontSize: 13, color: 'var(--eq-ok)', marginBottom: 8, fontWeight: 600 }}>
+                ✓ Link generated for <strong>{provisionOrgName}</strong>
+              </p>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                <input
+                  readOnly
+                  value={provisionLink}
+                  style={{
+                    flex: 1, height: 40, padding: '0 10px',
+                    border: '1px solid var(--eq-border)', borderRadius: 6,
+                    fontSize: 12, fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+                    background: 'var(--eq-bg)', color: 'var(--eq-ink)',
+                  }}
+                  onFocus={(e) => e.target.select()}
+                />
+                <button
+                  type="button"
+                  onClick={() => void copyProvisionLink()}
+                  style={{
+                    height: 40, padding: '0 16px', borderRadius: 6,
+                    border: '1px solid var(--eq-border)', background: 'transparent',
+                    color: 'var(--eq-deep)', fontWeight: 600, fontSize: 13,
+                    cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {provisionCopied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--eq-ink-40)' }}>
+                One-time use. The workspace is provisioned when the admin completes phone verification.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setProvisionLink(null); setProvisionOrgName(''); }}
+                style={{ marginTop: 8, background: 'none', border: 'none', color: 'var(--eq-sky)', fontSize: 13, cursor: 'pointer', padding: 0 }}
+              >
+                Generate another link
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Add tenant form ─────────────────────────────────────────────── */}
       {showAddForm && (
