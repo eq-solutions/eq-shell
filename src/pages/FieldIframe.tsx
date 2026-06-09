@@ -78,8 +78,20 @@ function isHandoffMessage(data: unknown): data is HandoffMessage {
   return m.source === 'eq-field-shell-handoff' && m.version === 1;
 }
 
+// Assert at module load time that VITE_FIELD_URL is configured.
+// Without it the iframe bridge has no trusted origin to validate against
+// and token refresh postMessages would be accepted from any origin.
+const _FIELD_URL = import.meta.env.VITE_FIELD_URL as string | undefined;
+if (!_FIELD_URL || _FIELD_URL.trim() === '') {
+  throw new Error('VITE_FIELD_URL is not configured — iframe bridge will not work');
+}
+// Derive the trusted origin once from the canonical URL, not from the
+// incoming event. new URL() will throw if the value is malformed, which
+// is intentional — a misconfigured env var should surface immediately.
+const FIELD_EXPECTED_ORIGIN: string = new URL(_FIELD_URL).origin;
+
 export default function FieldIframe() {
-  const { session } = useSession();
+  const { session, loading } = useSession();
   const [selectedTenant, setSelectedTenant] = useState<TenantSlug | null>(null);
   const [src, setSrc] = useState<string | null>(null);
   const [state, setState] = useState<HandoffState>({ phase: 'minting' });
@@ -255,12 +267,14 @@ export default function FieldIframe() {
   // TOKEN MODE: token refresh requests from Field.
   useEffect(() => {
     if (selectedTenant && tenantUsesCookieAuth(selectedTenant)) return;
-    const expectedOrigin = import.meta.env.VITE_FIELD_URL as string | undefined;
+    // Always validate origin against FIELD_EXPECTED_ORIGIN (derived from
+    // VITE_FIELD_URL at module load). There is no fallback to ev.origin —
+    // accepting an unverified origin would allow any page to trigger a
+    // token refresh and read the response via the iframe ref.
     async function onMessage(ev: MessageEvent) {
       if (!ev.data || typeof ev.data !== 'object') return;
       if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
-      if (expectedOrigin && ev.origin !== expectedOrigin) return;
-      const origin = expectedOrigin ?? ev.origin;
+      if (ev.origin !== FIELD_EXPECTED_ORIGIN) return;
       try {
         const res = await fetch('/.netlify/functions/token-exchange', {
           method: 'POST',
@@ -271,19 +285,19 @@ export default function FieldIframe() {
         if (!res.ok) {
           iframeRef.current?.contentWindow?.postMessage(
             { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
-            origin,
+            FIELD_EXPECTED_ORIGIN,
           );
           return;
         }
         const body = (await res.json()) as { token: string };
         iframeRef.current?.contentWindow?.postMessage(
           { type: 'SHELL_TOKEN_RESPONSE', token: body.token },
-          origin,
+          FIELD_EXPECTED_ORIGIN,
         );
       } catch {
         iframeRef.current?.contentWindow?.postMessage(
           { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
-          origin,
+          FIELD_EXPECTED_ORIGIN,
         );
       }
     }
@@ -294,7 +308,17 @@ export default function FieldIframe() {
   // Picker — no tenant chosen yet.
   if (!selectedTenant) {
     // No Field workspace configured for this account.
+    // Guard: if session is still being verified (stale sessionStorage in-flight),
+    // show "Connecting…" rather than flashing the error — verify-shell-session
+    // will refresh the session with the correct is_platform_admin / tenant.slug.
     if (visibleOptions.length === 0) {
+      if (loading) {
+        return (
+          <HubLayout iframe hideMainSidebar>
+            <div className="eq-field-frame-loading">Connecting to EQ Field…</div>
+          </HubLayout>
+        );
+      }
       return (
         <HubLayout iframe hideMainSidebar>
           <div className="eq-field-frame-loading">

@@ -1643,15 +1643,23 @@ table.prev th {
 }
 
 .eq-hub-sidebar__brand img {
-  filter: drop-shadow(0 0 10px rgba(61, 168, 216, 0.55));
+  filter: drop-shadow(0 0 18px rgba(61, 168, 216, 0.55));
 }
 
 .eq-hub-sidebar__brand-label {
-  font-size: 17px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  color: rgba(255,255,255,0.95);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.85);
   white-space: nowrap;
+}
+.eq-hub-sidebar__brand-label::before {
+  content: "| ";
+  color: rgba(255,255,255,0.22);
+  font-weight: 400;
+  letter-spacing: 0;
+  margin-right: 2px;
 }
 
 @keyframes eq-live-pulse {
@@ -1761,7 +1769,7 @@ table.prev th {
   gap: 10px;
   padding: 9px 20px;
   text-decoration: none;
-  color: rgba(255,255,255,0.45);
+  color: rgba(255,255,255,0.6);
   font-size: 14px;
   font-weight: 500;
   border-left: 2px solid transparent;
@@ -1769,22 +1777,25 @@ table.prev th {
 }
 
 .eq-hub-sidebar__nav-item:hover,
-.eq-hub-sidebar__nav-item.active {
+.eq-hub-sidebar__nav-item[data-active="true"] {
   color: #FFFFFF;
   background: rgba(255,255,255,0.04);
   border-left-color: var(--eq-brand);
 }
 
 .eq-hub-sidebar__nav-icon {
-  width: 30px;
-  height: 30px;
-  background: rgba(61,168,216,0.12);
-  border: 1px solid rgba(61,168,216,0.24);
-  border-radius: 7px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  color: rgba(255,255,255,0.35);
+  transition: color 0.12s;
+}
+
+.eq-hub-sidebar__nav-item:hover .eq-hub-sidebar__nav-icon,
+.eq-hub-sidebar__nav-item[data-active="true"] .eq-hub-sidebar__nav-icon {
   color: var(--eq-brand);
 }
 
@@ -1824,6 +1835,21 @@ table.prev th {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Tenant switcher — move from below live badge to just above the user block.
+ * AppSidebar renders the switcher with an inline margin style, so !important
+ * is needed to override it. When the switcher is absent, user block falls back
+ * to margin-top:auto from AppShell.css (no :has match). */
+.eq-hub__sidebar > div:has(button[aria-haspopup="listbox"]) {
+  order: 99;
+  margin-top: auto !important;
+  margin-bottom: 0 !important;
+  padding: 0 20px 8px;
+}
+.eq-hub__sidebar:has(button[aria-haspopup="listbox"]) .eq-hub-sidebar__user {
+  order: 100;
+  margin-top: 0;
 }
 
 .eq-hub-sidebar__user {
@@ -2874,14 +2900,12 @@ table.prev th {
 
   /* Icons pop against the dark rail */
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-icon {
-    background: rgba(255,255,255,0.1);
-    color: rgba(255,255,255,0.75);
+    color: rgba(255,255,255,0.5);
   }
 
-  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-item.active .eq-hub-sidebar__nav-icon,
+  .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-item[data-active="true"] .eq-hub-sidebar__nav-icon,
   .eq-hub__sidebar-rail-wrap .eq-hub__sidebar .eq-hub-sidebar__nav-item:hover .eq-hub-sidebar__nav-icon {
-    background: rgba(61,168,216,0.25);
-    color: #ffffff;
+    color: var(--eq-brand);
   }
 
   /* User avatar stays centered in rail */

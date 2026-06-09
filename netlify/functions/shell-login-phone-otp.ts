@@ -6,13 +6,15 @@
 // supabase.auth.verifyOtp) for an eq_shell_session cookie.
 //
 // Flow:
-//   1. Validate the Supabase access_token by calling auth.getUser() —
+//   1. Rate-limit check: 5 attempts per phone per 15-minute window, keyed by
+//      "phone-otp:<phone>". Returns 429 with Retry-After if exceeded.
+//   2. Validate the Supabase access_token by calling auth.getUser() —
 //      this hits Supabase's /auth/v1/user endpoint, which verifies the
 //      JWT signature and expiry server-side.
-//   2. Confirm the phone in the Supabase auth user matches the submitted
+//   3. Confirm the phone in the Supabase auth user matches the submitted
 //      phone — prevents a stolen token from looking up a different number.
-//   3. Look up the user in shell_control.users by phone.
-//   4. Hydrate tenant + entitlements and mint the shell session cookie,
+//   4. Look up the user in shell_control.users by phone.
+//   5. Hydrate tenant + entitlements and mint the shell session cookie,
 //      returning the same payload shape as shell-login so the React
 //      session context works identically.
 //
@@ -110,6 +112,27 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     return jsonResponse(500, { error: (e as Error).message });
   }
 
+  // Rate limiting: 5 attempts per phone per 15-minute window.
+  // Keyed by phone so a single attacker can't flood one account.
+  // On success, the key is cleared so legitimate users start fresh.
+  const rlKey = `phone-otp::${phone}`;
+
+  const { data: rlResult, error: rlErr } = await sb.schema('public').rpc('check_and_increment_rate_limit', {
+    p_key: rlKey,
+  });
+  if (rlErr) {
+    // eslint-disable-next-line no-console
+    console.error('[shell-login-phone-otp] rate-limit check failed — blocking as precaution:', rlErr.message);
+    return jsonResponse(503, { valid: false, error: 'service-unavailable' });
+  } else {
+    const rl = rlResult as { blocked: boolean; retry_after_seconds: number } | null;
+    if (rl?.blocked) {
+      return jsonResponse(429, { valid: false, error: 'too-many-attempts', retry_after: rl.retry_after_seconds }, {
+        'Retry-After': String(rl.retry_after_seconds),
+      });
+    }
+  }
+
   // Validate the Supabase access_token. getUser(jwt) calls /auth/v1/user
   // with the provided JWT as the Bearer token — Supabase verifies the
   // signature and expiry and returns the auth user record.
@@ -142,18 +165,57 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
 
   // Look up the Shell user by phone.
   type UserRow = Omit<CanonicalUser, 'pin_hash' | 'phone'>;
-  const { data: user, error: userErr } = await sb
+  let user: UserRow | null;
+  let userErr: { message: string } | null;
+  ({ data: user, error: userErr } = await sb
     .from('users')
     .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at, totp_secret, totp_enrolled_at, created_at')
     .eq('phone', phone)
     .eq('active', true)
-    .maybeSingle<UserRow>();
+    .maybeSingle<UserRow>());
 
   if (userErr) {
     // eslint-disable-next-line no-console
     console.error('[shell-login-phone-otp] users lookup error:', userErr.message);
     return jsonResponse(500, { error: 'Database error' });
   }
+
+  // ── Email-based self-heal fallback ───────────────────────────────────────
+  // When phone-OTP succeeds (authUser is valid) but shell_control.users has no
+  // phone set yet (e.g. the user signed up via email before their worker record
+  // was created), look them up by email and patch the phone link on the fly.
+  // After this runs, future phone-OTP logins hit the fast path (phone lookup).
+  if (!user) {
+    const authEmail = (authUser as { email?: string | null }).email?.toLowerCase();
+    if (authEmail) {
+      const { data: emailUser, error: emailErr } = await sb
+        .from('users')
+        .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at, totp_secret, totp_enrolled_at, created_at')
+        .eq('email', authEmail)
+        .is('phone', null)
+        .eq('active', true)
+        .maybeSingle<UserRow>();
+
+      if (!emailErr && emailUser) {
+        // Patch phone on shell_control.users so the fast path works next time
+        void sb.from('users').update({ phone }).eq('id', emailUser.id);
+        // Patch auth.users via admin API (service role)
+        void (sb as unknown as {
+          auth: { admin: { updateUserById: (id: string, attrs: Record<string, unknown>) => Promise<unknown> } };
+        }).auth.admin.updateUserById(emailUser.id, { phone });
+        // Also claim the worker if it exists and is unclaimed
+        void sb.schema('public').from('workers')
+          .update({ user_id: emailUser.id })
+          .eq('email', authEmail)
+          .is('user_id', null);
+        // eslint-disable-next-line no-console
+        console.info('[shell-login-phone-otp] email-fallback self-heal for', authEmail);
+        user = emailUser;
+      }
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   if (!user) {
     return jsonResponse(200, { valid: false });
   }
@@ -200,6 +262,10 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     p_ip: ip,
     p_detail: { method: 'phone-otp', role: user.role },
   });
+
+  // Clear the rate-limit bucket on successful login so legitimate users
+  // start fresh the next time they need to authenticate.
+  void sb.schema('public').rpc('clear_rate_limit', { p_key: rlKey });
 
   const exp = Date.now() + SESSION_TTL_MS;
   const cookieValue = signSessionToken({

@@ -32,8 +32,12 @@ import AdminSecurityGroups from './pages/AdminSecurityGroups';
 import AccessControlPage from './pages/AccessControlPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
+import AdminWorkerInvites from './pages/AdminWorkerInvites';
+import AdminWorkerInviteForm from './pages/AdminWorkerInviteForm';
+import AdminWorkerQR from './pages/AdminWorkerQR';
 import AdminTenantsPage from './pages/AdminTenantsPage';
 import AdminWorkersPage from './pages/AdminWorkersPage';
+import AdminDataActivationPage from './pages/AdminDataActivationPage';
 import EntityBrowserPage from './pages/EntityBrowserPage';
 import CustomersHubPage from './pages/CustomersHubPage';
 import { CustomersPage } from './pages/CustomersPage';
@@ -189,7 +193,34 @@ function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const init = async () => {
+      // Post-provision handoff: Cards opens Shell with #sh=<goTrueToken>
+      // appended to the URL. Exchange it for a shell session cookie before
+      // running the normal session verify, so the admin lands already logged
+      // in — no second OTP required.
+      const hash = window.location.hash; // e.g. "#sh=eyJhb..."
+      if (hash.startsWith('#sh=')) {
+        const token = new URLSearchParams(hash.slice(1)).get('sh') ?? '';
+        // Strip the fragment immediately — don't leave JWTs in browser history.
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+        if (token) {
+          try {
+            await fetch('/.netlify/functions/shell-handoff-provision', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ access_token: token }),
+            });
+          } catch {
+            // Non-fatal — fall through to normal session check. If the
+            // exchange fails the admin sees the login page and can sign in
+            // with their phone number as before.
+          }
+        }
+      }
+      void refresh();
+    };
+    void init();
   }, [refresh]);
 
   // Background poll every 5 min so deactivated users / role changes
@@ -237,9 +268,14 @@ function RequireSession({ children }: { children: ReactNode }) {
 }
 
 function ModuleGate({ module, children }: { module: string; children: ReactNode }) {
-  const { session } = useSession();
+  const { session, loading } = useSession();
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   if (!session) return null;
+  // Hold until verify-shell-session resolves. The stale sessionStorage session
+  // may have incomplete entitlements (e.g. after a hard refresh mid-flight).
+  // Redirecting before verify completes would bounce the user back to the tenant
+  // home even though the module is actually entitled.
+  if (loading) return null;
   if (!moduleEnabled(session, module)) {
     return <Navigate to={`/${tenantSlug}`} replace />;
   }
@@ -472,12 +508,17 @@ function TenantTree() {
         <Route path="admin/audit" element={<AdminAuditPage />} />
         {/* Migration reconciliation — expected vs landed counts per entity */}
         <Route path="admin/migration" element={<AdminMigrationPage />} />
+        {/* Worker invite management — Cards activation links */}
+        <Route path="admin/workers" element={<AdminWorkerInvites />} />
+        <Route path="admin/workers/invite" element={<AdminWorkerInviteForm />} />
+        <Route path="admin/workers/qr" element={<AdminWorkerQR />} />
         {/* Cards → Field review queue */}
         <Route path="admin/cards-feed" element={<AdminCardsFeed />} />
         {/* Polish 2026-05-21 — tenant settings */}
         <Route path="admin/settings" element={<AdminTenantSettings />} />
         <Route path="admin/security-groups" element={<AdminSecurityGroups />} />
         <Route path="admin/access-control" element={<AccessControlPage />} />
+        <Route path="admin/data-activation" element={<AdminDataActivationPage />} />
         {/* Phase 1.G — TOTP 2FA enrollment (any logged-in user) */}
         <Route path="settings/2fa" element={<EnrollTotp />} />
         <Route

@@ -11,6 +11,42 @@
 import { useRef, useState, type DragEvent, type JSX } from "react";
 import { roleLabel, type IntakeBundle } from "./intake-bundle.js";
 
+// ---------------------------------------------------------------------------
+// Entity label map (role → human label)
+// ---------------------------------------------------------------------------
+const ENTITY_LABELS: Record<string, string> = {
+  customer: "Customers",
+  site:     "Sites",
+  contact:  "Contacts",
+  staff:    "Staff",
+  licence:  "Licences",
+  asset:    "Assets",
+};
+
+// ---------------------------------------------------------------------------
+// Upload icon (inline SVG — no external icon dep needed here)
+// ---------------------------------------------------------------------------
+function UploadIcon({ size = 26 }: { size?: number }): JSX.Element {
+  return (
+    <svg
+      width={size} height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="var(--eq-deep)"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Element {
   const { slots, busy, ingestFiles, removeSlot } = bundle;
   const [dragOver, setDragOver] = useState(false);
@@ -23,36 +59,47 @@ export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Elemen
     if (files.length > 0) void ingestFiles(files);
   };
 
+  const hasFiles = slots.length > 0;
+
+  // Build drop zone class
+  const zoneClass = [
+    "eq-intake-dropzone",
+    dragOver ? "eq-intake-dropzone--over" : "",
+    hasFiles ? "eq-intake-dropzone--compact" : "",
+  ].filter(Boolean).join(" ");
+
   return (
     <div>
+      {/* Drop target */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Drop a file or click to pick"
+        className={zoneClass}
         onDrop={onDrop}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onClick={() => inputRef.current?.click()}
-        style={{
-          border: `2px dashed ${dragOver ? "#3DA8D8" : "#EAF5FB"}`,
-          background: dragOver ? "#EAF5FB" : "white",
-          padding: 28,
-          borderRadius: 4,
-          textAlign: "center",
-          cursor: "pointer",
-          marginBottom: 12,
-          fontSize: 15,
-        }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
       >
         {busy && slots.length === 0 ? (
-          <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "var(--eq-deep)", fontSize: 14 }}>
             <span className="eq-spinner__dot" />
             Reading file…
           </span>
-        ) : slots.length === 0 ? (
-          "Drop a file here, or click to pick — we'll work out what it is"
+        ) : hasFiles ? (
+          <>
+            <UploadIcon size={16} />
+            <span>Drop another file, or click to pick</span>
+          </>
         ) : (
-          `${slots.length} file${slots.length === 1 ? "" : "s"} ready — drop more, or pick a destination below`
+          <>
+            <div className="eq-intake-dropzone__icon">
+              <UploadIcon size={26} />
+            </div>
+            <p className="eq-intake-dropzone__title">Drop a SimPRO file here</p>
+            <p className="eq-intake-dropzone__hint">CSV or Excel · We work out what it is</p>
+          </>
         )}
         <input
           ref={inputRef}
@@ -68,67 +115,84 @@ export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Elemen
         />
       </div>
 
+      {/* File slot cards */}
       {slots.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0, marginBottom: 16 }}>
-          {slots.map((slot, i) => (
-            <li
-              key={i}
-              style={{
-                padding: "6px 8px",
-                borderBottom: "1px solid #F4F4F8",
-                fontSize: 13,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: 8,
-              }}
-            >
-              <span style={{ flex: 1 }}>
-                <strong>{slot.file.name}</strong>
-                {slot.sheet?.sheetName && slot.sheet.sheetName !== "Sheet1" && (
-                  <span style={{ color: "#2986B4", fontSize: 11, marginLeft: 6 }}>
-                    [{slot.sheet.sheetName}]
-                  </span>
-                )}{" "}
-                <span style={{ color: "#1A1A2E", opacity: 0.6 }}>
-                  {slot.role === "unknown"
-                    ? "— couldn't tell what this is"
-                    : `— looks like ${roleLabel(slot.role)}`}
-                  {slot.confidence != null && slot.role !== "unknown"
-                    ? ` (${Math.round(slot.confidence * 100)}% sure)`
-                    : ""}
+        <ul className="eq-intake-slots" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+          {slots.map((slot, i) => {
+            const isUnknown = slot.role === "unknown";
+            const conf = slot.confidence != null && !isUnknown
+              ? Math.round(slot.confidence * 100)
+              : null;
+            const lowConf = conf != null && conf < 70;
+
+            const slotClass = [
+              "eq-intake-slot",
+              lowConf ? "eq-intake-slot--warn" : "",
+              isUnknown || slot.error ? "eq-intake-slot--err" : "",
+            ].filter(Boolean).join(" ");
+
+            const entityLabel = ENTITY_LABELS[slot.role] ?? roleLabel(slot.role);
+
+            return (
+              <li key={i} className={slotClass}>
+                {/* Classification chip */}
+                <span className={`eq-entity-chip ${isUnknown ? "eq-entity-chip--unknown" : "eq-entity-chip--typed"}`}>
+                  {isUnknown ? "Unknown" : entityLabel}
                 </span>
-                {slot.confidence != null && slot.confidence < 0.7 && slot.role !== "unknown" && (
-                  <span style={{ display: "block", color: "#d97706", fontSize: 11, marginTop: 2, fontWeight: 500 }}>
-                    Low confidence — does this look right?
-                  </span>
-                )}
-                {slot.error && (
-                  <span style={{ display: "block", color: "#B33A3A", fontSize: 12, marginTop: 2 }}>
-                    {slot.error}
-                  </span>
-                )}
-              </span>
-              <button
-                type="button"
-                onClick={() => removeSlot(i)}
-                disabled={busy}
-                aria-label={`Remove ${slot.file.name}`}
-                style={{
-                  padding: "2px 8px",
-                  fontSize: 12,
-                  flexShrink: 0,
-                  background: "white",
-                  color: "#1A1A2E",
-                  border: "1px solid #EAF5FB",
-                  borderRadius: 4,
-                  cursor: busy ? "not-allowed" : "pointer",
-                }}
-              >
-                Remove
-              </button>
-            </li>
-          ))}
+
+                {/* File info */}
+                <div className="eq-intake-slot__info">
+                  <div className="eq-intake-slot__row">
+                    <span className="eq-intake-slot__name" title={slot.file.name}>
+                      {slot.file.name}
+                    </span>
+                    {slot.sheet?.sheetName && slot.sheet.sheetName !== "Sheet1" && (
+                      <span className="eq-intake-slot__sheet">
+                        [{slot.sheet.sheetName}]
+                      </span>
+                    )}
+                    {slot.sheet && (
+                      <span className="eq-intake-slot__meta">
+                        {slot.sheet.rows.length.toLocaleString()} rows
+                      </span>
+                    )}
+                    {conf != null && (
+                      <span
+                        className="eq-intake-slot__meta"
+                        style={lowConf ? { color: "var(--eq-warn)", fontWeight: 600 } : undefined}
+                      >
+                        {conf}% confident
+                      </span>
+                    )}
+                  </div>
+                  {slot.error && (
+                    <div className="eq-intake-slot__error">{slot.error}</div>
+                  )}
+                  {lowConf && !slot.error && (
+                    <div className="eq-intake-slot__warning">
+                      Low confidence — does this look right?
+                    </div>
+                  )}
+                  {isUnknown && !slot.error && (
+                    <div className="eq-intake-slot__error">
+                      Couldn't classify this file — check the column headers.
+                    </div>
+                  )}
+                </div>
+
+                {/* Remove */}
+                <button
+                  type="button"
+                  className="eq-intake-slot__remove"
+                  onClick={() => removeSlot(i)}
+                  disabled={busy}
+                  aria-label={`Remove ${slot.file.name}`}
+                >
+                  ×
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

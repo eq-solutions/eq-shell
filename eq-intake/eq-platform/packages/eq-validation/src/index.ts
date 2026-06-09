@@ -26,6 +26,8 @@ export { coercePhoneAU } from './coerce-phone-au';
 export { coerceAuState } from './coerce-au-state';
 export { coerceCountry } from './coerce-country';
 export { coerceEnumAlias } from './coerce-enum-alias';
+export { coerceAbn } from './coerce-abn';
+export { coerceEmail } from './coerce-email';
 
 export { resolveFk, jaroWinkler } from './fk-resolver';
 export type { FkResolution, FkCandidate, FkLookup, FkLookupRow } from './fk-resolver';

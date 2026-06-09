@@ -68,12 +68,25 @@ interface ErrBody { ok: false; error: string; detail?: string }
 // on core.eq.solutions — cross-origin. Native iOS/Android builds don't
 // send an Origin header so CORS is a no-op for them; this only matters
 // for the web build, but the web build is how Royce smoke-tests.
-const ALLOWED_ORIGIN_EXACT = new Set<string>(['https://cards.eq.solutions']);
+//
+// S2-16: In production, restrict to the two canonical EQ origins only.
+// In non-production contexts (deploy-preview, branch-deploy, dev), the
+// broader allowlist (including Netlify deploy-preview URLs) is kept so
+// that PR previews and staging remain testable.
+const isProd = process.env.CONTEXT === 'production';
+const PROD_ORIGINS = ['https://core.eq.solutions', 'https://cards.eq.solutions'];
+const ALLOWED_ORIGIN_EXACT = new Set<string>(
+  isProd ? PROD_ORIGINS : ['https://cards.eq.solutions'],
+);
 const ALLOWED_ORIGIN_RE    = /^https:\/\/deploy-preview-\d+--eq-cards\.netlify\.app$/;
 
 function corsHeaders(origin: string | null): Record<string, string> {
   if (!origin) return {};
-  const ok = ALLOWED_ORIGIN_EXACT.has(origin) || ALLOWED_ORIGIN_RE.test(origin);
+  // In production, only exact-match against PROD_ORIGINS. The deploy-preview
+  // regex is intentionally skipped in production — previews don't run on prod.
+  const ok = isProd
+    ? ALLOWED_ORIGIN_EXACT.has(origin)
+    : (ALLOWED_ORIGIN_EXACT.has(origin) || ALLOWED_ORIGIN_RE.test(origin));
   if (!ok) return {};
   return {
     'Access-Control-Allow-Origin':  origin,

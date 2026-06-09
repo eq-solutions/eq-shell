@@ -184,6 +184,9 @@ importers:
 
   eq-intake/eq-platform/packages/eq-format-ui:
     dependencies:
+      '@eq-solutions/tokens':
+        specifier: github:eq-solutions/eq-design-tokens#v1.3.2
+        version: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/7ad0b3556344ecf5db678da0916bb049545fb259
       '@eq/ai':
         specifier: workspace:*
         version: link:../eq-ai
@@ -203,6 +206,9 @@ importers:
       vite:
         specifier: 5.4.10
         version: 5.4.10(@types/node@20.14.0)(lightningcss@1.32.0)
+      vitest:
+        specifier: 2.1.5
+        version: 2.1.5(@types/node@20.14.0)(lightningcss@1.32.0)
 
   eq-intake/eq-platform/packages/eq-intake:
     dependencies:
@@ -243,6 +249,9 @@ importers:
 
   eq-intake/eq-platform/packages/eq-intake-demo:
     dependencies:
+      '@eq-solutions/tokens':
+        specifier: github:eq-solutions/eq-design-tokens#v1.3.2
+        version: https://codeload.github.com/eq-solutions/eq-design-tokens/tar.gz/7ad0b3556344ecf5db678da0916bb049545fb259
       '@eq/ai':
         specifier: workspace:*
         version: link:../eq-ai

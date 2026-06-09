@@ -1,27 +1,74 @@
 // Shared HMAC token helpers for the EQ Shell Netlify functions.
 //
-// Two token shapes are produced here:
+// Token shapes produced here:
 //
 //   1. Session cookie payload — { user_id, tenant_id, exp }
 //      Set by shell-login, validated by verify-shell-session.
 //      Lives in the eq_shell_session cookie on .eq.solutions.
+//      Signed with EQ_SESSION_SALT (falls back to EQ_SECRET_SALT).
 //
-//   2. Iframe handoff token — { kind: 'shell-token', name, role, exp }
+//   2. Field iframe handoff token — { kind: 'shell-token', name, role, exp }
 //      Minted by mint-iframe-token, validated by EQ Field's
 //      /.netlify/functions/verify-pin (action="verify-shell-token").
 //      Must match EQ Field's verifyShellToken() shape exactly —
 //      see Field-side PR #106 (Phase 1.C) for the contract.
+//      Signed with EQ_FIELD_HANDOFF_KEY (falls back to EQ_SECRET_SALT).
 //
-// Both shapes use the same wire format: base64(JSON payload) + "." + hex(HMAC-SHA256).
-// HMAC key is EQ_SECRET_SALT — MUST be the SAME value as eq-solves-field
-// uses, or the iframe handshake won't validate.
+//   3. Service bridge token — { iss, aud, email, tenant_slug, exp }
+//      Signed with EQ_SHELL_BRIDGE_SECRET (already isolated — no EQ_SECRET_SALT fallback).
+//
+//   4. Quotes handoff token — { kind: 'quotes-token', ... }
+//      Signed with EQ_QUOTES_HANDOFF_KEY (falls back to EQ_SECRET_SALT).
+//
+//   5. Internal short-lived tokens (tenant-selection, totp-challenge, trusted-device)
+//      Signed with EQ_SESSION_SALT (falls back to EQ_SECRET_SALT) — same family as the
+//      session cookie since they only travel within the shell login flow.
+//
+// All shapes use the same wire format: base64(JSON payload) + "." + hex(HMAC-SHA256).
+//
+// S2-9: Per-consumer key isolation. Each token family now has its own env var so
+// a key compromise on one consumer cannot be used to forge tokens in another.
+// All new vars fall back to EQ_SECRET_SALT so existing deployments continue to work
+// without any env-var changes. Set the per-consumer vars on Netlify to isolate.
+//
+// To generate a new key (run locally, never commit the value):
+//   openssl rand -hex 32
+//
+// Required env vars per consumer:
+//   EQ_SESSION_SALT          — session cookies + internal shell tokens
+//   EQ_FIELD_HANDOFF_KEY     — field iframe handoff tokens (must also be set in eq-solves-field)
+//   EQ_SERVICE_HANDOFF_KEY   — reserved for future service iframe tokens
+//   EQ_QUOTES_HANDOFF_KEY    — quotes iframe handoff tokens (must also be set in eq-quotes)
+//   EQ_SHELL_BRIDGE_SECRET   — service bridge tokens (already existed; no EQ_SECRET_SALT fallback)
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-// ?? '' keeps TypeScript happy (process.env values are string|undefined).
-// The empty-string case is caught at call time by sign(), which throws
-// 'EQ_SECRET_SALT is not set'. hasSecretSalt() lets callers probe before use.
+// ── S2-9: Per-consumer key resolution ────────────────────────────────────────
+//
+// TokenConsumer identifies which env var family to use for signing/verifying.
+// keyForConsumer() resolves: per-consumer var → EQ_SECRET_SALT legacy fallback.
+// The fallback ensures zero breakage on existing deploys until new vars are set.
+//
+// The _NEXT suffix convention (zero-downtime rotation) applies to session only
+// today (via EQ_SECRET_SALT_NEXT). Per-consumer _NEXT vars can be added when
+// a rotation is initiated on a given consumer — see S1-3 runbook pattern.
+
+export type TokenConsumer =
+  | 'session'          // session cookies + internal shell tokens (tenant-selection, totp, trusted-device)
+  | 'field-handoff'    // field iframe handoff (shell → eq-solves-field)
+  | 'service-handoff'  // service iframe handoff (reserved — shell → eq-solves-service)
+  | 'quotes-handoff'   // quotes iframe handoff (shell → eq-quotes)
+  | 'shell-bridge';    // service bridge token — handled separately via EQ_SHELL_BRIDGE_SECRET
+
+// Legacy shared key — used as the fallback for every consumer until per-consumer
+// vars are deployed. hasSecretSalt() lets callers probe before use.
 const SECRET_SALT = process.env.EQ_SECRET_SALT ?? '';
+// S1-3: Startup warning — missing salt should be visible in logs without
+// crashing cold starts (a throw here would break every function that imports
+// token.ts, even ones that don't sign/verify, e.g. health-check endpoints).
+if (!SECRET_SALT) {
+  console.warn('[token] WARNING: EQ_SECRET_SALT is not set — all token sign/verify calls will fail');
+}
 
 // Optional verify-only fallback for zero-downtime HMAC key rotation (Option A).
 // Two-step rotation:
@@ -32,6 +79,52 @@ const SECRET_SALT = process.env.EQ_SECRET_SALT ?? '';
 // Absent in production until rotation is explicitly initiated. Never used for signing.
 // Ref: eq-context/security-secret-rotation-runbook-2026-05-31.md
 const SECRET_SALT_NEXT = process.env.EQ_SECRET_SALT_NEXT ?? null;
+
+/**
+ * Resolve the HMAC signing key for a given consumer.
+ *
+ * Resolution order:
+ *   1. Per-consumer env var (e.g. EQ_SESSION_SALT)
+ *   2. Legacy EQ_SECRET_SALT fallback
+ *
+ * The fallback means zero env-var changes are needed on existing deploys.
+ * Set the per-consumer var to isolate that consumer's key from all others.
+ *
+ * 'shell-bridge' is NOT handled here — it uses EQ_SHELL_BRIDGE_SECRET directly
+ * (no EQ_SECRET_SALT fallback by design; the bridge secret was always separate).
+ */
+function keyForConsumer(consumer: Exclude<TokenConsumer, 'shell-bridge'>): string {
+  let key: string;
+  switch (consumer) {
+    case 'session':
+      key = process.env.EQ_SESSION_SALT || SECRET_SALT;
+      break;
+    case 'field-handoff':
+      key = process.env.EQ_FIELD_HANDOFF_KEY || SECRET_SALT;
+      break;
+    case 'service-handoff':
+      key = process.env.EQ_SERVICE_HANDOFF_KEY || SECRET_SALT;
+      break;
+    case 'quotes-handoff':
+      key = process.env.EQ_QUOTES_HANDOFF_KEY || SECRET_SALT;
+      break;
+  }
+  if (!key) {
+    console.warn(`[token] WARNING: No key configured for consumer "${consumer}" and EQ_SECRET_SALT is also missing — sign/verify will fail`);
+  }
+  return key;
+}
+
+/**
+ * Optional _NEXT verify-only fallback key for a given consumer.
+ * Today only the 'session' consumer has a _NEXT var (EQ_SECRET_SALT_NEXT).
+ * Returns null for all other consumers — extend as rotations are initiated.
+ */
+function nextKeyForConsumer(consumer: Exclude<TokenConsumer, 'shell-bridge'>): string | null {
+  if (consumer === 'session') return SECRET_SALT_NEXT;
+  // Future: case 'field-handoff': return process.env.EQ_FIELD_HANDOFF_KEY_NEXT ?? null;
+  return null;
+}
 
 // Constant-time HMAC sig comparison. Plain === is vulnerable to
 // timing-based byte-by-byte sig recovery; timingSafeEqual short-
@@ -179,9 +272,14 @@ export interface ShellTokenPayload {
   exp: number;
 }
 
-function sign(payloadJson: string): string {
-  if (!SECRET_SALT) throw new Error('EQ_SECRET_SALT is not set — server misconfigured');
-  return createHmac('sha256', SECRET_SALT).update(payloadJson).digest('hex');
+/**
+ * Compute HMAC-SHA256 for the given consumer's primary key.
+ * Throws if no key is resolvable (same behaviour as the old `sign()` for EQ_SECRET_SALT).
+ */
+function sign(payloadJson: string, consumer: Exclude<TokenConsumer, 'shell-bridge'> = 'session'): string {
+  const key = keyForConsumer(consumer);
+  if (!key) throw new Error(`No HMAC key configured for consumer "${consumer}" — server misconfigured`);
+  return createHmac('sha256', key).update(payloadJson).digest('hex');
 }
 
 /** Compute HMAC-SHA256 with an explicit key (used by the fallback verifier path). */
@@ -199,11 +297,16 @@ function signWithKey(payloadJson: string, key: string): string {
  *
  * verifySessionToken is deliberately NOT routed through here: it has no kind
  * tag and defaults active_tenant_id + memberships on the way out.
+ *
+ * S2-9: accepts a consumer parameter so each token family is verified with its
+ * own key. Defaults to 'session' to preserve behaviour for callers that haven't
+ * been updated yet (no functional change on existing deploys).
  */
 function verifyKindToken<T extends { kind: string; exp: number }>(
   token: string | null | undefined,
   kind: T['kind'],
   hasRequiredFields: (data: T) => boolean,
+  consumer: Exclude<TokenConsumer, 'shell-bridge'> = 'session',
 ): T | null {
   if (!token) return null;
   try {
@@ -211,10 +314,11 @@ function verifyKindToken<T extends { kind: string; exp: number }>(
     if (!b64 || !sig) return null;
     const json = Buffer.from(b64, 'base64').toString();
     // Primary key check.
-    const primaryOk = sigsEqual(sign(json), sig);
-    // Fallback: retry with SECRET_SALT_NEXT if primary fails and _NEXT is configured.
+    const primaryOk = sigsEqual(sign(json, consumer), sig);
+    // Fallback: retry with the consumer's _NEXT key if primary fails and _NEXT is configured.
     if (!primaryOk) {
-      if (!SECRET_SALT_NEXT || !sigsEqual(signWithKey(json, SECRET_SALT_NEXT), sig)) return null;
+      const nextKey = nextKeyForConsumer(consumer);
+      if (!nextKey || !sigsEqual(signWithKey(json, nextKey), sig)) return null;
     }
     const data = JSON.parse(json) as T;
     if (data.kind !== kind) return null;
@@ -228,7 +332,7 @@ function verifyKindToken<T extends { kind: string; exp: number }>(
 
 export function signSessionToken(payload: SessionPayload): string {
   const json = JSON.stringify(payload);
-  const sig = sign(json);
+  const sig = sign(json, 'session');
   return Buffer.from(json).toString('base64') + '.' + sig;
 }
 
@@ -238,11 +342,12 @@ export function verifySessionToken(token: string | null | undefined): SessionPay
     const [b64, sig] = token.split('.');
     if (!b64 || !sig) return null;
     const json = Buffer.from(b64, 'base64').toString();
-    // Primary key check.
-    const primaryOk = sigsEqual(sign(json), sig);
-    // Fallback: retry with SECRET_SALT_NEXT if primary fails and _NEXT is configured.
+    // Primary key check using the session consumer key (EQ_SESSION_SALT → EQ_SECRET_SALT fallback).
+    const primaryOk = sigsEqual(sign(json, 'session'), sig);
+    // Fallback: retry with the session consumer's _NEXT key (EQ_SECRET_SALT_NEXT) if primary fails.
     if (!primaryOk) {
-      if (!SECRET_SALT_NEXT || !sigsEqual(signWithKey(json, SECRET_SALT_NEXT), sig)) return null;
+      const nextKey = nextKeyForConsumer('session');
+      if (!nextKey || !sigsEqual(signWithKey(json, nextKey), sig)) return null;
     }
     const data = JSON.parse(json) as SessionPayload;
     if (typeof data.exp !== 'number' || data.exp < Date.now()) return null;
@@ -270,7 +375,9 @@ export function verifySessionToken(token: string | null | undefined): SessionPay
 
 export function signShellToken(payload: ShellTokenPayload): string {
   const json = JSON.stringify(payload);
-  const sig = sign(json);
+  // S2-9: field-handoff consumer — signed with EQ_FIELD_HANDOFF_KEY (falls back to EQ_SECRET_SALT).
+  // EQ Field's verify-pin must use the same key; update EQ_FIELD_HANDOFF_KEY in eq-solves-field too.
+  const sig = sign(json, 'field-handoff');
   return Buffer.from(json).toString('base64') + '.' + sig;
 }
 
@@ -369,7 +476,7 @@ export interface TenantSelectionTokenPayload {
 
 export function signTenantSelectionToken(payload: TenantSelectionTokenPayload): string {
   const json = JSON.stringify(payload);
-  const sig = sign(json);
+  const sig = sign(json, 'session');
   return Buffer.from(json).toString('base64') + '.' + sig;
 }
 
@@ -397,12 +504,14 @@ export interface QuotesTokenPayload {
 
 export function signQuotesToken(payload: QuotesTokenPayload): string {
   const json = JSON.stringify(payload);
-  const sig = sign(json);
+  // S2-9: quotes-handoff consumer — signed with EQ_QUOTES_HANDOFF_KEY (falls back to EQ_SECRET_SALT).
+  // eq-quotes must use the same key for its receiver validation.
+  const sig = sign(json, 'quotes-handoff');
   return Buffer.from(json).toString('base64') + '.' + sig;
 }
 
 export function verifyQuotesToken(token: string | null | undefined): QuotesTokenPayload | null {
-  return verifyKindToken<QuotesTokenPayload>(token, 'quotes-token', (d) => !!d.user_id && !!d.tenant_id);
+  return verifyKindToken<QuotesTokenPayload>(token, 'quotes-token', (d) => !!d.user_id && !!d.tenant_id, 'quotes-handoff');
 }
 
 /**
@@ -422,7 +531,7 @@ export interface TotpChallengeTokenPayload {
 
 export function signTotpChallengeToken(payload: TotpChallengeTokenPayload): string {
   const json = JSON.stringify(payload);
-  const sig = sign(json);
+  const sig = sign(json, 'session');
   return Buffer.from(json).toString('base64') + '.' + sig;
 }
 
@@ -489,7 +598,7 @@ const TRUSTED_DEVICE_COOKIE_NAME = 'eq_shell_trusted_device';
 
 export function signTrustedDeviceToken(payload: TrustedDeviceTokenPayload): string {
   const json = JSON.stringify(payload);
-  const sig = sign(json);
+  const sig = sign(json, 'session');
   return Buffer.from(json).toString('base64') + '.' + sig;
 }
 
