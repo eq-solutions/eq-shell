@@ -179,23 +179,7 @@ const APP_DESCRIPTIONS: Record<string, string> = {
   cards:   'Staff profiles and licence cards.',
 };
 
-function CountUp({ value, duration = 700 }: { value: number; duration?: number }) {
-  const [display, setDisplay] = useState(0);
-  const rafRef = useRef<number>(0);
-  useEffect(() => {
-    const startTime = Date.now();
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const t = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
-      setDisplay(Math.round(value * eased));
-      if (t < 1) rafRef.current = requestAnimationFrame(animate);
-    };
-    rafRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [value, duration]);
-  return <>{display.toLocaleString()}</>;
-}
+
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -430,9 +414,7 @@ export default function TenantHome() {
   const quoteCount    = counts?.find((c) => c.entity === 'quote')?.count_total    || null;
   const incidentCount = counts?.find((c) => c.entity === 'incident')?.count_total || null;
   const licenceCount  = counts?.find((c) => c.entity === 'licence')?.count_total  || null;
-  const assetCount    = counts?.find((c) => c.entity === 'asset')?.count_total    ?? null;
-  // asset_service_due: count_total = due within 30 days, count_recent = overdue now.
-  const assetDueSoon  = counts?.find((c) => c.entity === 'asset_service_due')?.count_total  ?? 0;
+  // asset_service_due: count_recent = overdue now (count_total = due within 30 days, not currently used).
   const assetOverdue  = counts?.find((c) => c.entity === 'asset_service_due')?.count_recent ?? 0;
 
   const sidebarRecords = defaultSidebarRecords().map((r) => {
@@ -523,6 +505,41 @@ export default function TenantHome() {
         )}
 
         <div className="eq-hub-content">
+
+          {/* ── Mobile hero card (Frame 1 — EQ Shell 15 mobile handoff) ──
+              Replaces the dark eq-home-hero strip + stat grid on mobile.
+              Hidden on desktop via .eq-mob-hero { display:none } in App.css. */}
+          <div className="eq-mob-hero" aria-hidden="false">
+            <p className="eq-mob-hero__eyebrow">{session.tenant.name}</p>
+            <h1 className="eq-mob-hero__greeting">{greeting()}, {greetName}</h1>
+            <p className="eq-mob-hero__sub">
+              {new Date().toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
+              {' · '}
+              {session.tenant.name}
+            </p>
+            <div className="eq-mob-hero__stats">
+              <div className="eq-mob-hero__stat">
+                <span className="eq-mob-hero__stat-n eq-mob-hero__stat-n--sky">
+                  {loading ? '…' : (aiData && aiData.on_shift.length > 0 ? aiData.on_shift.length : staffCount) ?? '—'}
+                </span>
+                <span className="eq-mob-hero__stat-l">On site</span>
+              </div>
+              <div className="eq-mob-hero__stat">
+                <span className="eq-mob-hero__stat-n eq-mob-hero__stat-n--ink">
+                  {loading ? '…' : quoteCount ?? '—'}
+                </span>
+                <span className="eq-mob-hero__stat-l">Quotes out</span>
+              </div>
+              <div className="eq-mob-hero__stat">
+                <span className="eq-mob-hero__stat-n eq-mob-hero__stat-n--green">
+                  {loading ? '…' : aiData?.pipeline
+                    ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', notation: 'compact', maximumFractionDigits: 0 }).format(aiData.pipeline.total_value_cents / 100)
+                    : '—'}
+                </span>
+                <span className="eq-mob-hero__stat-l">Month WIP</span>
+              </div>
+            </div>
+          </div>
 
           <div className="eq-hub-content__dateline">
             <span className="eq-hub-content__dateline-dot" aria-hidden="true" />
@@ -777,6 +794,31 @@ export default function TenantHome() {
           {err && (
             <EqError title="Couldn't load dashboard" message={err} onRetry={loadData} />
           )}
+
+          {/* ── Mobile apps section (EQ Shell 15 Frame 1) ──
+              List rows with ink icon tiles — replaces grid tiles on mobile.
+              Hidden on desktop via .eq-mob-apps { display:none } in App.css. */}
+          <div className="eq-mob-apps">
+            <p className="eq-mob-apps__head">Apps</p>
+            <div className="eq-mob-apps__card">
+              {enabledApps.map((app) => (
+                <Link
+                  key={app.key}
+                  to={`/${tenantSlug}/${app.to}`}
+                  className="eq-mob-apps__row"
+                >
+                  <span className="eq-mob-apps__row-ic" aria-hidden="true">
+                    {HUB_APP_ICONS[app.key]}
+                  </span>
+                  <span className="eq-mob-apps__row-main">
+                    <span className="eq-mob-apps__row-name">{app.label}</span>
+                    <span className="eq-mob-apps__row-sub">{APP_DESCRIPTIONS[app.key]}</span>
+                  </span>
+                  <ChevronRight size={16} strokeWidth={2} className="eq-mob-apps__row-chev" aria-hidden="true" />
+                </Link>
+              ))}
+            </div>
+          </div>
 
           {/* App tiles */}
           <div className="eq-hub-tiles">
