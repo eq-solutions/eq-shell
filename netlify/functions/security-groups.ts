@@ -145,6 +145,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       return json(200, { ok: true, groups });
     }
 
+
     if (action === 'user_perms') {
       // Returns all perm keys held by a specific user via their group memberships
       // for this tenant. Used by the "Preview permissions" UI.
