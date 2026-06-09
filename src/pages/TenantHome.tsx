@@ -726,7 +726,9 @@ export default function TenantHome() {
                 </>
               )}
               {feed && feed.length === 0 && <p className="eq-hub-col__empty">No activity yet</p>}
-              {(feed ?? []).map((e) => {
+              {(feed ?? []).filter(e =>
+                !(e.event === 'shift.started' && (e.payload as Record<string, unknown>)?.scheduled_count === 0)
+              ).map((e) => {
                 const meta = EVENT_META[e.event] ?? { label: humanizeEvent(e.event), dot: 'default' as const };
                 const detail = eventDetail(e.event, e.payload);
                 return (
