@@ -204,10 +204,15 @@ function greeting(): string {
   return 'Good evening';
 }
 
-function formatDate(): string {
-  return new Date().toLocaleDateString('en-AU', {
+function formatDate(clock?: string): string {
+  const date = new Date().toLocaleDateString('en-AU', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  }).toUpperCase();
+  }).toUpperCase().replace(',', ' ·');
+  return clock ? `${date} · ${clock}` : date;
+}
+
+function formatClock(): string {
+  return new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function relativeTime(iso: string): string {
@@ -246,6 +251,7 @@ export default function TenantHome() {
   // Mobile Records drawer (Frame 5)
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [recordsEntity, setRecordsEntity] = useState<'customer' | 'site' | 'contact' | 'staff' | 'licence'>('customer');
+  const [clock, setClock] = useState(formatClock);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -336,16 +342,17 @@ export default function TenantHome() {
 
   useEffect(() => {
     void loadData();
-    // AI briefing is deferred (user clicks "Load briefing" to reveal it), but
-    // pre-warm the server-side cache on mount so that click is near-instant.
-    // Fire-and-forget: ai-briefing returns immediately when a fresh (<10min)
-    // cache exists and only generates when stale, so this costs at most one
-    // generation per cache window. Result discarded — the UX stays click-to-reveal.
-    void fetch('/.netlify/functions/ai-briefing', { cache: 'no-store' }).catch(() => {});
+    void loadAiData();
     pollRef.current = setInterval(() => { void silentRefreshFeed(); }, 60_000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
+  }, []);
+
+  // Tick the clock every 30 seconds
+  useEffect(() => {
+    const id = setInterval(() => setClock(formatClock()), 30_000);
+    return () => clearInterval(id);
   }, []);
 
   // Detect new Live feed rows arriving from poll refreshes, skip initial load
@@ -519,203 +526,216 @@ export default function TenantHome() {
 
           <div className="eq-hub-content__dateline">
             <span className="eq-hub-content__dateline-dot" aria-hidden="true" />
-            {formatDate()}
+            {formatDate(clock)}
           </div>
 
           <h1 className="eq-hub-content__greeting">
             {greeting()}, {greetName}.
           </h1>
 
-          {/* AI Briefing — deferred until user requests it */}
-          {aiData === null && (
-            <button
-              className="eq-hub-briefing-load"
-              onClick={() => void loadAiData()}
-              disabled={briefingLoading}
-            >
-              {briefingLoading ? 'Loading briefing…' : 'Load AI briefing'}
-            </button>
-          )}
-          {aiData === undefined && (
+          {/* Cross-app stat cards */}
+          <div className="eq-hub-stats">
+            <div className="eq-hub-stat">
+              <span className="eq-hub-stat__value">
+                {loading ? '…' : aiData && aiData.on_shift.length > 0 ? aiData.on_shift.length : (staffCount ?? '—')}
+              </span>
+              <span className="eq-hub-stat__label">on site today</span>
+              <span className="eq-hub-stat__app">EQ FIELD</span>
+            </div>
+            <div className={`eq-hub-stat${assetOverdue > 0 ? ' eq-hub-stat--warn' : ''}`}>
+              <span className="eq-hub-stat__value">
+                {loading ? '…' : assetOverdue > 0 ? assetOverdue : (incidentCount ?? '—')}
+              </span>
+              <span className="eq-hub-stat__label">overdue items</span>
+              <span className="eq-hub-stat__app">EQ SERVICE</span>
+            </div>
+            <div className="eq-hub-stat">
+              <span className="eq-hub-stat__value">
+                {loading ? '…' : aiData?.pipeline
+                  ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', notation: 'compact', maximumFractionDigits: 0 }).format(aiData.pipeline.total_value_cents / 100)
+                  : (quoteCount ?? '—')}
+              </span>
+              <span className="eq-hub-stat__label">live quotes</span>
+              <span className="eq-hub-stat__app">EQ QUOTES</span>
+            </div>
+            <div className="eq-hub-stat">
+              <span className="eq-hub-stat__value">
+                {aiData ? (aiData.actions.filter(a => !actionedTitles.has(a.title)).length || '—') : '—'}
+              </span>
+              <span className="eq-hub-stat__label">pending actions</span>
+              <span className="eq-hub-stat__app">EQ FIELD</span>
+            </div>
+          </div>
+
+          {/* AI Brief — auto-loaded on mount */}
+          {(aiData === undefined || briefingLoading) && (
             <div className="eq-hub-briefing-skeleton">
               <Skeleton variant="text" width={480} />
               <Skeleton variant="text" width={360} />
             </div>
           )}
-          {(aiData?.brief || (aiData?.actions ?? []).length > 0) && (
+          {aiData?.brief && (
             <div className="eq-hub-ai">
-              {/* Brief prose */}
-              {aiData?.brief && (
-                <>
-                  <div className="eq-hub-ai__header">
-                    <span className="eq-hub-ai__badge">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                        <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.5"/>
-                        <path d="M6 3v3l2 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      </svg>
-                      AI Brief
-                    </span>
-                  </div>
-                  <p className="eq-hub-briefing">{aiData.brief}</p>
-                  <div className="eq-hub-ai__meta">
-                    <span>Generated {relativeTime(aiData.generated_at)}</span>
-                    <button
-                      className="eq-hub-ai__regen"
-                      onClick={() => void loadAiData(true)}
-                      disabled={regenerating}
-                      aria-label="Regenerate briefing"
-                    >
-                      {regenerating ? 'Refreshing…' : 'Tap to regenerate'}
-                    </button>
-                  </div>
-                  {(aiData.contributing_sources ?? []).length > 0 && (
-                    <p className="eq-hub-ai__coverage">
-                      Based on{' '}
-                      {aiData.contributing_sources
-                        .map(s => SOURCE_LABELS[s] ?? s)
-                        .join(', ')}
-                    </p>
-                  )}
-                  {(aiData.degraded ?? []).length > 0 && (
-                    <p className="eq-hub-ai__coverage eq-hub-ai__coverage--degraded">
-                      {aiData.degraded
-                        .map(s => DEGRADED_LABELS[s] ?? `${SOURCE_LABELS[s] ?? s} unavailable`)
-                        .join(' · ')}
-                    </p>
-                  )}
-                </>
+              <div className="eq-hub-ai__header">
+                <span className="eq-hub-ai__badge">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M6 3v3l2 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                  AI Brief
+                </span>
+              </div>
+              <p className="eq-hub-briefing">{aiData.brief}</p>
+              <div className="eq-hub-ai__meta">
+                <span>Generated {relativeTime(aiData.generated_at)}</span>
+                <button
+                  className="eq-hub-ai__regen"
+                  onClick={() => void loadAiData(true)}
+                  disabled={regenerating}
+                  aria-label="Regenerate briefing"
+                >
+                  {regenerating ? 'Refreshing…' : 'Tap to regenerate'}
+                </button>
+              </div>
+              {(aiData.contributing_sources ?? []).length > 0 && (
+                <p className="eq-hub-ai__coverage">
+                  Based on{' '}
+                  {aiData.contributing_sources
+                    .map(s => SOURCE_LABELS[s] ?? s)
+                    .join(', ')}
+                </p>
               )}
-
-              {/* Ranked actions */}
-              {(aiData?.actions ?? []).length > 0 && (
-                <div className="eq-hub-actions">
-                  <div className="eq-hub-actions__head">
-                    <span className="eq-hub-actions__title">Today's actions</span>
-                    <span className="eq-hub-actions__count">{aiData!.actions.length} ranked</span>
-                  </div>
-                  <div className="eq-hub-actions__list">
-                    {aiData!.actions
-                      .filter(a => !actionedTitles.has(a.title))
-                      .map((action) => {
-                        const dest = action.app_link ? `/${tenantSlug}/${action.app_link}` : null;
-                        return (
-                          <div key={action.rank} className={`eq-hub-action eq-hub-action--${action.urgency}`}>
-                            <span className="eq-hub-action__rank">{action.rank}</span>
-                            <div className="eq-hub-action__body">
-                              {dest ? (
-                                <Link to={dest} className="eq-hub-action__title-link">
-                                  {action.title}
-                                </Link>
-                              ) : (
-                                <p className="eq-hub-action__title">{action.title}</p>
-                              )}
-                              <div className="eq-hub-action__meta">
-                                <span className="eq-hub-action__source">
-                                  {SOURCE_LABELS[formatSource(action.source)] ?? formatSource(action.source)}
-                                </span>
-                                {action.deadline && (
-                                  <span className="eq-hub-action__deadline">{action.deadline}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="eq-hub-action__feedback">
-                              <button
-                                className="eq-hub-action__btn eq-hub-action__btn--done"
-                                onClick={() => void handleAction(action, 'actioned')}
-                                title="Mark done"
-                                aria-label="Mark done"
-                              >✓</button>
-                              <button
-                                className="eq-hub-action__btn eq-hub-action__btn--dismiss"
-                                onClick={() => void handleAction(action, 'dismissed')}
-                                title="Dismiss"
-                                aria-label="Dismiss"
-                              >×</button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-              )}
-
-              {/* Side panels: On Shift / Upcoming / Pipeline */}
-              {((aiData?.on_shift ?? []).length > 0 || (aiData?.upcoming ?? []).length > 0 || aiData?.pipeline) && (
-                <div className="eq-hub-panels">
-                  {(aiData?.on_shift ?? []).length > 0 && (
-                    <div className="eq-hub-panel">
-                      <div className="eq-hub-panel__head">
-                        <span className="eq-hub-panel__title">On shift now</span>
-                        <span className="eq-hub-panel__count">{aiData!.on_shift.length}</span>
-                      </div>
-                      {aiData!.on_shift.map((s, i) => (
-                        <div key={i} className="eq-hub-panel__item">
-                          <span className="eq-hub-panel__avatar">{s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</span>
-                          <div className="eq-hub-panel__info">
-                            <p className="eq-hub-panel__name">{s.name}</p>
-                            {s.site && <p className="eq-hub-panel__sub">{s.site}{s.since ? ` · since ${s.since}` : ''}</p>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {(aiData?.upcoming ?? []).length > 0 && (
-                    <div className="eq-hub-panel">
-                      <div className="eq-hub-panel__head">
-                        <span className="eq-hub-panel__title">Upcoming</span>
-                        <span className="eq-hub-panel__count">next 48h</span>
-                      </div>
-                      {aiData!.upcoming.map((u, i) => (
-                        <div key={i} className="eq-hub-panel__item eq-hub-panel__item--upcoming">
-                          {(u.day || u.time) && (
-                            <div className="eq-hub-panel__when">
-                              {u.day && <span className="eq-hub-panel__day">{u.day}</span>}
-                              {u.time && <span className="eq-hub-panel__time">{u.time}</span>}
-                            </div>
-                          )}
-                          <div className="eq-hub-panel__info">
-                            <p className="eq-hub-panel__name">{u.label}</p>
-                            <p className="eq-hub-panel__sub">{u.source.replace('eq-', 'EQ ').replace('sks-pipeline', 'Pipeline')}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {aiData?.pipeline && (
-                    <div className="eq-hub-panel">
-                      <div className="eq-hub-panel__head">
-                        <span className="eq-hub-panel__title">Pipeline</span>
-                        <span className="eq-hub-panel__count">
-                          {new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0, notation: 'compact' }).format(aiData.pipeline.total_value_cents / 100)}
-                        </span>
-                      </div>
-                      {Object.entries(aiData.pipeline.by_stage).map(([stage, data]) => (
-                        <div key={stage} className="eq-hub-panel__item">
-                          <span className={`eq-hub-panel__stage-dot eq-hub-panel__stage-dot--${stage}`} aria-hidden="true" />
-                          <div className="eq-hub-panel__info">
-                            <p className="eq-hub-panel__name" style={{ textTransform: 'capitalize' }}>{stage}</p>
-                            <p className="eq-hub-panel__sub">
-                              {data.count} tender{data.count !== 1 ? 's' : ''} ·{' '}
-                              {new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0, notation: 'compact' }).format(data.value_cents / 100)}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                      {aiData.pipeline.bench !== null && (
-                        <div className="eq-hub-panel__capacity">
-                          <span>{aiData.pipeline.bench} on bench</span>
-                          <span className="eq-hub-panel__capacity-sep">·</span>
-                          <span>{aiData.pipeline.peak_demand} peak demand</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+              {(aiData.degraded ?? []).length > 0 && (
+                <p className="eq-hub-ai__coverage eq-hub-ai__coverage--degraded">
+                  {aiData.degraded
+                    .map(s => DEGRADED_LABELS[s] ?? `${SOURCE_LABELS[s] ?? s} unavailable`)
+                    .join(' · ')}
+                </p>
               )}
             </div>
           )}
+
+          {/* Ask anything search bar */}
+          <div className="eq-hub-ask">
+            <input
+              className="eq-hub-ask__input"
+              placeholder="Ask anything about your operations…"
+              readOnly
+              onClick={() => { if (aiData === null) void loadAiData(); }}
+            />
+            <div className="eq-hub-ask__chips">
+              {["Who's on tomorrow?", "What's overdue in Service?", "Quote pipeline this month"].map(q => (
+                <button key={q} className="eq-hub-ask__chip" type="button">{q}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Three-column layout: Today's Actions | Activity | Upcoming */}
+          <div className="eq-hub-cols">
+
+            {/* TODAY'S ACTIONS */}
+            <div className="eq-hub-col">
+              <div className="eq-hub-col__head">
+                <span className="eq-hub-col__title">Today's actions</span>
+                {aiData && <span className="eq-hub-col__count">{aiData.actions.filter(a => !actionedTitles.has(a.title)).length} ranked</span>}
+              </div>
+              {aiData === undefined && (
+                <div style={{ padding: '12px 0' }}>
+                  <Skeleton variant="text" width={220} />
+                  <Skeleton variant="text" width={180} />
+                </div>
+              )}
+              {aiData && aiData.actions.filter(a => !actionedTitles.has(a.title)).length === 0 && (
+                <p className="eq-hub-col__empty">No actions right now</p>
+              )}
+              {(aiData?.actions ?? [])
+                .filter(a => !actionedTitles.has(a.title))
+                .map((action) => {
+                  const dest = action.app_link ? `/${tenantSlug}/${action.app_link}` : null;
+                  return (
+                    <div key={action.rank} className={`eq-hub-action eq-hub-action--${action.urgency}`}>
+                      <span className="eq-hub-action__rank">{action.rank}</span>
+                      <div className="eq-hub-action__body">
+                        {dest ? (
+                          <Link to={dest} className="eq-hub-action__title-link">{action.title}</Link>
+                        ) : (
+                          <p className="eq-hub-action__title">{action.title}</p>
+                        )}
+                        <div className="eq-hub-action__meta">
+                          <span className="eq-hub-action__source">
+                            {SOURCE_LABELS[formatSource(action.source)] ?? formatSource(action.source)}
+                          </span>
+                          {action.deadline && <span className="eq-hub-action__deadline">{action.deadline}</span>}
+                        </div>
+                      </div>
+                      <div className="eq-hub-action__feedback">
+                        <button className="eq-hub-action__btn eq-hub-action__btn--done" onClick={() => void handleAction(action, 'actioned')} title="Mark done" aria-label="Mark done">✓</button>
+                        <button className="eq-hub-action__btn eq-hub-action__btn--dismiss" onClick={() => void handleAction(action, 'dismissed')} title="Dismiss" aria-label="Dismiss">×</button>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* ACTIVITY */}
+            <div className="eq-hub-col">
+              <div className="eq-hub-col__head">
+                <span className="eq-hub-col__title">Activity</span>
+                <span className="eq-hub-col__sub">live{lastRefreshTime ? ` · updated ${refreshAge}` : ''}</span>
+              </div>
+              {loading && !feed && (
+                <>
+                  <Skeleton variant="text" width={220} />
+                  <Skeleton variant="text" width={180} />
+                </>
+              )}
+              {feed && feed.length === 0 && <p className="eq-hub-col__empty">No activity yet</p>}
+              {(feed ?? []).map((e) => {
+                const meta = EVENT_META[e.event] ?? { label: humanizeEvent(e.event), dot: 'default' as const };
+                const detail = eventDetail(e.event, e.payload);
+                return (
+                  <div key={e.id} className={`eq-hub-activity__item${newFeedIds.has(e.id) ? ' eq-hub-activity__item--new' : ''}`}>
+                    <span className={`eq-hub-activity__dot eq-hub-activity__dot--${meta.dot}`} aria-hidden="true" />
+                    <div className="eq-hub-activity__name">{detail ? `${meta.label} — ${detail}` : meta.label}</div>
+                    <span className="eq-hub-activity__source">{APP_LABELS[e.app_source] ?? e.app_source}</span>
+                    <span className="eq-hub-activity__time">{relativeTime(e.occurred_at)}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* UPCOMING */}
+            <div className="eq-hub-col">
+              <div className="eq-hub-col__head">
+                <span className="eq-hub-col__title">Upcoming</span>
+                <span className="eq-hub-col__sub">next 24h</span>
+              </div>
+              {aiData === undefined && (
+                <div style={{ padding: '12px 0' }}>
+                  <Skeleton variant="text" width={200} />
+                  <Skeleton variant="text" width={160} />
+                </div>
+              )}
+              {aiData && (aiData.upcoming ?? []).length === 0 && (
+                <p className="eq-hub-col__empty">Nothing scheduled</p>
+              )}
+              {(aiData?.upcoming ?? []).map((u, i) => (
+                <div key={i} className="eq-hub-panel__item eq-hub-panel__item--upcoming">
+                  {(u.day || u.time) && (
+                    <div className="eq-hub-panel__when">
+                      {u.day && <span className="eq-hub-panel__day">{u.day}</span>}
+                      {u.time && <span className="eq-hub-panel__time">{u.time}</span>}
+                    </div>
+                  )}
+                  <div className="eq-hub-panel__info">
+                    <p className="eq-hub-panel__name">{u.label}</p>
+                    <p className="eq-hub-panel__sub">{u.source.replace('eq-', 'EQ ').replace('sks-pipeline', 'Pipeline')}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+          </div>
 
           {/* Mobile-only Records section (Frame 5 trigger).
               Desktop uses the sidebar; mobile gets a list card here
@@ -753,73 +773,6 @@ export default function TenantHome() {
             </div>
           </div>
 
-          {/* KPI strip */}
-          <div className="eq-hub-kpis">
-            <Link to={`/${tenantSlug}/data/staff`} className="eq-hub-kpi eq-hub-kpi--link">
-              <p className="eq-hub-kpi__label">Team</p>
-              {loading ? (
-                <Skeleton variant="text" width={60} />
-              ) : (
-                <p className="eq-hub-kpi__value">
-                  {staffCount !== null ? <CountUp value={staffCount} /> : '—'}
-                </p>
-              )}
-              <p className="eq-hub-kpi__sub">all staff →</p>
-            </Link>
-            <Link to={`/${tenantSlug}/data/customer`} className="eq-hub-kpi eq-hub-kpi--link">
-              <p className="eq-hub-kpi__label">Customers</p>
-              {loading ? (
-                <Skeleton variant="text" width={60} />
-              ) : (
-                <p className="eq-hub-kpi__value">
-                  {customerCount !== null ? <CountUp value={customerCount} /> : '—'}
-                </p>
-              )}
-              <p className="eq-hub-kpi__sub">all customers →</p>
-            </Link>
-            <Link to={`/${tenantSlug}/data/contact`} className="eq-hub-kpi eq-hub-kpi--link">
-              <p className="eq-hub-kpi__label">Contacts</p>
-              {loading ? (
-                <Skeleton variant="text" width={60} />
-              ) : (
-                <p className="eq-hub-kpi__value">
-                  {contactCount !== null ? <CountUp value={contactCount} /> : '—'}
-                </p>
-              )}
-              <p className="eq-hub-kpi__sub">all contacts →</p>
-            </Link>
-            <Link to={`/${tenantSlug}/data/site`} className="eq-hub-kpi eq-hub-kpi--link">
-              <p className="eq-hub-kpi__label">Sites</p>
-              {loading ? (
-                <Skeleton variant="text" width={60} />
-              ) : (
-                <p className="eq-hub-kpi__value">
-                  {siteCount !== null ? <CountUp value={siteCount} /> : '—'}
-                </p>
-              )}
-              <p className="eq-hub-kpi__sub">all sites →</p>
-            </Link>
-            <Link
-              to={`/${tenantSlug}/data/asset`}
-              className={`eq-hub-kpi eq-hub-kpi--link${assetOverdue > 0 ? ' eq-hub-kpi--warn' : ''}`}
-            >
-              <p className="eq-hub-kpi__label">Equipment</p>
-              {loading ? (
-                <Skeleton variant="text" width={60} />
-              ) : (
-                <p className="eq-hub-kpi__value">
-                  {assetCount !== null ? <CountUp value={assetCount} /> : '—'}
-                </p>
-              )}
-              <p className="eq-hub-kpi__sub">
-                {assetOverdue > 0
-                  ? `${assetOverdue} overdue for service →`
-                  : assetDueSoon > 0
-                    ? `${assetDueSoon} due this month →`
-                    : 'all equipment →'}
-              </p>
-            </Link>
-          </div>
 
           {err && (
             <EqError title="Couldn't load dashboard" message={err} onRetry={loadData} />
@@ -847,47 +800,6 @@ export default function TenantHome() {
             ))}
           </div>
 
-          {/* Cross-app briefing feed — canonical events from EQ Quotes, Service, etc. */}
-          {(feed !== null && feed.length > 0) && (
-            <div>
-              <div className="eq-hub-activity__head">
-                <span className="eq-hub-activity__title">Live feed</span>
-                <span className="eq-hub-activity__subtitle">Business events from your apps</span>
-                {lastRefreshTime && (
-                  <span className="eq-hub-activity__refresh">Updated {refreshAge}</span>
-                )}
-              </div>
-
-              {loading && !feed ? (
-                <div className="eq-hub-activity__list">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="eq-hub-activity__item">
-                      <Skeleton variant="text" width={280} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="eq-hub-activity__list">
-                  {(feed ?? []).map((e) => {
-                    const meta = EVENT_META[e.event] ?? { label: humanizeEvent(e.event), dot: 'default' as const };
-                    const detail = eventDetail(e.event, e.payload);
-                    return (
-                      <div key={e.id} className={`eq-hub-activity__item${newFeedIds.has(e.id) ? ' eq-hub-activity__item--new' : ''}`}>
-                        <span className={`eq-hub-activity__dot eq-hub-activity__dot--${meta.dot}`} aria-hidden="true" />
-                        <div className="eq-hub-activity__name">{detail ? `${meta.label} — ${detail}` : meta.label}</div>
-                        <span className="eq-hub-activity__source">
-                          {APP_LABELS[e.app_source] ?? e.app_source}
-                        </span>
-                        <span className="eq-hub-activity__time">
-                          {relativeTime(e.occurred_at)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Data imports — shown only when there's recent intake activity; full log lives in Import */}
           {events && events.length > 0 && (
