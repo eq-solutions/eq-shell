@@ -524,6 +524,41 @@ export default function TenantHome() {
 
         <div className="eq-hub-content">
 
+          {/* ── Mobile hero card (Frame 1 — EQ Shell 15 mobile handoff) ──
+              Replaces the dark eq-home-hero strip + stat grid on mobile.
+              Hidden on desktop via .eq-mob-hero { display:none } in App.css. */}
+          <div className="eq-mob-hero" aria-hidden="false">
+            <p className="eq-mob-hero__eyebrow">{session.tenant.name}</p>
+            <h1 className="eq-mob-hero__greeting">{greeting()}, {greetName}</h1>
+            <p className="eq-mob-hero__sub">
+              {new Date().toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
+              {' · '}
+              {session.tenant.name}
+            </p>
+            <div className="eq-mob-hero__stats">
+              <div className="eq-mob-hero__stat">
+                <span className="eq-mob-hero__stat-n eq-mob-hero__stat-n--sky">
+                  {loading ? '…' : (aiData && aiData.on_shift.length > 0 ? aiData.on_shift.length : staffCount) ?? '—'}
+                </span>
+                <span className="eq-mob-hero__stat-l">On site</span>
+              </div>
+              <div className="eq-mob-hero__stat">
+                <span className="eq-mob-hero__stat-n eq-mob-hero__stat-n--ink">
+                  {loading ? '…' : quoteCount ?? '—'}
+                </span>
+                <span className="eq-mob-hero__stat-l">Quotes out</span>
+              </div>
+              <div className="eq-mob-hero__stat">
+                <span className="eq-mob-hero__stat-n eq-mob-hero__stat-n--green">
+                  {loading ? '…' : aiData?.pipeline
+                    ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', notation: 'compact', maximumFractionDigits: 0 }).format(aiData.pipeline.total_value_cents / 100)
+                    : '—'}
+                </span>
+                <span className="eq-mob-hero__stat-l">Month WIP</span>
+              </div>
+            </div>
+          </div>
+
           <div className="eq-hub-content__dateline">
             <span className="eq-hub-content__dateline-dot" aria-hidden="true" />
             {formatDate(clock)}
@@ -777,6 +812,31 @@ export default function TenantHome() {
           {err && (
             <EqError title="Couldn't load dashboard" message={err} onRetry={loadData} />
           )}
+
+          {/* ── Mobile apps section (EQ Shell 15 Frame 1) ──
+              List rows with ink icon tiles — replaces grid tiles on mobile.
+              Hidden on desktop via .eq-mob-apps { display:none } in App.css. */}
+          <div className="eq-mob-apps">
+            <p className="eq-mob-apps__head">Apps</p>
+            <div className="eq-mob-apps__card">
+              {enabledApps.map((app) => (
+                <Link
+                  key={app.key}
+                  to={`/${tenantSlug}/${app.to}`}
+                  className="eq-mob-apps__row"
+                >
+                  <span className="eq-mob-apps__row-ic" aria-hidden="true">
+                    {HUB_APP_ICONS[app.key]}
+                  </span>
+                  <span className="eq-mob-apps__row-main">
+                    <span className="eq-mob-apps__row-name">{app.label}</span>
+                    <span className="eq-mob-apps__row-sub">{APP_DESCRIPTIONS[app.key]}</span>
+                  </span>
+                  <ChevronRight size={16} strokeWidth={2} className="eq-mob-apps__row-chev" aria-hidden="true" />
+                </Link>
+              ))}
+            </div>
+          </div>
 
           {/* App tiles */}
           <div className="eq-hub-tiles">

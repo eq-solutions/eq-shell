@@ -2836,25 +2836,186 @@ table.prev th {
     padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
   .eq-hub-content { padding: 20px 16px; }
-  .eq-hub-content__greeting { font-size: 24px; margin-bottom: 18px; }
 
-  /* Stat cards: 2-up on mobile */
-  .eq-hub-stats { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; }
-  .eq-hub-stat { padding: 12px 14px; }
-  .eq-hub-stat__value { font-size: 22px; }
+  /* Desktop-only sections — replaced by mobile hero card + app rows */
+  .eq-home-hero            { display: none; }
+  .eq-hub-content__dateline { display: none; }
+  .eq-hub-content__greeting { display: none; }
+  .eq-hub-stats             { display: none; }
+  .eq-hub-briefing-skeleton { display: none; }
+  .eq-hub-ai                { display: none; }
+  .eq-hub-ask               { display: none; }
+  .eq-hub-cols              { display: none; }
+  .eq-hub-tiles             { display: none; }
+  .eq-hub-panels            { display: none; }
 
-  /* Ask bar chips wrap on small screens */
-  .eq-hub-ask { margin-bottom: 20px; }
-
-  /* 3-column → single column on mobile */
-  .eq-hub-cols { grid-template-columns: 1fr; gap: 12px; margin-bottom: 20px; }
-
-  /* App tiles stay 2-up (tighter gap) instead of collapsing to one column. */
-  .eq-hub-tiles { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; }
-
-  .eq-hub-panels { grid-template-columns: 1fr; }
   .eq-hub-action { padding: 10px 12px; }
   .eq-hub-action__btn { width: 32px; height: 32px; }
+}
+
+/* ── Mobile hero card (replaces dark hero strip + stat grid on mobile) ──
+ * White card with greeting, workspace sub, and 3-stat warm-sand strip.
+ * Frame 1 of the EQ Shell 15 mobile handoff. */
+.eq-mob-hero { display: none; }
+
+@media (max-width: 767px) {
+  .eq-mob-hero {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 14px;
+    padding: 18px 18px 20px;
+    margin-bottom: 20px;
+  }
+
+  .eq-mob-hero__eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    color: #3DA8D8;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin: 0 0 5px;
+    line-height: 1;
+  }
+
+  .eq-mob-hero__greeting {
+    font-size: 22px;
+    font-weight: 800;
+    color: #1A1A2E;
+    letter-spacing: -0.02em;
+    line-height: 1.22;
+    margin: 0 0 5px;
+  }
+
+  .eq-mob-hero__sub {
+    font-size: 12.5px;
+    color: #6B7280;
+    margin: 0;
+  }
+
+  .eq-mob-hero__stats {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .eq-mob-hero__stat {
+    flex: 1;
+    background: #F6F3EE;
+    border-radius: 8px;
+    padding: 9px 10px;
+  }
+
+  .eq-mob-hero__stat-n {
+    display: block;
+    font-size: 18px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    margin-bottom: 3px;
+  }
+
+  .eq-mob-hero__stat-n--sky   { color: #3DA8D8; }
+  .eq-mob-hero__stat-n--ink   { color: #1A1A2E; }
+  .eq-mob-hero__stat-n--green { color: #15803D; }
+
+  .eq-mob-hero__stat-l {
+    display: block;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #9CA3AF;
+  }
+}
+
+/* ── Mobile apps section (replaces grid tiles on mobile) ──
+ * List card of enabled apps with ink icon tiles. */
+.eq-mob-apps { display: none; }
+
+@media (max-width: 767px) {
+  .eq-mob-apps {
+    display: block;
+    margin-bottom: 20px;
+  }
+
+  .eq-mob-apps__head {
+    padding: 0 2px 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #9CA3AF;
+    margin: 0;
+  }
+
+  .eq-mob-apps__card {
+    background: #fff;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .eq-mob-apps__row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 16px;
+    border-bottom: 1px solid #F3F4F6;
+    text-decoration: none;
+    color: inherit;
+    transition: background 100ms ease;
+  }
+
+  .eq-mob-apps__row:last-child { border-bottom: none; }
+  .eq-mob-apps__row:hover { background: #EEECEA; }
+
+  .eq-mob-apps__row:focus-visible {
+    outline: 2px solid rgba(61, 168, 216, 0.40);
+    outline-offset: -2px;
+  }
+
+  /* Ink tile with sky icon */
+  .eq-mob-apps__row-ic {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: #1A1A2E;
+    color: #3DA8D8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .eq-mob-apps__row-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .eq-mob-apps__row-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1A1A2E;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .eq-mob-apps__row-sub {
+    font-size: 12px;
+    color: #6B7280;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .eq-mob-apps__row-chev {
+    flex-shrink: 0;
+    color: #D1D5DB;
+  }
 }
 
 /* ── Mobile Records section (Frame 5 trigger, home screen only) ──
