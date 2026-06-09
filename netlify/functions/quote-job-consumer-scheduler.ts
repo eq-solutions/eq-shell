@@ -1,11 +1,20 @@
 // netlify/functions/quote-job-consumer-scheduler.ts
 //
-// WS4 — Canonical work-order spine (cross-app-linkage-sprint-2026-06-07)
+// WS5 — Durable event bus / outbox marking (cross-app-linkage-sprint-2026-06-09)
+// (supersedes WS4 comment; no logic removed — only durability added)
 //
 // Scheduled Function (every 5 min): polls app_data.canonical_events for
 // unprocessed quote.accepted events and creates the corresponding
 // app_data.jobs rows — the canonical work-order spine entry that lets
 // Field and Service reference the accepted quote as a job.
+//
+// Durability (WS5):
+//   canonical_events.processed_by_quote_job boolean (DEFAULT false) is the
+//   outbox marker.  The query now filters WHERE processed_by_quote_job IS NOT
+//   TRUE so events emitted while the consumer was down are never silently lost.
+//   After a job is created (or confirmed to already exist), the column is
+//   flipped to true.  Re-runs scan only the unprocessed tail — index
+//   idx_ce_unprocessed_quote_job makes this O(unprocessed), not O(all events).
 //
 // Idempotency:
 //   job external_id = 'eq-quotes:job:<quote_id>'
@@ -101,13 +110,16 @@ async function processTenant(tenantSlug: string): Promise<TenantResult> {
   const db = client as any;
   const tenantId = routing.tenant_id;
 
-  // Step 1: Fetch up to BATCH_SIZE quote.accepted events for this tenant.
+  // Step 1: Fetch up to BATCH_SIZE unprocessed quote.accepted events.
+  // WS5: processed_by_quote_job IS NOT TRUE filters already-handled rows.
+  // The partial index idx_ce_unprocessed_quote_job makes this scan O(unprocessed).
   const { data: events, error: eventsErr } = await db
     .schema('app_data')
     .from('canonical_events')
     .select('id, payload, occurred_at')
     .eq('tenant_id', tenantId)
     .eq('event', 'quote.accepted')
+    .not('processed_by_quote_job', 'is', true)
     .order('occurred_at', { ascending: true })
     .limit(BATCH_SIZE);
 
@@ -140,13 +152,28 @@ async function processTenant(tenantSlug: string): Promise<TenantResult> {
 
   let created = 0, skipped = 0, errors = 0;
 
+  // WS5 helper: mark an event as processed so future runs skip it cheaply.
+  async function markProcessed(eventId: number): Promise<void> {
+    const { error } = await db
+      .schema('app_data')
+      .from('canonical_events')
+      .update({ processed_by_quote_job: true })
+      .eq('id', eventId);
+    if (error) {
+      // Non-fatal — worst case the event is re-processed next run (idempotent).
+      console.warn('[quote-job-consumer] markProcessed failed', { tenantSlug, eventId, error: error.message });
+    }
+  }
+
   // Step 3: Create a job for each unprocessed event.
-  for (const event of events as { payload: QuoteAcceptedPayload; occurred_at: string }[]) {
+  for (const event of events as { id: number; payload: QuoteAcceptedPayload; occurred_at: string }[]) {
     const payload = event.payload;
     const quoteId = payload?.quote_id;
 
     if (!quoteId) {
-      console.warn('[quote-job-consumer] event missing quote_id', { tenantSlug });
+      console.warn('[quote-job-consumer] event missing quote_id — marking processed to avoid re-queue loop', { tenantSlug, eventId: event.id });
+      // WS5: poison-pill drain — malformed events must not block the queue indefinitely.
+      await markProcessed(event.id);
       errors++;
       continue;
     }
@@ -154,6 +181,8 @@ async function processTenant(tenantSlug: string): Promise<TenantResult> {
     const externalId = `eq-quotes:job:${quoteId}`;
 
     if (processedSet.has(externalId)) {
+      // Job already exists — mark event processed so it never re-queues.
+      await markProcessed(event.id);
       skipped++;
       continue;
     }
@@ -207,9 +236,13 @@ async function processTenant(tenantSlug: string): Promise<TenantResult> {
         hasCustomer: !!jobRow.customer_id,
         hasSite:     !!jobRow.site_id,
       });
+      // WS5: mark durable — event won't be re-queued on next run.
+      await markProcessed(event.id);
       created++;
     } else if ((insertErr as { code?: string }).code === '23505') {
       // Concurrent insert race — the job was already created. Not an error.
+      // WS5: still mark processed so the event is drained from the queue.
+      await markProcessed(event.id);
       skipped++;
     } else {
       console.error('[quote-job-consumer] job insert failed', {
