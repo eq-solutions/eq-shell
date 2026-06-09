@@ -83,13 +83,13 @@ async function core(req: Request): Promise<Response> {
     if (!authErr && authUser) break;
   }
   if (authErr || !authUser) {
-    return jsonResponse(200, { valid: false, error: 'Token validation failed' });
+    return jsonResponse(401, { valid: false, error: 'Token validation failed' });
   }
 
   // ── Resolve phone from GoTrue user ────────────────────────────────────────
   const phone = normalizeAuPhone(authUser.phone ?? '');
   if (!phone) {
-    return jsonResponse(200, { valid: false, error: 'No phone on GoTrue user' });
+    return jsonResponse(401, { valid: false, error: 'No phone on GoTrue user' });
   }
 
   // ── Look up shell_control.users by phone ──────────────────────────────────
@@ -110,7 +110,7 @@ async function core(req: Request): Promise<Response> {
   if (!user) {
     // User was just provisioned — should always be found. If not, something
     // went wrong in the provision step. Return valid:false; Shell will show login.
-    return jsonResponse(200, { valid: false, error: 'User not found' });
+    return jsonResponse(404, { valid: false, error: 'User not found' });
   }
 
   // ── TOTP gate (same as all other login doors) ─────────────────────────────
@@ -127,7 +127,7 @@ async function core(req: Request): Promise<Response> {
     .maybeSingle<CanonicalTenant>();
 
   if (tenantErr || !tenant || !tenant.active) {
-    return jsonResponse(200, { valid: false, error: 'Tenant not found or inactive' });
+    return jsonResponse(404, { valid: false, error: 'Tenant not found or inactive' });
   }
 
   const { data: entitlements } = await sb
