@@ -22,12 +22,13 @@
 
 import { useMemo, useState, type JSX } from "react";
 import { type ParsedSheet } from "@eq/intake";
-import type { AIProvider } from "@eq/ai";
 import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle } from "../shared/intake-bundle.js";
 import { IntakeDropZone } from "../shared/IntakeDropZone.js";
 import { MappingPreviewPanel } from "../shared/MappingPreviewPanel.js";
 import { RowsDisclosure } from "../shared/RowsDisclosure.js";
 import { entityLabel } from "../shared/entity-label.js";
+import { FreeformIntakeInput, type AiClient } from "../shared/FreeformIntakeInput.js";
+import { ReconcileModule } from "./ReconcileModule.js";
 import { QUICK_DESTINATIONS, encodeCsv, type QuickDestination } from "../quick-export/destinations.js";
 import {
   commitBundleToCanonical,
@@ -55,6 +56,11 @@ export interface IntakeModuleProps {
    */
   tenantId?: string;
   /**
+   * Optional AI client for the freeform natural language input. When absent
+   * the FreeformIntakeInput renders in preview-only mode with a notice.
+   */
+  ai?: AiClient | null;
+  /**
    * Optional callback fired when the user picks a destination. Defaults to a
    * localStorage logger keyed `eq-intake:routes`.
    */
@@ -62,9 +68,6 @@ export interface IntakeModuleProps {
     value: string | undefined,
     source: "suggested" | "free_text",
   ) => void;
-  /** Optional AI provider. When supplied, ambiguous file classifications use
-   *  AI to resolve the best match instead of falling back to the top heuristic. */
-  ai?: AIProvider;
 }
 
 const INTO_EQ_ID = "into-eq";
@@ -95,14 +98,17 @@ function defaultRouteLogger(
   }
 }
 
+type IntakeMode = "import" | "reconcile";
+
 export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const onDestinationChange = useMemo(
     () => props.onDestinationChange ?? defaultRouteLogger,
     [props.onDestinationChange],
   );
 
-  const bundle = useIntakeBundle(props.ai);
+  const bundle = useIntakeBundle();
   const [destId, setDestId] = useState<string>(INTO_EQ_ID);
+  const [mode, setMode] = useState<IntakeMode>("import");
 
   const exportDest = useMemo(
     () => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId),
@@ -116,45 +122,78 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
 
   return (
     <section className="eq-intake-module">
-      <h2>Bring a file in</h2>
-      <p>
-        Drop a SimPRO export — we'll work out what it is, then you choose where
-        it goes. One drop, no retyping.
-      </p>
+      {/* Mode toggle — Import (default) / Reconcile */}
+      <div className="eq-intake-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "import"}
+          className={"eq-intake-tab" + (mode === "import" ? " eq-intake-tab--active" : "")}
+          onClick={() => setMode("import")}
+        >
+          Import
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "reconcile"}
+          className={"eq-intake-tab" + (mode === "reconcile" ? " eq-intake-tab--active" : "")}
+          onClick={() => setMode("reconcile")}
+        >
+          Reconcile
+        </button>
+      </div>
 
-      <IntakeDropZone bundle={bundle} />
-
-      {bundle.slots.length > 0 && (
+      {mode === "reconcile" ? (
+        <ReconcileModule
+          supabase={props.supabase}
+          tenantId={props.tenantId}
+        />
+      ) : (
         <>
-          <DestinationPicker
-            destId={destId}
-            bundle={bundle}
-            onChange={(id) => {
-              setDestId(id);
-              onDestinationChange(id, "suggested");
-            }}
-          />
+          <h2>Bring a file in</h2>
+          <p>
+            Drop a SimPRO export — we'll work out what it is, then you choose where
+            it goes. One drop, no retyping.
+          </p>
 
-          {isCanonical ? (
-            <CommitView
-              bundle={bundle}
-              supabase={props.supabase}
-              tenantId={props.tenantId ?? DEFAULT_TENANT_ID}
-            />
-          ) : joinTemplate ? (
-            <TemplateExportView bundle={bundle} template={joinTemplate} />
-          ) : (
-            exportDest && <ExportView bundle={bundle} dest={exportDest} />
+          <IntakeDropZone bundle={bundle} />
+
+          <FreeformIntakeInput ai={props.ai} />
+
+          {bundle.slots.length > 0 && (
+            <>
+              <DestinationPicker
+                destId={destId}
+                bundle={bundle}
+                onChange={(id) => {
+                  setDestId(id);
+                  onDestinationChange(id, "suggested");
+                }}
+              />
+
+              {isCanonical ? (
+                <CommitView
+                  bundle={bundle}
+                  supabase={props.supabase}
+                  tenantId={props.tenantId ?? DEFAULT_TENANT_ID}
+                />
+              ) : joinTemplate ? (
+                <TemplateExportView bundle={bundle} template={joinTemplate} />
+              ) : (
+                exportDest && <ExportView bundle={bundle} dest={exportDest} />
+              )}
+
+              <button
+                type="button"
+                onClick={() => bundle.reset()}
+                disabled={bundle.busy}
+                className="eq-intake-btn-ghost"
+              >
+                Start over
+              </button>
+            </>
           )}
-
-          <button
-            type="button"
-            onClick={() => bundle.reset()}
-            disabled={bundle.busy}
-            className="eq-intake-btn-ghost"
-          >
-            Start over
-          </button>
         </>
       )}
     </section>
