@@ -22,6 +22,7 @@
     "generate": "tsx scripts/generate.ts",
     "generate:sql": "tsx scripts/generate-sql.ts",
     "schemas:lint": "tsx scripts/lint-schemas.ts",
+    "typecheck": "tsc --noEmit",
     "build": "pnpm generate && tsup",
     "prepare": "pnpm generate",
     "test": "vitest run",

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  typecheck-and-audit:
+    name: Typecheck + audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: TypeScript (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: npm audit (high severity)
+        # Fails if any high or critical vulnerabilities are present.
+        # Use `npm audit fix` locally before opening the PR.
+        run: npm audit --audit-level=high

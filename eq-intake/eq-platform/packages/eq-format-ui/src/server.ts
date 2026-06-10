@@ -18,7 +18,7 @@ import type { Plugin } from "vite";
 
 import { AnthropicProvider, type MapInput } from "@eq/ai";
 import { validate, type ValidateOpts, computeSignatureHash } from "@eq/validation";
-import { derive, listProfiles, getProfile, toCsv } from "./derive";
+import { derive, listProfiles, getProfile, encodeCsv } from "./derive";
 import { mkdir, readFile as fsReadFile, writeFile as fsWriteFile } from "node:fs/promises";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -164,7 +164,7 @@ export function apiPlugin(): Plugin {
               });
             }
             const result = derive(body.profile, body.rows);
-            const csv = toCsv(result.columns, result.rows);
+            const csv = encodeCsv(result.columns, result.rows);
             res.statusCode = 200;
             res.setHeader("Content-Type", "text/csv; charset=utf-8");
             res.setHeader("Content-Disposition", `attachment; filename=\"${body.profile}.csv\"`);

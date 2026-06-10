@@ -1,0 +1,81 @@
+name: Integration tests
+
+# Runs the integration suite (tests/integration/**) against a real local
+# Supabase. Gates PRs and pushes to main alongside the typecheck / build
+# / advisor workflows.
+#
+# These tests assert RLS cross-tenant isolation (and, as more tests land,
+# server-action correctness, role gates, idempotency). They can only run
+# against a real Postgres with real RLS — mocks can't catch tenant-isolation
+# bugs, which is the single largest correctness gap flagged in the
+# 2026-05-14 code review.
+#
+# Cost: ~2-3 min per run (Docker images cached on warm runs; Supabase
+# bootstrap takes the bulk of the time). Integration tests themselves are
+# sub-second per case.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: Integration tests (Supabase local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `supabase start` boots Postgres + GoTrue + PostgREST + Realtime in
+      # Docker containers and applies every migration in supabase/migrations/.
+      # Takes 1-2 min on a warm cache, ~3 min cold.
+      - name: Start local Supabase
+        run: supabase start
+
+      # The integration harness expects NEXT_PUBLIC_SUPABASE_URL,
+      # NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY.
+      # `supabase status -o env` emits the same values under different
+      # names (API_URL / ANON_KEY / SERVICE_ROLE_KEY) — remap them into
+      # GITHUB_ENV so the vitest config's .env.local loader doesn't have
+      # to be modified for CI.
+      - name: Export Supabase env
+        run: |
+          set -euo pipefail
+          supabase status -o env > /tmp/supabase-env
+          # Match the right-hand side of KEY=VALUE pairs verbatim — including
+          # quoting around the JWTs. cut -d= -f2- preserves '=' characters
+          # that might appear inside the value.
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$(grep ^API_URL= /tmp/supabase-env | cut -d= -f2- | tr -d '\"')"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(grep ^ANON_KEY= /tmp/supabase-env | cut -d= -f2- | tr -d '\"')"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$(grep ^SERVICE_ROLE_KEY= /tmp/supabase-env | cut -d= -f2- | tr -d '\"')"
+          } >> "$GITHUB_ENV"
+
+      - name: Run integration tests
+        run: npm run test:integration
+
+      # Always stop the stack so the runner releases ports cleanly. Doesn't
+      # affect the job result.
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop || true

@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EQ Service — What Shipped, 26 Apr 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky: #3DA8D8;
+    --deep: #2986B4;
+    --ice: #EAF5FB;
+    --ink: #1A1A2E;
+    --grey: #6B7280;
+    --line: #E5E7EB;
+    --bg: #FAFBFC;
+    --white: #FFFFFF;
+    --ok: #10B981;
+    --warn: #F59E0B;
+    --bad: #EF4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 64px 32px 96px;
+  }
+  header.hero {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 32px;
+    margin-bottom: 48px;
+  }
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--sky);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  .subtitle {
+    font-size: 17px;
+    color: var(--grey);
+    max-width: 760px;
+  }
+  .meta {
+    display: flex;
+    gap: 24px;
+    margin-top: 24px;
+    font-size: 13px;
+    color: var(--grey);
+    flex-wrap: wrap;
+  }
+  .meta span strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 56px 0 8px;
+  }
+  h2 .num {
+    color: var(--sky);
+    font-weight: 600;
+    margin-right: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  h2 + .blurb {
+    color: var(--grey);
+    margin-bottom: 24px;
+    font-size: 15px;
+    max-width: 760px;
+  }
+  h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--grey);
+  }
+  p { margin-bottom: 12px; }
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    background: var(--ice);
+    color: var(--deep);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  /* ── Stat strip ── */
+  .stat-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 32px 0 48px;
+  }
+  .stat {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--sky);
+  }
+  .stat .num-big {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--grey);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stat .sub {
+    font-size: 12px;
+    color: var(--grey);
+    margin-top: 4px;
+  }
+
+  /* ── Sprint block ── */
+  .sprint {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 16px;
+  }
+  .sprint-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .sprint-id {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--deep);
+    background: var(--ice);
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  .sprint-title {
+    font-size: 17px;
+    font-weight: 700;
+    margin-top: 8px;
+  }
+  .badge {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+  }
+  .badge.shipped { background: #D1FAE5; color: #065F46; border-color: #A7F3D0; }
+  .badge.foundation { background: #DBEAFE; color: #1E40AF; border-color: #BFDBFE; }
+  .badge.existed { background: #F3F4F6; color: #374151; border-color: #E5E7EB; }
+  .sprint-body {
+    font-size: 14.5px;
+    color: var(--ink);
+  }
+  .sprint-body p {
+    margin-bottom: 8px;
+  }
+  .file-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .file-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: #F9FAFB;
+    color: var(--deep);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+  }
+  .file-tag.added { background: #ECFDF5; color: #065F46; border-color: #A7F3D0; }
+  .file-tag.modified { background: #FFFBEB; color: #92400E; border-color: #FDE68A; }
+  .file-tag.migration { background: #EFF6FF; color: #1E40AF; border-color: #BFDBFE; }
+
+  /* ── Migration table ── */
+  .mig-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    font-size: 14px;
+  }
+  .mig-table th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--grey);
+    font-weight: 600;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .mig-table td {
+    padding: 14px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  .mig-table tr:last-child td { border-bottom: none; }
+  .mig-table .num-cell {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--deep);
+    font-weight: 600;
+    width: 80px;
+  }
+  .mig-table .name-cell {
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .mig-table .desc-cell {
+    color: var(--grey);
+    font-size: 13.5px;
+  }
+  .live-pill {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    color: #065F46;
+    background: #D1FAE5;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Decision grid ── */
+  .decision-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .decision-card {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .decision-card .key {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--grey);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+  .decision-card .val {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--ink);
+    line-height: 1.4;
+  }
+
+  /* ── Pending box ── */
+  .pending-box {
+    background: var(--ink);
+    color: var(--white);
+    border-radius: 12px;
+    padding: 32px;
+    margin-top: 48px;
+  }
+  .pending-box h2 {
+    color: var(--white);
+    margin-top: 0;
+  }
+  .pending-box .blurb { color: rgba(255,255,255,0.7); }
+  .pending-list {
+    list-style: none;
+    margin: 24px 0 0 0;
+    padding: 0;
+  }
+  .pending-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.85);
+    font-size: 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .pending-list li:last-child { border-bottom: none; }
+  .pending-list li::before {
+    content: '○';
+    color: var(--sky);
+    font-size: 16px;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .pending-list li code {
+    background: rgba(61, 168, 216, 0.15);
+    color: #BAE6FD;
+  }
+
+  footer {
+    text-align: center;
+    margin-top: 64px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--grey);
+  }
+  footer strong { color: var(--ink); font-weight: 600; }
+
+  @media (max-width: 720px) {
+    .page { padding: 32px 20px 64px; }
+    h1 { font-size: 28px; }
+    .stat-strip { grid-template-columns: repeat(2, 1fr); }
+    .decision-grid { grid-template-columns: 1fr; }
+    .sprint { padding: 20px; }
+    .stat .num-big { font-size: 28px; }
+    .mig-table .num-cell { width: 60px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <div class="eyebrow">Session shipped</div>
+    <h1>EQ Service — what landed today</h1>
+    <p class="subtitle">One-session pass through Royce's 14-item review punch list, plus the phase-2 work to close out the loops. Migrations live in Supabase, code pushed to <code>main</code>, <code>tsc --noEmit</code> clean.</p>
+    <div class="meta">
+      <span><strong>Date:</strong> 26 April 2026</span>
+      <span><strong>Repo:</strong> eq-solves-service</span>
+      <span><strong>Project:</strong> urjhmkhbgaxrofurpbgc</span>
+      <span><strong>Status:</strong> Pushed to main</span>
+    </div>
+  </header>
+
+  <div class="stat-strip">
+    <div class="stat">
+      <div class="num-big">14</div>
+      <div class="label">Items closed</div>
+      <div class="sub">All review items decisioned + built</div>
+    </div>
+    <div class="stat">
+      <div class="num-big">5</div>
+      <div class="label">Migrations live</div>
+      <div class="sub">0060 → 0064 in Supabase</div>
+    </div>
+    <div class="stat">
+      <div class="num-big">10</div>
+      <div class="label">New files</div>
+      <div class="sub">Components, actions, scripts</div>
+    </div>
+    <div class="stat">
+      <div class="num-big">~20</div>
+      <div class="label">Files modified</div>
+      <div class="sub">UI, server actions, types</div>
+    </div>
+  </div>
+
+  <h2><span class="num">01</span>The 14-item punch list</h2>
+  <p class="blurb">Every item from <code>EQ Service items 26.4.26.xlsx</code>, decisioned and built. Some were existing features that just needed naming or polish; others were new builds.</p>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 1.1 · Bug</span>
+        <div class="sprint-title">Logo upload silent fail</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>Customer/site logo "saved" but the page didn't refresh. Cause: <code>revalidatePath</code> only hit the list route, not the detail route. Now revalidates both <code>/customers</code> and <code>/customers/[id]</code> (same for sites), and cross-revalidates between sites ↔ customers.</p>
+      <div class="file-tags">
+        <span class="file-tag modified">app/(app)/customers/actions.ts</span>
+        <span class="file-tag modified">app/(app)/sites/actions.ts</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 1.2 · UX</span>
+        <div class="sprint-title">Loading patterns</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p><code>Button</code> gained a <code>loading</code> prop (inline spinner + auto-disable). New <code>Skeleton</code>, <code>SkeletonRows</code>, <code>SkeletonCards</code> for table/data placeholders. Top progress bar (<code>RouteProgress</code>) was already global — kept.</p>
+      <div class="file-tags">
+        <span class="file-tag modified">components/ui/Button.tsx</span>
+        <span class="file-tag added">components/ui/Skeleton.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 1.3 · UX</span>
+        <div class="sprint-title">Dashboard switcher relabel</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>"My Work / All Work" → "Assigned to Me / All Active Work". Underlying filter on <code>maintenance_checks.assigned_to</code> unchanged.</p>
+      <div class="file-tags">
+        <span class="file-tag modified">app/(app)/dashboard/DashboardViewToggle.tsx</span>
+        <span class="file-tag modified">app/(app)/dashboard/page.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 1.4 · Build</span>
+        <div class="sprint-title">Users — Archive + super_admin Permanently Delete</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>Archive (any admin) preserved. New <code>hardDeleteUserAction</code> — super_admin only, double-confirm with typed-name match, wipes <code>auth.users</code>. Page gained a <code>Show archived</code> toggle that hides removed users by default and shows an archived-count badge.</p>
+      <div class="file-tags">
+        <span class="file-tag modified">app/(app)/admin/users/actions.ts</span>
+        <span class="file-tag modified">app/(app)/admin/users/UsersTable.tsx</span>
+        <span class="file-tag modified">app/(app)/admin/users/page.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 2.1 · Foundation</span>
+        <div class="sprint-title">ReportShell — shared PDF scaffolding</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p><code>buildCover</code> / <code>buildHeader</code> / <code>buildFooter</code> / <code>buildSignoff</code> driven by Report Settings + per-call overrides. Replaces the per-generator copy-paste of cover/header/footer code. <code>compliance-report.ts</code> is the first generator using it (header + footer); the other 7 follow the same pattern at next-touch.</p>
+      <div class="file-tags">
+        <span class="file-tag added">lib/reports/report-shell.ts</span>
+        <span class="file-tag modified">lib/reports/compliance-report.ts</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 2.2 · UX</span>
+        <div class="sprint-title">Print Report — single button + dropdown caret</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>"Print — Simple" + "Print — Detailed" replaced with one <code>SplitButton</code>. Default click runs Standard; caret opens picker for Summary / Standard / Detailed. API route normalises legacy <code>format=simple</code> → <code>summary</code>.</p>
+      <div class="file-tags">
+        <span class="file-tag added">components/ui/SplitButton.tsx</span>
+        <span class="file-tag modified">app/(app)/maintenance/[id]/CheckDetailPage.tsx</span>
+        <span class="file-tag modified">app/api/maintenance-checklist/route.ts</span>
+        <span class="file-tag modified">lib/reports/maintenance-checklist.ts</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 2.4</span>
+        <div class="sprint-title">Report Settings live preview</div>
+      </div>
+      <span class="badge existed">Already existed</span>
+    </div>
+    <div class="sprint-body">
+      <p>Preview thumbnails (light + dark backgrounds) were already in <code>ReportSettingsForm.tsx</code>. Marked complete during scoping.</p>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 3.1 · Build</span>
+        <div class="sprint-title">Attachments — wipe + categorize</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>Migration <code>0060</code> truncates the table + adds <code>attachment_type</code> (Evidence / Reference / Paperwork) with a check constraint. <code>AttachmentList</code> asks for a Type on every upload. Existing items render their Type as a small inline tag.</p>
+      <div class="file-tags">
+        <span class="file-tag migration">supabase/migrations/0060_attachments_categorize.sql</span>
+        <span class="file-tag modified">components/ui/AttachmentList.tsx</span>
+        <span class="file-tag modified">lib/actions/attachments.ts</span>
+        <span class="file-tag modified">lib/types/index.ts</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 3.2 · Build</span>
+        <div class="sprint-title">Defects — auto-population from failed test items</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>Migrations <code>0061</code> + <code>0062</code> add four database triggers:</p>
+      <p>One on <code>maintenance_check_items</code>, one each on <code>acb_test_readings</code>, <code>nsx_test_readings</code>, and <code>test_record_readings</code>. When a row flips to fail, a defect is auto-created. When it un-fails, the defect auto-resolves with an audit note. Severity by label keyword (Visual=low, Functional=medium, Electrical=high) via the <code>fn_severity_from_reading_label</code> helper. Source columns + back-pointers prevent duplicates.</p>
+      <div class="file-tags">
+        <span class="file-tag migration">supabase/migrations/0061_defects_auto_from_failed_items.sql</span>
+        <span class="file-tag migration">supabase/migrations/0062_defects_auto_from_test_readings.sql</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 3.3 · Build</span>
+        <div class="sprint-title">Re-open completed checks + audit</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>New <code>reopenCheckAction</code> + Re-open button on the completed-state header. Status flips to <code>in_progress</code>, audit log captures the amend. No reason field — friction stays low per your decision.</p>
+      <div class="file-tags">
+        <span class="file-tag modified">app/(app)/maintenance/actions.ts</span>
+        <span class="file-tag modified">app/(app)/maintenance/[id]/CheckDetailPage.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 4.1 · Build</span>
+        <div class="sprint-title">Contacts — CSV import</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>New <code>importContactsAction</code>. CSV columns: <code>customer</code>, <code>site</code> (optional), <code>name</code>, <code>email</code>, <code>phone</code>, <code>role</code>. Customer/site name lookups in-memory; per-row errors returned for unmatched names. Wired through the existing <code>ImportCSVModal</code>.</p>
+      <div class="file-tags">
+        <span class="file-tag added">app/(app)/contacts/actions.ts</span>
+        <span class="file-tag modified">app/(app)/contacts/ContactList.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Sprint 4.2 · UX</span>
+        <div class="sprint-title">Calendar — month grid first + status overlay</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>Default view changed from List → Month grid (calendar-feeling). New status strip cards above the toolbar (Overdue / This Week / Looking Ahead / Completed). Each entry chip carries a colour-coded left border by timing bucket.</p>
+      <div class="file-tags">
+        <span class="file-tag modified">app/(app)/calendar/page.tsx</span>
+        <span class="file-tag modified">app/(app)/pm-calendar/PmCalendarView.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">02</span>Phase-2 work (same session)</h2>
+  <p class="blurb">After the first pass landed, the remaining "deferred" items got picked up in the same session. Three more migrations, the inline contract scope banner, the demo seed, and the first ReportShell adoption.</p>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Phase 2 · Build</span>
+        <div class="sprint-title">ACB / NSX / generic test defect triggers</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>Three more triggers (one per test-readings table). Same auto-create + reverse-on-pass pattern. Severity helper smoke-tested across 9 representative labels — all classify correctly. One post-deploy fix: dropped bare <code>label</code> from the visual regex (was matching arbitrary text).</p>
+      <div class="file-tags">
+        <span class="file-tag migration">supabase/migrations/0062_defects_auto_from_test_readings.sql</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Phase 2 · Build</span>
+        <div class="sprint-title">assigned_to on ACB / NSX / generic tests</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>Migration <code>0063</code> adds <code>assigned_to uuid</code> (FK <code>auth.users</code>, ON DELETE SET NULL) to <code>acb_tests</code>, <code>nsx_tests</code>, <code>test_records</code>. Filtered indexes on the partial index. Lets the dashboard "Assigned to Me" filter drill below check level when needed.</p>
+      <div class="file-tags">
+        <span class="file-tag migration">supabase/migrations/0063_tests_assigned_to.sql</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Phase 2 · Build</span>
+        <div class="sprint-title">Contract scope inline on maintenance checks</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>Migration <code>0064</code> adds nullable <code>asset_id</code> + <code>job_plan_id</code> to <code>contract_scopes</code> for finer pinning. New <code>ContractScopeBanner</code> server component renders matched scope rows above the check detail body. Precedence-sorted (asset → job_plan → site → customer), FY-filtered, out-of-scope chips amber, in-scope green.</p>
+      <div class="file-tags">
+        <span class="file-tag migration">supabase/migrations/0064_contract_scopes_asset_linkage.sql</span>
+        <span class="file-tag added">components/ui/ContractScopeBanner.tsx</span>
+        <span class="file-tag modified">app/(app)/maintenance/[id]/page.tsx</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Phase 2 · Polish</span>
+        <div class="sprint-title">Demo tenant — attachments seed</div>
+      </div>
+      <span class="badge shipped">Shipped</span>
+    </div>
+    <div class="sprint-body">
+      <p>19 attachment metadata rows seeded across all three categories — 6 Evidence on defects, 8 Reference on sites, 5 Paperwork on checks. UI looks populated for prospects. <code>scripts/seed-demo-attachments.ts</code> uploads the actual placeholder bytes when run.</p>
+      <div class="file-tags">
+        <span class="file-tag added">scripts/seed-demo-attachments.ts</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sprint">
+    <div class="sprint-head">
+      <div>
+        <span class="sprint-id">Phase 2 · Foundation</span>
+        <div class="sprint-title">First ReportShell adoption — compliance-report</div>
+      </div>
+      <span class="badge foundation">Pattern set</span>
+    </div>
+    <div class="sprint-body">
+      <p>Header + Footer in <code>compliance-report.ts</code> now come from the shell. Pattern: import <code>buildHeader</code>, <code>buildFooter</code>, <code>prepareShell</code>, <code>resolveShellSettings</code>, then construct shell + swap inline Header/Footer in the Document constructor. Other 7 generators follow the same pattern at next touch.</p>
+      <div class="file-tags">
+        <span class="file-tag modified">lib/reports/compliance-report.ts</span>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">03</span>Migrations live in Supabase</h2>
+  <p class="blurb">All five applied via the Supabase MCP, verified via <code>supabase_migrations.schema_migrations</code>, schema spot-checked.</p>
+
+  <table class="mig-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th>What it does</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num-cell">0060</td>
+        <td class="name-cell">attachments_categorize</td>
+        <td class="desc-cell">Truncates the attachments table, adds <code>attachment_type</code> column with check constraint (evidence / reference / paperwork). New uploads enforce a Type.</td>
+        <td><span class="live-pill">Live</span></td>
+      </tr>
+      <tr>
+        <td class="num-cell">0061</td>
+        <td class="name-cell">defects_auto_from_failed_items</td>
+        <td class="desc-cell">Adds <code>source</code> + <code>source_check_item_id</code> to defects. Trigger on <code>maintenance_check_items.result</code> auto-creates defects on fail and resolves on un-fail.</td>
+        <td><span class="live-pill">Live</span></td>
+      </tr>
+      <tr>
+        <td class="num-cell">0062</td>
+        <td class="name-cell">defects_auto_from_test_readings</td>
+        <td class="desc-cell">Three more triggers — ACB / NSX / generic test readings. Plus the <code>fn_severity_from_reading_label</code> helper that infers severity by keyword.</td>
+        <td><span class="live-pill">Live</span></td>
+      </tr>
+      <tr>
+        <td class="num-cell">0063</td>
+        <td class="name-cell">tests_assigned_to</td>
+        <td class="desc-cell">Adds <code>assigned_to uuid</code> to <code>acb_tests</code>, <code>nsx_tests</code>, <code>test_records</code>. Partial indexes for the dashboard "Assigned to Me" filter.</td>
+        <td><span class="live-pill">Live</span></td>
+      </tr>
+      <tr>
+        <td class="num-cell">0064</td>
+        <td class="name-cell">contract_scopes_asset_linkage</td>
+        <td class="desc-cell">Nullable <code>asset_id</code> + <code>job_plan_id</code> on <code>contract_scopes</code>. Powers the inline banner's precedence matching.</td>
+        <td><span class="live-pill">Live</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2><span class="num">04</span>Decisions you locked in</h2>
+  <p class="blurb">18 decision points captured in the <a href="2026-04-26-service-items-decisions.html" style="color: var(--deep);">decision log</a>. Quick reference:</p>
+
+  <div class="decision-grid">
+    <div class="decision-card"><div class="key">Calendar</div><div class="val">Catch what Outlook misses (overdue / upcoming gaps)</div></div>
+    <div class="decision-card"><div class="key">Contacts</div><div class="val">Per-customer + per-site, optional roles</div></div>
+    <div class="decision-card"><div class="key">Edit completed</div><div class="val">Any technician with audit</div></div>
+    <div class="decision-card"><div class="key">Users</div><div class="val">Archive + super_admin hard delete</div></div>
+    <div class="decision-card"><div class="key">Test reports</div><div class="val">All assets in the check, cover page, 3 styles</div></div>
+    <div class="decision-card"><div class="key">Defects</div><div class="val">Auto from failed tests + manual</div></div>
+    <div class="decision-card"><div class="key">Contract scope</div><div class="val">Reference now → inline on relevant checks</div></div>
+    <div class="decision-card"><div class="key">Dashboard</div><div class="val">All Active Work ↔ Assigned to Me</div></div>
+    <div class="decision-card"><div class="key">Reports template</div><div class="val">Every PDF uses Report Settings</div></div>
+    <div class="decision-card"><div class="key">Attachments</div><div class="val">Evidence / Reference / Paperwork</div></div>
+    <div class="decision-card"><div class="key">Print UI</div><div class="val">Single button + dropdown caret</div></div>
+    <div class="decision-card"><div class="key">Assignment UI</div><div class="val">At creation + reassign anytime</div></div>
+    <div class="decision-card"><div class="key">Loading UX</div><div class="val">Inline spinner + skeletons + top progress bar</div></div>
+    <div class="decision-card"><div class="key">Calendar views</div><div class="val">Month grid (calendar-feeling) first</div></div>
+    <div class="decision-card"><div class="key">Defect severity</div><div class="val">Visual=Low, Functional=Med, Electrical=High</div></div>
+    <div class="decision-card"><div class="key">Existing attachments</div><div class="val">Hard reset (wipe + repopulate Demo)</div></div>
+    <div class="decision-card"><div class="key">Amend trigger</div><div class="val">Re-open button, no reason required</div></div>
+    <div class="decision-card"><div class="key">Contacts CSV</div><div class="val">Customer / Site / Name / Email / Phone / Role</div></div>
+  </div>
+
+  <div class="pending-box">
+    <h2>What's still on the to-do list</h2>
+    <p class="blurb">Small things, all optional, all easy to chip away at next time you're in.</p>
+    <ul class="pending-list">
+      <li>Run <code>npx tsx scripts/seed-demo-attachments.ts</code> if you want the Demo placeholder PNGs physically uploaded (metadata is already in DB so the lists look populated; downloads 404 until the script runs).</li>
+      <li>Two orphan storage objects in the <code>attachments</code> bucket from before today's wipe (390 kB SKS logo, 13 kB SKS report DOCX) — wipe via the PowerShell snippet from earlier if you want a fully clean bucket.</li>
+      <li>Remaining 7 PDF generators (acb-report, nsx-report, maintenance-checklist, pm-asset-report, pm-check-report, work-order-details, generate-and-store) → migrate to <code>report-shell.ts</code> at next-touch. Pattern is one import + two function calls; <code>compliance-report.ts</code> is the worked example.</li>
+      <li>Per-customer report style overrides — only build if a client actually asks. Currently every PDF uses the global Report Settings template.</li>
+    </ul>
+  </div>
+
+  <footer>
+    <strong>EQ Solutions™</strong> &nbsp;·&nbsp; EQ Solves Service · Shipped 26 April 2026 · pushed to <code style="background:none;color:var(--grey)">3807f87..cc61953</code>
+  </footer>
+
+</div>
+</body>
+</html>

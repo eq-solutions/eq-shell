@@ -147,5 +147,32 @@
       "description": "Source of the import. System-managed.",
       "x-eq-system-managed": true
     }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "contact_has_name",
+      "rule": "(first_name != null AND first_name != '') OR (last_name != null AND last_name != '')",
+      "message": "Contact must have at least a first name or last name.",
+      "severity": "error"
+    },
+    {
+      "id": "contact_has_reachable",
+      "rule": "(email != null AND email != '') OR (work_phone != null AND work_phone != '') OR (mobile_phone != null AND mobile_phone != '')",
+      "message": "Contact has no email or phone — they cannot be reached. Add at least one contact method.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Common contact list patterns.",
+    "common_sources": [
+      {
+        "name": "SimPRO customer contacts export",
+        "typical_columns": ["simPRO Customer ID", "Contact First Name", "Contact Last Name", "Contact Email", "Contact Mobile Phone", "Contact Work Phone", "Contact Position", "Is Default Quote Contact"],
+        "watchouts": [
+          "simPRO Customer ID on the contact row must match a customer external_id in the customers file — used to resolve customer_id FK before commit",
+          "Is Default Quote Contact is Y/N — coerced to boolean via x-eq-coerce"
+        ]
+      }
+    ]
   }
 }

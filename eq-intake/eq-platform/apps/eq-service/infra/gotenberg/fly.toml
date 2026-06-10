@@ -1,0 +1,34 @@
+# fly.toml app configuration file generated for eq-solves-gotenberg on 2026-04-26T20:16:51+10:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'eq-solves-gotenberg'
+primary_region = 'syd'
+
+[build]
+  # Pinned to 8.21.1 (not the floating `:8` tag) — Gotenberg 8.31.0
+  # exhibits "websocket url timeout reached" Chromium boot failures
+  # on shared-cpu-1x even with 2GB RAM. 8.21.1 is the last version
+  # we've confirmed renders reliably here. Bump deliberately when
+  # testing newer 8.x releases; do not auto-track `:8`.
+  image = 'gotenberg/gotenberg:8.21.1'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  # Keep one machine warm. Fly's proxy returns generic HTTP 500 if a cold
+  # wake exceeds its proxy timeout, which surfaces to users as a render
+  # failure. ~$3/mo extra for shared-cpu-1x; cheap insurance for a
+  # customer-facing report path.
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 1
+  # Chromium needs ~2GB on Linux. 1024MB caused "websocket url timeout
+  # reached" errors at boot on Gotenberg 8.31.0 — Chromium fails to
+  # initialise its DevTools port under memory pressure.
+  memory_mb = 2048

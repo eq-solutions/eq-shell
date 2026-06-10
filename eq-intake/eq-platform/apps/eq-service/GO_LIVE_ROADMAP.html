@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EQ Solves Service — Go-Live Roadmap</title>
+<style>
+  :root {
+    --sky: #0ea5e9;
+    --deep: #0369a1;
+    --ice: #e0f2fe;
+    --ink: #1e293b;
+    --grey: #64748b;
+    --green: #16a34a;
+    --amber: #d97706;
+    --red: #dc2626;
+    --bg: #f8fafc;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--ink); line-height: 1.6; }
+  .container { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
+  h1 { font-size: 2rem; color: var(--deep); margin-bottom: 0.25rem; }
+  .subtitle { color: var(--grey); font-size: 0.95rem; margin-bottom: 2rem; }
+  .updated { color: var(--grey); font-size: 0.8rem; margin-bottom: 2rem; display: block; }
+
+  /* Score bar */
+  .score-bar { background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; }
+  .score-item { text-align: center; }
+  .score-num { font-size: 2rem; font-weight: 800; }
+  .score-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--grey); }
+  .score-green { color: var(--green); }
+  .score-amber { color: var(--amber); }
+  .score-red { color: var(--red); }
+
+  /* Phase blocks */
+  .phase { background: white; border-radius: 12px; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; }
+  .phase-header { padding: 1rem 1.5rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
+  .phase-title { font-size: 1.1rem; font-weight: 700; }
+  .phase-tag { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.25rem 0.75rem; border-radius: 100px; font-weight: 700; }
+  .tag-blocker { background: #fef2f2; color: var(--red); }
+  .tag-required { background: #fffbeb; color: var(--amber); }
+  .tag-recommended { background: #f0fdf4; color: var(--green); }
+  .tag-done { background: #e0f2fe; color: var(--deep); }
+
+  .phase-body { padding: 1rem 1.5rem; }
+  .task-list { list-style: none; }
+  .task-list li { padding: 0.6rem 0; border-bottom: 1px solid #f1f5f9; display: grid; grid-template-columns: 28px 1fr auto; align-items: start; gap: 0.5rem; }
+  .task-list li:last-child { border-bottom: none; }
+
+  .check { width: 20px; height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; margin-top: 2px; flex-shrink: 0; }
+  .check-done { background: var(--green); color: white; }
+  .check-todo { background: #e2e8f0; color: transparent; }
+  .check-blocked { background: var(--red); color: white; }
+
+  .task-text { font-size: 0.9rem; }
+  .task-text strong { font-weight: 600; }
+  .task-detail { font-size: 0.8rem; color: var(--grey); margin-top: 0.15rem; }
+  .task-effort { font-size: 0.7rem; color: var(--grey); background: #f1f5f9; padding: 0.2rem 0.5rem; border-radius: 4px; white-space: nowrap; align-self: center; }
+
+  .note { background: var(--ice); border-left: 3px solid var(--sky); padding: 0.75rem 1rem; margin-top: 0.75rem; border-radius: 0 6px 6px 0; font-size: 0.85rem; color: var(--deep); }
+
+  /* Push instructions box */
+  .push-box { background: #1e293b; color: #e2e8f0; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.8; }
+  .push-box .cmd { color: #7dd3fc; }
+  .push-box .comment { color: #64748b; }
+  .push-title { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 1rem; color: white; margin-bottom: 0.75rem; }
+
+  footer { text-align: center; color: var(--grey); font-size: 0.75rem; padding: 2rem 0 1rem; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>EQ Solves Service — Go-Live Roadmap</h1>
+  <p class="subtitle">Everything between current state and production-ready for Equinix / SKS field teams</p>
+  <span class="updated">Generated 10 Apr 2026 — Sprint 27</span>
+
+  <!-- Score overview -->
+  <div class="score-bar">
+    <div class="score-item"><div class="score-num score-green">6</div><div class="score-label">Ready</div></div>
+    <div class="score-item"><div class="score-num score-amber">3</div><div class="score-label">Needs Work</div></div>
+    <div class="score-item"><div class="score-num score-red">1</div><div class="score-label">Blocker</div></div>
+    <div class="score-item"><div class="score-num" style="color:var(--deep);">27</div><div class="score-label">Sprints Done</div></div>
+    <div class="score-item"><div class="score-num" style="color:var(--deep);">23</div><div class="score-label">Migrations</div></div>
+  </div>
+
+  <!-- PHASE 0: IMMEDIATE BLOCKER -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-title">🚨 Phase 0 — Fix Broken Deploy</span>
+      <span class="phase-tag tag-blocker">Blocker</span>
+    </div>
+    <div class="phase-body">
+      <p class="task-detail" style="margin-bottom:0.75rem">Netlify build is currently failing. These must be pushed before anything else works.</p>
+      <ul class="task-list">
+        <li>
+          <span class="check check-done">✓</span>
+          <div class="task-text"><strong>Migrate acb-excel.ts from xlsx → exceljs</strong><div class="task-detail">Named imports: <code>import { Workbook, Cell } from 'exceljs'</code>. Fixed in local Projects folder.</div></div>
+          <span class="task-effort">Done locally</span>
+        </li>
+        <li>
+          <span class="check check-done">✓</span>
+          <div class="task-text"><strong>Fix page.tsx:174 — row.data → destructure</strong><div class="task-detail">ACB testing page import handler referenced non-existent <code>.data</code> property.</div></div>
+          <span class="task-effort">Done locally</span>
+        </li>
+        <li>
+          <span class="check check-done">✓</span>
+          <div class="task-text"><strong>Fix roles.test.ts — invalid role strings</strong><div class="task-detail">Replaced 'analyst'/'viewer' with 'technician'/'read_only' to match Role type.</div></div>
+          <span class="task-effort">Done locally</span>
+        </li>
+        <li>
+          <span class="check check-done">✓</span>
+          <div class="task-text"><strong>Fix auth.test.ts — mock from() type signature</strong><div class="task-detail">Added <code>(_table: string)</code> param to Supabase mock.</div></div>
+          <span class="task-effort">Done locally</span>
+        </li>
+        <li>
+          <span class="check check-blocked">!</span>
+          <div class="task-text"><strong>Push fixes to GitHub</strong><div class="task-detail">git add failed in PowerShell due to unquoted <code>(app)</code> path. See commands below.</div></div>
+          <span class="task-effort">Royce — 2 min</span>
+        </li>
+      </ul>
+
+      <div class="push-box">
+        <div class="push-title">Commands to run (PowerShell)</div>
+        <span class="comment"># Stage the fixed files (quote paths with parentheses)</span><br>
+        <span class="cmd">git add lib/utils/acb-excel.ts "app/(app)/testing/acb/page.tsx" tests/lib/utils/roles.test.ts tests/lib/actions/auth.test.ts tests/mocks/supabase.ts package.json package-lock.json</span><br><br>
+        <span class="comment"># Commit and push</span><br>
+        <span class="cmd">git commit -m "fix: exceljs named imports, TS errors in tests and ACB page"</span><br>
+        <span class="cmd">git push origin main</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 1: REQUIRED FOR LAUNCH -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-title">🔧 Phase 1 — Required for Launch</span>
+      <span class="phase-tag tag-required">Required</span>
+    </div>
+    <div class="phase-body">
+      <ul class="task-list">
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Add error boundaries</strong><div class="task-detail">Create <code>app/error.tsx</code> and <code>app/(app)/error.tsx</code> — catch client-side crashes with branded error page + retry button instead of generic Next.js 500.</div></div>
+          <span class="task-effort">~1 hr</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Add not-found page</strong><div class="task-detail">Create <code>app/not-found.tsx</code> — branded 404 for bad customer/site/asset IDs.</div></div>
+          <span class="task-effort">~30 min</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Wrap admin actions in try/catch</strong><div class="task-detail"><code>app/(app)/admin/users/actions.ts</code> — invite, setRole, setActive functions throw uncaught errors. Wrap in try/catch returning <code>{ success: false, error }</code>.</div></div>
+          <span class="task-effort">~30 min</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Error tracking (Sentry)</strong><div class="task-detail">Install <code>@sentry/nextjs</code>, configure DSN in Netlify env vars. Free tier covers MVP. Captures unhandled exceptions, source maps, breadcrumbs.</div></div>
+          <span class="task-effort">~2 hrs</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Clean up .next-old from git tracking</strong><div class="task-detail"><code>git rm -r --cached .next-old</code> — already in .gitignore but still tracked. Bloating diffs.</div></div>
+          <span class="task-effort">~5 min</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Verify batch check creation</strong><div class="task-detail">TODO in <code>BatchCreateForm.tsx:25</code> — "batch create needs rebuild for new frequency-on-items model". Test and fix or disable the batch button.</div></div>
+          <span class="task-effort">~2 hrs</span>
+        </li>
+      </ul>
+      <div class="note">Estimated total: ~6 hours (1 sprint session)</div>
+    </div>
+  </div>
+
+  <!-- PHASE 2: RECOMMENDED -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-title">📈 Phase 2 — Recommended Before Field Use</span>
+      <span class="phase-tag tag-recommended">Recommended</span>
+    </div>
+    <div class="phase-body">
+      <ul class="task-list">
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Loading states (Suspense boundaries)</strong><div class="task-detail">Add <code>loading.tsx</code> files to key routes: dashboard, customers, sites, assets, maintenance, testing. Shows skeleton UI while data loads.</div></div>
+          <span class="task-effort">~2 hrs</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Image optimization</strong><div class="task-detail">Replace <code>&lt;img&gt;</code> tags with <code>next/image</code> for customer/tenant logos. Auto-resize, WebP, lazy loading.</div></div>
+          <span class="task-effort">~1 hr</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>robots.txt + basic SEO</strong><div class="task-detail">Add <code>public/robots.txt</code> (disallow all — it's an auth'd app). Add per-page metadata titles.</div></div>
+          <span class="task-effort">~30 min</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Fix AcbTestForm type assertions</strong><div class="task-detail">7× <code>(test as any)</code> in <code>AcbTestForm.tsx</code>. Replace with proper <code>AcbTest</code> types.</div></div>
+          <span class="task-effort">~1 hr</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Increase test coverage</strong><div class="task-detail">Currently ~20%. Add tests for DataTable, server actions (create/update customer, site, asset), CSV import. Target 50%+.</div></div>
+          <span class="task-effort">~4 hrs</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Excel batch fill (ACB)</strong><div class="task-detail">Wire up export/import buttons on the ACB testing page to use the new <code>acb-excel.ts</code> utility. Allow offline data entry.</div></div>
+          <span class="task-effort">~3 hrs</span>
+        </li>
+      </ul>
+      <div class="note">Estimated total: ~12 hours (2 sprint sessions)</div>
+    </div>
+  </div>
+
+  <!-- PHASE 3: POST-LAUNCH -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-title">🚀 Phase 3 — Post-Launch Enhancements</span>
+      <span class="phase-tag tag-recommended">Post-Launch</span>
+    </div>
+    <div class="phase-body">
+      <ul class="task-list">
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Calendar / scheduling view</strong><div class="task-detail">Visual calendar for upcoming maintenance checks, due dates, overdue items. Currently only date inputs + Kanban board exist.</div></div>
+          <span class="task-effort">~4 hrs</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Product analytics</strong><div class="task-detail">Posthog or similar — track feature adoption, page views, user engagement. Helps prioritise next features.</div></div>
+          <span class="task-effort">~2 hrs</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>PWA / offline support</strong><div class="task-detail">Service worker for offline form entry on data centre floors. Critical for sites with poor connectivity.</div></div>
+          <span class="task-effort">~8 hrs</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Email notifications</strong><div class="task-detail">Extend notification engine to send email digests: overdue checks, new defects, weekly summary. Resend SMTP already configured.</div></div>
+          <span class="task-effort">~4 hrs</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>PDF report export</strong><div class="task-detail">Client-facing PDF versions of compliance reports. Currently DOCX-only via PM Asset Report and ACB Report.</div></div>
+          <span class="task-effort">~4 hrs</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>Multi-tenant onboarding flow</strong><div class="task-detail">Self-service signup for new contractors. Currently requires manual tenant creation in Supabase.</div></div>
+          <span class="task-effort">~6 hrs</span>
+        </li>
+        <li>
+          <span class="check check-todo"></span>
+          <div class="task-text"><strong>AI-powered features</strong><div class="task-detail">Per AI_STRATEGY.md — defect auto-classification, predictive maintenance scheduling, natural language search.</div></div>
+          <span class="task-effort">~20 hrs</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- WHAT'S ALREADY DONE -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-title">✅ Already Complete (27 Sprints)</span>
+      <span class="phase-tag tag-done">Done</span>
+    </div>
+    <div class="phase-body">
+      <ul class="task-list">
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Auth & MFA</strong> — Email/password, TOTP, recovery codes, RBAC (5 roles)</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Multi-tenancy</strong> — Full tenant isolation via Supabase RLS</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Core data</strong> — Customers, sites, assets, job plans CRUD</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Maintenance checks</strong> — Maximo-aligned workflow, Kanban view, batch create</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>ACB testing</strong> — 3-step workflow (asset collection, visual/functional, electrical)</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>NSX testing</strong> — Full test module with DOCX reporting</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Reporting</strong> — PM asset reports, ACB reports, NSX reports (DOCX), compliance dashboard</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Defect tracking</strong> — Severity levels, status workflow, linked to checks/assets</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Data onboarding</strong> — Universal CSV import for all entity types</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Instruments</strong> — Register with calibration tracking</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Contract scope</strong> — Per-customer, per-FY scope management</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Notifications</strong> — In-app bell, auto-notify on check assign/complete</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Audit trail</strong> — Immutable audit log on all significant actions</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Mobile responsive</strong> — Hamburger sidebar, drawer overlay</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>White-label</strong> — CSS var engine, tenant logo, product name</div></li>
+        <li><span class="check check-done">✓</span><div class="task-text"><strong>Dashboard</strong> — Interactive Leaflet map, KPI cards, overdue alerts</div></li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    EQ Solves Service — Milmlow Holdings / EQ Solutions &bull; Generated by Cowork &bull; 10 Apr 2026
+  </footer>
+
+</div>
+</body>
+</html>

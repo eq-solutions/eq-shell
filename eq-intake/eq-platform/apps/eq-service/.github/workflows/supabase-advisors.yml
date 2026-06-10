@@ -1,0 +1,81 @@
+name: Supabase Advisors
+
+# Runs the Supabase database linter against the project and fails the
+# check if any ERROR-level findings are present. Scheduled daily plus
+# on any PR that touches a migration.
+#
+# Secrets required (set in GitHub repo → Settings → Secrets → Actions):
+#   SUPABASE_ACCESS_TOKEN  — personal access token (sbp_...)
+#   SUPABASE_PROJECT_REF   — urjhmkhbgaxrofurpbgc
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+  schedule:
+    # 08:15 UTC daily ≈ 18:15 AEST — catches overnight drift
+    - cron: '15 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  advisors:
+    name: Run advisors (security + performance)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Query security advisors
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF:  ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          curl -sS \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/advisors?type=security" \
+            -o security.json
+          cat security.json | jq '.'
+
+      - name: Query performance advisors
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF:  ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          curl -sS \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/advisors?type=performance" \
+            -o performance.json
+          cat performance.json | jq '.'
+
+      - name: Fail on ERROR-level findings
+        run: |
+          set -euo pipefail
+          errors=$(jq '[.lints[]? | select(.level=="ERROR")] | length' security.json)
+          perf_errors=$(jq '[.lints[]? | select(.level=="ERROR")] | length' performance.json)
+          echo "Security ERRORs: $errors"
+          echo "Performance ERRORs: $perf_errors"
+          if [ "$errors" -gt 0 ] || [ "$perf_errors" -gt 0 ]; then
+            echo "::error::Supabase advisors reported ERROR-level findings. See logs above."
+            exit 1
+          fi
+
+      - name: Summarise WARN-level findings
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "## Supabase advisor summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Security" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.lints[]? | "- [\(.level)] \(.name): \(.detail)"' security.json >> "$GITHUB_STEP_SUMMARY" || true
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Performance" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.lints[]? | "- [\(.level)] \(.name): \(.detail)"' performance.json >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: supabase-advisors
+          path: |
+            security.json
+            performance.json

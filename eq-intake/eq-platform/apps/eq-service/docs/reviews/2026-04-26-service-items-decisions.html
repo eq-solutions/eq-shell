@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EQ Service — Items Review &amp; Decisions, 26 Apr 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky: #3DA8D8;
+    --deep: #2986B4;
+    --ice: #EAF5FB;
+    --ink: #1A1A2E;
+    --grey: #6B7280;
+    --line: #E5E7EB;
+    --bg: #FAFBFC;
+    --white: #FFFFFF;
+    --ok: #10B981;
+    --warn: #F59E0B;
+    --bad: #EF4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 64px 32px 96px;
+  }
+  header.hero {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 32px;
+    margin-bottom: 48px;
+  }
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--sky);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  .subtitle {
+    font-size: 17px;
+    color: var(--grey);
+    max-width: 720px;
+  }
+  .meta {
+    display: flex;
+    gap: 24px;
+    margin-top: 24px;
+    font-size: 13px;
+    color: var(--grey);
+  }
+  .meta span strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 64px 0 8px;
+  }
+  h2 .num {
+    color: var(--sky);
+    font-weight: 600;
+    margin-right: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  h2 + .blurb {
+    color: var(--grey);
+    margin-bottom: 24px;
+    font-size: 15px;
+  }
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 8px 0 16px 22px; }
+  li { margin-bottom: 6px; }
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    background: var(--ice);
+    color: var(--deep);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin: 24px 0 32px;
+  }
+  .summary-card {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .summary-card .label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--grey);
+    margin-bottom: 6px;
+  }
+  .summary-card .value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .item {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 20px;
+  }
+  .item-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .item-title {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .item-page {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--deep);
+    background: var(--ice);
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 8px;
+  }
+  .badge {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+  }
+  .badge.fix { background: #FEF3C7; color: #92400E; border-color: #FDE68A; }
+  .badge.build { background: #DBEAFE; color: #1E40AF; border-color: #BFDBFE; }
+  .badge.answer { background: #D1FAE5; color: #065F46; border-color: #A7F3D0; }
+  .badge.future { background: #F3E8FF; color: #6B21A8; border-color: #E9D5FF; }
+  .row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 16px;
+    padding: 14px 0;
+    border-top: 1px solid var(--line);
+  }
+  .row:first-of-type { border-top: none; padding-top: 0; }
+  .row .key {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--grey);
+    padding-top: 2px;
+  }
+  .row .val { font-size: 14.5px; }
+  .row .val strong { font-weight: 600; }
+  .quote {
+    font-style: italic;
+    color: var(--grey);
+    font-size: 14px;
+    border-left: 2px solid var(--sky);
+    padding-left: 12px;
+  }
+  .build-list {
+    margin: 4px 0 0 0;
+    padding-left: 18px;
+  }
+  .build-list li {
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .next-section {
+    background: var(--ink);
+    color: var(--white);
+    border-radius: 12px;
+    padding: 32px;
+    margin-top: 48px;
+  }
+  .next-section h2 {
+    color: var(--white);
+    margin-top: 0;
+  }
+  .next-section .blurb { color: rgba(255,255,255,0.7); }
+  .next-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .next-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 18px;
+  }
+  .next-card .num {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--sky);
+    margin-bottom: 6px;
+  }
+  .next-card h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .next-card p {
+    font-size: 13px;
+    color: rgba(255,255,255,0.65);
+    margin: 0;
+  }
+  footer {
+    text-align: center;
+    margin-top: 64px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--grey);
+  }
+  footer strong { color: var(--ink); font-weight: 600; }
+  @media (max-width: 640px) {
+    .page { padding: 32px 20px 64px; }
+    h1 { font-size: 28px; }
+    .summary-grid, .next-grid { grid-template-columns: 1fr; }
+    .row { grid-template-columns: 1fr; gap: 4px; }
+    .item { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <div class="eyebrow">Decisions Log</div>
+    <h1>EQ Service — Items Review</h1>
+    <p class="subtitle">Working pass over your 14-item punch list from <code>EQ Service items 26.4.26.xlsx</code>. Every item now has a decision, a why, and a build path.</p>
+    <div class="meta">
+      <span><strong>Date:</strong> 26 April 2026</span>
+      <span><strong>Repo:</strong> eq-solves-service</span>
+      <span><strong>Decisions:</strong> 14 / 14</span>
+    </div>
+  </header>
+
+  <div class="eyebrow">Decision summary</div>
+  <h2 style="margin-top:8px;">What we landed on</h2>
+  <p class="blurb">Quick reference before the deep dive — every choice you made today, in one place.</p>
+
+  <div class="summary-grid">
+    <div class="summary-card"><div class="label">Calendar</div><div class="value">Catch what Outlook misses — overdue/missed PM view, not a replacement</div></div>
+    <div class="summary-card"><div class="label">Contacts</div><div class="value">Per-site &amp; per-customer with optional roles, manual + import</div></div>
+    <div class="summary-card"><div class="label">Edit completed checks</div><div class="value">Any tech can amend, with full audit trail</div></div>
+    <div class="summary-card"><div class="label">Users</div><div class="value">Archive (any admin) + hard delete (super_admin only)</div></div>
+    <div class="summary-card"><div class="label">Test reports</div><div class="value">All assets in the check, cover page, 3 styles via Report Settings</div></div>
+    <div class="summary-card"><div class="label">Defects</div><div class="value">Auto from failed test items + manual add</div></div>
+    <div class="summary-card"><div class="label">Contract scope</div><div class="value">Reference now → surface inline on relevant maintenance checks (future)</div></div>
+    <div class="summary-card"><div class="label">Dashboard switcher</div><div class="value">All Active Work ↔ Assigned to Me (by check/WO assignee)</div></div>
+    <div class="summary-card"><div class="label">Report styling</div><div class="value">Every PDF uses Report Settings template — one consistent look</div></div>
+    <div class="summary-card"><div class="label">Attachments</div><div class="value">Categorized: Evidence / Reference / Paperwork — each behaves differently</div></div>
+  </div>
+
+  <h2><span class="num">01</span>Dashboard switcher</h2>
+  <p class="blurb">Top-right "All works" toggle — currently confusing. You wanted clarity on what each side actually shows.</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Dashboard</div>
+        <div class="item-title">Replace "All works" with: All Active Work ↔ Assigned to Me</div>
+      </div>
+      <div class="badge build">Build</div>
+    </div>
+    <div class="row">
+      <div class="key">Your note</div>
+      <div class="val"><div class="quote">"Needs to be clearer — All sites / Logged in username sites (make it make sense Claude!!)"</div></div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val"><strong>Task-centric toggle.</strong> "All Active Work" shows everything open in the tenant; "Assigned to Me" filters to checks &amp; work orders where you're the named assignee.</div>
+    </div>
+    <div class="row">
+      <div class="key">Why</div>
+      <div class="val">Site-based filters duplicate what the Sites page already does. Dashboard is about <em>what needs doing</em> — so the filter should follow tasks, not geography.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Add <code>assignee_user_id</code> to ACB tests, NSX tests, general tests, work orders (migration)</li>
+          <li>Toggle component in dashboard header — defaults to "Assigned to Me" if user has any assigned items, else "All Active Work"</li>
+          <li>KPI cards, charts, lists all respect the toggle</li>
+          <li>Persist choice per-user in <code>profiles.dashboard_scope</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">02</span>Loading states</h2>
+  <p class="blurb">No feedback when you click — feels broken even when it's working.</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Overall</div>
+        <div class="item-title">Add visible loading state to every action</div>
+      </div>
+      <div class="badge fix">Fix</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">Spinners on buttons during server actions; skeleton loaders on tables/cards during data fetch; subtle top progress bar on route changes.</div>
+    </div>
+    <div class="row">
+      <div class="key">Why</div>
+      <div class="val">Perceived performance is half the battle. Without feedback, users double-click, get duplicate writes, and assume the app is dead.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Wrap all <code>useTransition</code> server actions with disabled-state + spinner pattern</li>
+          <li>Reusable <code>&lt;LoadingButton&gt;</code> component to standardise this</li>
+          <li>Add <code>app/loading.tsx</code> Suspense boundaries on every route group</li>
+          <li>NProgress-style top bar via Next 16 router events</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">03</span>Logo upload silent fail</h2>
+  <p class="blurb">Customer logo says "saved" but doesn't update.</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Sites</div>
+        <div class="item-title">Fix logo upload — confirm save AND visibly update</div>
+      </div>
+      <div class="badge fix">Fix</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">Reproduce → trace → fix. Likely either (a) <code>revalidatePath()</code> not called on the customer detail route, (b) image URL cached at CDN, or (c) update writes to the wrong column.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Verify the upload action returns the new public URL and updates <code>customers.logo_url</code></li>
+          <li>Force <code>revalidatePath('/customers/[id]')</code> + <code>revalidatePath('/sites/[id]')</code></li>
+          <li>Cache-bust by appending <code>?v=&lt;updated_at&gt;</code> to the image src</li>
+          <li>Toast: "Logo updated" only fires on confirmed success, not on submit</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">04</span>Contacts</h2>
+  <p class="blurb">No clear way to add contacts today.</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Contacts</div>
+        <div class="item-title">Per-site &amp; per-customer with optional roles</div>
+      </div>
+      <div class="badge build">Build</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">Contact rows attach to a customer or a specific site. Optional role tag (Site Contact, Accounts, Escalation, Building Manager, Other). Manual <em>and</em> CSV import.</div>
+    </div>
+    <div class="row">
+      <div class="key">Why</div>
+      <div class="val">Reality is mixed — some contacts cover the whole customer (Accounts), others are site-specific (Site Manager). Roles are <em>optional</em> so you don't get blocked tagging everyone.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>New table: <code>contacts</code> — name, email, phone, role (nullable), customer_id, site_id (one of the two required)</li>
+          <li>"Add Contact" button on Customer detail and Site detail pages</li>
+          <li>Toolbar order on Contacts page: Import, Export, Add Contact</li>
+          <li>CSV import maps customer/site by name lookup (same pattern as Contract Scope import)</li>
+          <li>Show contacts on report cover page when relevant (configurable via Report Settings)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">05</span>Maintenance — edit after completion</h2>
+  <p class="blurb">Need to add work orders and notes to assets after the check is closed.</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Maintenance</div>
+        <div class="item-title">Any technician can amend, with full audit trail</div>
+      </div>
+      <div class="badge build">Build</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">Completed checks can be re-opened by any user with write access. Every edit logged: user, timestamp, before-value, after-value. Status badge flips to "Amended" so it's visible on the report.</div>
+    </div>
+    <div class="row">
+      <div class="key">Why</div>
+      <div class="val">Field reality — tech finishes a check, then a defect surfaces during pack-up or the customer adds a follow-up WO. Locking it would force ugly workarounds. Audit trail keeps you compliance-safe.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Re-use the existing <code>audit_log</code> table — extend with <code>action_type='amend'</code></li>
+          <li>"Re-open" button on completed check pages (write-access only)</li>
+          <li>Reports show "Amended on [date] by [user]" footer when applicable</li>
+          <li>Original PDF preserved as <code>checks/{id}/v1.pdf</code>, regenerated as <code>v2.pdf</code> after amend</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">06</span>Maintenance attachments</h2>
+  <p class="blurb">You asked: where do they save and what for?</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Maintenance</div>
+        <div class="item-title">Categorized system: Evidence / Reference / Paperwork</div>
+      </div>
+      <div class="badge answer">Answer + Build</div>
+    </div>
+    <div class="row">
+      <div class="key">Today</div>
+      <div class="val">Attachments save to the Supabase <code>attachments</code> bucket (private, RLS-protected by tenant). They're attached to whatever record you uploaded from but with no clear use.</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">Add a <strong>Type</strong> field. Each type has its own behaviour:
+        <ul class="build-list" style="margin-top:8px;">
+          <li><strong>Evidence</strong> — photos/videos on tests &amp; defects. Auto-included on PDF reports as evidence appendix.</li>
+          <li><strong>Reference</strong> — SLDs, drawings, manuals. Pinned to the site detail page for techs to grab onsite. Not on reports.</li>
+          <li><strong>Paperwork</strong> — POs, customer signoffs, dockets. Attached to work orders. Internal record only.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Migration: add <code>attachment_type</code> enum + column to <code>attachments</code></li>
+          <li>Backfill existing attachments based on parent record type (defect → Evidence, site → Reference, WO → Paperwork)</li>
+          <li>Upload modal forces a Type selection on every new upload</li>
+          <li>Site detail page gets a "Reference Documents" panel pulling all Reference attachments for that site</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">07</span>Report styling — every PDF</h2>
+  <p class="blurb">Reports look plain. They should match the rest of the app.</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Maintenance · Reports</div>
+        <div class="item-title">Every PDF runs through Report Settings — one consistent look</div>
+      </div>
+      <div class="badge build">Build</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">Compliance, ACB, NSX, General, per-check, defect register — all PDFs use the Report Settings template. Cover page (with logo + customer logo + site photo), 3 complexity levels (summary / standard / detailed), header/footer, sign-off block.</div>
+    </div>
+    <div class="row">
+      <div class="key">Why</div>
+      <div class="val">A single template means one thing to maintain and one consistent look across every customer-facing output. The ACB sample report you signed off on becomes the baseline.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Refactor PDF generators to share a single <code>ReportShell</code> component (cover, TOC, header/footer, sign-off)</li>
+          <li>Each module passes its body content into the shell</li>
+          <li>Report Settings UI gets a preview thumbnail showing each of the 3 styles</li>
+          <li>Test once across all 6 PDF types to confirm visual parity</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">08</span>Calendar</h2>
+  <p class="blurb">You said: catch what gets missed in Outlook. Today you use Outlook in SharePoint.</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Calendar</div>
+        <div class="item-title">A "miss-net" view, not an Outlook replacement</div>
+      </div>
+      <div class="badge build">Build</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">Calendar page becomes a <strong>compliance-driven view of what should have happened but didn't</strong>:
+        <ul class="build-list" style="margin-top:8px;">
+          <li>Overdue PMs (job plan frequency exceeded, no completed check)</li>
+          <li>Upcoming PMs in next 30/60/90 days — auto-detected from job plans</li>
+          <li>Open work orders with target dates passed</li>
+          <li>Defects with no follow-up WO created after X days</li>
+        </ul>
+        Outlook keeps owning bookings &amp; meetings. EQ Service catches the operational gaps Outlook can't see.
+      </div>
+    </div>
+    <div class="row">
+      <div class="key">Why</div>
+      <div class="val">Outlook is fine for "when am I doing the job". It's blind to "did I miss a job that's contractually owed". That's the gap — and only EQ Service has the data (job plans, contract scope, completed checks) to spot it.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Rename Calendar → "Schedule &amp; Gaps" (or similar — open to your call)</li>
+          <li>Three views: <strong>Overdue</strong> (red, top priority), <strong>This Week</strong>, <strong>Looking Ahead</strong></li>
+          <li>Each row clickable through to the asset / customer / contract scope context</li>
+          <li>Optional: nightly job to push an Outlook .ics feed of upcoming PMs so they appear in your existing calendar too</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">09</span>Testing reports — per check</h2>
+  <p class="blurb">"We need to be able to create reports per check."</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Testing</div>
+        <div class="item-title">One PDF per maintenance check — all assets, cover page, 3 styles</div>
+      </div>
+      <div class="badge build">Build</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">A <strong>maintenance check</strong> (the container that wraps multiple ACB/NSX/General test records) produces a single PDF covering every asset inside it. Cover page, then a section per asset, all driven by Report Settings (summary / standard / detailed).</div>
+    </div>
+    <div class="row">
+      <div class="key">Why</div>
+      <div class="val">Customers want one document per visit, not 20 separate PDFs. The check container is the natural unit — already groups the right assets, already has site &amp; date.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>"Generate Report" button on every maintenance check (top-right of detail page)</li>
+          <li>Report includes all linked test records (ACB + NSX + General mixed if present)</li>
+          <li>Per-asset section depth controlled by Report Settings complexity</li>
+          <li>Auto-store as <code>checks/{id}/report.pdf</code>, downloadable from the check &amp; from the customer dashboard</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">10</span>Defects</h2>
+  <p class="blurb">You asked: how does this get populated?</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Defects</div>
+        <div class="item-title">Auto from failed test items + manual add</div>
+      </div>
+      <div class="badge answer">Answer + Build</div>
+    </div>
+    <div class="row">
+      <div class="key">Today</div>
+      <div class="val">Defects table exists but population is manual-only and barely used.</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">When a test item is marked "Not OK" or fails an electrical reading, a defect is auto-created with:
+        <ul class="build-list" style="margin-top:8px;">
+          <li>Linked check, asset, test record</li>
+          <li>Severity inferred from the test type (visual = low, electrical fail = high)</li>
+          <li>Defaults from the comment field on the failed item</li>
+        </ul>
+        A manual "Add Defect" button stays for things spotted off-test (e.g. damaged enclosure noticed during pack-up).
+      </div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Trigger function on test item insert/update — if status flips to fail, insert into <code>defects</code></li>
+          <li>Reverse: if test item un-flips (e.g. amended after re-inspection), defect status → "Resolved"</li>
+          <li>Defects list shows source: "Auto from ACB test" vs "Manual"</li>
+          <li>Report includes a Defects appendix listing all auto+manual defects from the check</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">11</span>Contract scope</h2>
+  <p class="blurb">You asked: where does this info get broadcast, or is it just reference?</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Contract Scope</div>
+        <div class="item-title">Reference now → surface inline on relevant maintenance checks (next phase)</div>
+      </div>
+      <div class="badge answer">Answer + Future</div>
+    </div>
+    <div class="row">
+      <div class="key">Today</div>
+      <div class="val">Reference only. Lives on its own page, doesn't influence any other workflow. Useful for you/SKS to see what's in/out of scope per FY but invisible to site techs.</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">Keep as reference for now (no rework needed). <strong>Phase 2:</strong> when a tech opens a maintenance check on Site X, scope items relevant to the assets in that check show as a contextual banner — "This site's scope includes: [items]" or "Heads up: Asset Y is excluded from scope".</div>
+    </div>
+    <div class="row">
+      <div class="key">Why</div>
+      <div class="val">Site guys never look at the Contract Scope page — but they need the info at the moment they're deciding what to inspect. Push it to them in-context, don't make them go find it.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build (Phase 2)</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Add <code>asset_id</code> nullable to <code>contract_scope_items</code> for asset-level granularity</li>
+          <li>Banner component on check creation + check detail showing matched scope items</li>
+          <li>Out-of-scope assets get a yellow flag on selection: "Customer hasn't paid for this — confirm before inspecting"</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">12</span>Users — archive vs hard delete</h2>
+  <p class="blurb">You want to fully remove people from the list.</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Users</div>
+        <div class="item-title">Archive (any admin) + hard delete (super_admin only)</div>
+      </div>
+      <div class="badge build">Build</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">Two-tier:
+        <ul class="build-list" style="margin-top:8px;">
+          <li><strong>Archive</strong> — any admin or supervisor can do it. Hides from active list, blocks login, preserves all audit history with their name. "Show Archived" toggle to view.</li>
+          <li><strong>Hard delete</strong> — super_admin only. Purges from <code>auth.users</code>; historical records replace user reference with a string ("Removed User"). Irreversible.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="row">
+      <div class="key">Why</div>
+      <div class="val">Archive covers 95% of cases (someone leaves the team, no need to wipe their history). Hard delete is for genuine cleanup (test accounts, GDPR-style requests) and stays gated behind super_admin to prevent accidents.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Add <code>is_active</code> to <code>profiles</code> (already exists pattern from job_plans/sites)</li>
+          <li>"Archive User" button on Users page — confirms, sets <code>is_active=false</code>, blocks login via auth hook</li>
+          <li>"Show Archived" toggle on Users page</li>
+          <li>"Delete Permanently" button visible only when <code>role=super_admin</code> — double-confirm modal</li>
+          <li>Audit log entries for both archive and delete actions</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">13</span>Report Settings — what is it for?</h2>
+  <p class="blurb">You asked: what is this relevant to?</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Report Settings</div>
+        <div class="item-title">Master template config for every PDF the app generates</div>
+      </div>
+      <div class="badge answer">Answer</div>
+    </div>
+    <div class="row">
+      <div class="key">Today</div>
+      <div class="val">Report Settings is the page at <code>/admin/reports</code>. It controls cover page, contents page, summary, sign-off, header/footer text, company details, complexity (summary/standard/detailed), logo URL, customer-logo toggle, site-photo toggle.</div>
+    </div>
+    <div class="row">
+      <div class="key">Decision</div>
+      <div class="val">Now that <strong>every PDF runs through this template</strong> (item 07), Report Settings becomes the <strong>master control panel for all customer-facing output</strong>. Change it once → applies to Compliance, ACB, NSX, General, per-check, defect register.</div>
+    </div>
+    <div class="row">
+      <div class="key">Build (clarity tweaks)</div>
+      <div class="val">
+        <ul class="build-list">
+          <li>Add a section header at the top of <code>/admin/reports</code> explaining: "These settings control every PDF generated by the app."</li>
+          <li>Live preview thumbnails — show how a sample report changes as you toggle settings</li>
+          <li>Per-customer overrides? — flag for later if SKS wants different report styles per client</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">14</span>HTML explainer</h2>
+  <p class="blurb">"Once we have direction I want one of your famous html explainers on all of this."</p>
+  <div class="item">
+    <div class="item-header">
+      <div>
+        <div class="item-page">Overall</div>
+        <div class="item-title">You're reading it</div>
+      </div>
+      <div class="badge answer">Done</div>
+    </div>
+    <div class="row">
+      <div class="key">Saved to</div>
+      <div class="val"><code>eq-solves-service/docs/reviews/2026-04-26-service-items-decisions.html</code></div>
+    </div>
+    <div class="row">
+      <div class="key">Use it as</div>
+      <div class="val">The single source of truth for the next sprint. Each item maps to a discrete piece of work — happy to break this into a roadmap or task list when you give the word.</div>
+    </div>
+  </div>
+
+  <div class="next-section">
+    <h2>Next moves</h2>
+    <p class="blurb">If you want to start building tomorrow, here's the order I'd run them in. Quick wins first to build momentum, then the structural items.</p>
+    <div class="next-grid">
+      <div class="next-card">
+        <div class="num">SPRINT 1 — QUICK WINS</div>
+        <h4>Bugs &amp; UX polish (1–2 days)</h4>
+        <p>Logo upload fix, loading states, dashboard switcher copy + behaviour, "Show Archived" + Archive button on Users page.</p>
+      </div>
+      <div class="next-card">
+        <div class="num">SPRINT 2 — REPORTING UNIFICATION</div>
+        <h4>One template to rule them all (3–5 days)</h4>
+        <p>Refactor PDF generators behind a shared ReportShell. Per-check report generation. Apply to all 6 PDF types. Live preview in Report Settings.</p>
+      </div>
+      <div class="next-card">
+        <div class="num">SPRINT 3 — DATA &amp; WORKFLOW</div>
+        <h4>Defects auto, attachments categorized, edit-after-amend (3–4 days)</h4>
+        <p>Trigger function for defects. Attachment Type field + backfill. Re-open + audit pattern for completed checks.</p>
+      </div>
+      <div class="next-card">
+        <div class="num">SPRINT 4 — NEW SURFACES</div>
+        <h4>Contacts + Schedule &amp; Gaps (4–6 days)</h4>
+        <p>Contacts table + UI + import. Calendar reframe to overdue/upcoming view. Optional .ics feed for Outlook.</p>
+      </div>
+      <div class="next-card">
+        <div class="num">PHASE 2 — LATER</div>
+        <h4>Contract scope inline (2–3 days, when ready)</h4>
+        <p>Asset-level scope linkage. In-context banner on maintenance checks. Out-of-scope flag at asset selection.</p>
+      </div>
+      <div class="next-card">
+        <div class="num">PHASE 2 — LATER</div>
+        <h4>Hard delete (super_admin) + per-customer report overrides (1–2 days each)</h4>
+        <p>Lower priority — only build if SKS asks for it.</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <strong>EQ Solutions™</strong> &nbsp;·&nbsp; EQ Solves Service · Decisions log · 26 April 2026
+  </footer>
+
+</div>
+</body>
+</html>

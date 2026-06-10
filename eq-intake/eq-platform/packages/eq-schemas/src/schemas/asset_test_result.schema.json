@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/asset_test_result/v1.json",
+  "title": "Asset Test Result",
+  "description": "A compliance-regulated test result for an asset. This is the canonical record that 'Last Thermal' / 'Last RCD Test' fields on asset are derived from. Survives forever — never deleted. One row per test event.",
+  "type": "object",
+  "x-eq-entity": "asset_test_result",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "asset_test_results",
+  "x-eq-primary-key": "result_id",
+  "required": ["result_id", "tenant_id", "asset_id", "test_type", "test_date", "pass_fail"],
+  "properties": {
+    "result_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "result_id", "test_id", "record_id", "cert_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Source-system test record reference (e.g. test report number, cert number).",
+      "x-eq-source-aliases": ["report_no", "cert_no", "certificate_number", "test_ref", "report_number", "cert_ref"],
+      "maxLength": 64
+    },
+    "asset_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The asset this test result belongs to.",
+      "x-eq-foreign-key": "asset.asset_id",
+      "x-eq-fk-fuzzy-match-on": ["asset.name", "asset.external_id"],
+      "x-eq-source-aliases": ["asset", "tag", "equipment", "asset_tag", "asset_no", "plant_no", "board"]
+    },
+    "visit_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "The service visit during which this test was conducted.",
+      "x-eq-foreign-key": "service_visit.visit_id",
+      "x-eq-source-aliases": ["visit", "job", "job_id", "job_no", "service_visit"]
+    },
+    "test_type": {
+      "type": "string",
+      "description": "Type of test conducted.",
+      "x-eq-source-aliases": ["type", "test", "test_name", "test_code", "measurement_type"],
+      "x-eq-suggested-values": [
+        "rcd_trip_time",
+        "thermal_scan",
+        "megger",
+        "earth_continuity",
+        "polarity",
+        "insulation_resistance",
+        "residual_current",
+        "voltage_drop",
+        "load_bank",
+        "battery_capacity",
+        "generator_output",
+        "visual_inspection",
+        "torque_check",
+        "other"
+      ],
+      "x-eq-enum-aliases": {
+        "rcd_trip_time":          ["rcd", "rcd test", "earth leakage", "elcb", "trip time"],
+        "thermal_scan":           ["thermal", "thermal imaging", "ir scan", "infrared", "thermography"],
+        "megger":                 ["megger test", "meg", "ir test", "insulation resistance", "insulation test"],
+        "earth_continuity":       ["earth test", "continuity", "earth continuity test"],
+        "polarity":               ["polarity test", "polarity check"],
+        "insulation_resistance":  ["ir", "insulation", "hi-pot", "hipot"],
+        "residual_current":       ["rcbo", "earth fault", "residual current test"],
+        "voltage_drop":           ["vd", "voltage drop test"],
+        "load_bank":              ["load test", "load bank test", "resistive load"],
+        "battery_capacity":       ["battery test", "battery load test", "ah test"],
+        "generator_output":       ["gen test", "generator test", "genset test", "gen output"]
+      },
+      "maxLength": 100
+    },
+    "test_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the test was conducted. ISO 8601 (YYYY-MM-DD).",
+      "x-eq-source-aliases": ["date", "test_date", "tested_on", "inspection_date", "date_tested", "date_of_test"],
+      "x-eq-coerce": "date"
+    },
+    "tested_by_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Staff member who conducted the test. Null when tested by an external party.",
+      "x-eq-foreign-key": "staff.staff_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.first_name+staff.last_name", "staff.preferred_name", "staff.external_id"],
+      "x-eq-source-aliases": ["tested_by", "tester", "technician", "tech", "engineer", "inspector", "conducted_by"]
+    },
+    "tested_by_external": {
+      "type": ["string", "null"],
+      "description": "Name / company of external tester when tested_by_id is null. Preserved for audit.",
+      "x-eq-source-aliases": ["external_tester", "contractor", "testing_company", "third_party_tester"],
+      "maxLength": 200
+    },
+    "licence_number": {
+      "type": ["string", "null"],
+      "description": "Electrical licence number of the person who conducted the test. Required for licensed-electrician sign-offs.",
+      "x-eq-source-aliases": ["licence", "license", "lic_no", "licence_no", "electrical_licence", "cert_number", "registration_no"],
+      "maxLength": 64
+    },
+    "pass_fail": {
+      "type": "string",
+      "enum": ["pass", "fail", "partial", "inconclusive"],
+      "description": "Overall result of the test.",
+      "x-eq-source-aliases": ["result", "outcome", "verdict", "status", "test_result"],
+      "x-eq-enum-aliases": {
+        "pass":        ["p", "ok", "satisfactory", "sat", "passed", "compliant", "in_spec"],
+        "fail":        ["f", "failed", "unsatisfactory", "unsat", "non_compliant", "out_of_spec"],
+        "partial":     ["part", "partial_pass", "conditional"],
+        "inconclusive": ["unclear", "invalid", "repeat_required", "inconclusive_result"]
+      }
+    },
+    "raw_values": {
+      "type": ["object", "null"],
+      "description": "Test-type-specific structured measurements. Schema varies by test_type — e.g. for rcd_trip_time: {trip_ms: 28, rated_ma: 30, test_current_ma: 30}. For thermal_scan: {max_temp_c: 67.3, ambient_c: 24.1, delta_t: 43.2, emissivity: 0.95}.",
+      "additionalProperties": true,
+      "x-eq-source-aliases": ["measurements", "readings", "values", "test_data", "raw_data", "results_detail"]
+    },
+    "action_taken_if_fail": {
+      "type": ["string", "null"],
+      "description": "What was done to address a failed test — isolation, temporary repair, deferred to defect register, etc.",
+      "x-eq-source-aliases": ["action_taken", "corrective_action", "remediation", "follow_up", "rectification"],
+      "maxLength": 2000
+    },
+    "test_cert_reference": {
+      "type": ["string", "null"],
+      "description": "Certificate or compliance document reference number (e.g. Certificate of Compliance, Form 5).",
+      "x-eq-source-aliases": ["cert_ref", "certificate", "compliance_cert", "form_5", "coc_ref", "test_certificate"],
+      "maxLength": 100
+    },
+    "signature_attached": {
+      "type": ["string", "null"],
+      "description": "File reference URL for the signed test report or certificate scan.",
+      "format": "uri",
+      "x-eq-source-aliases": ["signature", "signed_report", "cert_scan", "attachment", "file_ref"]
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Additional observations or context about the test.",
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "observations", "test_notes"],
+      "maxLength": 2000
+    },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "fail_has_action",
+      "rule": "pass_fail != 'fail' OR (action_taken_if_fail != null AND action_taken_if_fail != '')",
+      "message": "Failed tests should document the corrective action taken.",
+      "severity": "warning"
+    },
+    {
+      "id": "tester_identified",
+      "rule": "tested_by_id != null OR (tested_by_external != null AND tested_by_external != '')",
+      "message": "Test result should identify who conducted the test.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Test results come from test report PDFs, field app exports, or hand-filled test registers.",
+    "common_sources": [
+      {
+        "name": "RCD test register (flat CSV)",
+        "typical_columns": ["Board", "Circuit", "Type", "Rating (mA)", "Trip Time (ms)", "Date", "Technician", "Licence No", "Pass/Fail"],
+        "watchouts": ["Trip time in milliseconds goes into raw_values.trip_ms", "Rating goes into raw_values.rated_ma"]
+      },
+      {
+        "name": "Thermal imaging report export",
+        "typical_columns": ["Tag", "Location", "Max Temp", "Ambient", "Delta T", "Date", "Tester", "Result"],
+        "watchouts": ["Temperature values into raw_values.max_temp_c, raw_values.ambient_c, raw_values.delta_t"]
+      },
+      {
+        "name": "SimPRO test result export",
+        "typical_columns": ["Job No", "Asset Tag", "Test Type", "Date", "Technician", "Result", "Notes"]
+      }
+    ]
+  }
+}

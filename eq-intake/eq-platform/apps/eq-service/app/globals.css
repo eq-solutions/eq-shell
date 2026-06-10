@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* Plus Jakarta Sans is loaded via next/font/google in app/layout.tsx,
+   exposed as the --font-jakarta CSS variable on <html>. We reference that
+   variable here so every consumer (Tailwind --font-sans token, body, ad
+   hoc font-family) resolves to the same self-hosted, preloaded font.
+   The off-origin @import that lived on this line was render-blocking. */
+
+:root {
+  --eq-sky:  #3DA8D8;
+  --eq-deep: #2986B4;
+  --eq-ice:  #EAF5FB;
+  --eq-ink:  #1A1A2E;
+  --eq-grey: #666666;
+}
+
+@theme inline {
+  --color-eq-sky:  var(--eq-sky);
+  --color-eq-deep: var(--eq-deep);
+  --color-eq-ice:  var(--eq-ice);
+  --color-eq-ink:  var(--eq-ink);
+  --color-eq-grey: var(--eq-grey);
+  --font-sans: var(--font-jakarta), Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  color: var(--eq-ink);
+  background: #ffffff;
+  font-family: var(--font-jakarta), Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}

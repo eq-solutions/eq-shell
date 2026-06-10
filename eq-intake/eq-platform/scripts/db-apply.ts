@@ -1,0 +1,246 @@
+/**
+ * scripts/db-apply.ts — generate a single SQL file the operator pastes
+ * into the Supabase SQL editor for the initial canonical setup.
+ *
+ * Why a single paste instead of programmatic execution: Supabase doesn't
+ * expose arbitrary-SQL execution via supabase-js. We could connect via
+ * the postgres protocol but that requires the DB password (not the
+ * service-role key) + the pg client. For the one-time initial apply,
+ * pasting into the Supabase SQL editor in the dashboard is simpler,
+ * faster, and more auditable (the operator sees exactly what runs).
+ *
+ * Future schema changes will use proper migration tooling (Supabase CLI
+ * or similar). This script is for the FIRST APPLY only.
+ *
+ * Run from the eq-platform monorepo root:
+ *   pnpm db:apply
+ * Output: eq-platform/.generated/all-migrations.sql
+ *
+ * Order:
+ *   1.  _all_tables.sql              — canonical entity tables (codegen)
+ *   2.  001_intake_spine.sql         — eq_schema_registry, eq_intake_events, etc.
+ *   3.  002_intake_module_columns    — adds imported_at/from/intake_id to entities
+ *   4.  003_schema_version_columns   — schema_version + import mode
+ *   5.  004_security_advisor_fix     — pin search_path + revoke PUBLIC on SECURITY DEFINER
+ *   6.  005_licences_extensions      — RLS, indexes, storage bucket for licences
+ *   7.  006_licences_commit_path     — extends eq_intake_commit_batch RPC for licences
+ *   8.  007_schema_split_and_reshape — shell_control + app_data schema split (Unit 2)
+ *   9.  008_decompose_intake_commit_batch — per-domain RPCs + unwinders (Unit 3)
+ *   10. 009_quotes_domain            — 7 quote-domain tables + dispatch (Unit 4)
+ *   11. 010_field_domain             — 22 field-domain tables + view (Unit 5 part 1)
+ *   12. 010b_field_dispatch_and_router — Unit 5 part 2 (RPC dispatch + router)
+ *   13. 011_eq_list_module_entities  — registry-listing helper RPC (Unit 7)
+ *   14. seed_schema_registry         — inserts the JSON schemas as rows
+ *
+ * Idempotent: every CREATE / ALTER uses IF NOT EXISTS or IF EXISTS;
+ * the seed uses INSERT ... ON CONFLICT DO UPDATE.
+ */
+
+import { readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+const MONOREPO_ROOT = resolve(process.cwd());
+const REPO_ROOT = resolve(MONOREPO_ROOT, "..");
+const SQL_DIR = join(REPO_ROOT, "sql");
+const SCHEMAS_DIR = join(MONOREPO_ROOT, "packages", "eq-schemas", "src", "schemas");
+const GENERATED_SQL_DIR = join(
+  MONOREPO_ROOT,
+  "packages",
+  "eq-schemas",
+  "src",
+  "generated",
+  "sql",
+);
+const OUT_DIR = join(MONOREPO_ROOT, ".generated");
+const OUT_FILE = join(OUT_DIR, "all-migrations.sql");
+
+function readSqlFile(name: string): string {
+  return readFileSync(join(SQL_DIR, name), "utf8");
+}
+
+function readGeneratedSql(name: string): string {
+  return readFileSync(join(GENERATED_SQL_DIR, name), "utf8");
+}
+
+function seedSchemaRegistry(): string {
+  const files = readdirSync(SCHEMAS_DIR)
+    .filter((f) => f.endsWith(".schema.json"))
+    .sort();
+
+  const inserts: string[] = [
+    "-- ============================================================================",
+    "-- 6. SEED eq_schema_registry",
+    "-- ============================================================================",
+    "-- Upsert each canonical schema. ON CONFLICT (entity, version) DO UPDATE so",
+    "-- re-running picks up edits to the same version. Bumping a schema's version",
+    "-- inserts a new row + the registry's trigger flips the old is_current = false.",
+    "",
+  ];
+
+  for (const file of files) {
+    const raw = readFileSync(join(SCHEMAS_DIR, file), "utf8");
+    const schema = JSON.parse(raw) as {
+      "x-eq-entity": string;
+      "x-eq-module"?: string;
+      "x-eq-version"?: string;
+      description?: string;
+    };
+    const entity = schema["x-eq-entity"];
+    const module = schema["x-eq-module"] ?? "core";
+    const version = schema["x-eq-version"] ?? "1.0.0";
+    const description = (schema.description ?? "").replace(/'/g, "''");
+    const escapedJson = raw.replace(/'/g, "''");
+
+    inserts.push(
+      `insert into eq_schema_registry (entity, module, version, schema_json, description, is_current)`,
+    );
+    inserts.push(
+      `values ('${entity}', '${module}', '${version}', '${escapedJson}'::jsonb, '${description}', true)`,
+    );
+    inserts.push(
+      `on conflict (entity, version) do update set`,
+    );
+    inserts.push(
+      `  schema_json = excluded.schema_json,`,
+    );
+    inserts.push(
+      `  description = excluded.description,`,
+    );
+    inserts.push(
+      `  module = excluded.module;`,
+    );
+    inserts.push("");
+  }
+
+  return inserts.join("\n");
+}
+
+function main() {
+  mkdirSync(OUT_DIR, { recursive: true });
+
+  const parts: string[] = [
+    "-- ============================================================================",
+    "-- EQ Canonical setup — combined initial migration",
+    "-- ============================================================================",
+    "-- Generated by scripts/db-apply.ts. Paste into the Supabase SQL editor for",
+    "-- your tenant's project. Run once; future changes go through proper",
+    "-- migration tooling.",
+    "--",
+    "-- Order:",
+    "--   1. Canonical entity tables (codegen from @eq/schemas)",
+    "--   2. eq_intake_spine — schema registry, intake events, audit, templates",
+    "--   3. Per-module column extensions (imported_at/from/intake_id)",
+    "--   4. Schema version + import-mode columns",
+    "--   5. Security-advisor fix — pin search_path + revoke PUBLIC on SECURITY DEFINER",
+    "--   6. Licences extensions — RLS, indexes, storage bucket for the Cards entity",
+    "--   7. Seed eq_schema_registry with current schemas",
+    "--",
+    "-- Idempotent — safe to re-run.",
+    "-- ============================================================================",
+    "",
+    "begin;",
+    "",
+    "-- ============================================================================",
+    "-- 1. CANONICAL ENTITY TABLES (codegen)",
+    "-- ============================================================================",
+    "",
+    readGeneratedSql("_all_tables.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 2. INTAKE SPINE (eq_schema_registry, eq_intake_events, etc.)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("001_intake_spine.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 3. PER-MODULE COLUMN EXTENSIONS",
+    "-- ============================================================================",
+    "",
+    readSqlFile("002_intake_module_columns.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 4. SCHEMA VERSION + IMPORT MODE COLUMNS",
+    "-- ============================================================================",
+    "",
+    readSqlFile("003_schema_version_columns.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 5. SECURITY ADVISOR FIX (search_path + revoke PUBLIC on SECURITY DEFINER)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("004_security_advisor_fix.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 6. LICENCES EXTENSIONS (RLS, indexes, storage bucket, set_updated_at trigger)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("005_licences_extensions.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 7. LICENCES COMMIT PATH (extends eq_intake_commit_batch for the new entity)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("006_licences_commit_path.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 8. SCHEMA SPLIT + RESHAPE (Unit 2 — shell_control + app_data schemas)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("007_schema_split_and_reshape.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 9. DECOMPOSE INTAKE COMMIT BATCH (Unit 3 — per-domain RPCs + unwinders)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("008_decompose_intake_commit_batch.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 10. QUOTES DOMAIN (Unit 4 — 7 quote-domain tables + dispatch)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("009_quotes_domain.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 11. FIELD DOMAIN tables (Unit 5 part 1 — 22 tables + view + registry seed)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("010_field_domain.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 11b. FIELD dispatch + router update (Unit 5 part 2)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("010b_field_dispatch_and_router.sql"),
+    "",
+    "-- ============================================================================",
+    "-- 12. eq_list_module_entities RPC (Unit 7 — registry-listing helper)",
+    "-- ============================================================================",
+    "",
+    readSqlFile("011_eq_list_module_entities.sql"),
+    "",
+    seedSchemaRegistry(),
+    "",
+    "commit;",
+    "",
+    "-- ============================================================================",
+    "-- Done. Verify by querying eq_schema_registry:",
+    "--   select entity, version, is_current from eq_schema_registry order by entity;",
+    "-- ============================================================================",
+  ];
+
+  writeFileSync(OUT_FILE, parts.join("\n"), "utf8");
+
+  const sizeKb = Math.round(parts.join("\n").length / 1024);
+  console.log(`[db:apply] Wrote ${OUT_FILE} (${sizeKb} KB)`);
+  console.log("");
+  console.log("Next steps:");
+  console.log("  1. Open https://supabase.com/dashboard");
+  console.log("  2. Pick your target Supabase project (e.g. sks-canonical)");
+  console.log("  3. SQL Editor → New query");
+  console.log(`  4. Paste the contents of ${OUT_FILE}`);
+  console.log("  5. Run");
+  console.log("  6. Verify with:");
+  console.log("     select entity, version, is_current from eq_schema_registry order by entity;");
+}
+
+main();

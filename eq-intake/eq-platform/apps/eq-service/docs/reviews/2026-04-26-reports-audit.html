@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reports Audit — Keep / Remove / Question</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky: #3DA8D8;
+    --deep: #2986B4;
+    --ice: #EAF5FB;
+    --ink: #1A1A2E;
+    --grey: #6B7280;
+    --line: #E5E7EB;
+    --bg: #FAFBFC;
+    --white: #FFFFFF;
+    --ok: #10B981;
+    --warn: #F59E0B;
+    --bad: #EF4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 56px 32px 96px;
+  }
+  header.hero {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 28px;
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--sky);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  .subtitle {
+    font-size: 16px;
+    color: var(--grey);
+    max-width: 760px;
+  }
+  .meta {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+    font-size: 13px;
+    color: var(--grey);
+    flex-wrap: wrap;
+  }
+  .meta strong { color: var(--ink); font-weight: 600; }
+
+  .summary-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 32px 0 40px;
+  }
+  .stat {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px 18px 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+  }
+  .stat.remove::before { background: var(--bad); }
+  .stat.question::before { background: var(--warn); }
+  .stat.keep::before { background: var(--ok); }
+  .stat.total::before { background: var(--sky); }
+  .stat .num-big {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1;
+    margin-bottom: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .label {
+    font-size: 12px;
+    color: var(--grey);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }
+
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 48px 0 6px;
+  }
+  h2 .num {
+    color: var(--sky);
+    font-weight: 600;
+    margin-right: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  h2 + .section-blurb {
+    color: var(--grey);
+    margin-bottom: 20px;
+    font-size: 14.5px;
+    max-width: 720px;
+  }
+
+  .item {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 12px;
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    gap: 18px;
+    align-items: start;
+  }
+  .item.remove { border-left: 3px solid var(--bad); }
+  .item.question { border-left: 3px solid var(--warn); }
+  .item.keep { border-left: 3px solid var(--ok); }
+
+  .check-box {
+    margin-top: 4px;
+  }
+  .check-box input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--sky);
+    cursor: pointer;
+  }
+
+  .item-body { min-width: 0; }
+  .item-id {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--grey);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .item-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .item-title code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    background: var(--ice);
+    color: var(--deep);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .item-desc {
+    font-size: 13.5px;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .item-meta {
+    font-size: 12px;
+    color: var(--grey);
+    line-height: 1.5;
+  }
+  .item-meta code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    background: #F9FAFB;
+    color: var(--deep);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--line);
+  }
+  .item-meta strong { color: var(--ink); font-weight: 600; }
+
+  .verdict {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+    align-self: start;
+    margin-top: 2px;
+  }
+  .verdict.remove { background: #FEE2E2; color: #991B1B; border-color: #FECACA; }
+  .verdict.question { background: #FEF3C7; color: #92400E; border-color: #FDE68A; }
+  .verdict.keep { background: #D1FAE5; color: #065F46; border-color: #A7F3D0; }
+
+  .legend {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 32px;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .legend strong { font-weight: 600; }
+  .legend-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .legend-row:last-child { margin-bottom: 0; }
+  .legend-pill {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+  }
+  .legend-pill.remove { background: var(--bad); }
+  .legend-pill.question { background: var(--warn); }
+  .legend-pill.keep { background: var(--ok); }
+
+  .ack-box {
+    background: var(--ink);
+    color: var(--white);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-top: 48px;
+  }
+  .ack-box h3 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--white);
+  }
+  .ack-box p {
+    font-size: 14px;
+    color: rgba(255,255,255,0.75);
+    line-height: 1.55;
+    margin-bottom: 8px;
+  }
+  .ack-box p:last-child { margin-bottom: 0; }
+  .ack-box code {
+    background: rgba(61, 168, 216, 0.15);
+    color: #BAE6FD;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+
+  footer {
+    text-align: center;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--grey);
+  }
+  footer strong { color: var(--ink); font-weight: 600; }
+
+  @media (max-width: 720px) {
+    .page { padding: 32px 18px 64px; }
+    h1 { font-size: 24px; }
+    .summary-strip { grid-template-columns: repeat(2, 1fr); }
+    .item { grid-template-columns: 24px 1fr; }
+    .verdict { grid-column: 1 / -1; margin-left: 36px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <div class="eyebrow">Reports audit</div>
+    <h1>Keep · Remove · Question</h1>
+    <p class="subtitle">Full sweep of every reporting surface in the app — pages, buttons, API routes, generators, settings. Tick the items you want me to remove, then send the list back.</p>
+    <div class="meta">
+      <span><strong>Date:</strong> 26 April 2026</span>
+      <span><strong>Repo:</strong> eq-solves-service</span>
+      <span><strong>Total surfaces audited:</strong> 28</span>
+    </div>
+  </header>
+
+  <div class="summary-strip">
+    <div class="stat total">
+      <div class="num-big">28</div>
+      <div class="label">Total surfaces</div>
+    </div>
+    <div class="stat keep">
+      <div class="num-big">17</div>
+      <div class="label">Keep — wired &amp; useful</div>
+    </div>
+    <div class="stat remove">
+      <div class="num-big">7</div>
+      <div class="label">Remove — confirmed dead</div>
+    </div>
+    <div class="stat question">
+      <div class="num-big">4</div>
+      <div class="label">Question — needs your call</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-row"><span class="legend-pill remove"></span><strong>Remove</strong> — file/route/setting is unused or its only caller is itself dead. Safe to delete.</div>
+    <div class="legend-row"><span class="legend-pill question"></span><strong>Question</strong> — used somewhere but inconsistently or for a narrow case. Your call.</div>
+    <div class="legend-row"><span class="legend-pill keep"></span><strong>Keep</strong> — actively wired into a live UI surface, no overlap.</div>
+  </div>
+
+  <h2><span class="num">01</span>The dead-code chain on the maintenance check page</h2>
+  <p class="section-blurb">Biggest finding: there's an entire orphaned UI tree for the maintenance check page that runs in parallel to the live one. <code>CheckDetailPage.tsx</code> (under <code>[id]/</code>) is what users actually see; <code>CheckDetail.tsx</code> + <code>CheckHeader.tsx</code> are the older version, never imported anywhere, but still carry their own "Download Report" button and its API route + generator chain.</p>
+
+  <div class="item remove">
+    <div class="check-box"><input type="checkbox" id="r1" /></div>
+    <div class="item-body">
+      <div class="item-id">Item 01 · Component</div>
+      <div class="item-title">Delete <code>CheckDetail.tsx</code></div>
+      <div class="item-desc">Older version of the maintenance check detail screen. Replaced by <code>CheckDetailPage.tsx</code> under <code>[id]/</code>. Zero imports anywhere in the codebase.</div>
+      <div class="item-meta"><strong>Path:</strong> <code>app/(app)/maintenance/CheckDetail.tsx</code> &nbsp;·&nbsp; <strong>Imports of it:</strong> 0 &nbsp;·&nbsp; <strong>Action:</strong> delete file</div>
+    </div>
+    <div class="verdict remove">Remove</div>
+  </div>
+
+  <div class="item remove">
+    <div class="check-box"><input type="checkbox" id="r2" /></div>
+    <div class="item-body">
+      <div class="item-id">Item 02 · Component</div>
+      <div class="item-title">Delete <code>CheckHeader.tsx</code></div>
+      <div class="item-desc">Header bar (status badge + "Download Report" button) for the dead <code>CheckDetail.tsx</code>. Only consumer is the file above, which is itself orphaned.</div>
+      <div class="item-meta"><strong>Path:</strong> <code>app/(app)/maintenance/CheckHeader.tsx</code> &nbsp;·&nbsp; <strong>Imports of it:</strong> 1 (the dead CheckDetail.tsx) &nbsp;·&nbsp; <strong>Action:</strong> delete file</div>
+    </div>
+    <div class="verdict remove">Remove</div>
+  </div>
+
+  <div class="item remove">
+    <div class="check-box"><input type="checkbox" id="r3" /></div>
+    <div class="item-body">
+      <div class="item-id">Item 03 · API route</div>
+      <div class="item-title">Delete <code>/api/pm-report</code></div>
+      <div class="item-desc">DOCX endpoint that returned a basic check report. Only caller is the dead <code>CheckHeader.tsx</code> "Download Report" button. Nothing else fetches this URL.</div>
+      <div class="item-meta"><strong>Path:</strong> <code>app/api/pm-report/route.ts</code> &nbsp;·&nbsp; <strong>Callers:</strong> 1 (dead) &nbsp;·&nbsp; <strong>Action:</strong> delete folder</div>
+    </div>
+    <div class="verdict remove">Remove</div>
+  </div>
+
+  <h2><span class="num">02</span>Orphaned bulk-export UI</h2>
+  <p class="section-blurb">A button + API route for "download all ACB + NSX as ZIP" was built for the Reports page but the button was never imported into the page. The route works, but nothing in the app calls it.</p>
+
+  <div class="item remove">
+    <div class="check-box"><input type="checkbox" id="r4" /></div>
+    <div class="item-body">
+      <div class="item-id">Item 04 · Component</div>
+      <div class="item-title">Delete <code>BulkExportButton.tsx</code></div>
+      <div class="item-desc">Site picker + button that fetches <code>/api/bulk-report</code> and downloads a ZIP of all ACB + NSX reports for that site. Component file exists; never rendered. Looks like it was built for the Reports page but never imported.</div>
+      <div class="item-meta"><strong>Path:</strong> <code>app/(app)/reports/BulkExportButton.tsx</code> &nbsp;·&nbsp; <strong>Imports of it:</strong> 0 &nbsp;·&nbsp; <strong>Action:</strong> delete file</div>
+    </div>
+    <div class="verdict remove">Remove</div>
+  </div>
+
+  <div class="item remove">
+    <div class="check-box"><input type="checkbox" id="r5" /></div>
+    <div class="item-body">
+      <div class="item-id">Item 05 · API route</div>
+      <div class="item-title">Delete <code>/api/bulk-report</code></div>
+      <div class="item-desc">ZIP endpoint that bundles per-site ACB + NSX DOCX reports. Only caller is the orphaned BulkExportButton above.</div>
+      <div class="item-meta"><strong>Path:</strong> <code>app/api/bulk-report/route.ts</code> &nbsp;·&nbsp; <strong>Callers:</strong> 1 (dead) &nbsp;·&nbsp; <strong>Action:</strong> delete folder</div>
+    </div>
+    <div class="verdict remove">Remove</div>
+  </div>
+
+  <h2><span class="num">03</span>Dead settings on the Report Settings form</h2>
+  <p class="section-blurb">Toggle in the form, never read by any generator. Wastes setting-storage and confuses you about what the form actually controls.</p>
+
+  <div class="item remove">
+    <div class="check-box"><input type="checkbox" id="r6" /></div>
+    <div class="item-body">
+      <div class="item-id">Item 06 · Setting</div>
+      <div class="item-title">Drop the <code>report_site_photos</code> setting</div>
+      <div class="item-desc">Toggle visible in <code>/admin/reports</code>. Stored in <code>tenant_settings.report_site_photos</code>. Read by zero PDF generators. Likely intended for the cover page but never wired through. Either remove or wire properly.</div>
+      <div class="item-meta"><strong>Reads in code:</strong> 0 generator calls &nbsp;·&nbsp; <strong>Action:</strong> remove from form + drop column (next migration)</div>
+    </div>
+    <div class="verdict remove">Remove</div>
+  </div>
+
+  <div class="item question">
+    <div class="check-box"><input type="checkbox" id="q1" /></div>
+    <div class="item-body">
+      <div class="item-id">Item 07 · Setting</div>
+      <div class="item-title">Decide on <code>report_show_site_overview</code></div>
+      <div class="item-desc">Read by exactly one generator (<code>pm-asset-report</code>) — not by ACB, NSX, compliance, or maintenance-checklist. Either propagate to the others (so it's a real global setting) or remove from the form and bake it into pm-asset directly.</div>
+      <div class="item-meta"><strong>Reads in code:</strong> 1 of 6 generators &nbsp;·&nbsp; <strong>Your call:</strong> propagate vs. remove</div>
+    </div>
+    <div class="verdict question">Question</div>
+  </div>
+
+  <div class="item question">
+    <div class="check-box"><input type="checkbox" id="q2" /></div>
+    <div class="item-body">
+      <div class="item-id">Item 08 · Setting</div>
+      <div class="item-title">Decide on <code>report_customer_logo</code></div>
+      <div class="item-desc">Read only by <code>generate-and-store.ts</code> (the maintenance/Send-Report path) and the logo-variants helper. Test reports (ACB/NSX/Compliance) ignore it. Same call as above — propagate or scope it down in the UI.</div>
+      <div class="item-meta"><strong>Reads in code:</strong> maintenance path only &nbsp;·&nbsp; <strong>Your call:</strong> propagate vs. label "applies to maintenance reports only"</div>
+    </div>
+    <div class="verdict question">Question</div>
+  </div>
+
+  <h2><span class="num">04</span>Two PDFs offered for the same maintenance check</h2>
+  <p class="section-blurb">Even after the dead chain above is gone, <code>CheckDetailPage</code> still offers two paths to "make a PDF of this check": the <strong>Download Report</strong> button (full pm-asset-report DOCX) and the <strong>Print Report</strong> SplitButton (printable maintenance-checklist run-sheet). They're actually different products — one's customer-facing, one's a clipboard run-sheet — but the labels could be clearer.</p>
+
+  <div class="item question">
+    <div class="check-box"><input type="checkbox" id="q3" /></div>
+    <div class="item-body">
+      <div class="item-id">Item 09 · UX</div>
+      <div class="item-title">Relabel "Download Report" + "Print Report" so they're clearly different things</div>
+      <div class="item-desc">Suggestion: rename Download Report → <strong>"Customer Report"</strong> (full DOCX with cover, sign-off, asset-by-asset breakdown). Rename Print Report → <strong>"Field Run-Sheet"</strong> (printable checklist for the tech onsite). Same buttons, clearer purpose.</div>
+      <div class="item-meta"><strong>Files affected:</strong> <code>CheckDetailPage.tsx</code> only &nbsp;·&nbsp; <strong>Risk:</strong> low &nbsp;·&nbsp; <strong>Your call:</strong> relabel vs leave</div>
+    </div>
+    <div class="verdict question">Question</div>
+  </div>
+
+  <h2><span class="num">05</span>Generators — the chain after CheckDetail.tsx is removed</h2>
+  <p class="section-blurb">If you tick items 01–03, the <code>pm-check-report.ts</code> generator loses one of its two callers. The other (<code>generate-and-store.ts</code>) still uses it for the maintenance Send-Report path. Worth leaving for now — the work-order-details replacement isn't fully wired (lost in the 26-Apr recovery per your memory).</p>
+
+  <div class="item keep">
+    <div class="check-box"><input type="checkbox" id="k1" checked disabled /></div>
+    <div class="item-body">
+      <div class="item-id">Item 10 · Generator</div>
+      <div class="item-title">Keep <code>pm-check-report.ts</code></div>
+      <div class="item-desc">After items 01–03 land, the <code>/api/pm-report</code> caller is gone. The other caller — <code>generate-and-store.ts</code> — is still active (called by Send Report modal via <code>issueMaintenanceReportAction</code>). Keep until the Work Order Details replacement is fully wired.</div>
+      <div class="item-meta"><strong>Callers after cleanup:</strong> 1 (generate-and-store.ts) &nbsp;·&nbsp; <strong>Action:</strong> keep</div>
+    </div>
+    <div class="verdict keep">Keep</div>
+  </div>
+
+  <div class="item keep">
+    <div class="check-box"><input type="checkbox" id="k2" checked disabled /></div>
+    <div class="item-body">
+      <div class="item-id">Item 11 · Generator</div>
+      <div class="item-title">Keep <code>work-order-details.ts</code></div>
+      <div class="item-desc">Maximo Work Order Details generator (1,092 lines, built 23 April). Actively called by <code>generate-and-store.ts</code> as one of the two output paths. <strong>Note:</strong> the UI dispatcher to choose between this and pm-check-report was lost in the 26-Apr recovery (per your memory). Worth a separate redo session.</div>
+      <div class="item-meta"><strong>Callers:</strong> 1 (generate-and-store.ts) &nbsp;·&nbsp; <strong>Status:</strong> active code, UI dispatcher pending</div>
+    </div>
+    <div class="verdict keep">Keep</div>
+  </div>
+
+  <h2><span class="num">06</span>Verified live and unique — no action needed</h2>
+  <p class="section-blurb">Quick acknowledgment of the surfaces I confirmed are doing real work, not duplicated, and have a clear single owner. No checkboxes here — just so you can see the post-cleanup surface area.</p>
+
+  <div class="item keep">
+    <div class="check-box"><input type="checkbox" id="k3" checked disabled /></div>
+    <div class="item-body">
+      <div class="item-id">Item 12 · Page</div>
+      <div class="item-title">Keep <code>/reports</code> dashboard</div>
+      <div class="item-desc">KPI tiles (compliance, defects, ACB/NSX progress, 6-month trend) + filters + Generate Report button. Single, well-defined entry point.</div>
+      <div class="item-meta"><strong>Path:</strong> <code>app/(app)/reports/page.tsx</code></div>
+    </div>
+    <div class="verdict keep">Keep</div>
+  </div>
+
+  <div class="item keep">
+    <div class="check-box"><input type="checkbox" id="k4" checked disabled /></div>
+    <div class="item-body">
+      <div class="item-id">Item 13 · Page</div>
+      <div class="item-title">Keep <code>/admin/reports</code> Report Settings</div>
+      <div class="item-desc">Master template config + live preview. Will shrink slightly once the dead settings (items 06–08) are decided.</div>
+      <div class="item-meta"><strong>Path:</strong> <code>app/(app)/admin/reports/</code></div>
+    </div>
+    <div class="verdict keep">Keep</div>
+  </div>
+
+  <div class="item keep">
+    <div class="check-box"><input type="checkbox" id="k5" checked disabled /></div>
+    <div class="item-body">
+      <div class="item-id">Item 14 · API routes</div>
+      <div class="item-title">Keep the 5 active API routes</div>
+      <div class="item-desc">All wired to a single live UI caller: <code>/api/compliance-report</code> (GenerateReportButton), <code>/api/acb-report</code> (AcbTestList), <code>/api/nsx-report</code> (NsxTestList), <code>/api/pm-asset-report</code> (CheckDetailPage Download), <code>/api/maintenance-checklist</code> (CheckDetailPage Print).</div>
+      <div class="item-meta"><strong>Routes:</strong> 5 of 7 active &nbsp;·&nbsp; <strong>To remove:</strong> 2 (items 03, 05)</div>
+    </div>
+    <div class="verdict keep">Keep</div>
+  </div>
+
+  <div class="item keep">
+    <div class="check-box"><input type="checkbox" id="k6" checked disabled /></div>
+    <div class="item-body">
+      <div class="item-id">Item 15 · Server actions</div>
+      <div class="item-title">Keep <code>issueMaintenanceReportAction</code> + <code>SendReportModal</code></div>
+      <div class="item-desc">The "Send Report" pipeline on completed checks. Generates DOCX → uploads to Storage → emails via Resend → records delivery. Active and well-scoped.</div>
+      <div class="item-meta"><strong>Files:</strong> <code>app/(app)/reports/actions.ts</code>, <code>app/(app)/maintenance/[id]/SendReportModal.tsx</code>, <code>lib/email/send-report-email.ts</code></div>
+    </div>
+    <div class="verdict keep">Keep</div>
+  </div>
+
+  <div class="item keep">
+    <div class="check-box"><input type="checkbox" id="k7" checked disabled /></div>
+    <div class="item-body">
+      <div class="item-id">Item 16 · Generators</div>
+      <div class="item-title">Keep the 5 active generators + 4 helpers</div>
+      <div class="item-desc">Active: <code>acb-report</code>, <code>nsx-report</code>, <code>compliance-report</code>, <code>pm-asset-report</code>, <code>maintenance-checklist</code>, <code>generate-and-store</code> (orchestrator), <code>pm-check-report</code> (item 10), <code>work-order-details</code> (item 11). Helpers: <code>report-shell</code>, <code>report-branding</code>, <code>logo-variants</code>, <code>pdf-conversion</code> — all referenced.</div>
+    </div>
+    <div class="verdict keep">Keep</div>
+  </div>
+
+  <div class="item keep">
+    <div class="check-box"><input type="checkbox" id="k8" checked disabled /></div>
+    <div class="item-body">
+      <div class="item-id">Item 17 · Sample scripts</div>
+      <div class="item-title">Keep the sample-report scripts</div>
+      <div class="item-desc"><code>scripts/generate-sample-reports.ts</code>, <code>scripts/generate-all-sample-reports.ts</code>, <code>scripts/test-compliance-detailed.ts</code> — all reference current generators, no stale imports.</div>
+    </div>
+    <div class="verdict keep">Keep</div>
+  </div>
+
+  <div class="ack-box">
+    <h3>How to action this</h3>
+    <p>Easiest path: reply with the item numbers you want me to remove (or just say "all 6 Removes + items 7, 8, 9 from Question"). I'll execute end-to-end:</p>
+    <p>1. Delete the files / route folders for ticked Remove items.<br>
+    2. Drop the <code>report_site_photos</code> column via a new migration if you tick item 06 (and apply it to Supabase).<br>
+    3. Apply your Question-item decisions (relabel, propagate, or scope-down).<br>
+    4. Run a final <code>tsc --noEmit</code> mental pass + commit + you push.</p>
+    <p>If you'd rather I just do the obvious dead-code removal (items 01–05 only) without touching settings, say "remove the dead chain" and I'll skip the Questions for later.</p>
+  </div>
+
+  <footer>
+    <strong>EQ Solutions™</strong> &nbsp;·&nbsp; Reports audit · 26 April 2026
+  </footer>
+
+</div>
+</body>
+</html>

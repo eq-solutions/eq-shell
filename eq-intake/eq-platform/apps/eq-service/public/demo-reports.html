@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EQ Solves — Report Style Comparison</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --eq-sky: #3DA8D8;
+    --eq-deep: #2986B4;
+    --eq-ice: #EAF5FB;
+    --eq-ink: #1A1A2E;
+    --eq-grey: #6B7280;
+    --pass: #16a34a;
+    --fail: #dc2626;
+    --warn: #d97706;
+    --border: #e5e7eb;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: var(--eq-ink); background: #f9fafb; font-size: 14px; line-height: 1.5; }
+
+  /* ── Nav bar ── */
+  .topbar { background: var(--eq-ink); padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .topbar-brand { color: #fff; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+  .topbar-sub { color: var(--eq-grey); font-size: 12px; margin-left: 12px; }
+
+  /* ── Tab switcher ── */
+  .tab-bar { background: #fff; border-bottom: 2px solid var(--border); padding: 0 32px; display: flex; gap: 0; position: sticky; top: 56px; z-index: 40; }
+  .tab-btn {
+    padding: 14px 24px; font-size: 14px; font-weight: 600; color: var(--eq-grey);
+    border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--eq-deep); }
+  .tab-btn.active { color: var(--eq-sky); border-bottom-color: var(--eq-sky); }
+  .tab-desc { font-size: 11px; font-weight: 400; display: block; margin-top: 2px; }
+
+  /* ── Section indicator ── */
+  .section-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    padding: 3px 10px; border-radius: 4px; margin-bottom: 12px;
+  }
+  .section-tag.included { background: #dcfce7; color: var(--pass); }
+  .section-tag.excluded { background: #fee2e2; color: var(--fail); }
+  .section-tag .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .section-tag.included .dot { background: var(--pass); }
+  .section-tag.excluded .dot { background: var(--fail); }
+
+  /* ── Page + section base styles ── */
+  .page { max-width: 1000px; margin: 0 auto; background: #fff; min-height: 100vh; }
+  .report-tab { display: none; }
+  .report-tab.active { display: block; }
+
+  .section { padding: 32px 48px; page-break-inside: avoid; }
+  .section + .section { border-top: 1px solid var(--border); }
+  .section.excluded-section { opacity: 0.25; position: relative; }
+  .section.excluded-section::after {
+    content: 'Not included in this style';
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: var(--fail); color: #fff; padding: 6px 16px; border-radius: 4px;
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+  }
+  .section-title { font-size: 16px; font-weight: 700; color: var(--eq-sky); margin-bottom: 16px; padding-bottom: 6px; border-bottom: 2px solid var(--eq-ice); }
+
+  /* ── Cover ── */
+  .cover { padding: 60px 48px; text-align: center; border-bottom: 4px solid var(--eq-sky); }
+  .cover-logo { width: 140px; height: 48px; background: var(--eq-sky); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 18px; margin-bottom: 32px; }
+  .cover h1 { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+  .cover h2 { font-size: 16px; font-weight: 500; color: var(--eq-sky); margin-bottom: 28px; }
+  .cover-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 32px; text-align: left; max-width: 400px; margin: 0 auto; }
+  .cover-meta dt { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--eq-grey); }
+  .cover-meta dd { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+
+  /* ── KPIs ── */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .kpi-card { background: var(--eq-ice); border-radius: 6px; padding: 12px; text-align: center; }
+  .kpi-card .label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--eq-grey); margin-bottom: 2px; }
+  .kpi-card .value { font-size: 24px; font-weight: 700; }
+  .kpi-card .value.sky { color: var(--eq-sky); }
+  .kpi-card .value.pass { color: var(--pass); }
+  .kpi-card .value.fail { color: var(--fail); }
+  .kpi-card .value.warn { color: var(--warn); }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: var(--eq-ice); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: var(--eq-grey); text-align: left; padding: 6px 10px; border-bottom: 2px solid var(--eq-sky); }
+  td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .badge-pass { background: #dcfce7; color: var(--pass); }
+  .badge-fail { background: #fee2e2; color: var(--fail); }
+  .badge-defect { background: #fef3c7; color: var(--warn); }
+  .badge-pending { background: #f3f4f6; color: var(--eq-grey); }
+
+  /* ── Fields ── */
+  .field-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 16px; margin-bottom: 12px; }
+  .field label { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--eq-grey); margin-bottom: 1px; }
+  .field .val { font-size: 12px; font-weight: 500; }
+
+  /* ── Breaker card ── */
+  .breaker-card { border: 1px solid var(--border); border-radius: 6px; margin-bottom: 16px; overflow: hidden; }
+  .breaker-header { background: var(--eq-ice); padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+  .breaker-header h3 { font-size: 13px; font-weight: 700; }
+  .breaker-body { padding: 12px 16px; }
+  .subsection-title { font-size: 12px; font-weight: 700; color: var(--eq-deep); margin: 10px 0 6px; text-transform: uppercase; letter-spacing: 0.3px; }
+
+  /* ── Reading table ── */
+  .pass-cell { color: var(--pass); font-weight: 600; }
+  .fail-cell { color: var(--fail); font-weight: 600; }
+
+  /* ── Checklist ── */
+  .checklist { list-style: none; }
+  .checklist li { display: grid; grid-template-columns: 28px 1fr 70px 1fr; gap: 6px; padding: 4px 0; border-bottom: 1px solid #f3f4f6; font-size: 12px; }
+  .checklist .num { font-weight: 700; color: var(--eq-grey); font-size: 10px; text-align: center; }
+  .checklist .result { text-align: center; font-weight: 700; font-size: 11px; }
+  .checklist .result.pass { color: var(--pass); }
+  .checklist .result.fail { color: var(--fail); }
+  .checklist .comment { font-size: 11px; color: var(--eq-grey); font-style: italic; }
+
+  /* ── Defect callout ── */
+  .defect-callout { margin-top: 10px; padding: 10px 14px; background: #fef3c7; border-left: 4px solid var(--warn); border-radius: 4px; }
+  .defect-callout .title { font-size: 11px; font-weight: 700; color: var(--warn); text-transform: uppercase; margin-bottom: 2px; }
+  .defect-callout p { font-size: 12px; }
+
+  /* ── Sign-off ── */
+  .signoff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px; }
+  .signoff-box { border-bottom: 2px solid var(--eq-ink); padding-bottom: 36px; }
+  .signoff-box label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--eq-grey); }
+
+  /* ── Contents page ── */
+  .toc-list { list-style: none; counter-reset: toc; }
+  .toc-list li { counter-increment: toc; padding: 8px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; display: flex; justify-content: space-between; }
+  .toc-list li::before { content: counter(toc) "."; font-weight: 700; color: var(--eq-sky); margin-right: 8px; }
+  .toc-list .page-num { color: var(--eq-grey); font-size: 12px; }
+
+  /* ── Footer ── */
+  .report-footer { padding: 12px 48px; background: var(--eq-ice); font-size: 10px; color: var(--eq-grey); text-align: center; border-top: 1px solid var(--border); }
+
+  /* ── Style comparison legend ── */
+  .legend-bar { background: #fff; border-bottom: 1px solid var(--border); padding: 12px 32px; display: flex; gap: 24px; align-items: center; font-size: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  @media print { .topbar, .tab-bar, .legend-bar { display: none; } body { background: #fff; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div><span class="topbar-brand">EQ Solves</span><span class="topbar-sub">Report Style Comparison — Demo Data</span></div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab('summary')">
+    Summary
+    <span class="tab-desc">KPIs &amp; high-level overview</span>
+  </button>
+  <button class="tab-btn" onclick="showTab('standard')">
+    Standard
+    <span class="tab-desc">Asset details &amp; test results</span>
+  </button>
+  <button class="tab-btn" onclick="showTab('detailed')">
+    Detailed
+    <span class="tab-desc">Full readings, commentary &amp; photos</span>
+  </button>
+</div>
+
+<div class="legend-bar">
+  <span style="font-weight:600;color:var(--eq-ink)">Section legend:</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--pass)"></span> Included in this style</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--fail)"></span> Not included — greyed out</span>
+</div>
+
+<!-- ════════════════════════════════════════════
+     SUMMARY REPORT
+     ════════════════════════════════════════════ -->
+<div id="tab-summary" class="report-tab active">
+<div class="page">
+
+  <!-- COVER — included -->
+  <div class="cover">
+    <span class="section-tag included"><span class="dot"></span> Cover Page — Included</span>
+    <div class="cover-logo">EQ Solves</div>
+    <h1>Maintenance Check Report</h1>
+    <h2>SY1 Data Centre — E1.25 Annual — April 2026</h2>
+    <dl class="cover-meta">
+      <dt>Customer</dt><dd>Acme Electrical Pty Ltd</dd>
+      <dt>Site</dt><dd>SY1 Data Centre</dd>
+      <dt>Job Plan</dt><dd>E1.25 — LVACB</dd>
+      <dt>Date</dt><dd>12 April 2026</dd>
+    </dl>
+  </div>
+
+  <!-- SITE OVERVIEW — included -->
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Site Overview — Included</span>
+    <h2 class="section-title">Site Overview</h2>
+    <div class="field-grid">
+      <div class="field"><label>Site</label><span class="val">SY1 Data Centre</span></div>
+      <div class="field"><label>Address</label><span class="val">123 Industrial Ave, Alexandria NSW</span></div>
+      <div class="field"><label>Check Period</label><span class="val">1–30 April 2026</span></div>
+      <div class="field"><label>Assigned To</label><span class="val">James Mitchell</span></div>
+    </div>
+  </div>
+
+  <!-- CONTENTS PAGE — not included in Summary -->
+  <div class="section excluded-section">
+    <span class="section-tag excluded"><span class="dot"></span> Contents Page — Not in Summary</span>
+    <h2 class="section-title">Table of Contents</h2>
+    <p style="color: var(--eq-grey); font-size: 12px;">Clickable links to each asset section...</p>
+  </div>
+
+  <!-- EXECUTIVE SUMMARY — included -->
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Executive Summary — Included</span>
+    <h2 class="section-title">Executive Summary</h2>
+    <div class="kpi-row">
+      <div class="kpi-card"><p class="label">Total Assets</p><p class="value sky">8</p></div>
+      <div class="kpi-card"><p class="label">Pass</p><p class="value pass">6</p></div>
+      <div class="kpi-card"><p class="label">Defect</p><p class="value warn">1</p></div>
+      <div class="kpi-card"><p class="label">In Progress</p><p class="value sky">1</p></div>
+    </div>
+    <p style="font-size:12px; color: var(--eq-grey);">8 LV air circuit breakers tested. 6 passed all phases. 1 defect raised (MSB-ACB-04, elevated contact resistance R-phase). 1 outstanding (MSB-ACB-08, electrical testing pending).</p>
+    <table style="margin-top:12px">
+      <thead><tr><th>Asset</th><th>Make</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>MSB-ACB-01</td><td>ABB Emax E1.2</td><td><span class="badge badge-pass">Pass</span></td></tr>
+        <tr><td>MSB-ACB-02</td><td>ABB Emax E1.2</td><td><span class="badge badge-pass">Pass</span></td></tr>
+        <tr><td>MSB-ACB-03</td><td>Schneider MTZ2</td><td><span class="badge badge-pass">Pass</span></td></tr>
+        <tr><td>MSB-ACB-04</td><td>Schneider MTZ2</td><td><span class="badge badge-defect">Defect</span></td></tr>
+        <tr><td>MSB-ACB-05</td><td>ABB Emax E2.2</td><td><span class="badge badge-pass">Pass</span></td></tr>
+        <tr><td>MSB-ACB-06</td><td>ABB Emax E2.2</td><td><span class="badge badge-pass">Pass</span></td></tr>
+        <tr><td>MSB-ACB-07</td><td>Schneider MTZ1</td><td><span class="badge badge-pass">Pass</span></td></tr>
+        <tr><td>MSB-ACB-08</td><td>Schneider MTZ1</td><td><span class="badge badge-pending">Pending</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ASSET DETAILS — not included in Summary -->
+  <div class="section excluded-section">
+    <span class="section-tag excluded"><span class="dot"></span> Asset Details — Not in Summary</span>
+    <h2 class="section-title">Asset Details</h2>
+    <p style="color: var(--eq-grey); font-size: 12px;">Individual breaker collection data, visual checks, electrical readings...</p>
+  </div>
+
+  <!-- SIGN-OFF — included -->
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Sign-Off Page — Included</span>
+    <h2 class="section-title">Sign-Off</h2>
+    <div class="signoff-grid">
+      <div class="signoff-box"><label>Technician Signature</label></div>
+      <div class="signoff-box"><label>Supervisor Signature</label></div>
+    </div>
+  </div>
+
+  <div class="report-footer">SUMMARY STYLE — EQ Solves — Acme Electrical — 12 April 2026</div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     STANDARD REPORT
+     ════════════════════════════════════════════ -->
+<div id="tab-standard" class="report-tab">
+<div class="page">
+
+  <div class="cover">
+    <span class="section-tag included"><span class="dot"></span> Cover Page — Included</span>
+    <div class="cover-logo">EQ Solves</div>
+    <h1>Maintenance Check Report</h1>
+    <h2>SY1 Data Centre — E1.25 Annual — April 2026</h2>
+    <dl class="cover-meta">
+      <dt>Customer</dt><dd>Acme Electrical Pty Ltd</dd>
+      <dt>Site</dt><dd>SY1 Data Centre</dd>
+      <dt>Job Plan</dt><dd>E1.25 — LVACB</dd>
+      <dt>Date</dt><dd>12 April 2026</dd>
+    </dl>
+  </div>
+
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Site Overview — Included</span>
+    <h2 class="section-title">Site Overview</h2>
+    <div class="field-grid">
+      <div class="field"><label>Site</label><span class="val">SY1 Data Centre</span></div>
+      <div class="field"><label>Address</label><span class="val">123 Industrial Ave, Alexandria NSW</span></div>
+      <div class="field"><label>Check Period</label><span class="val">1–30 April 2026</span></div>
+      <div class="field"><label>Assigned To</label><span class="val">James Mitchell</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Contents Page — Included</span>
+    <h2 class="section-title">Table of Contents</h2>
+    <ol class="toc-list">
+      <li>Cover Page <span class="page-num">1</span></li>
+      <li>Site Overview <span class="page-num">2</span></li>
+      <li>Executive Summary <span class="page-num">3</span></li>
+      <li>MSB-ACB-01 — ABB Emax E1.2 <span class="page-num">4</span></li>
+      <li>MSB-ACB-02 — ABB Emax E1.2 <span class="page-num">5</span></li>
+      <li>MSB-ACB-03 — Schneider MTZ2 <span class="page-num">6</span></li>
+      <li>MSB-ACB-04 — Schneider MTZ2 (Defect) <span class="page-num">7</span></li>
+      <li>MSB-ACB-05 to MSB-ACB-08 <span class="page-num">8–11</span></li>
+      <li>Sign-Off <span class="page-num">12</span></li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Executive Summary — Included</span>
+    <h2 class="section-title">Executive Summary</h2>
+    <div class="kpi-row">
+      <div class="kpi-card"><p class="label">Total Assets</p><p class="value sky">8</p></div>
+      <div class="kpi-card"><p class="label">Pass</p><p class="value pass">6</p></div>
+      <div class="kpi-card"><p class="label">Defect</p><p class="value warn">1</p></div>
+      <div class="kpi-card"><p class="label">In Progress</p><p class="value sky">1</p></div>
+    </div>
+    <p style="font-size:12px; color: var(--eq-grey);">8 LV air circuit breakers tested. 6 passed all phases. 1 defect raised (MSB-ACB-04, elevated contact resistance R-phase). 1 outstanding.</p>
+  </div>
+
+  <!-- ASSET DETAILS — Standard: test results + recommendations, NO full readings -->
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Asset Details — Included (test results &amp; recommendations)</span>
+    <h2 class="section-title">Asset Details</h2>
+
+    <div class="breaker-card">
+      <div class="breaker-header"><h3>MSB-ACB-01 — ABB Emax E1.2</h3><span class="badge badge-pass">Pass</span></div>
+      <div class="breaker-body">
+        <div class="field-grid">
+          <div class="field"><label>Brand</label><span class="val">ABB</span></div>
+          <div class="field"><label>Model</label><span class="val">Emax E1.2</span></div>
+          <div class="field"><label>Serial</label><span class="val">SN-240801</span></div>
+          <div class="field"><label>Location</label><span class="val">DB Room L1</span></div>
+          <div class="field"><label>IN</label><span class="val">1600A</span></div>
+          <div class="field"><label>Trip Unit</label><span class="val">Ekip Touch</span></div>
+          <div class="field"><label>Type</label><span class="val">Withdrawable</span></div>
+          <div class="field"><label>Performance</label><span class="val">N1</span></div>
+        </div>
+        <p class="subsection-title">Test Results</p>
+        <table>
+          <thead><tr><th>Test Phase</th><th>Result</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Contact Resistance (R/W/B)</td><td><span class="badge badge-pass">Pass</span></td><td>All within 30% variance</td></tr>
+            <tr><td>Insulation Resistance — Closed</td><td><span class="badge badge-pass">Pass</span></td><td>All combos &gt; 1 MΩ</td></tr>
+            <tr><td>Insulation Resistance — Open</td><td><span class="badge badge-pass">Pass</span></td><td>All combos &gt; 1 MΩ</td></tr>
+            <tr><td>Visual &amp; Functional (14 items)</td><td><span class="badge badge-pass">Pass</span></td><td>All items OK</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:11px; color:var(--eq-grey); margin-top:8px;"><strong>Recommendation:</strong> No action required. Schedule next annual test April 2027.</p>
+      </div>
+    </div>
+
+    <div class="breaker-card">
+      <div class="breaker-header"><h3>MSB-ACB-04 — Schneider MTZ2</h3><span class="badge badge-defect">Defect</span></div>
+      <div class="breaker-body">
+        <div class="field-grid">
+          <div class="field"><label>Brand</label><span class="val">Schneider</span></div>
+          <div class="field"><label>Model</label><span class="val">MTZ2</span></div>
+          <div class="field"><label>Serial</label><span class="val">SN-220157</span></div>
+          <div class="field"><label>Location</label><span class="val">DB Room L2</span></div>
+          <div class="field"><label>IN</label><span class="val">2000A</span></div>
+          <div class="field"><label>Trip Unit</label><span class="val">Micrologic 6.0A</span></div>
+          <div class="field"><label>Type</label><span class="val">Withdrawable</span></div>
+          <div class="field"><label>Performance</label><span class="val">H2</span></div>
+        </div>
+        <p class="subsection-title">Test Results</p>
+        <table>
+          <thead><tr><th>Test Phase</th><th>Result</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Contact Resistance R-phase</td><td><span class="badge badge-fail">Fail</span></td><td>42 µΩ — 40% above benchmark</td></tr>
+            <tr><td>Contact Resistance W/B</td><td><span class="badge badge-pass">Pass</span></td><td>Within tolerance</td></tr>
+            <tr><td>Insulation Resistance</td><td><span class="badge badge-pass">Pass</span></td><td>All combos &gt; 1 MΩ</td></tr>
+            <tr><td>Visual &amp; Functional (14 items)</td><td><span class="badge badge-pass">Pass</span></td><td>All items OK</td></tr>
+          </tbody>
+        </table>
+        <div class="defect-callout">
+          <p class="title">Defect — Medium Severity</p>
+          <p>R-phase contact resistance 42 µΩ (40% above 30 µΩ benchmark). Recommend contact inspection and cleaning. If resistance persists, contact replacement required.</p>
+        </div>
+      </div>
+    </div>
+
+    <p style="font-size:11px; color:var(--eq-grey); font-style:italic;">+ 6 more assets with similar detail (MSB-ACB-02, 03, 05, 06, 07, 08)...</p>
+  </div>
+
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Sign-Off Page — Included</span>
+    <h2 class="section-title">Sign-Off</h2>
+    <div class="signoff-grid">
+      <div class="signoff-box"><label>Technician Signature</label></div>
+      <div class="signoff-box"><label>Supervisor Signature</label></div>
+    </div>
+  </div>
+
+  <div class="report-footer">STANDARD STYLE — EQ Solves — Acme Electrical — 12 April 2026</div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     DETAILED REPORT
+     ════════════════════════════════════════════ -->
+<div id="tab-detailed" class="report-tab">
+<div class="page">
+
+  <div class="cover">
+    <span class="section-tag included"><span class="dot"></span> Cover Page — Included</span>
+    <div class="cover-logo">EQ Solves</div>
+    <h1>Maintenance Check Report</h1>
+    <h2>SY1 Data Centre — E1.25 Annual — April 2026</h2>
+    <dl class="cover-meta">
+      <dt>Customer</dt><dd>Acme Electrical Pty Ltd</dd>
+      <dt>Site</dt><dd>SY1 Data Centre</dd>
+      <dt>Job Plan</dt><dd>E1.25 — LVACB</dd>
+      <dt>Date</dt><dd>12 April 2026</dd>
+    </dl>
+  </div>
+
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Site Overview — Included</span>
+    <h2 class="section-title">Site Overview</h2>
+    <div class="field-grid">
+      <div class="field"><label>Site</label><span class="val">SY1 Data Centre</span></div>
+      <div class="field"><label>Address</label><span class="val">123 Industrial Ave, Alexandria NSW 2015</span></div>
+      <div class="field"><label>Check Period</label><span class="val">1–30 April 2026</span></div>
+      <div class="field"><label>Assigned To</label><span class="val">James Mitchell</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Contents Page — Included</span>
+    <h2 class="section-title">Table of Contents</h2>
+    <ol class="toc-list">
+      <li>Cover Page <span class="page-num">1</span></li>
+      <li>Site Overview <span class="page-num">2</span></li>
+      <li>Executive Summary <span class="page-num">3</span></li>
+      <li>MSB-ACB-01 — Full Detail <span class="page-num">4–6</span></li>
+      <li>MSB-ACB-04 — Full Detail (Defect) <span class="page-num">7–9</span></li>
+      <li>Remaining Assets <span class="page-num">10–22</span></li>
+      <li>Sign-Off <span class="page-num">23</span></li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Executive Summary — Included</span>
+    <h2 class="section-title">Executive Summary</h2>
+    <div class="kpi-row">
+      <div class="kpi-card"><p class="label">Total Assets</p><p class="value sky">8</p></div>
+      <div class="kpi-card"><p class="label">Pass</p><p class="value pass">6</p></div>
+      <div class="kpi-card"><p class="label">Defect</p><p class="value warn">1</p></div>
+      <div class="kpi-card"><p class="label">In Progress</p><p class="value sky">1</p></div>
+    </div>
+    <p style="font-size:12px; color: var(--eq-grey);">8 LV air circuit breakers tested. 6 passed all phases. 1 defect raised. 1 outstanding.</p>
+  </div>
+
+  <!-- FULL DETAIL: MSB-ACB-01 -->
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Asset Details — Full readings, visual checks &amp; commentary</span>
+    <h2 class="section-title">Asset Details — Full</h2>
+
+    <div class="breaker-card">
+      <div class="breaker-header"><h3>MSB-ACB-01 — ABB Emax E1.2</h3><span class="badge badge-pass">Pass</span></div>
+      <div class="breaker-body">
+        <p class="subsection-title">Asset Collection (Step 1)</p>
+        <div class="field-grid">
+          <div class="field"><label>Brand</label><span class="val">ABB</span></div>
+          <div class="field"><label>Type</label><span class="val">Air Circuit Breaker</span></div>
+          <div class="field"><label>Location</label><span class="val">MSB-ACB-01 / DB Room L1</span></div>
+          <div class="field"><label>Serial</label><span class="val">SN-240801</span></div>
+          <div class="field"><label>Performance</label><span class="val">N1</span></div>
+          <div class="field"><label>Protection Unit</label><span class="val">Yes</span></div>
+          <div class="field"><label>Trip Unit</label><span class="val">Ekip Touch</span></div>
+          <div class="field"><label>IN</label><span class="val">1600A</span></div>
+          <div class="field"><label>Poles</label><span class="val">3P</span></div>
+          <div class="field"><label>Config</label><span class="val">Withdrawable</span></div>
+          <div class="field"><label>Long Time Ir</label><span class="val">1.0</span></div>
+          <div class="field"><label>LT Delay tr</label><span class="val">18s</span></div>
+          <div class="field"><label>Short Time Isd</label><span class="val">6 × In</span></div>
+          <div class="field"><label>ST Delay tsd</label><span class="val">0.1s</span></div>
+          <div class="field"><label>Instantaneous</label><span class="val">OFF</span></div>
+          <div class="field"><label>Earth Fault</label><span class="val">0.3 × In / 0.2s</span></div>
+        </div>
+        <div class="field-grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="field"><label>Motor Charge</label><span class="val">220V AC</span></div>
+          <div class="field"><label>Shunt Trip MX1</label><span class="val">220V AC</span></div>
+          <div class="field"><label>Undervoltage MN</label><span class="val">N/A</span></div>
+        </div>
+
+        <p class="subsection-title">Visual &amp; Functional Inspection (Step 2)</p>
+        <ul class="checklist">
+          <li><span class="num">1</span><span>External condition of case/chassis</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">2</span><span>Arc chute condition and secure</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">3</span><span>Connection/busbar tightness checked</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">4</span><span>Insulation barriers in place</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">5</span><span>Clean/vacuum breaker</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">6</span><span>Lubricate mechanism per OEM</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">7</span><span>Trip unit self-test pass</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">8</span><span>Manual close operation</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">9</span><span>Manual open (trip-free)</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">10</span><span>Spring charge motor operation</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">11</span><span>Racking mechanism — test/connect/disconnect</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">12</span><span>Operation counter recorded</span><span class="result pass">OK</span><span class="comment">Counter: 1,247</span></li>
+          <li><span class="num">13</span><span>Shunt trip MX1 operation</span><span class="result pass">OK</span><span class="comment"></span></li>
+          <li><span class="num">14</span><span>Auxiliary contacts operation</span><span class="result pass">OK</span><span class="comment"></span></li>
+        </ul>
+
+        <p class="subsection-title">Electrical Testing (Step 3)</p>
+        <p style="font-size:11px; font-weight:600; color:var(--eq-deep); margin-bottom:4px;">Contact Resistance (µΩ)</p>
+        <table>
+          <thead><tr><th>Phase</th><th>Reading</th><th>Benchmark</th><th>Variance</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>R (Red)</td><td>28 µΩ</td><td>30 µΩ</td><td class="pass-cell">−7%</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>W (White)</td><td>31 µΩ</td><td>30 µΩ</td><td class="pass-cell">+3%</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>B (Blue)</td><td>27 µΩ</td><td>30 µΩ</td><td class="pass-cell">−10%</td><td><span class="badge badge-pass">Pass</span></td></tr>
+          </tbody>
+        </table>
+
+        <p style="font-size:11px; font-weight:600; color:var(--eq-deep); margin:10px 0 4px;">Insulation Resistance — Closed (MΩ)</p>
+        <table>
+          <thead><tr><th>Test</th><th>Reading</th><th>Min</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>R–W</td><td>5,200 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>R–B</td><td>4,800 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>W–B</td><td>5,100 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>R–E</td><td>6,300 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>W–E</td><td>5,900 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>B–E</td><td>6,100 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>All–E</td><td>2,800 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+          </tbody>
+        </table>
+
+        <p style="font-size:11px; font-weight:600; color:var(--eq-deep); margin:10px 0 4px;">Insulation Resistance — Open (MΩ)</p>
+        <table>
+          <thead><tr><th>Test</th><th>Reading</th><th>Min</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td>R line–load</td><td>8,400 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>W line–load</td><td>7,900 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>B line–load</td><td>8,200 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+            <tr><td>All line–load</td><td>4,100 MΩ</td><td>≥ 1 MΩ</td><td><span class="badge badge-pass">Pass</span></td></tr>
+          </tbody>
+        </table>
+
+        <div class="field-grid" style="margin-top:10px">
+          <div class="field"><label>Temperature</label><span class="val">24°C</span></div>
+          <div class="field"><label>Secondary Injection</label><span class="val">Verified</span></div>
+          <div class="field"><label>Greasing</label><span class="val">Complete</span></div>
+          <div class="field"><label>Op Counter</label><span class="val">1,247</span></div>
+        </div>
+
+        <p style="font-size:11px; color:var(--eq-grey); margin-top:8px;"><strong>Technician Commentary:</strong> Breaker in good overall condition. All readings well within acceptable ranges. No corrective action required. Mechanism smooth, all contacts clean. Recommend routine annual retest.</p>
+      </div>
+    </div>
+
+    <p style="font-size:11px; color:var(--eq-grey); font-style:italic;">+ 7 more assets with full step 1/2/3 detail, every reading row, and technician commentary...</p>
+  </div>
+
+  <div class="section">
+    <span class="section-tag included"><span class="dot"></span> Sign-Off Page — Included</span>
+    <h2 class="section-title">Sign-Off</h2>
+    <div class="signoff-grid">
+      <div class="signoff-box"><label>Technician Signature</label></div>
+      <div class="signoff-box"><label>Supervisor Signature</label></div>
+    </div>
+  </div>
+
+  <div class="report-footer">DETAILED STYLE — EQ Solves — Acme Electrical — 12 April 2026</div>
+</div>
+</div>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.report-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+</body>
+</html>

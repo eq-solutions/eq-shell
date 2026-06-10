@@ -1,0 +1,565 @@
+/*
+ * EQ Shell — styles.
+ *
+ * Per-tenant palette is injected at runtime as CSS custom properties
+ * on <html> by applyTenantPalette() in tenant-config.ts:
+ *   --eq-primary       — main brand colour (SKS dark blue / EQ Sky)
+ *   --eq-primary-dark  — header / hover state
+ *   --eq-accent        — secondary accent (SKS purple)
+ *
+ * Plus the original EQ tokens for surfaces / text / lines stay constant
+ * across tenants (so every EQ deployment feels like EQ regardless of
+ * the customer's specific brand colour).
+ *
+ * The Intake module brings its own styles via `@eq/intake-demo/styles.css`
+ * — imported below.
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+@import "@eq/intake-demo/styles.css";
+
+:root {
+  /* Fallback palette in case tenant-config didn't apply (e.g. errors). */
+  --eq-primary: #3da8d8;
+  --eq-primary-dark: #2986b4;
+  --eq-accent: #7c77b9;
+
+  /* Constants — same across tenants */
+  --eq-ice: #eaf5fb;
+  --eq-ink: #1a1a2e;
+  --eq-paper: #ffffff;
+  --eq-page: #f6f8fb;
+  --eq-line: #e4e8ee;
+  --eq-muted: #6b7280;
+  --eq-ok: #2f9e44;
+  --eq-warn: #d97706;
+  --eq-err: #c0392b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  background: var(--eq-page);
+  color: var(--eq-ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ===== Shell layout ===== */
+.eq-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.eq-shell__header {
+  background: var(--eq-primary);
+  color: white;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.eq-shell__brand h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.eq-shell__brand p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.eq-shell__nav {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.eq-shell__nav-link {
+  color: white;
+  text-decoration: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.75;
+  transition: background 0.1s ease, opacity 0.1s ease;
+}
+
+.eq-shell__nav-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 1;
+}
+
+.eq-shell__nav-link--active {
+  background: var(--eq-primary-dark);
+  opacity: 1;
+}
+
+.eq-shell__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.eq-shell__user-email {
+  opacity: 0.85;
+}
+
+.eq-shell__signout {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.eq-shell__signout:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+.eq-shell__main {
+  flex: 1;
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 20px 60px;
+}
+
+.eq-shell__footer {
+  text-align: center;
+  padding: 16px 24px 24px;
+  font-size: 12px;
+  color: var(--eq-muted);
+}
+
+.eq-shell-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px;
+  color: var(--eq-muted);
+  font-size: 14px;
+}
+
+.eq-module-stub {
+  background: var(--eq-paper);
+  border: 1px solid var(--eq-line);
+  border-radius: 8px;
+  padding: 32px;
+  text-align: center;
+}
+
+.eq-module-stub h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  color: var(--eq-ink);
+}
+
+.eq-module-stub p {
+  margin: 0 auto 8px;
+  color: var(--eq-muted);
+  max-width: 540px;
+}
+
+/* ===== Sites module ===== */
+.eq-sites {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.eq-sites__header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eq-sites__title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.eq-sites__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--eq-ink);
+}
+
+.eq-sites__count {
+  font-size: 13px;
+  color: var(--eq-muted);
+}
+
+.eq-sites__controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.eq-sites__search {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--eq-line);
+  border-radius: 6px;
+  background: var(--eq-paper);
+  color: var(--eq-ink);
+  width: 320px;
+  max-width: 100%;
+}
+
+.eq-sites__search:focus {
+  outline: none;
+  border-color: var(--eq-primary);
+}
+
+.eq-sites__archived-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--eq-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.eq-sites__archived-toggle input {
+  cursor: pointer;
+}
+
+.eq-sites__error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: var(--eq-err);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.eq-sites__error-dismiss {
+  background: none;
+  border: none;
+  color: var(--eq-err);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0 0 12px;
+}
+
+.eq-sites__loading,
+.eq-sites__empty {
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--eq-muted);
+  font-size: 14px;
+}
+
+.eq-sites__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--eq-line);
+  border-radius: 8px;
+  background: var(--eq-paper);
+}
+
+.eq-sites__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.eq-sites__table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--eq-muted);
+  border-bottom: 1px solid var(--eq-line);
+  white-space: nowrap;
+}
+
+.eq-sites__table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--eq-line);
+  vertical-align: middle;
+}
+
+.eq-sites__row:last-child td {
+  border-bottom: none;
+}
+
+.eq-sites__row--archived td {
+  opacity: 0.55;
+}
+
+.eq-sites__row:hover td {
+  background: var(--eq-ice);
+}
+
+.eq-sites__cell-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.eq-sites__name {
+  font-weight: 500;
+  color: var(--eq-ink);
+}
+
+.eq-sites__ext-id {
+  font-size: 11px;
+  color: var(--eq-muted);
+  font-family: ui-monospace, "Cascadia Code", monospace;
+}
+
+.eq-sites__source {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--eq-ice);
+  color: var(--eq-primary-dark);
+  font-weight: 500;
+}
+
+.eq-sites__muted {
+  color: var(--eq-muted);
+}
+
+.eq-sites__badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.eq-sites__badge--active {
+  background: #dcfce7;
+  color: var(--eq-ok);
+}
+
+.eq-sites__badge--archived {
+  background: #f3f4f6;
+  color: var(--eq-muted);
+}
+
+.eq-sites__actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.eq-sites__btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.1s ease;
+}
+
+.eq-sites__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.eq-sites__btn--secondary {
+  background: var(--eq-paper);
+  border-color: var(--eq-line);
+  color: var(--eq-ink);
+}
+
+.eq-sites__btn--secondary:hover:not(:disabled) {
+  background: var(--eq-ice);
+}
+
+.eq-sites__btn--danger {
+  background: var(--eq-paper);
+  border-color: #fca5a5;
+  color: var(--eq-err);
+}
+
+.eq-sites__btn--danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+/* Delete confirmation modal */
+.eq-sites__modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 26, 46, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+
+.eq-sites__modal {
+  background: var(--eq-paper);
+  border: 1px solid var(--eq-line);
+  border-radius: 10px;
+  padding: 28px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(26, 26, 46, 0.12);
+}
+
+.eq-sites__modal-title {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--eq-ink);
+}
+
+.eq-sites__modal-body {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: var(--eq-muted);
+  line-height: 1.6;
+}
+
+.eq-sites__modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ===== Sign-in screen ===== */
+.eq-signin {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--eq-page);
+  padding: 24px;
+}
+
+.eq-signin__card {
+  background: var(--eq-paper);
+  border: 1px solid var(--eq-line);
+  border-radius: 12px;
+  padding: 32px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.eq-signin__header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.eq-signin__header h1 {
+  margin: 0 0 4px;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--eq-primary);
+  letter-spacing: 0.04em;
+}
+
+.eq-signin__header p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--eq-muted);
+}
+
+.eq-signin__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.eq-signin__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--eq-ink);
+  font-weight: 500;
+}
+
+.eq-signin__form input {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--eq-line);
+  border-radius: 6px;
+  background: var(--eq-paper);
+  color: var(--eq-ink);
+}
+
+.eq-signin__form input:focus {
+  outline: none;
+  border-color: var(--eq-primary);
+}
+
+.eq-signin__submit {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--eq-primary);
+  color: white;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.eq-signin__submit:hover:not(:disabled) {
+  background: var(--eq-primary-dark);
+}
+
+.eq-signin__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.eq-signin__error {
+  font-size: 13px;
+  color: var(--eq-err);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.eq-signin__footer {
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--eq-muted);
+  text-align: center;
+}

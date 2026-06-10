@@ -1,6 +1,16 @@
 /**
  * processCapture — orchestrator for the EQ Capture path.
  *
+ * STATUS: deliberately cold as of 2026-05-22. The Capture surface was built
+ * end-to-end (see @eq/intake/skills/maximo-pdf-wo and the parked
+ * eq-service integration on branch claude/wonderful-shannon-9a41a5) then
+ * shelved. Measured vision cost ($0.05-0.30/PDF) and latency (28-80s/PDF)
+ * don't justify the effort for the document volumes we see, and Netlify's
+ * 26-second sync function cap is a hard prod blocker on top. Don't wire
+ * new UI to this orchestrator speculatively — it stays here because we
+ * built it and we keep it if we need it, not because it's next.
+ * See EQ-AS-CONDUIT.md and EQ-INTAKE-ARCHITECTURE.md for the framing.
+ *
  * Takes a captured image/PDF (base64) plus a target canonical schema,
  * runs AI vision extraction, then runs the same validate() engine the
  * Import path uses. Returns the same valid_rows / flagged_rows /

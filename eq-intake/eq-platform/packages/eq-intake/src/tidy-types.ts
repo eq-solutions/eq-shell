@@ -5,10 +5,7 @@
  * (orphan-check.ts). These are also consumed by the tidy UI.
  */
 
-// ---------------------------------------------------------------------------
 // Minimal Supabase client contract (structural, no hard dep on supabase-js)
-// ---------------------------------------------------------------------------
-
 export interface SupabaseLikeClient {
   from: (table: string) => {
     insert: (row: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;

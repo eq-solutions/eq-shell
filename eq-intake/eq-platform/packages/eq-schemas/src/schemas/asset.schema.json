@@ -8,6 +8,7 @@
   "x-eq-module": "service",
   "x-eq-version": "1.0.0",
   "x-eq-table": "assets",
+  "x-eq-primary-key": "asset_id",
   "required": ["asset_id", "tenant_id", "site_id", "asset_type", "name"],
   "properties": {
     "asset_id": {

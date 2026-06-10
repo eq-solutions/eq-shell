@@ -63,6 +63,16 @@ export function parseCsv(text: string): {
 }
 
 /**
+ * Serialize columns + rows to RFC4180-style CSV with a UTF-8 BOM prefix.
+ * The BOM (0xEF 0xBB 0xBF) tells Excel to open the file as UTF-8 instead
+ * of Windows-1252, which otherwise mangles accented characters and em dashes.
+ * Use this for any CSV that a human will open directly in Excel or Outlook.
+ */
+export function encodeCsv(columns: string[], rows: Record<string, unknown>[]): string {
+  return '﻿' + toCsv(columns, rows);
+}
+
+/**
  * Serialize columns + rows to RFC4180-style CSV. Quotes any cell containing
  * a comma, double-quote, or newline; escapes embedded double-quotes by
  * doubling them. Trailing newline included.
