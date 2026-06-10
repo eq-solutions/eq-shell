@@ -16,6 +16,7 @@
 
 import { useMemo, useState, type JSX } from "react";
 import { type ParsedSheet } from "@eq/intake";
+import type { AIProvider } from "@eq/ai";
 import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle } from "../shared/intake-bundle.js";
 import { IntakeDropZone } from "../shared/IntakeDropZone.js";
 import { MappingPreviewPanel } from "../shared/MappingPreviewPanel.js";
@@ -42,6 +43,9 @@ export interface IntakeModuleProps {
   supabase?: SupabaseLikeClient | null;
   tenantId?: string;
   onDestinationChange?: (value: string | undefined, source: "suggested" | "free_text") => void;
+  /** Optional AI provider. When supplied, ambiguous file classifications use
+   *  AI to resolve the best match instead of falling back to the top heuristic. */
+  ai?: AIProvider;
 }
 
 const INTO_EQ_ID      = "into-eq";
@@ -69,7 +73,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
     [props.onDestinationChange],
   );
 
-  const bundle   = useIntakeBundle();
+  const bundle   = useIntakeBundle(props.ai);
   const [destId, setDestId] = useState<string>(INTO_EQ_ID);
 
   const exportDest   = useMemo(() => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId), [destId]);
