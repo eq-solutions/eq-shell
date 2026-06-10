@@ -10,12 +10,19 @@
  *      Outlook / SharePoint / Equinix (reshape-out CSV). The same dropped
  *      files feed every destination, so nobody drops twice.
  *
+ * This replaces the old three-stacked-sections layout (QuickExportSection +
+ * RollupDropZone + CanonicalCommitSection), which made the bookkeeper drop
+ * files once per flow. QuickExportSection and CanonicalCommitSection have
+ * been removed; their reusable pieces now live in src/shared/. RollupDropZone
+ * survives for the standalone playground (App.tsx) and the package barrel.
+ *
  * Routes log to `eq-intake:routes` in localStorage by default. Host can
  * override via the onDestinationChange prop.
  */
 
 import { useMemo, useState, type JSX } from "react";
 import { type ParsedSheet } from "@eq/intake";
+import type { AIProvider } from "@eq/ai";
 import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle } from "../shared/intake-bundle.js";
 import { IntakeDropZone } from "../shared/IntakeDropZone.js";
 import { MappingPreviewPanel } from "../shared/MappingPreviewPanel.js";
@@ -35,98 +42,119 @@ import {
   type DestinationTemplate,
 } from "../rollup/template.js";
 
-// ---------------------------------------------------------------------------
-// Props / constants
-// ---------------------------------------------------------------------------
 export interface IntakeModuleProps {
+  /**
+   * Authenticated Supabase client. Passed by the EQ Shell via getSupabase().
+   * When omitted, the Into-EQ destination renders disabled with a "Configure
+   * Supabase to enable" hint. The standalone Vite demo passes nothing.
+   */
   supabase?: SupabaseLikeClient | null;
+  /**
+   * Tenant ID for canonical commits. In the per-tenant Supabase model the
+   * shell reads this from env (VITE_TENANT_ID) and passes it down.
+   */
   tenantId?: string;
-  onDestinationChange?: (value: string | undefined, source: "suggested" | "free_text") => void;
+  /**
+   * Optional callback fired when the user picks a destination. Defaults to a
+   * localStorage logger keyed `eq-intake:routes`.
+   */
+  onDestinationChange?: (
+    value: string | undefined,
+    source: "suggested" | "free_text",
+  ) => void;
+  /** Optional AI provider. When supplied, ambiguous file classifications use
+   *  AI to resolve the best match instead of falling back to the top heuristic. */
+  ai?: AIProvider;
 }
 
-const INTO_EQ_ID      = "into-eq";
-const QUICK_PREFIX    = "quick:";
+const INTO_EQ_ID = "into-eq";
+/**
+ * Destination IDs collide across the two source lists — both QUICK_DESTINATIONS
+ * and BUILTIN_TEMPLATES carry an "outlook-contacts" id, for instance. Namespace
+ * them so the picker's <select> value is unambiguous.
+ */
+const QUICK_PREFIX = "quick:";
 const TEMPLATE_PREFIX = "tpl:";
 const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000001";
-const ROUTE_LOG_KEY   = "eq-intake:routes";
+const ROUTE_LOG_KEY = "eq-intake:routes";
 
-function defaultRouteLogger(value: string | undefined, source: "suggested" | "free_text"): void {
+function defaultRouteLogger(
+  value: string | undefined,
+  source: "suggested" | "free_text",
+): void {
   if (!value) return;
   try {
     const existing = localStorage.getItem(ROUTE_LOG_KEY);
-    const log: Array<{ at: string; destination: string; source: string }> = existing ? JSON.parse(existing) : [];
+    const log: Array<{ at: string; destination: string; source: string }> = existing
+      ? JSON.parse(existing)
+      : [];
     log.push({ at: new Date().toISOString(), destination: value, source });
     localStorage.setItem(ROUTE_LOG_KEY, JSON.stringify(log.slice(-200)));
-  } catch { /* localStorage full / disabled */ }
+  } catch {
+    // localStorage full / disabled — silently skip
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Root component
-// ---------------------------------------------------------------------------
 export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const onDestinationChange = useMemo(
     () => props.onDestinationChange ?? defaultRouteLogger,
     [props.onDestinationChange],
   );
 
-  const bundle   = useIntakeBundle();
+  const bundle = useIntakeBundle(props.ai);
   const [destId, setDestId] = useState<string>(INTO_EQ_ID);
 
-  const exportDest   = useMemo(() => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId), [destId]);
-  const joinTemplate = useMemo(() => BUILTIN_TEMPLATES.find((t) => `${TEMPLATE_PREFIX}${t.id}` === destId), [destId]);
-  const isCanonical  = destId === INTO_EQ_ID;
-
-  const hasRecognisedFiles = bundle.slots.some((s) => s.role !== "unknown" && !s.error);
+  const exportDest = useMemo(
+    () => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId),
+    [destId],
+  );
+  const joinTemplate = useMemo(
+    () => BUILTIN_TEMPLATES.find((t) => `${TEMPLATE_PREFIX}${t.id}` === destId),
+    [destId],
+  );
+  const isCanonical = destId === INTO_EQ_ID;
 
   return (
     <section className="eq-intake-module">
-      {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, color: "var(--eq-ink)", margin: "0 0 4px" }}>
-          Bring a file in
-        </h2>
-        <p style={{ fontSize: 14, color: "var(--eq-muted)", lineHeight: 1.5, margin: 0 }}>
-          Drop a SimPRO export — we'll work out what it is, then you choose where it goes.
-          One drop, no retyping.
-        </p>
-      </div>
+      <h2>Bring a file in</h2>
+      <p>
+        Drop a SimPRO export — we'll work out what it is, then you choose where
+        it goes. One drop, no retyping.
+      </p>
 
-      {/* Drop zone */}
       <IntakeDropZone bundle={bundle} />
 
-      {/* Destination + action */}
-      {hasRecognisedFiles && (
+      {bundle.slots.length > 0 && (
         <>
           <DestinationPicker
             destId={destId}
             bundle={bundle}
-            onChange={(id) => { setDestId(id); onDestinationChange(id, "suggested"); }}
+            onChange={(id) => {
+              setDestId(id);
+              onDestinationChange(id, "suggested");
+            }}
           />
 
-          <div className="eq-intake-action">
-            {isCanonical ? (
-              <CommitView
-                bundle={bundle}
-                supabase={props.supabase}
-                tenantId={props.tenantId ?? DEFAULT_TENANT_ID}
-              />
-            ) : joinTemplate ? (
-              <TemplateExportView bundle={bundle} template={joinTemplate} />
-            ) : (
-              exportDest && <ExportView bundle={bundle} dest={exportDest} />
-            )}
-          </div>
+          {isCanonical ? (
+            <CommitView
+              bundle={bundle}
+              supabase={props.supabase}
+              tenantId={props.tenantId ?? DEFAULT_TENANT_ID}
+            />
+          ) : joinTemplate ? (
+            <TemplateExportView bundle={bundle} template={joinTemplate} />
+          ) : (
+            exportDest && <ExportView bundle={bundle} dest={exportDest} />
+          )}
 
-          <div className="eq-intake-footer">
-            <button
-              type="button"
-              onClick={() => bundle.reset()}
-              disabled={bundle.busy}
-              style={{ fontSize: 13, padding: "6px 12px", color: "var(--eq-muted)", background: "transparent", border: "1px solid var(--eq-line)", borderRadius: 8 }}
-            >
-              Start over
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => bundle.reset()}
+            disabled={bundle.busy}
+            className="eq-intake-btn-ghost"
+          >
+            Start over
+          </button>
         </>
       )}
     </section>
@@ -134,53 +162,69 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
 }
 
 // ============================================================================
-// DESTINATION PICKER — visual pills replacing the old <select>
+// DESTINATION PICKER — Into EQ + the reshape-out destinations, one list.
 // ============================================================================
 
 interface DestOption {
+  /** Namespaced ID used as the <select> value (see QUICK_PREFIX/TEMPLATE_PREFIX). */
   id: string;
   label: string;
-  shortLabel?: string;
   description: string;
+  /**
+   * Roles this destination needs present in the dropped bundle. Empty array =
+   * Into EQ (accepts any recognised file). Single-file quick exports need one
+   * role; join templates can need several (e.g. customers + contacts + sites).
+   */
   needsRoles: RoleName[];
-  group: "eq" | "quick" | "join";
 }
 
 const INTO_EQ_OPTION: DestOption = {
   id: INTO_EQ_ID,
-  label: "Save into EQ",
-  shortLabel: "Into EQ",
-  description: "Save these records into EQ — customers, sites and contacts in one place.",
+  label: "Into EQ",
+  description:
+    "Save these records into EQ — customers, sites and contacts in one place, so you don't retype them anywhere else.",
   needsRoles: [],
-  group: "eq",
 };
 
+/** Single-file reshape-out destinations (one file in, one CSV out — no join). */
 const QUICK_OPTIONS: DestOption[] = QUICK_DESTINATIONS.map((d) => ({
   id: `${QUICK_PREFIX}${d.id}`,
   label: d.label,
   description: d.description,
   needsRoles: [d.needsRole],
-  group: "quick" as const,
 }));
 
+/**
+ * Multi-file JOIN templates from the rollup engine (e.g. Xero ContactsImport
+ * that denormalises company info across the customers + contacts files). These
+ * only make sense once more than one file is dropped, so they surface here in
+ * their own group and stay unavailable until every required role is present.
+ */
 const TEMPLATE_OPTIONS: DestOption[] = BUILTIN_TEMPLATES.map((t) => ({
   id: `${TEMPLATE_PREFIX}${t.id}`,
   label: t.name,
   description: t.description ?? "",
   needsRoles: t.requiredRoles,
-  group: "join" as const,
 }));
-
-const ALL_OPTIONS: DestOption[] = [INTO_EQ_OPTION, ...QUICK_OPTIONS, ...TEMPLATE_OPTIONS];
 
 function destAvailable(opt: DestOption, bundle: IntakeBundle): boolean {
   if (opt.needsRoles.length === 0) return bundle.availableRoles.size > 0;
   return opt.needsRoles.every((r) => bundle.availableRoles.has(r));
 }
 
+/** Roles a destination still needs that aren't yet in the dropped bundle. */
 function missingRoles(opt: DestOption, bundle: IntakeBundle): RoleName[] {
   return opt.needsRoles.filter((r) => !bundle.availableRoles.has(r));
 }
+
+function optionSuffix(opt: DestOption, bundle: IntakeBundle): string {
+  if (destAvailable(opt, bundle)) return "";
+  const missing = missingRoles(opt, bundle);
+  if (missing.length === 0) return " — needs a file";
+  return ` — needs ${missing.map(roleLabel).join(" + ")}`;
+}
+
+const ALL_OPTIONS: DestOption[] = [INTO_EQ_OPTION, ...QUICK_OPTIONS, ...TEMPLATE_OPTIONS];
 
 function DestinationPicker({
   destId,
@@ -192,139 +236,74 @@ function DestinationPicker({
   onChange: (id: string) => void;
 }): JSX.Element {
   const selected = ALL_OPTIONS.find((o) => o.id === destId) ?? INTO_EQ_OPTION;
-  const missing  = missingRoles(selected, bundle);
-
-  const quickAvailable   = QUICK_OPTIONS.filter((o) => destAvailable(o, bundle));
-  const quickUnavailable = QUICK_OPTIONS.filter((o) => !destAvailable(o, bundle));
-  const joinAvailable    = TEMPLATE_OPTIONS.filter((o) => destAvailable(o, bundle));
+  const available = destAvailable(selected, bundle);
+  const missing = missingRoles(selected, bundle);
 
   return (
-    <div className="eq-intake-dest">
-      <div className="eq-intake-dest__label">Where's it going?</div>
-
-      {/* Row 1: Into EQ + quick exports */}
-      <div className="eq-intake-dest__row">
-        <DestPill opt={INTO_EQ_OPTION} isSelected={destId === INTO_EQ_ID} available primary onClick={() => onChange(INTO_EQ_ID)} />
-
-        {(quickAvailable.length > 0 || quickUnavailable.length > 0) && (
-          <span className="eq-intake-dest__divider">or export as</span>
-        )}
-
-        {quickAvailable.map((o) => (
-          <DestPill key={o.id} opt={o} isSelected={destId === o.id} available onClick={() => onChange(o.id)} />
-        ))}
-        {quickUnavailable.map((o) => (
-          <DestPill key={o.id} opt={o} isSelected={false} available={false} onClick={() => {}} />
-        ))}
-      </div>
-
-      {/* Row 2: Join templates (only if available) */}
-      {joinAvailable.length > 0 && (
-        <div className="eq-intake-dest__row" style={{ marginTop: 6 }}>
-          <span className="eq-intake-dest__divider">or join files for</span>
-          {joinAvailable.map((o) => (
-            <DestPill key={o.id} opt={o} isSelected={destId === o.id} available onClick={() => onChange(o.id)} />
-          ))}
-        </div>
-      )}
-
-      {/* Description + missing hint */}
-      <div className="eq-intake-dest__footer">
-        <span className="eq-intake-dest__desc">{selected.description}</span>
-        {missing.length > 0 && (
-          <span className="eq-intake-dest__missing">
-            Drop {missing.map(roleLabel).join(" + ")} file{missing.length > 1 ? "s" : ""} first
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DestPill({
-  opt,
-  isSelected,
-  available,
-  primary = false,
-  onClick,
-}: {
-  opt: DestOption;
-  isSelected: boolean;
-  available: boolean;
-  primary?: boolean;
-  onClick: () => void;
-}): JSX.Element {
-  const label = opt.shortLabel ?? opt.label;
-
-  let cls = "eq-dest-pill";
-  if (primary)    cls += " eq-dest-pill--primary";
-  if (!available) cls += " eq-dest-pill--disabled";
-
-  if (isSelected && primary) cls += " eq-dest-pill--active-primary";
-  else if (isSelected)       cls += " eq-dest-pill--active";
-
-  return (
-    <button type="button" className={cls} onClick={available ? onClick : undefined}>
-      {label}
-    </button>
-  );
-}
-
-// ============================================================================
-// PREVIEW TABLE — shared by ExportView + TemplateExportView
-// ============================================================================
-function PreviewTable({
-  headers,
-  rows,
-  totalRows,
-  destLabel,
-}: {
-  headers: string[];
-  rows: Record<string, string>[];
-  totalRows: number;
-  destLabel: string;
-}): JSX.Element {
-  return (
-    <div className="eq-intake-preview">
-      <p className="eq-intake-preview__hint">
-        Preview — first {rows.length} of {totalRows.toLocaleString()} rows → {destLabel}
-      </p>
-      <div className="eq-intake-preview__wrap">
-        <table className="eq-intake-preview__table">
-          <thead>
-            <tr>
-              {headers.map((h) => <th key={h}>{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i}>
-                {headers.map((h) => (
-                  <td key={h} title={String(row[h] ?? "")}>{String(row[h] ?? "")}</td>
-                ))}
-              </tr>
+    <div className="eq-intake-dest-picker">
+      <label className="eq-intake-dest-picker__label">
+        Where's it going?{" "}
+        <select
+          value={selected.id}
+          onChange={(e) => onChange(e.target.value)}
+          className="eq-intake-dest-picker__select"
+        >
+          <option value={INTO_EQ_OPTION.id}>
+            {INTO_EQ_OPTION.label}
+            {optionSuffix(INTO_EQ_OPTION, bundle)}
+          </option>
+          <optgroup label="Send one file out">
+            {QUICK_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+                {optionSuffix(o, bundle)}
+              </option>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </optgroup>
+          <optgroup label="Join files & send out">
+            {TEMPLATE_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+                {optionSuffix(o, bundle)}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+      </label>
+      <span className="eq-intake-dest-picker__desc">
+        {selected.description}
+      </span>
+      {!available && missing.length > 0 && (
+        <span className="eq-intake-dest-picker__warn">
+          Drop {missing.map(roleLabel).join(" + ")}{" "}
+          {missing.length === 1 ? "file" : "files"} above first.
+        </span>
+      )}
     </div>
   );
 }
 
 // ============================================================================
-// EXPORT VIEW
+// EXPORT VIEW — reshape-out preview + download (Xero / MYOB / Outlook / …).
 // ============================================================================
-function ExportView({ bundle, dest }: { bundle: IntakeBundle; dest: QuickDestination }): JSX.Element {
+
+function ExportView({
+  bundle,
+  dest,
+}: {
+  bundle: IntakeBundle;
+  dest: QuickDestination;
+}): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState<{ filename: string; rowCount: number } | null>(null);
 
   const matched = bundle.slotForRole(dest.needsRole);
 
-  const previewRows = useMemo((): Record<string, string>[] | null => {
+  const previewRows = useMemo((): Record<string, unknown>[] | null => {
     if (!matched?.sheet) return null;
     return (matched.sheet.rows as Record<string, unknown>[]).slice(0, 5).map((r) => {
-      const out: Record<string, string> = {};
-      for (const col of dest.columns) out[col.name] = String(col.value(r) ?? "");
+      const out: Record<string, unknown> = {};
+      for (const col of dest.columns) out[col.name] = col.value(r);
       return out;
     });
   }, [matched, dest]);
@@ -342,36 +321,100 @@ function ExportView({ bundle, dest }: { bundle: IntakeBundle; dest: QuickDestina
       return out;
     });
     const csv = encodeCsv(headers, rows);
-    triggerDownload(csv, dest.filename);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = dest.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     setDownloaded({ filename: dest.filename, rowCount: rows.length });
   };
 
   return (
     <div>
       {previewRows && previewRows.length > 0 && !downloaded && (
-        <PreviewTable
-          headers={dest.columns.map((c) => c.name)}
-          rows={previewRows}
-          totalRows={matched!.sheet!.rows.length}
-          destLabel={dest.label}
-        />
+        <div className="eq-intake-preview">
+          <div className="eq-intake-preview__hint">
+            Preview — first {previewRows.length} of{" "}
+            {matched!.sheet!.rows.length.toLocaleString()} rows → {dest.label}
+          </div>
+          <div className="eq-intake-preview__table-wrap">
+            <table className="eq-intake-preview__table">
+              <thead>
+                <tr>
+                  {dest.columns.map((c) => (
+                    <th key={c.name}>{c.name}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row, i) => (
+                  <tr key={i}>
+                    {dest.columns.map((c) => (
+                      <td
+                        key={c.name}
+                        title={String(row[c.name] ?? "")}
+                      >
+                        {String(row[c.name] ?? "")}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
-      {error && <Notice kind="err">{error}</Notice>}
-      {downloaded
-        ? <Notice kind="ok">Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount} row{downloaded.rowCount === 1 ? "" : "s"}.</Notice>
-        : <PrimaryButton onClick={download} disabled={!matched}>Download {dest.label}</PrimaryButton>
-      }
+
+      {error && (
+        <div role="alert" className="eq-intake-alert">
+          {error}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={download}
+        disabled={!matched}
+        className="eq-intake-btn-primary"
+      >
+        Download {dest.label}
+      </button>
+
+      {downloaded && (
+        <div className="eq-intake-success">
+          ✓ Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount}{" "}
+          row{downloaded.rowCount === 1 ? "" : "s"}.
+        </div>
+      )}
     </div>
   );
 }
 
 // ============================================================================
-// TEMPLATE EXPORT VIEW
+// TEMPLATE EXPORT VIEW — multi-file JOIN templates (Xero ContactsImport, the
+// quotes-by-site rollup, …). Reuses the rollup engine's renderTemplate /
+// renderToCsv — no join logic is reimplemented here. The same dropped files
+// feed it as everything else; it just joins them by simPRO Customer ID.
 // ============================================================================
-function TemplateExportView({ bundle, template }: { bundle: IntakeBundle; template: DestinationTemplate }): JSX.Element {
+
+function TemplateExportView({
+  bundle,
+  template,
+}: {
+  bundle: IntakeBundle;
+  template: DestinationTemplate;
+}): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [downloaded, setDownloaded] = useState<{ filename: string; rowCount: number } | null>(null);
 
+  // Build the role→sheet map the engine wants. We pass EVERY recognised file,
+  // not just the required ones, so templates that optionally join extra roles
+  // (e.g. Xero's customer template pulling the default contact from a contacts
+  // file when present) get the richer output. First file per role wins.
   const byRole = useMemo(() => {
     const map: Partial<Record<RoleName, ParsedSheet>> = {};
     for (const slot of bundle.slots) {
@@ -381,40 +424,105 @@ function TemplateExportView({ bundle, template }: { bundle: IntakeBundle; templa
     return map;
   }, [bundle.slots]);
 
-  const missing  = template.requiredRoles.filter((r) => !byRole[r]);
+  const missing = template.requiredRoles.filter((r) => !byRole[r]);
   const filename = `${template.id}.csv`;
-  const result   = useMemo(() => (missing.length > 0 ? null : renderTemplate(template, byRole)), [template, byRole, missing.length]);
-  const destLabel = template.destinationLabel ?? "CSV";
+
+  const result = useMemo(() => {
+    if (missing.length > 0) return null;
+    return renderTemplate(template, byRole);
+  }, [template, byRole, missing.length]);
+
+  const previewRows = result ? result.rows.slice(0, 5) : null;
 
   const download = () => {
     setError(null);
-    if (!result) { setError(`Needs ${missing.map(roleLabel).join(" + ")}. Drop the missing file(s) above first.`); return; }
-    triggerDownload(renderToCsv(result), filename);
+    if (!result) {
+      setError(
+        `This needs ${missing.map(roleLabel).join(" + ")}. Drop the missing file(s) above first.`,
+      );
+      return;
+    }
+    const csv = renderToCsv(result);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     setDownloaded({ filename, rowCount: result.rows.length });
   };
 
+  const destLabel = template.destinationLabel ?? "CSV";
+
   return (
     <div>
-      {result && result.rows.length > 0 && !downloaded && (
-        <PreviewTable
-          headers={result.headers}
-          rows={result.rows.slice(0, 5)}
-          totalRows={result.rows.length}
-          destLabel={destLabel}
-        />
+      {result && previewRows && previewRows.length > 0 && !downloaded && (
+        <div className="eq-intake-preview">
+          <div className="eq-intake-preview__hint">
+            Preview — first {previewRows.length} of{" "}
+            {result.rows.length.toLocaleString()} rows → {destLabel}
+          </div>
+          <div className="eq-intake-preview__table-wrap">
+            <table className="eq-intake-preview__table">
+              <thead>
+                <tr>
+                  {result.headers.map((h) => (
+                    <th key={h}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row, i) => (
+                  <tr key={i}>
+                    {result.headers.map((h) => (
+                      <td
+                        key={h}
+                        title={row[h] ?? ""}
+                      >
+                        {row[h] ?? ""}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
-      {error && <Notice kind="err">{error}</Notice>}
-      {downloaded
-        ? <Notice kind="ok">Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount} row{downloaded.rowCount === 1 ? "" : "s"}.</Notice>
-        : <PrimaryButton onClick={download} disabled={!result}>Download {destLabel}</PrimaryButton>
-      }
+
+      {error && (
+        <div role="alert" className="eq-intake-alert">
+          {error}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={download}
+        disabled={!result}
+        className="eq-intake-btn-primary"
+      >
+        Download {destLabel}
+      </button>
+
+      {downloaded && (
+        <div className="eq-intake-success">
+          ✓ Downloaded <strong>{downloaded.filename}</strong> — {downloaded.rowCount}{" "}
+          row{downloaded.rowCount === 1 ? "" : "s"}.
+        </div>
+      )}
     </div>
   );
 }
 
 // ============================================================================
-// COMMIT VIEW
+// COMMIT VIEW — Into EQ (canonical commit). Pre-commit mapping preview, then
+// the compact result summary plus flagged/rejected per-row drill-downs.
 // ============================================================================
+
 type CommitBundle = {
   customer?: ParsedSheet;
   site?: ParsedSheet;
@@ -423,7 +531,15 @@ type CommitBundle = {
   licence?: ParsedSheet;
 };
 
-function CommitView({ bundle, supabase, tenantId }: { bundle: IntakeBundle; supabase?: SupabaseLikeClient | null; tenantId: string }): JSX.Element {
+function CommitView({
+  bundle,
+  supabase,
+  tenantId,
+}: {
+  bundle: IntakeBundle;
+  supabase?: SupabaseLikeClient | null;
+  tenantId: string;
+}): JSX.Element {
   const enabled = !!supabase;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -432,28 +548,45 @@ function CommitView({ bundle, supabase, tenantId }: { bundle: IntakeBundle; supa
 
   const commit = async () => {
     if (!supabase) return;
-    setError(null); setResult(null);
+    setError(null);
+    setResult(null);
 
-    const cb: CommitBundle = {};
+    const commitBundle: CommitBundle = {};
     for (const slot of bundle.slots) {
       if (slot.role === "unknown" || !slot.sheet) continue;
       const key = slot.role as keyof CommitBundle;
-      if (cb[key]) { setError(`Two files look like ${slot.role}s. Remove one before saving.`); return; }
-      cb[key] = slot.sheet;
+      if (commitBundle[key]) {
+        setError(`Two files look like ${slot.role}s. Remove one before saving.`);
+        return;
+      }
+      commitBundle[key] = slot.sheet;
     }
-    if (!cb.customer && !cb.site && !cb.contact && !cb.staff && !cb.licence) {
-      setError("Drop at least one recognised file — customers, sites, contacts, staff, or licences.");
+    if (
+      !commitBundle.customer &&
+      !commitBundle.site &&
+      !commitBundle.contact &&
+      !commitBundle.staff &&
+      !commitBundle.licence
+    ) {
+      setError("Drop at least one file we recognise — a customer, site, contact, staff, or licence list.");
       return;
     }
 
-    setBusy(true); setProgressMsg(null);
+    setBusy(true);
+    setProgressMsg(null);
     try {
-      const r = await commitBundleToCanonical({
-        supabase, bundle: cb, tenantId,
-        sourceFilename: bundle.slots.filter((s) => s.role !== "unknown").map((s) => s.file.name).join("+"),
+      const commitResult = await commitBundleToCanonical({
+        supabase,
+        bundle: commitBundle,
+        tenantId,
+        sourceFilename: bundle.slots
+          .filter((s) => s.role !== "unknown")
+          .map((s) => s.file.name)
+          .join("+"),
         onProgress: (msg) => setProgressMsg(msg),
       });
-      setResult(r); setProgressMsg(null);
+      setResult(commitResult);
+      setProgressMsg(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -464,136 +597,126 @@ function CommitView({ bundle, supabase, tenantId }: { bundle: IntakeBundle; supa
   return (
     <div>
       {!enabled && (
-        <Notice kind="warn">
-          EQ isn't connected yet — ask whoever set this up to fill in the connection details. Saving stays inactive until then.
-        </Notice>
+        <div className="eq-intake-info-strip">
+          EQ isn't connected yet — ask whoever set this up to fill in the
+          connection details. Saving stays inactive until then.
+        </div>
       )}
 
       {progressMsg && (
         <div className="eq-intake-progress">
-          <span className="eq-intake-spinner eq-intake-spinner--dark" />
+          <span className="eq-spinner__dot" style={{ width: 10, height: 10, flexShrink: 0 }} />
           {progressMsg}
         </div>
       )}
 
-      {error && <Notice kind="err">{error}</Notice>}
-
-      {!result && bundle.slots.some((s) => s.role !== "unknown" && s.sheet) && (
-        <div style={{ marginBottom: 16 }}>
-          <MappingPreviewPanel slots={bundle.slots} registry={ROLE_REGISTRY} />
+      {error && (
+        <div role="alert" className="eq-intake-alert">
+          {error}
         </div>
       )}
 
-      {!result && (
-        <PrimaryButton onClick={commit} disabled={!enabled || busy} loading={busy}>
-          {busy ? "Saving…" : "Save into EQ"}
-        </PrimaryButton>
+      {/* Pre-commit: show how the dropped columns line up with EQ fields. */}
+      {!result && bundle.slots.some((s) => s.role !== "unknown" && s.sheet) && (
+        <MappingPreviewPanel slots={bundle.slots} registry={ROLE_REGISTRY} />
       )}
+
+      <button
+        type="button"
+        onClick={commit}
+        disabled={!enabled || busy}
+        className="eq-intake-btn-primary"
+      >
+        {busy ? (
+          <span className="eq-intake-btn-spinner">
+            <span className="eq-spinner__dot" style={{ width: 10, height: 10 }} />
+            Saving…
+          </span>
+        ) : (
+          "Save into EQ"
+        )}
+      </button>
 
       {result && <CommitSummary result={result} />}
 
+      {/* Post-commit: per-row drill-downs for anything that needs eyes. */}
       {result?.perEntity.some((r) => r.flaggedRows.length > 0) && (
         <RowsDisclosure
           label="Show rows that saved but need checking"
-          hint="These rows are in EQ, but something caught our eye."
+          hint="These rows are in EQ, but something caught our eye. Review each one before relying on it."
           accentColor="var(--eq-warn)"
-          hintColor="#78350f"
-          perEntity={result.perEntity.map((r) => ({ entity: r.entity, rows: r.flaggedRows }))}
+          hintColor="var(--eq-ink)"
+          perEntity={result.perEntity.map((r) => ({
+            entity: r.entity,
+            rows: r.flaggedRows,
+          }))}
         />
       )}
+
       {result?.perEntity.some((r) => r.rejectedRows.length > 0) && (
         <RowsDisclosure
           label="Show rows that couldn't save — and why"
           accentColor="var(--eq-ink)"
           showDownload
           downloadFilename="eq-rejected-rows.csv"
-          perEntity={result.perEntity.map((r) => ({ entity: r.entity, rows: r.rejectedRows }))}
+          perEntity={result.perEntity.map((r) => ({
+            entity: r.entity,
+            rows: r.rejectedRows,
+          }))}
         />
       )}
     </div>
   );
 }
 
+/**
+ * Compact post-save summary — the at-a-glance counts and per-entity chips.
+ * The richer per-row UI (flagged / rejected drill-downs via RowsDisclosure,
+ * and the pre-commit MappingPreviewPanel) now renders alongside this in
+ * CommitView, sharing the components under src/shared/.
+ */
 function CommitSummary({ result }: { result: CommitResult }): JSX.Element {
-  const saved    = result.perEntity.reduce((n, r) => n + r.committedCount, 0);
-  const flagged  = result.perEntity.reduce((n, r) => n + r.flaggedCount, 0);
+  const saved = result.perEntity.reduce((n, r) => n + r.committedCount, 0);
+  const flagged = result.perEntity.reduce((n, r) => n + r.flaggedCount, 0);
   const rejected = result.perEntity.reduce((n, r) => n + r.rejectedCount, 0);
   const hasFatal = result.perEntity.some((r) => r.fatalError);
 
-  const variant = hasFatal || rejected > 0 ? (hasFatal ? "err" : "warn") : "ok";
-  const icon    = hasFatal ? "✗" : rejected > 0 ? "⚠" : "✓";
+  const status = hasFatal ? "error" : rejected > 0 ? "warn" : "ok";
+  const icon = hasFatal ? "✗" : rejected > 0 ? "⚠" : "✓";
 
   return (
-    <div className={`eq-commit-result eq-commit-result--${variant}`} role="status" aria-live="polite">
-      <div className="eq-commit-result__icon">{icon}</div>
-      <div className="eq-commit-result__body">
-        <div className="eq-commit-result__title">
+    <div
+      role="status"
+      aria-live="polite"
+      className="eq-intake-summary"
+      data-status={status}
+    >
+      <span className="eq-intake-summary__icon" data-status={status}>{icon}</span>
+      <div className="eq-intake-summary__body">
+        <span className="eq-intake-summary__saved">
           {saved.toLocaleString()} record{saved === 1 ? "" : "s"} saved
-        </div>
-        {(flagged > 0 || rejected > 0) && (
-          <div className="eq-commit-result__sub">
-            {flagged  > 0 && <span className="eq-commit-result__sub-warn">{flagged.toLocaleString()} need{flagged === 1 ? "s" : ""} checking</span>}
-            {rejected > 0 && <span className="eq-commit-result__sub-err">{rejected.toLocaleString()} couldn't save</span>}
-          </div>
+        </span>
+        {flagged > 0 && (
+          <span className="eq-intake-summary__flagged">
+            {flagged.toLocaleString()} need{flagged === 1 ? "s" : ""} checking
+          </span>
+        )}
+        {rejected > 0 && (
+          <span className="eq-intake-summary__rejected">
+            {rejected.toLocaleString()} couldn't save
+          </span>
         )}
       </div>
-      <div className="eq-commit-result__chips">
-        {result.perEntity
-          .filter((r) => r.committedCount > 0)
-          .map((r) => (
-            <span key={r.entity} className="eq-commit-result__chip">
-              {r.committedCount} {entityLabel(r.entity).toLowerCase()}
-            </span>
-          ))}
-      </div>
+      {result.perEntity
+        .filter((r) => r.committedCount > 0)
+        .map((r) => (
+          <span
+            key={r.entity}
+            className="eq-intake-summary__chip"
+          >
+            {r.committedCount} {entityLabel(r.entity).toLowerCase()}
+          </span>
+        ))}
     </div>
   );
-}
-
-// ============================================================================
-// SHARED PRIMITIVES
-// ============================================================================
-function PrimaryButton({
-  onClick,
-  disabled = false,
-  loading = false,
-  children,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  loading?: boolean;
-  children: React.ReactNode;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      className="eq-primary"
-      onClick={(!disabled && !loading) ? onClick : undefined}
-      disabled={disabled || loading}
-      style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600, padding: "10px 20px", borderRadius: 8 }}
-    >
-      {loading && <span className="eq-intake-spinner" />}
-      {children}
-    </button>
-  );
-}
-
-function Notice({ kind, children }: { kind: "ok" | "warn" | "err"; children: React.ReactNode }): JSX.Element {
-  return (
-    <div className={`eq-intake-notice eq-intake-notice--${kind}`} role={kind === "err" ? "alert" : undefined}>
-      {children}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function triggerDownload(csv: string, filename: string): void {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

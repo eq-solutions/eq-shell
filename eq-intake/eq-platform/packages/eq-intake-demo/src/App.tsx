@@ -16,8 +16,9 @@ import { pickAi } from "./ai-picker.js";
 import { CUSTOMER_SCHEMA, CONTACT_SCHEMA, SITE_SCHEMA } from "./simpro-schemas.js";
 import { RollupDropZone } from "./rollup/RollupDropZone.js";
 import { IntakeModule } from "./module/IntakeModule.js";
+import { ReconcileModule } from "./module/ReconcileModule.js";
 
-type Mode = "single" | "bundle" | "intake";
+type Mode = "single" | "bundle" | "intake" | "reconcile";
 
 const STAFF_SCHEMA = {
   $id: "https://schemas.eq.solutions/demo/staff.json",
@@ -278,6 +279,15 @@ export function App() {
           >
             One-screen Intake
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "reconcile"}
+            className={"eq-mode-tab" + (mode === "reconcile" ? " eq-mode-tab--active" : "")}
+            onClick={() => setMode("reconcile")}
+          >
+            Reconcile
+          </button>
         </section>
 
         {mode === "single" ? (
@@ -303,7 +313,7 @@ export function App() {
           </section>
         ) : null}
 
-        {mode !== "intake" && (
+        {mode !== "intake" && mode !== "reconcile" && (
         <section className="eq-info-panel">
           <strong>What you're looking at:</strong>
           {mode === "single" ? (
@@ -383,8 +393,10 @@ export function App() {
           />
         ) : mode === "bundle" ? (
           <RollupDropZone />
-        ) : (
+        ) : mode === "intake" ? (
           <IntakeModule onDestinationChange={onDestinationChange} />
+        ) : (
+          <ReconcileModule />
         )}
 
         {log.length > 0 && (
