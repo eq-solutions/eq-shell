@@ -38,20 +38,27 @@ import licenceJsonSchema from "@eq/schemas/schemas/licence.schema.json";
 // Public types
 // ---------------------------------------------------------------------------
 
+/**
+ * Structural interface for a Supabase-compatible client.
+ *
+ * insert() and update().eq() use PromiseLike rather than Promise so that the
+ * real @supabase/supabase-js PostgrestFilterBuilder (which is thenable but not
+ * a plain Promise) satisfies this interface without a double cast in the shell.
+ */
 export interface SupabaseLikeClient {
   from: (table: string) => {
-    insert: (row: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;
+    insert: (row: unknown) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
     update: (row: unknown) => {
       eq: (
         col: string,
         val: unknown,
-      ) => Promise<{ data: unknown; error: { message: string } | null }>;
+      ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
     };
   };
   rpc: (
     name: string,
     params: unknown,
-  ) => Promise<{ data: unknown; error: { message: string } | null }>;
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
   auth: {
     getUser: () => Promise<{
       data: { user: { id: string } | null };

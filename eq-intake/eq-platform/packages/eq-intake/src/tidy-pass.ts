@@ -195,7 +195,10 @@ async function scanEntity(
       allowNonCurrentSchema: true,
       // Disable FK lookups — we're only checking field normalisation here,
       // not relational integrity (orphan-check handles that separately).
-      fkLookup: { list: async () => [], byId: async () => null },
+      fkLookup: {
+        list:  async () => [],
+        byId:  async () => null,
+      },
     });
   } catch (e) {
     throw new Error(
@@ -385,6 +388,11 @@ export async function commitTidyFixes(opts: TidyCommitOpts): Promise<TidyCommitR
   // Create a tidy-specific intake event for the audit trail
   const intakeId = crypto.randomUUID();
 
+  const { data: { user } } = await opts.supabase.auth.getUser();
+  if (!user?.id) {
+    throw new Error('Session expired — please reload');
+  }
+
   const { error: eventError } = await opts.supabase.rpc('eq_create_intake_event', {
     p_intake_id:      intakeId,
     p_tenant_id:      opts.tenantId,
@@ -394,7 +402,7 @@ export async function commitTidyFixes(opts: TidyCommitOpts): Promise<TidyCommitR
     p_schema_version: '1.0.0',
     p_status:         'committing',
     p_import_mode:    'upsert',
-    p_created_by:     (await opts.supabase.auth.getUser()).data.user?.id ?? 'unknown',
+    p_created_by:     user.id,
   });
 
   if (eventError) {

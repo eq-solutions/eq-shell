@@ -60,6 +60,18 @@ export type {
   FileFormat,
 } from "./parse-file.js";
 
+// ── Reconciliation engine ──────────────────────────────────────────────────
+export { reconcileSheets, detectMatchKey } from "./reconcile.js";
+export type {
+  ReconcileResult,
+  ReconcileRow,
+  FieldConflict,
+  Resolution,
+} from "./reconcile.js";
+
+export { fetchCanonicalRows, entityToTable } from "./fetch-canonical.js";
+export type { CanonicalFetchClient, CanonicalEntity } from "./fetch-canonical.js";
+
 // ── Tidy Our Data ─────────────────────────────────────────────────────────
 export { runTidyPass, commitTidyFixes, TIDY_ENTITY_TABLES } from "./tidy-pass.js";
 export { runOrphanCheck } from "./orphan-check.js";
@@ -79,3 +91,10 @@ export type {
   OrphanCheckOpts,
   OrphanCheckResult,
 } from "./tidy-types.js";
+
+// ── Quality Guardian ───────────────────────────────────────────────────────
+export { runLicenceExpiryCheck } from "./licence-expiry-check.js";
+export type { LicenceExpiryAlertSummary } from "./licence-expiry-check.js";
+
+export { computeHealthScores } from "./health-score.js";
+export type { HealthScore } from "./health-score.js";
