@@ -39,6 +39,7 @@ import AdminTenantsPage from './pages/AdminTenantsPage';
 import AdminWorkersPage from './pages/AdminWorkersPage';
 import AdminDataActivationPage from './pages/AdminDataActivationPage';
 import EntityBrowserPage from './pages/EntityBrowserPage';
+import FieldRosterPage from './pages/FieldRosterPage';
 import CustomersHubPage from './pages/CustomersHubPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { StaffPage } from './pages/StaffPage';
@@ -342,7 +343,9 @@ function TenantTree() {
     const rest = location.pathname.startsWith(base)
       ? location.pathname.slice(base.length)
       : '';
-    if (rest === 'field' || rest.startsWith('field/')) return 'field' as const;
+    // Only the top-level /field route renders the legacy iframe keeper.
+    // Sub-routes like /field/roster are native React pages — don't overlay the iframe.
+    if (rest === 'field') return 'field' as const;
     if (rest === 'cards' || rest.startsWith('cards/')) return 'cards' as const;
     if (rest === 'service' || rest.startsWith('service/')) return 'service' as const;
     if (rest === 'quotes' || rest.startsWith('quotes/')) return 'quotes' as const;
@@ -411,6 +414,10 @@ function TenantTree() {
         <Route
           path="field"
           element={<ModuleGate module="field">{null}</ModuleGate>}
+        />
+        <Route
+          path="field/roster"
+          element={<ModuleGate module="field"><FieldRosterPage /></ModuleGate>}
         />
         <Route
           path="cards"

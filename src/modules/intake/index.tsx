@@ -1,7 +1,9 @@
 // EQ Intake — mounts @eq/intake-demo's IntakeModule inside the shell.
 //
-// Auth via createSupabaseClient() — refreshes the JWT transparently via
-// /.netlify/functions/mint-supabase-jwt before expiry.
+// Auth via createSKSSupabaseClient() — mints a short-lived JWT for
+// sks-canonical via /.netlify/functions/mint-sks-jwt and refreshes
+// transparently before expiry. Entity data lives on sks-canonical
+// (not eq-canonical), so the client is pointed there.
 // Gated by useCan('intake.view'). Actions inside IntakeModule are gated
 // by their own useCan() calls — see src/modules/intake/permissions.ts.
 
@@ -15,7 +17,7 @@ import { useSession } from '../../session';
 import { Gate } from '../../permissions/Gate';
 import { HubLayout } from '../../components/HubLayout';
 import { defaultSidebarRecords } from '../../lib/sidebarConfig';
-import { createSupabaseClient } from '../../lib/supabaseJwt';
+import { createSKSSupabaseClient } from '../../lib/sksSupabaseClient';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
@@ -56,7 +58,7 @@ function IntakeShell() {
     let cancelled = false;
     (async () => {
       try {
-        const sb = await createSupabaseClient();
+        const sb = await createSKSSupabaseClient();
         if (!cancelled) setClient(sb);
       } catch (e) {
         if (!cancelled) setErr((e as Error).message);

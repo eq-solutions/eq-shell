@@ -151,6 +151,25 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     approved_by_user_id: session.user_id,
   });
 
+  // Canonical heartbeat — every approval lands a row in canonical_events so the
+  // sentient layer has a durable audit trail. Fire-and-forget: the approval is
+  // already committed above; a logging failure must not roll it back.
+  tenantAny
+    .schema('app_data')
+    .from('canonical_events')
+    .insert({
+      tenant_id: tenantId,
+      app_source: 'shell',
+      event: 'staff.approved',
+      payload: { staff_id, approved_by: session.user_id },
+      occurred_at: new Date().toISOString(),
+      idempotency_key: `staff.approved:${staff_id}`,
+    })
+    .then(() => {/* ok */})
+    .catch((err: unknown) => {
+      console.error('[cards-approve-staff] canonical_events emit failed', err);
+    });
+
   return json(200, { ok: true, action: 'approved', staff_id });
 });
 
