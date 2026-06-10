@@ -6,7 +6,6 @@
  */
 
 @import "@eq-solutions/tokens/tokens.css";
-/* Fonts loaded by host shell (Google Fonts / @fontsource at shell level) */
 
 :root {
   --eq-paper: #ffffff;
@@ -2643,6 +2642,33 @@ button.eq-primary:hover {
     padding: 8px 10px;
   }
 
+  /* ---- IntakeModule tabs — full width on mobile ---- */
+  .eq-intake-tabs {
+    gap: 0;
+  }
+
+  .eq-intake-tab {
+    flex: 1;
+    text-align: center;
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+
+  /* FreeformIntakeInput: textarea full width, button full width below */
+  .eq-freeform-intake .eq-freeform {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .eq-freeform-intake__textarea {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .eq-freeform-intake .eq-intake-btn-primary {
+    width: 100%;
+  }
+
   /* ---- New sprint classes — mobile overrides ---- */
 
   /* Destination-picker row: stack vertically on narrow screens */
@@ -3142,6 +3168,110 @@ button.eq-primary:hover {
   }
 }
 
+/* ===== IntakeModule — top-level mode tabs (Import / Reconcile) ===== */
+.eq-intake-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--eq-line);
+}
+
+.eq-intake-tab {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--eq-muted);
+  cursor: pointer;
+  border-radius: 0;
+  margin-bottom: -2px;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.eq-intake-tab:hover {
+  color: var(--eq-ink);
+  background: transparent;
+  border-color: transparent;
+}
+
+.eq-intake-tab--active {
+  color: var(--eq-deep);
+  border-bottom-color: var(--eq-sky);
+  font-weight: 600;
+}
+
+.eq-intake-tab--active:hover {
+  color: var(--eq-deep);
+  border-bottom-color: var(--eq-sky);
+}
+
+/* ===== FreeformIntakeInput ===== */
+.eq-freeform-intake {
+  margin-top: 16px;
+}
+
+.eq-freeform-intake__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--eq-muted);
+  margin: 0 0 8px;
+}
+
+.eq-freeform-intake__textarea {
+  flex: 1;
+  min-width: 220px;
+  min-height: 80px;
+  padding: 8px 10px;
+  border: 1px solid var(--eq-line);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  background: var(--eq-paper);
+  color: var(--eq-ink);
+}
+
+.eq-freeform-intake__textarea:focus {
+  outline: none;
+  border-color: var(--eq-sky);
+}
+
+.eq-freeform-intake__notice {
+  font-size: 12px;
+  color: var(--eq-muted);
+  margin: 6px 0 0;
+  font-style: italic;
+}
+
+.eq-freeform-intake__result {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--eq-ice);
+  border: 1px solid var(--eq-deep);
+  border-radius: 4px;
+}
+
+.eq-freeform-intake__result-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--eq-muted);
+  margin: 0 0 6px;
+}
+
+.eq-freeform-intake__result-body {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--eq-ink);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ===== IntakeModule — one-screen layout ===== */
 .eq-intake-module {
   padding: 24px 0;
@@ -3334,6 +3464,65 @@ button.eq-primary:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ===== Data Health Home ===== */
+.eq-health-home { padding: 24px 0; }
+.eq-health-home__title { font-size: 18px; font-weight: 600; color: var(--eq-ink); margin: 0 0 4px; }
+.eq-health-home__subtitle { font-size: 13px; color: var(--eq-muted); margin: 0 0 24px; }
+.eq-health-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.eq-health-card { background: var(--eq-paper); border: 1px solid var(--eq-line); border-radius: 8px; padding: 16px; cursor: pointer; transition: border-color 0.15s; }
+.eq-health-card:hover { border-color: var(--eq-sky); }
+.eq-health-card__name { font-size: 13px; font-weight: 600; color: var(--eq-ink); margin: 0 0 2px; }
+.eq-health-card__count { font-size: 12px; color: var(--eq-muted); margin: 0 0 10px; }
+.eq-health-bar-wrap { height: 6px; background: var(--eq-line); border-radius: 3px; overflow: hidden; margin-bottom: 4px; }
+.eq-health-bar { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.eq-health-bar--ok   { background: var(--eq-ok); }
+.eq-health-bar--warn { background: var(--eq-warn); }
+.eq-health-bar--err  { background: var(--eq-err); }
+.eq-health-card__pct { font-size: 12px; font-weight: 600; color: var(--eq-ink); margin: 0 0 6px; }
+.eq-health-card__gaps { font-size: 11px; color: var(--eq-muted); margin: 0; }
+.eq-health-licence-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+.eq-health-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+.eq-health-badge--critical { background: #fee2e2; color: #991b1b; }
+.eq-health-badge--warning  { background: #fef3c7; color: #92400e; }
+.eq-health-badge--info     { background: var(--eq-ice); color: var(--eq-deep); }
+.eq-health-badge--ok       { background: #dcfce7; color: #166534; }
+.eq-health-notice { font-size: 13px; color: var(--eq-muted); padding: 32px 0; text-align: center; }
+.eq-health-loading { font-size: 13px; color: var(--eq-muted); padding: 24px 0; }
+
+/* ===== Entity Drill-Down ===== */
+.eq-drill { padding: 24px 0; }
+.eq-drill__header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.eq-drill__back { background: none; border: 1px solid var(--eq-line); border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--eq-ink); }
+.eq-drill__back:hover { border-color: var(--eq-sky); color: var(--eq-deep); }
+.eq-drill__title { font-size: 16px; font-weight: 600; color: var(--eq-ink); margin: 0; }
+.eq-drill__actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.eq-drill__filter { display: flex; border: 1px solid var(--eq-line); border-radius: 6px; overflow: hidden; }
+.eq-drill__filter-btn { padding: 5px 12px; font-size: 12px; background: none; border: none; cursor: pointer; color: var(--eq-muted); }
+.eq-drill__filter-btn--active { background: var(--eq-ink); color: white; }
+.eq-drill__download { padding: 6px 12px; font-size: 12px; background: none; border: 1px solid var(--eq-line); border-radius: 6px; cursor: pointer; color: var(--eq-ink); }
+.eq-drill__download:hover { border-color: var(--eq-sky); }
+.eq-drill__edit-notice { font-size: 12px; color: var(--eq-warn); background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
+.eq-drill__table-wrap { overflow-x: auto; border: 1px solid var(--eq-line); border-radius: 8px; }
+.eq-drill__table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.eq-drill__table th { background: var(--eq-page); padding: 8px 12px; text-align: left; font-weight: 500; color: var(--eq-muted); border-bottom: 1px solid var(--eq-line); white-space: nowrap; }
+.eq-drill__table td { padding: 8px 12px; border-bottom: 1px solid var(--eq-line); color: var(--eq-ink); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eq-drill__table tr:last-child td { border-bottom: none; }
+.eq-drill__cell--gap { background: #fffbeb; cursor: pointer; }
+.eq-drill__cell--gap:hover { background: #fef3c7; }
+.eq-drill__inline-edit { display: flex; gap: 4px; align-items: center; }
+.eq-drill__inline-input { border: 1px solid var(--eq-sky); border-radius: 4px; padding: 3px 6px; font-size: 13px; width: 140px; }
+.eq-drill__inline-save { padding: 3px 8px; font-size: 12px; background: var(--eq-sky); color: white; border: none; border-radius: 4px; cursor: pointer; }
+.eq-drill__inline-cancel { padding: 3px 8px; font-size: 12px; background: none; border: 1px solid var(--eq-line); border-radius: 4px; cursor: pointer; }
+.eq-drill__empty { text-align: center; padding: 32px; color: var(--eq-muted); font-size: 13px; }
+
+@media (max-width: 600px) {
+  .eq-health-grid { grid-template-columns: 1fr 1fr; }
+  .eq-health-card { padding: 12px; }
+  .eq-drill__header { gap: 8px; }
+  .eq-drill__table-wrap { border-radius: 6px; }
+  .eq-drill__table td, .eq-drill__table th { padding: 6px 8px; font-size: 12px; }
 }
 
 .eq-intake-preview__table tbody tr {

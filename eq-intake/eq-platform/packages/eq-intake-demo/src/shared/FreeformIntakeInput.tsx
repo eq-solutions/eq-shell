@@ -11,15 +11,17 @@
  */
 
 import { useState, type JSX } from "react";
-import type { AIProvider } from "@eq/ai";
 
-// Re-export for consumers that want the same type without importing @eq/ai directly
-export type { AIProvider as AiClient };
+/** Minimal interface for an AI client. Any object with a `complete` method
+ * that accepts a string prompt and returns a string response suffices. */
+export interface AiClient {
+  complete: (prompt: string) => Promise<string>;
+}
 
 export interface FreeformIntakeInputProps {
-  /** Optional AI provider. When absent the component renders in preview-only
+  /** Optional AI client. When absent the component renders in preview-only
    * mode with a notice explaining AI isn't configured. */
-  ai?: AIProvider | null;
+  ai?: AiClient | null;
   /** Placeholder text for the textarea. */
   placeholder?: string;
   /** Called when the AI returns a response. Host can use this to pre-fill
@@ -29,7 +31,7 @@ export interface FreeformIntakeInputProps {
 
 export function FreeformIntakeInput({
   ai,
-  placeholder = "Describe what you'd like to import — e.g. 'Add 5 new customers from Adelaide with site addresses'",
+  placeholder = "Describe what you'd like to import — e.g. \"Add 5 new customers from Adelaide with site addresses\"",
   onResult,
 }: FreeformIntakeInputProps): JSX.Element {
   const [text, setText] = useState("");
@@ -43,17 +45,9 @@ export function FreeformIntakeInput({
     setResult(null);
     setError(null);
     try {
-      // Use the AI map() method to extract structured fields from freeform text.
-      // Pass the text as a single synthetic "source column" so the mapper can
-      // attempt to resolve canonical fields from the natural language description.
-      const mapped = await ai.map({
-        targetSchema: { properties: {} },
-        sourceColumns: [text.trim()],
-        sampleRows: [],
-      });
-      const summary = mapped.mappings.map(m => `${m.sourceColumn} → ${m.canonicalField}`).join(", ") || text.trim();
-      setResult(summary);
-      onResult?.(summary);
+      const response = await ai.complete(text.trim());
+      setResult(response);
+      onResult?.(response);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

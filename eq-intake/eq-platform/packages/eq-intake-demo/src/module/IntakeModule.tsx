@@ -20,7 +20,7 @@
  * override via the onDestinationChange prop.
  */
 
-import { useMemo, useState, type JSX } from "react";
+import { useMemo, useState, useEffect, type JSX } from "react";
 import { type ParsedSheet } from "@eq/intake";
 import { useIntakeBundle, roleLabel, ROLE_REGISTRY, type IntakeBundle } from "../shared/intake-bundle.js";
 import { IntakeDropZone } from "../shared/IntakeDropZone.js";
@@ -29,6 +29,8 @@ import { RowsDisclosure } from "../shared/RowsDisclosure.js";
 import { entityLabel } from "../shared/entity-label.js";
 import { FreeformIntakeInput, type AiClient } from "../shared/FreeformIntakeInput.js";
 import { ReconcileModule } from "./ReconcileModule.js";
+import { IntakeHealthHome } from "./IntakeHealthHome.js";
+import { EntityDrillDown } from "./EntityDrillDown.js";
 import { QUICK_DESTINATIONS, encodeCsv, type QuickDestination } from "../quick-export/destinations.js";
 import {
   commitBundleToCanonical,
@@ -98,7 +100,7 @@ function defaultRouteLogger(
   }
 }
 
-type IntakeMode = "import" | "reconcile";
+type IntakeMode = "health" | "import" | "reconcile";
 
 export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const onDestinationChange = useMemo(
@@ -108,7 +110,13 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
 
   const bundle = useIntakeBundle();
   const [destId, setDestId] = useState<string>(INTO_EQ_ID);
-  const [mode, setMode] = useState<IntakeMode>("import");
+  const [mode, setMode] = useState<IntakeMode>("health");
+  const [drillEntity, setDrillEntity] = useState<string | null>(null);
+
+  // Reset drill-down when switching away from health tab
+  useEffect(() => {
+    if (mode !== "health") setDrillEntity(null);
+  }, [mode]);
 
   const exportDest = useMemo(
     () => QUICK_DESTINATIONS.find((d) => `${QUICK_PREFIX}${d.id}` === destId),
@@ -122,14 +130,23 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
 
   return (
     <section className="eq-intake-module">
-      {/* Mode toggle — Import (default) / Reconcile */}
+      {/* Mode toggle — Health (default) / Import / Reconcile */}
       <div className="eq-intake-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "health"}
+          className={"eq-intake-tab" + (mode === "health" ? " eq-intake-tab--active" : "")}
+          onClick={() => setMode("health")}
+        >
+          Health
+        </button>
         <button
           type="button"
           role="tab"
           aria-selected={mode === "import"}
           className={"eq-intake-tab" + (mode === "import" ? " eq-intake-tab--active" : "")}
-          onClick={() => setMode("import")}
+          onClick={() => { setDrillEntity(null); setMode("import"); }}
         >
           Import
         </button>
@@ -138,13 +155,27 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
           role="tab"
           aria-selected={mode === "reconcile"}
           className={"eq-intake-tab" + (mode === "reconcile" ? " eq-intake-tab--active" : "")}
-          onClick={() => setMode("reconcile")}
+          onClick={() => { setDrillEntity(null); setMode("reconcile"); }}
         >
           Reconcile
         </button>
       </div>
 
-      {mode === "reconcile" ? (
+      {mode === "health" ? (
+        drillEntity !== null ? (
+          <EntityDrillDown
+            entity={drillEntity}
+            supabase={props.supabase}
+            onBack={() => setDrillEntity(null)}
+          />
+        ) : (
+          <IntakeHealthHome
+            supabase={props.supabase}
+            tenantId={props.tenantId}
+            onEntityClick={(e) => setDrillEntity(e)}
+          />
+        )
+      ) : mode === "reconcile" ? (
         <ReconcileModule
           supabase={props.supabase}
           tenantId={props.tenantId}
