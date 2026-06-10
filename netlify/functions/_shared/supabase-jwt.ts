@@ -105,7 +105,13 @@ export interface MintedJwt {
  * Optional sourceApp — recorded in app_metadata.source_app + the
  * mint_audit_log row so we know which app initiated the mint.
  */
-export function signSupabaseJwt(
+/**
+ * Sign a Supabase-compatible JWT with the given secret. Low-level —
+ * prefer signSupabaseJwt() for eq-canonical or signJwtWithSecret() when
+ * you have a tenant-specific secret (e.g. SKS_SUPABASE_JWT_SECRET).
+ */
+export function signJwtWithSecret(
+  secret: string,
   userId: string,
   tenantId: string,
   eqRole: EqRole,
@@ -115,13 +121,6 @@ export function signSupabaseJwt(
   email?: string,
   tenantSlug?: string,
 ): MintedJwt {
-  if (!JWT_SECRET) {
-    throw new Error(
-      'Server misconfigured — SUPABASE_JWT_SECRET must be set on the eq-shell Netlify deploy. ' +
-        'Find it in the Supabase dashboard under Settings → API → JWT Settings → JWT Secret.',
-    );
-  }
-
   const now = Math.floor(Date.now() / 1000);
   const jti = randomUUID();
   const claims: SupabaseJwtClaims = {
@@ -145,10 +144,29 @@ export function signSupabaseJwt(
   const payload = base64UrlEncode(JSON.stringify(claims));
   const signingInput = `${header}.${payload}`;
   const signature = base64UrlEncode(
-    createHmac('sha256', JWT_SECRET).update(signingInput).digest(),
+    createHmac('sha256', secret).update(signingInput).digest(),
   );
 
   return { token: `${signingInput}.${signature}`, jti, exp: claims.exp };
+}
+
+export function signSupabaseJwt(
+  userId: string,
+  tenantId: string,
+  eqRole: EqRole,
+  isPlatformAdmin: boolean,
+  ttlSeconds: number = SUPABASE_JWT_TTL_SECONDS,
+  sourceApp: string = 'shell',
+  email?: string,
+  tenantSlug?: string,
+): MintedJwt {
+  if (!JWT_SECRET) {
+    throw new Error(
+      'Server misconfigured — SUPABASE_JWT_SECRET must be set on the eq-shell Netlify deploy. ' +
+        'Find it in the Supabase dashboard under Settings → API → JWT Settings → JWT Secret.',
+    );
+  }
+  return signJwtWithSecret(JWT_SECRET, userId, tenantId, eqRole, isPlatformAdmin, ttlSeconds, sourceApp, email, tenantSlug);
 }
 
 export function hasSupabaseJwtSecret(): boolean {

@@ -22,7 +22,7 @@ import { withSentry } from './_shared/sentry.js';
 // Allow-list mirrors the RPC's CASE. Reject early so a typo doesn't reach
 // the database — saves a round trip and gives a clearer error.
 const ALLOWED_ENTITIES = new Set<string>([
-  'customer', 'contact', 'site', 'staff',
+  'customer', 'contact', 'site', 'staff', 'field_person',
   'schedule', 'timesheet', 'leave_request', 'tender',
   'prestart', 'toolbox_talk', 'licence', 'asset',
   'team',
@@ -32,7 +32,7 @@ const ALLOWED_ENTITIES = new Set<string>([
 // field.view (manager, supervisor, employee, apprentice, labour_hire).
 // CRM/equipment/tender entities are open to all logged-in users.
 const FIELD_ENTITIES = new Set<string>([
-  'staff', 'schedule', 'timesheet', 'leave_request', 'team',
+  'staff', 'field_person', 'schedule', 'timesheet', 'leave_request', 'team',
   'prestart', 'toolbox_talk', 'licence',
 ]);
 
