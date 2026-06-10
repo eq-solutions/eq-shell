@@ -24,7 +24,7 @@
 // the email+PIN path.
 
 import type { Context } from '@netlify/functions';
-import { getServiceClient } from './_shared/supabase.js';
+import { getServiceClient, getUserMemberships } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
 import { signSessionToken, buildTotpChallengeIfEnrolled, hasTrustedDeviceFor, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
@@ -261,6 +261,13 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
   // start fresh the next time they need to authenticate.
   void sb.schema('public').rpc('clear_rate_limit', { p_key: rlKey });
 
+  // Look up all tenant memberships so the tenant switcher works for users
+  // who belong to more than one workspace (e.g. platform admins).
+  // Falls back to the single known membership if the query fails.
+  const allMemberships = await getUserMemberships(user.id).catch(() => null);
+  const membershipsForCookie = (allMemberships ?? [{ tenant_id: tenant.id, role: user.role }])
+    .map((m) => ({ tenant_id: m.tenant_id, role: m.role }));
+
   const exp = Date.now() + SESSION_TTL_MS;
   const cookieValue = signSessionToken({
     user_id: user.id,
@@ -268,7 +275,7 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     active_tenant_id: tenant.id,
     role: user.role,
     is_platform_admin: user.is_platform_admin,
-    memberships: [{ tenant_id: tenant.id, role: user.role }],
+    memberships: membershipsForCookie,
     config: DEFAULT_TENANT_CONFIG,
     exp,
   });
