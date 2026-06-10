@@ -1,0 +1,65 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# sprint prompts & release archives (kept local, not committed)
+SPRINT_*_COWORK_PROMPT.md
+eq-solves-release-*.zip
+
+# generated docs & deploy artifacts
+*.pptx
+*.docx
+deploy-*.zip
+/.next-old/
+/tmp/
+
+# null-byte-strip backups (one-time cleanup 2026-04-18)
+*.corrupt.bak
+
+# Local Netlify folder
+.netlify
+
+# Cowork agent worktrees & metadata
+.claude/
+
+# one-off smoke-test scripts (loaded via tsx during local dev)
+/scratch-*.ts

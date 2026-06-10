@@ -1,0 +1,36 @@
+# Per Sprint 1 decision #9 — generated code is gitignored
+**/src/generated/
+
+# Build outputs
+dist/
+**/dist/
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+**/coverage/
+
+# pnpm
+.pnpm-store/
+
+# Local template cache (eq-format-ui signature-hash cache; demos the
+# eq_intake_find_template_by_signature flow before Supabase lands)
+**/.templates/

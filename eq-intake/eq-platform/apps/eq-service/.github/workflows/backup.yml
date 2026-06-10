@@ -1,0 +1,144 @@
+name: Weekly Backup
+
+# Backs up the Supabase Postgres database and Storage buckets to Cloudflare R2.
+#
+# Schedule: Every Sunday at 02:00 UTC (~12:00 AEST)
+# Manual: workflow_dispatch for on-demand backups
+#
+# Secrets required (GitHub repo -> Settings -> Secrets -> Actions):
+#   SUPABASE_ACCESS_TOKEN     - personal access token (sbp_...)
+#   SUPABASE_PROJECT_REF      - urjhmkhbgaxrofurpbgc
+#   R2_ACCESS_KEY_ID          - Cloudflare R2 access key
+#   R2_SECRET_ACCESS_KEY      - Cloudflare R2 secret key
+#   R2_ENDPOINT               - https://<account_id>.r2.cloudflarestorage.com
+#   R2_BUCKET_NAME            - e.g. eq-backups
+#   SUPABASE_SERVICE_ROLE_KEY - for Storage API access
+#
+#   SUPABASE_DB_URL           - session pooler URI (postgresql://postgres.[ref]:[pass]@aws-...-pooler.supabase.com:5432/postgres)
+
+on:
+  schedule:
+    # Every Sunday 02:00 UTC (~12:00 AEST)
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+jobs:
+  backup-database:
+    name: Database dump → R2
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - name: Set backup date
+        run: echo "BACKUP_DATE=$(date -u +%Y-%m-%d_%H%M)" >> "$GITHUB_ENV"
+
+      - name: Install Supabase CLI + AWS CLI
+        run: |
+          # Supabase CLI — handles pg_dump version internally
+          curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz | tar xz
+          sudo mv supabase /usr/local/bin/
+          supabase --version
+          pip install awscli --quiet
+
+      - name: Dump database via Supabase CLI
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          supabase db dump \
+            --db-url "$SUPABASE_DB_URL" \
+            --file "db_backup_${BACKUP_DATE}.sql"
+          ls -lh "db_backup_${BACKUP_DATE}.sql"
+          gzip "db_backup_${BACKUP_DATE}.sql"
+          ls -lh "db_backup_${BACKUP_DATE}.sql.gz"
+
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          set -euo pipefail
+          aws s3 cp \
+            "db_backup_${BACKUP_DATE}.sql.gz" \
+            "s3://${R2_BUCKET}/${BACKUP_DATE}/db_backup.sql.gz" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+          echo "✅ Database backup uploaded to R2: ${BACKUP_DATE}/db_backup.sql.gz"
+
+      - name: Prune old backups (keep last 8 weeks)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          CUTOFF=$(date -u -d '56 days ago' +%Y-%m-%d)
+          aws s3 ls "s3://${{ secrets.R2_BUCKET_NAME }}/" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
+            | awk '{print $NF}' | tr -d '/' \
+            | while read -r prefix; do
+                DATE_PART=$(echo "$prefix" | cut -d_ -f1)
+                if [[ "$DATE_PART" < "$CUTOFF" ]]; then
+                  echo "Pruning old backup: $prefix"
+                  aws s3 rm "s3://${{ secrets.R2_BUCKET_NAME }}/$prefix/" \
+                    --recursive \
+                    --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+                fi
+              done
+          echo "✅ Pruning complete (kept last 8 weeks)"
+
+  backup-storage:
+    name: Storage buckets → R2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set backup date
+        run: echo "BACKUP_DATE=$(date -u +%Y-%m-%d_%H%M)" >> "$GITHUB_ENV"
+
+      - name: Install tools
+        run: pip install awscli --quiet
+
+      - name: Sync storage buckets
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p storage_sync/attachments storage_sync/logos
+
+          for BUCKET in attachments logos; do
+            echo "--- Syncing bucket: $BUCKET ---"
+            RESPONSE=$(curl -sS \
+              -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
+              -H "Content-Type: application/json" \
+              -X POST \
+              "${SUPABASE_URL}/storage/v1/object/list/${BUCKET}" \
+              -d '{"prefix":"","limit":10000}')
+
+            echo "$RESPONSE" | jq -r '.[] | select(.id != null) | .name' | while read -r FILE; do
+              echo "  Downloading: ${BUCKET}/${FILE}"
+              curl -sS \
+                -H "Authorization: Bearer ${SERVICE_ROLE_KEY}" \
+                -o "storage_sync/${BUCKET}/${FILE}" \
+                "${SUPABASE_URL}/storage/v1/object/${BUCKET}/${FILE}"
+            done
+
+            FILE_COUNT=$(find "storage_sync/${BUCKET}" -type f | wc -l)
+            echo "  Downloaded ${FILE_COUNT} files from ${BUCKET}"
+          done
+
+      - name: Upload storage to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          aws s3 sync \
+            storage_sync/ \
+            "s3://${{ secrets.R2_BUCKET_NAME }}/${BACKUP_DATE}/storage/" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+          echo "✅ Storage buckets synced to R2: ${BACKUP_DATE}/storage/"

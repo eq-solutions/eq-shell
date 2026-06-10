@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/service_task_completion/v1.json",
+  "title": "Service Task Completion",
+  "description": "A single service task completed during a visit, for one asset. One row per asset × task per visit. Replaces the SOW Asset Schedule tickbox grid.",
+  "type": "object",
+  "x-eq-entity": "service_task_completion",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "service_task_completions",
+  "x-eq-primary-key": "completion_id",
+  "required": ["completion_id", "tenant_id", "visit_id", "asset_id", "task_type"],
+  "properties": {
+    "completion_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "completion_id", "task_id", "record_id"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "visit_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The service visit this task was completed during.",
+      "x-eq-foreign-key": "service_visit.visit_id",
+      "x-eq-source-aliases": ["visit", "job", "job_id", "job_no", "visit_ref", "service_visit"]
+    },
+    "asset_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The asset this task was performed on.",
+      "x-eq-foreign-key": "asset.asset_id",
+      "x-eq-fk-fuzzy-match-on": ["asset.name", "asset.external_id"],
+      "x-eq-source-aliases": ["asset", "tag", "equipment", "asset_tag", "asset_no", "plant_no"]
+    },
+    "task_type": {
+      "type": "string",
+      "description": "The type of service task performed.",
+      "x-eq-source-aliases": ["task", "service_type", "activity", "work_type", "maintenance_type", "task_name", "task_code"],
+      "x-eq-suggested-values": [
+        "annual_db_maint",
+        "msb_maint",
+        "thermal_test",
+        "rcd_test",
+        "generator_run_start",
+        "ups_maint",
+        "battery_load_test",
+        "earth_continuity_test",
+        "polarity_test",
+        "insulation_resistance_test",
+        "visual_inspection",
+        "torque_check",
+        "filter_change",
+        "battery_replacement",
+        "oil_change",
+        "load_test",
+        "cleaning",
+        "other"
+      ],
+      "x-eq-enum-aliases": {
+        "annual_db_maint":          ["db maint", "distribution board maintenance", "db maintenance", "annual maintenance"],
+        "msb_maint":                ["msb maintenance", "main switchboard maintenance", "switchboard maintenance"],
+        "thermal_test":             ["thermal", "thermal imaging", "thermal scan", "ir scan", "infrared"],
+        "rcd_test":                 ["rcd", "rcd trip test", "earth leakage test", "elcb test"],
+        "generator_run_start":      ["gen run", "generator run", "genset start", "generator test"],
+        "ups_maint":                ["ups", "ups maintenance", "ups service"],
+        "battery_load_test":        ["battery test", "battery load", "load test battery"],
+        "earth_continuity_test":    ["earth continuity", "continuity test", "earth test"],
+        "polarity_test":            ["polarity", "polarity check"],
+        "insulation_resistance_test": ["megger", "ir test", "insulation test", "meg test"],
+        "visual_inspection":        ["visual", "inspection", "walkthrough", "check"]
+      },
+      "maxLength": 100
+    },
+    "completed": {
+      "type": "boolean",
+      "description": "Whether the task was completed. False = not done / deferred.",
+      "x-eq-source-aliases": ["done", "is_completed", "complete", "finished", "ticked", "pass"],
+      "x-eq-coerce": "boolean",
+      "default": false
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Timestamp when the task was completed.",
+      "x-eq-source-aliases": ["completion_time", "time_completed", "completed_datetime", "finish_time"],
+      "x-eq-coerce": "datetime"
+    },
+    "tech_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Staff member who performed this specific task (may differ from crew lead).",
+      "x-eq-foreign-key": "staff.staff_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.first_name+staff.last_name", "staff.preferred_name", "staff.external_id"],
+      "x-eq-source-aliases": ["tech", "technician", "performed_by", "done_by", "worker", "staff"]
+    },
+    "result": {
+      "type": ["string", "null"],
+      "enum": [null, "pass", "fail", "partial", "not_applicable", "deferred"],
+      "description": "Outcome of the task. Distinct from completed — a task can be completed but still fail.",
+      "x-eq-source-aliases": ["outcome", "status", "task_result", "pass_fail", "result_code"],
+      "x-eq-enum-aliases": {
+        "pass":           ["p", "ok", "satisfactory", "sat", "good"],
+        "fail":           ["f", "failed", "unsatisfactory", "unsat"],
+        "partial":        ["part", "partially_completed"],
+        "not_applicable": ["n/a", "na", "not applicable", "skip"],
+        "deferred":       ["def", "carry_over", "deferred_to_next"]
+      }
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Observations, issues found, actions taken.",
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "observation", "findings", "work_done"],
+      "maxLength": 2000
+    },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "completed_has_time",
+      "rule": "completed == false OR completed_at != null",
+      "message": "Completed task should have a completion timestamp.",
+      "severity": "warning"
+    },
+    {
+      "id": "fail_has_notes",
+      "rule": "result != 'fail' OR (notes != null AND notes != '')",
+      "message": "Failed tasks should include notes explaining what was found.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Task completion data comes from field paperwork, SOW grids, or job management exports.",
+    "common_sources": [
+      {
+        "name": "SOW Asset Schedule (tickbox grid)",
+        "description": "Wide-format grid: assets down rows, task types across columns, tick = completed.",
+        "watchouts": ["Requires UNPIVOT — each cell becomes one completion row", "Asset column maps to asset.external_id or asset.name"]
+      },
+      {
+        "name": "SimPRO section/cost centre export",
+        "typical_columns": ["Job No", "Section", "Asset Tag", "Task", "Technician", "Status"],
+        "watchouts": ["Section maps to task_type; may need alias mapping"]
+      }
+    ]
+  }
+}

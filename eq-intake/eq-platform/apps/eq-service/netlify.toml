@@ -1,0 +1,17 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+# ─────────── Scheduled Functions ───────────
+#
+# Supervisor digest — fires daily at 21:00 UTC. That's 07:00 AEST (winter)
+# and 08:00 AEDT (summer). The small DST drift is acceptable for a
+# day-ahead digest; supervisors don't need minute-level precision.
+#
+# Schedule: minute hour day-of-month month day-of-week
+#   "0 21 * * *" = every day at 21:00 UTC
+#
+# The function POSTs to /api/cron/supervisor-digest with the CRON_SECRET
+# bearer token so the route authenticates it.
+[functions."supervisor-digest-scheduler"]
+  schedule = "0 21 * * *"

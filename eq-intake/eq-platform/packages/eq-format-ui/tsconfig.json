@@ -6,6 +6,6 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "Bundler"
   },
-  "include": ["src/**/*", "vite.config.ts"],
+  "include": ["src/**/*", "vite.config.ts", "test/**/*"],
   "exclude": ["dist", "node_modules"]
 }

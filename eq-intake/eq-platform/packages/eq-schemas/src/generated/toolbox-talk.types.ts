@@ -85,6 +85,10 @@ export interface ToolboxTalk {
     lng?: number;
   } | null;
   device_id?: string | null;
+  /**
+   * Workflow status. draft = captured, not reviewed. submitted = pending supervisor approval. approved = signed off. rejected = needs re-capture.
+   */
+  status?: "draft" | "submitted" | "approved" | "rejected";
   source?: "cards_mobile" | "import_spreadsheet" | "capture_pdf" | "capture_photo" | "manual_entry";
   raw_extract?: string | null;
   imported_at?: string | null;

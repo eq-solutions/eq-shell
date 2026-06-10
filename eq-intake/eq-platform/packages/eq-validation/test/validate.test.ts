@@ -328,7 +328,10 @@ describe("validate() - schema currency guard", async () => {
 describe("validate() - maxRowsToReturn cap", async () => {
   const staffSchema = await loadSchema("staff");
 
-  it("caps result at maxRowsToReturn rows", async () => {
+  it("caps result at maxRowsToReturn rows and emits a single cap_exceeded rejection", async () => {
+    // 20 rows, cap = 5 → 5 valid + 1 cap_exceeded rejected = 6 total in result.
+    // The cap entry is a SINGLE summary — not one-per-skipped-row — so this
+    // array should have exactly 1 entry regardless of how many rows were capped.
     const rows = Array.from({ length: 20 }, (_, i) => ({
       first_name: "F" + i,
       last_name: "L" + i,
@@ -344,8 +347,15 @@ describe("validate() - maxRowsToReturn cap", async () => {
     });
 
     expect(result.summary.total).toBe(20);
-    const processed = result.summary.valid + result.summary.flagged + result.summary.rejected;
-    expect(processed).toBe(5);
+    // 5 rows pass validation
+    expect(result.summary.valid + result.summary.flagged).toBe(5);
+    // Exactly 1 cap_exceeded entry — not 15 (one per skipped row)
+    expect(result.summary.rejected).toBe(1);
+    expect(result.rejected_rows).toHaveLength(1);
+    expect(result.rejected_rows[0]!.errors[0]!.kind).toBe('cap_exceeded');
+    // The reason should mention how many rows were skipped
+    const reason = (result.rejected_rows[0]!.errors[0] as { kind: string; reason: string }).reason;
+    expect(reason).toMatch(/15/); // 20 - 5 = 15 rows skipped
   });
 
   /**

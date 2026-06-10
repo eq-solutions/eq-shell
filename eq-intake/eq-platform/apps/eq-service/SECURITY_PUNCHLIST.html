@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EQ Solves Service — Security Punchlist</title>
+<style>
+  :root {
+    --sky: #3DA8D8;
+    --deep: #2986B4;
+    --ice: #EAF5FB;
+    --ink: #1A1A2E;
+    --grey: #6B7280;
+    --line: #E5E7EB;
+    --ok: #16A34A;
+    --warn: #D97706;
+    --crit: #DC2626;
+    --bg: #F7FAFC;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+  }
+  header {
+    background: linear-gradient(135deg, var(--deep), var(--sky));
+    color: white;
+    padding: 32px 24px;
+  }
+  header h1 { margin: 0 0 6px; font-size: 26px; }
+  header p { margin: 0; opacity: 0.9; font-size: 14px; }
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  .progress-bar {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: sticky;
+    top: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    z-index: 10;
+  }
+  .progress-bar .label {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--grey);
+    white-space: nowrap;
+  }
+  .progress-bar .count { color: var(--ink); font-weight: 700; }
+  .bar { flex: 1; height: 8px; background: var(--ice); border-radius: 4px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--sky); transition: width .3s; }
+  .reset-btn {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--grey);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .reset-btn:hover { background: var(--ice); color: var(--deep); }
+  section {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-bottom: 18px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+  section h2 {
+    margin: 0 0 4px;
+    font-size: 17px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .pill {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .pill.crit { background: #FEE2E2; color: var(--crit); }
+  .pill.high { background: #FEF3C7; color: var(--warn); }
+  .pill.med  { background: var(--ice); color: var(--deep); }
+  .pill.low  { background: #F3F4F6; color: var(--grey); }
+  section > p.subtitle {
+    margin: 0 0 16px;
+    font-size: 13px;
+    color: var(--grey);
+  }
+  .item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+  }
+  .item:first-of-type { border-top: none; padding-top: 6px; }
+  .item input[type=checkbox] {
+    margin-top: 4px;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--sky);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .item .body { flex: 1; }
+  .item label {
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    display: block;
+  }
+  .item .detail {
+    font-size: 13px;
+    color: var(--grey);
+    margin-top: 4px;
+  }
+  .item .detail code {
+    background: var(--ice);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--deep);
+  }
+  .item pre {
+    background: #0F172A;
+    color: #E2E8F0;
+    padding: 10px 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 12px;
+    margin: 8px 0 0;
+    line-height: 1.5;
+  }
+  .item.done label { text-decoration: line-through; color: var(--grey); }
+  .item.done .detail { opacity: 0.6; }
+  .note {
+    background: var(--ice);
+    border-left: 3px solid var(--sky);
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--deep);
+    margin-top: 10px;
+  }
+  footer {
+    text-align: center;
+    padding: 30px 20px 40px;
+    font-size: 12px;
+    color: var(--grey);
+  }
+  @media (max-width: 600px) {
+    header { padding: 24px 18px; }
+    main { padding: 16px; }
+    section { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>EQ Solves Service — Security Punchlist</h1>
+  <p>Generated 2026-04-11 · Work through top-to-bottom · State persists in your browser</p>
+</header>
+
+<main>
+
+  <div class="progress-bar">
+    <span class="label">Progress: <span class="count" id="count">0 / 0</span></span>
+    <div class="bar"><div id="fill" style="width:0%"></div></div>
+    <button class="reset-btn" onclick="if(confirm('Reset all checkboxes?')){localStorage.removeItem('eq-sec-punchlist');location.reload();}">Reset</button>
+  </div>
+
+  <!-- ========== CRITICAL ========== -->
+  <section>
+    <h2>1. Ship this week <span class="pill crit">Critical</span></h2>
+    <p class="subtitle">Direct follow-ups to the ZAP scan and Supabase security advisors. None are risky, all are quick.</p>
+
+    <div class="item">
+      <input type="checkbox" id="c1">
+      <div class="body">
+        <label for="c1">Commit and push <code>public/_headers</code></label>
+        <div class="detail">
+          Already written. Closes all 5 ZAP findings on eq-solves-service in one file. CSP is in <em>report-only</em> mode for now so nothing breaks.
+        </div>
+        <pre>cd C:\Projects\eq-solves-service
+git add public/_headers
+git commit -m "Security: add _headers with HSTS, CSP-RO, X-Frame-Options, nosniff"
+git push origin main</pre>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="c2">
+      <div class="body">
+        <label for="c2">Verify headers landed in production</label>
+        <div class="detail">
+          After Netlify redeploys (~2 min), check the response headers on the live site. Should see <code>strict-transport-security</code>, <code>x-frame-options: DENY</code>, and <code>content-security-policy-report-only</code>.
+        </div>
+        <pre>curl -I https://eq-solves-service.netlify.app/auth/signin</pre>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="c3">
+      <div class="body">
+        <label for="c3">Review the 4 permissive "anon insert" RLS policies</label>
+        <div class="detail">
+          Supabase flagged these as allowing unrestricted anonymous writes. Confirm intent for each — any that aren't meant to accept public writes need tightening. Tables: <code>briefs</code>, <code>estimate_events</code>, <code>estimates</code>, <code>notifications</code>.
+        </div>
+        <div class="note">When you come back, tell me the intended use of each and I'll write the corrected policies as migration 0027.</div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="c4">
+      <div class="body">
+        <label for="c4">Enable HaveIBeenPwned password check</label>
+        <div class="detail">
+          Supabase Dashboard → Authentication → Policies → enable "Prevent use of leaked passwords." 30 seconds, no code change, blocks signups with known-compromised passwords.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="c5">
+      <div class="body">
+        <label for="c5">Re-run ZAP scoped to eq-solves-service only</label>
+        <div class="detail">
+          In ZAP: <em>Tools → Options → Passive Scan</em> · exclude third-party domains. Or just run an active scan targeting <code>https://eq-solves-service.netlify.app</code> with only that site in scope. The Bing/Edge/Cartocdn noise should vanish.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="c6">
+      <div class="body">
+        <label for="c6">Flip CSP from Report-Only to enforced (1 week from now)</label>
+        <div class="detail">
+          In <code>public/_headers</code> rename <code>Content-Security-Policy-Report-Only</code> to <code>Content-Security-Policy</code> after a week of clean deploy logs. Set a calendar reminder for ~2026-04-18.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== HIGH ========== -->
+  <section>
+    <h2>2. Tighten this month <span class="pill high">High</span></h2>
+    <p class="subtitle">Things that aren't on fire but are the ones vibe-coding lets slip through.</p>
+
+    <div class="item">
+      <input type="checkbox" id="h1">
+      <div class="body">
+        <label for="h1">Migration 0027 — fix 24 × auth_rls_initplan warnings</label>
+        <div class="detail">
+          RLS policies re-evaluate <code>auth.uid()</code> per row. Wrapping in <code>(select auth.uid())</code> makes Postgres cache it once per query. Affected: <code>maintenance_checks</code>, <code>maintenance_check_items</code>, <code>test_records</code>, <code>test_record_readings</code> (3 each), plus <code>profiles</code>, <code>notifications</code>, <code>site_contacts</code>, <code>customer_contacts</code>, <code>mfa_recovery_codes</code>, <code>check_assets</code>, <code>contract_scopes</code>, <code>defects</code>. I can generate the migration next session.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="h2">
+      <div class="body">
+        <label for="h2">Consolidate overlapping RLS policies</label>
+        <div class="detail">
+          Supabase flagged <code>customer_contacts</code> (5 policies), <code>site_contacts</code> (5), <code>profiles</code> (2) as having multiple permissive policies that all run on every query. Fold them into single policies per role.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="h3">
+      <div class="body">
+        <label for="h3">Drop duplicate indexes on <code>maintenance_checks</code></label>
+        <div class="detail">
+          Two identical indexes exist. Costs write performance for zero read benefit. Part of migration 0027.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="h4">
+      <div class="body">
+        <label for="h4">Run <code>npm audit</code> and fix high/critical</label>
+        <div class="detail">
+          Supply-chain risk check. Third-party packages are how Next.js apps get exploited in 2026.
+        </div>
+        <pre>cd C:\Projects\eq-solves-service
+npm audit --audit-level=high
+npm audit fix</pre>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="h5">
+      <div class="body">
+        <label for="h5">Enable Dependabot on the GitHub repo</label>
+        <div class="detail">
+          GitHub → eq-solves-service → Settings → Code security and analysis → enable "Dependabot alerts" and "Dependabot security updates." Free. Gets you auto-PRs for vulnerable deps.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="h6">
+      <div class="body">
+        <label for="h6">Enable secret scanning on the GitHub repo</label>
+        <div class="detail">
+          Same settings page. Catches any accidentally committed Supabase keys, API tokens, .env contents. Critical for vibe-coding safety.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="h7">
+      <div class="body">
+        <label for="h7">Audit server actions for <code>requireUser()</code> + role check pattern</label>
+        <div class="detail">
+          Per CLAUDE.md this is the mandated pattern. Spot-check the server actions in <code>app/(app)/*/actions.ts</code> — every exported function should start with <code>requireUser()</code> and a <code>canWrite(role)</code> or <code>isAdmin(role)</code> gate before touching the DB. I can run this audit and report any gaps.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="h8">
+      <div class="body">
+        <label for="h8">Confirm <code>.env.local</code> has never been committed</label>
+        <div class="detail">
+          Run a git log search for it. If it ever was, rotate every key in it.
+        </div>
+        <pre>git log --all --full-history -- .env.local .env
+git log --all -p -S "SUPABASE_SERVICE_ROLE_KEY"</pre>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="h9">
+      <div class="body">
+        <label for="h9">Review Supabase Storage bucket RLS</label>
+        <div class="detail">
+          Two buckets: <code>attachments</code> and <code>logos</code>. <code>logos</code> is public-read by design (customer logos on reports). <code>attachments</code> should be tenant-gated — confirm the RLS policies on the <code>storage.objects</code> table enforce tenant isolation for attachments. Cross-tenant file access is a classic multi-tenant leak.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="h10">
+      <div class="body">
+        <label for="h10">Enable MFA for admin accounts (at minimum yours + Emma's)</label>
+        <div class="detail">
+          The app has an <code>mfa_recovery_codes</code> table already. Turn it on for <code>super_admin</code> and <code>admin</code> roles. Super admin without MFA is a blast radius problem.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== MEDIUM ========== -->
+  <section>
+    <h2>3. Before Equinix / external rollout <span class="pill med">Medium</span></h2>
+    <p class="subtitle">Not urgent for internal pilot, but required before handing the app to a client.</p>
+
+    <div class="item">
+      <input type="checkbox" id="m1">
+      <div class="body">
+        <label for="m1">Set up a staging environment</label>
+        <div class="detail">
+          Netlify branch deploy from a <code>staging</code> branch pointing at a separate Supabase project (or a Supabase branch). Gives you somewhere to test migrations and run authenticated scans without touching prod.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="m2">
+      <div class="body">
+        <label for="m2">Authenticated ZAP scan against staging</label>
+        <div class="detail">
+          Create a dedicated test user, configure ZAP with a Form-Based Authentication context, run an active scan. This is where real vulns (IDOR, broken access control, SQL injection through params) would surface. Unauthenticated passive scanning misses all of that.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="m3">
+      <div class="body">
+        <label for="m3">Write a tenant isolation test suite</label>
+        <div class="detail">
+          Create two tenants with overlapping data, then run integration tests that log in as Tenant A and try to read/write Tenant B's data via every endpoint. Every attempt should 403 or return empty. This is the single highest-value security test for a multi-tenant app.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="m4">
+      <div class="body">
+        <label for="m4">Add rate limiting on auth endpoints</label>
+        <div class="detail">
+          Brute-force protection for <code>/auth/signin</code> and password reset. Supabase Auth has some built-in, but add Netlify Edge Functions or middleware limits as defense-in-depth.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="m5">
+      <div class="body">
+        <label for="m5">Set up error monitoring (Sentry or similar)</label>
+        <div class="detail">
+          Without it you only hear about bugs when users report them, and you miss silent failures entirely — including security-relevant ones like repeated 401s on sensitive endpoints.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="m6">
+      <div class="body">
+        <label for="m6">Document incident response</label>
+        <div class="detail">
+          One page: how to rotate Supabase keys, how to force-logout all users, how to restore a Postgres backup, who to tell (Equinix / Schneider security contacts). Must exist <em>before</em> you need it.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="m7">
+      <div class="body">
+        <label for="m7">Backup + restore drill</label>
+        <div class="detail">
+          Supabase takes daily backups but you won't know restore actually works until you try it on a branch. Do a full restore to a Supabase branch once, confirm data looks right, document the steps.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="m8">
+      <div class="body">
+        <label for="m8">Review audit log coverage</label>
+        <div class="detail">
+          CLAUDE.md says every mutation writes an audit log entry. Spot check: do <code>DELETE</code>s, role changes, and file uploads all land in the audit_log table? If Equinix ever asks "who did X?" you need an answer.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== PROCESS / VIBE-CODING GUARDRAILS ========== -->
+  <section>
+    <h2>4. Vibe-coding guardrails <span class="pill med">Process</span></h2>
+    <p class="subtitle">These are the specific things that stop LLM-assisted coding from creating the next security hole. Set them up once, they protect every future sprint.</p>
+
+    <div class="item">
+      <input type="checkbox" id="p1">
+      <div class="body">
+        <label for="p1">Pre-commit hook: <code>tsc --noEmit</code> must pass</label>
+        <div class="detail">
+          CLAUDE.md already mandates 0 type errors before sprint close. Enforce it with husky or a git hook so a typo can't be pushed.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="p2">
+      <div class="body">
+        <label for="p2">CI: run <code>get_advisors</code> after every migration</label>
+        <div class="detail">
+          Today's scan found 5 security warnings you didn't know about. Add a GitHub Action that runs Supabase advisors after a migration merges to main and posts results to the PR. Would have caught the 4 anon-insert policies before they shipped.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="p3">
+      <div class="body">
+        <label for="p3">Add a "security invariants" section to AGENTS.md</label>
+        <div class="detail">
+          Short list the AI assistant must read before every change: (1) every server action starts with <code>requireUser()</code>; (2) no <code>USING (true)</code> / <code>WITH CHECK (true)</code> in RLS policies; (3) no new public.* table without RLS enabled; (4) no hardcoded secrets; (5) auth changes must flag to chat first. You already have some of this — consolidate it.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="p4">
+      <div class="body">
+        <label for="p4">Run Supabase advisors weekly</label>
+        <div class="detail">
+          Calendar reminder. Takes 10 seconds. Catches drift fast.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="p5">
+      <div class="body">
+        <label for="p5">Keep a security changelog in CHANGELOG.md</label>
+        <div class="detail">
+          Tag security-relevant changes with <code>[security]</code> so you can grep the history if a client ever asks what you've done. Today's sprint is the first entry.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== LONG TERM ========== -->
+  <section>
+    <h2>5. Longer term <span class="pill low">Low / Later</span></h2>
+    <p class="subtitle">Things to keep in mind but not to do this quarter.</p>
+
+    <div class="item">
+      <input type="checkbox" id="l1">
+      <div class="body">
+        <label for="l1">External penetration test before signing a major client</label>
+        <div class="detail">
+          A one-off engagement with a firm that knows Next.js + Supabase. Budget maybe $5–15k AUD. Schedule when you're close to signing Equinix or similar.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="l2">
+      <div class="body">
+        <label for="l2">ISO 27001 / Essential Eight readiness review</label>
+        <div class="detail">
+          Australian electrical contractor selling to enterprise → Essential Eight is the more useful framework than ISO/SOC2 for your stage. Not a certification, just a gap assessment. Webb Financial may have a contact.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="l3">
+      <div class="body">
+        <label for="l3">SSO / SCIM for enterprise customers</label>
+        <div class="detail">
+          Equinix and Schneider will want to provision users from their IdP. Supabase Auth supports SAML — plan the work, don't build it yet.
+        </div>
+      </div>
+    </div>
+
+    <div class="item">
+      <input type="checkbox" id="l4">
+      <div class="body">
+        <label for="l4">Data retention and deletion policy</label>
+        <div class="detail">
+          How long do maintenance records / photos / defect reports live? Who can delete? Write it down before a privacy request forces the conversation.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    EQ Solves Service · Royce Milmlow · SKS Technologies<br>
+    Check state is saved in your browser's localStorage. Don't clear site data if you want to keep progress.
+  </footer>
+
+</main>
+
+<script>
+  const KEY = 'eq-sec-punchlist';
+  const boxes = document.querySelectorAll('input[type=checkbox]');
+  const count = document.getElementById('count');
+  const fill = document.getElementById('fill');
+
+  // Restore state
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    boxes.forEach(b => {
+      if (saved[b.id]) {
+        b.checked = true;
+        b.closest('.item').classList.add('done');
+      }
+    });
+  } catch(e) {}
+
+  function refresh() {
+    const total = boxes.length;
+    const done = [...boxes].filter(b => b.checked).length;
+    count.textContent = done + ' / ' + total;
+    fill.style.width = (total ? (done/total*100) : 0) + '%';
+  }
+
+  boxes.forEach(b => {
+    b.addEventListener('change', () => {
+      b.closest('.item').classList.toggle('done', b.checked);
+      const state = {};
+      boxes.forEach(x => { if (x.checked) state[x.id] = 1; });
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) {}
+      refresh();
+    });
+  });
+
+  refresh();
+</script>
+
+</body>
+</html>

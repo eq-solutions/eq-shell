@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/service_visit/v1.json",
+  "title": "Service Visit",
+  "description": "A planned or completed crew visit to a site. Replaces the hand-built monthly SOW + Master Schedule sheets. One visit = one crew day at one site.",
+  "type": "object",
+  "x-eq-entity": "service_visit",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "service_visits",
+  "x-eq-primary-key": "visit_id",
+  "required": ["visit_id", "tenant_id", "site_id", "scheduled_date"],
+  "properties": {
+    "visit_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "visit_id", "visit_no", "job_no"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Source-system job or visit reference (e.g. SimPRO job number).",
+      "x-eq-source-aliases": ["ref", "job_number", "job_no", "simpro_job", "work_order", "wo_number", "visit_ref", "service_order"],
+      "maxLength": 64
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Site this visit is at.",
+      "x-eq-foreign-key": "site.site_id",
+      "x-eq-fk-fuzzy-match-on": ["site.name", "site.code", "site.external_id"],
+      "x-eq-source-aliases": ["site", "location", "site_name", "site_code", "facility", "premises", "address"]
+    },
+    "scheduled_date": {
+      "type": "string",
+      "format": "date",
+      "description": "The day the visit is/was planned. ISO 8601 (YYYY-MM-DD).",
+      "x-eq-source-aliases": ["date", "visit_date", "scheduled", "planned_date", "job_date", "service_date"],
+      "x-eq-coerce": "date"
+    },
+    "actual_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the visit actually occurred. Null until the visit is completed.",
+      "x-eq-source-aliases": ["completion_date", "completed_date", "actual_visit_date", "attended_date"],
+      "x-eq-coerce": "date"
+    },
+    "crew_lead_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Staff member leading the crew on this visit.",
+      "x-eq-foreign-key": "staff.staff_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.first_name+staff.last_name", "staff.preferred_name", "staff.external_id"],
+      "x-eq-source-aliases": ["crew_lead", "lead", "leading_hand", "technician", "tech", "engineer", "supervisor", "assigned_to", "site_lead"]
+    },
+    "client_job_code": {
+      "type": ["string", "null"],
+      "description": "Client's own job/work order reference, as printed on their purchase order or scheduling system.",
+      "x-eq-source-aliases": ["client_ref", "po_number", "purchase_order", "client_job", "client_order", "client_work_order", "client_po", "client_reference"],
+      "maxLength": 100
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "in_progress", "complete", "cancelled"],
+      "description": "Current state of the visit.",
+      "x-eq-source-aliases": ["state", "visit_status", "job_status"],
+      "x-eq-enum-aliases": {
+        "planned":     ["scheduled", "confirmed", "booked", "pending", "p"],
+        "in_progress": ["active", "on_site", "started", "underway", "ip"],
+        "complete":    ["completed", "done", "finished", "closed", "c"],
+        "cancelled":   ["cancel", "canceled", "scratched", "aborted", "x"]
+      },
+      "default": "planned"
+    },
+    "expected_assets": {
+      "type": ["integer", "null"],
+      "description": "Number of assets expected to be serviced on this visit. Used for scheduling and SOW generation.",
+      "minimum": 0,
+      "x-eq-source-aliases": ["asset_count", "num_assets", "assets_to_service", "equipment_count"]
+    },
+    "expected_circuits": {
+      "type": ["integer", "null"],
+      "description": "Number of electrical circuits (RCDs, breakers) expected to be tested.",
+      "minimum": 0,
+      "x-eq-source-aliases": ["circuit_count", "rcd_count", "breaker_count", "num_circuits"]
+    },
+    "logistics_notes": {
+      "type": ["string", "null"],
+      "description": "Access instructions, parking, site contact details, special requirements. Not a service report.",
+      "x-eq-source-aliases": ["notes", "site_notes", "access_notes", "instructions", "logistics", "access_instructions", "site_instructions"],
+      "maxLength": 2000
+    },
+    "service_contract_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "The service contract this visit is billed against.",
+      "x-eq-foreign-key": "service_contract.contract_id",
+      "x-eq-source-aliases": ["contract", "contract_id", "service_contract", "sow", "agreement"]
+    },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "actual_after_scheduled",
+      "rule": "actual_date == null OR actual_date >= scheduled_date",
+      "message": "Actual visit date is before scheduled date.",
+      "severity": "warning"
+    },
+    {
+      "id": "complete_has_actual",
+      "rule": "status != 'complete' OR actual_date != null",
+      "message": "Completed visits should have an actual date recorded.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Service visit data typically comes from a scheduling system, job management system, or a hand-built Excel roster.",
+    "common_sources": [
+      {
+        "name": "SimPRO job export",
+        "typical_columns": ["Job No", "Site", "Scheduled Date", "Technician", "Status", "Client Ref"],
+        "watchouts": ["SimPRO 'Status' values may need mapping to planned/in_progress/complete/cancelled"]
+      },
+      {
+        "name": "Hand-built monthly schedule",
+        "typical_columns": ["Date", "Site", "Lead", "Notes"],
+        "watchouts": ["Often wide-format (sites across columns, dates down rows) — needs UNPIVOT before import"]
+      }
+    ]
+  }
+}

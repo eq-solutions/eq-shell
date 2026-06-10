@@ -1,244 +1,199 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.eq.solutions/core/customer/v1.json",
+  "$id": "https://schemas.eq.solutions/core/customer/v2.json",
   "title": "Customer",
-  "description": "A business or individual the tenant transacts with. Source for who gets quoted, invoiced, and serviced. Either company_name or first_name/last_name must be set (cross-field rule customer_has_a_name).",
+  "description": "A business or individual the tenant has any relationship with — leads, prospects, active customers, churned. The CRM-style entity. Contracts, billing terms, and SLAs live on a separate service_contract entity that links here (a customer can have many contracts over time; at most one is active at a time).\n\nv2 (2026-05-20): Door C split — the contract-side fields (CPI, payment terms, SLAs, hourly rates, contract_template) moved out to service_contract.schema.json. Identification fields (ABN/ACN/legal name) stay here because they're properties of the entity, not the contract.",
   "type": "object",
   "x-eq-entity": "customer",
   "x-eq-module": "core",
-  "x-eq-version": "1.0.0",
+  "x-eq-version": "2.0.0",
   "x-eq-table": "customers",
   "required": ["customer_id", "tenant_id"],
-  "x-eq-cross-field-rules": [
-    {
-      "id": "customer_has_a_name",
-      "rule": "(company_name != null AND company_name != '') OR (first_name != null AND first_name != '') OR (last_name != null AND last_name != '')",
-      "message": "Customer must have either a company name or a person name."
-    }
-  ],
   "properties": {
     "customer_id": {
       "type": "string",
       "format": "uuid",
       "description": "Internal canonical ID. Generated on import if not provided.",
-      "x-eq-source-aliases": ["id", "customer_id"],
+      "x-eq-source-aliases": ["id", "customer_id", "client_id"],
       "x-eq-required-on-import": false
     },
     "tenant_id": {
       "type": "string",
       "format": "uuid",
-      "description": "Owning tenant. Set automatically by import context.",
       "x-eq-system-managed": true
     },
     "external_id": {
       "type": ["string", "null"],
-      "description": "Source-system ID (SimPRO Customer ID, MYOB CardID, etc.). Preserved for round-trip exports.",
-      "x-eq-source-aliases": ["simpro_customer_id", "customer_id", "id", "code", "card_id"],
+      "description": "Customer's own ID in an external system (SimPRO CustomerID, MYOB CardID, etc.). Preserved for round-trip exports.",
+      "x-eq-source-aliases": ["customer_no", "client_no", "ref", "account_no", "account_number", "simpro_customer_id", "card_id"],
       "maxLength": 64
     },
     "type": {
-      "type": ["string", "null"],
-      "description": "Lifecycle classification: customer / prospect / lead.",
-      "x-eq-source-aliases": ["type", "customer_type", "category", "kind"],
+      "type": "string",
+      "enum": ["lead", "prospect", "active", "churned"],
+      "description": "Lifecycle classification. lead = early interest, no contact yet. prospect = engaged, quote in flight. active = under contract (has at least one service_contract with status=active). churned = was a customer, contract ended.",
+      "x-eq-source-aliases": ["customer_type", "category", "lifecycle", "stage", "status"],
       "x-eq-enum-aliases": {
-        "customer": ["Customer", "active"],
-        "prospect": ["Prospect", "warm_lead", "warm lead"],
-        "lead": ["Lead", "cold_lead", "cold lead", "inquiry"]
-      }
+        "lead": ["Lead", "cold_lead", "cold lead", "inquiry", "enquiry", "new"],
+        "prospect": ["Prospect", "warm_lead", "warm lead", "qualified", "opportunity"],
+        "active": ["Customer", "active", "current", "live", "contracted"],
+        "churned": ["churn", "lost", "former", "cancelled", "ex_customer", "ex-customer", "inactive"]
+      },
+      "default": "lead"
     },
     "company_name": {
       "type": ["string", "null"],
-      "description": "Trading name. Set for business customers; null for individual customers.",
-      "x-eq-source-aliases": ["company_name", "company", "name", "business_name", "trading_name"],
-      "maxLength": 200
+      "description": "Business / company name. Either company_name OR (first_name + last_name) must be set (cross-field rule customer_has_a_name).",
+      "x-eq-source-aliases": ["customer_name", "client_name", "company", "business_name", "legal_name", "name"],
+      "maxLength": 250
     },
     "first_name": {
       "type": ["string", "null"],
-      "description": "Given name (for individual customers / sole traders).",
-      "x-eq-source-aliases": ["first_name", "first", "given_name", "fname"],
-      "maxLength": 80
+      "description": "Given name for individual customers (sole traders, residential).",
+      "x-eq-source-aliases": ["fname", "given_name"],
+      "maxLength": 100
     },
     "last_name": {
       "type": ["string", "null"],
-      "description": "Family name (for individual customers / sole traders).",
-      "x-eq-source-aliases": ["last_name", "last", "surname", "lname", "family_name"],
-      "maxLength": 80
+      "description": "Surname for individual customers.",
+      "x-eq-source-aliases": ["lname", "surname", "family_name"],
+      "maxLength": 100
     },
-    "salutation": {
+    "display_name": {
       "type": ["string", "null"],
-      "description": "Honorific (Mr / Mrs / Dr / etc.).",
-      "x-eq-source-aliases": ["title", "salutation"],
-      "maxLength": 20
+      "description": "Optional override for how the customer is shown in UI / reports. Falls back to company_name or full personal name.",
+      "x-eq-source-aliases": ["name", "label", "shown_as"],
+      "maxLength": 250
     },
-    "abn": {
+    "code": {
       "type": ["string", "null"],
-      "description": "Australian Business Number — 11 digits, formatted with spaces on output.",
-      "x-eq-source-aliases": ["abn", "business_number"],
-      "maxLength": 20
+      "description": "Short identifier used in schedules and reports (e.g. 'EQX-NAT', 'EQX-HS', 'RHC').",
+      "x-eq-source-aliases": ["short_code", "abbr", "abbreviation"],
+      "maxLength": 32
     },
-    "acn": {
+    "customer_entity_legal_name": {
       "type": ["string", "null"],
-      "description": "Australian Company Number — 9 digits.",
+      "description": "Full legal entity name on registration documents (may differ from display name). Property of the entity, not any specific contract.",
+      "x-eq-source-aliases": ["legal_name", "entity_name", "registered_name"],
+      "maxLength": 250
+    },
+    "customer_entity_abn": {
+      "type": ["string", "null"],
+      "description": "Australian Business Number (11 digits, stored as string to preserve formatting).",
+      "x-eq-source-aliases": ["abn", "australian_business_number"],
+      "pattern": "^[0-9 ]{11,14}$"
+    },
+    "customer_entity_acn": {
+      "type": ["string", "null"],
+      "description": "Australian Company Number (9 digits, stored as string).",
       "x-eq-source-aliases": ["acn", "company_number"],
-      "maxLength": 20
-    },
-    "street_address": {
-      "type": ["string", "null"],
-      "description": "Physical street address line 1.",
-      "x-eq-source-aliases": ["street_address", "address", "street", "address_line_1"],
-      "maxLength": 200
-    },
-    "suburb": {
-      "type": ["string", "null"],
-      "x-eq-source-aliases": ["suburb", "city", "town", "address_suburb"],
-      "maxLength": 100
-    },
-    "state": {
-      "type": ["string", "null"],
-      "description": "Australian state code (NSW, VIC, QLD, etc.).",
-      "x-eq-coerce": "au-state",
-      "x-eq-source-aliases": ["state", "state_code", "address_state"]
-    },
-    "postcode": {
-      "type": ["string", "null"],
-      "x-eq-source-aliases": ["postcode", "zip", "postal_code", "address_postcode"],
-      "maxLength": 10
-    },
-    "country": {
-      "type": ["string", "null"],
-      "default": "Australia",
-      "x-eq-source-aliases": ["country", "address_country"]
-    },
-    "postal_address": {
-      "type": ["string", "null"],
-      "description": "Mailing address (when different from physical).",
-      "x-eq-source-aliases": ["postal_address", "billing_address", "mailing_address"],
-      "maxLength": 200
-    },
-    "postal_suburb": {
-      "type": ["string", "null"],
-      "x-eq-source-aliases": ["postal_suburb", "billing_suburb"],
-      "maxLength": 100
-    },
-    "postal_state": {
-      "type": ["string", "null"],
-      "x-eq-coerce": "au-state",
-      "x-eq-source-aliases": ["postal_state", "billing_state"]
-    },
-    "postal_postcode": {
-      "type": ["string", "null"],
-      "x-eq-source-aliases": ["postal_postcode", "billing_postcode"],
-      "maxLength": 10
-    },
-    "postal_country": {
-      "type": ["string", "null"],
-      "x-eq-source-aliases": ["postal_country"]
-    },
-    "primary_phone": {
-      "type": ["string", "null"],
-      "description": "Primary phone. Normalised to E.164 where possible.",
-      "x-eq-coerce": "phone-au",
-      "x-eq-source-aliases": ["primary_phone", "phone", "company_phone", "main_phone", "telephone"]
-    },
-    "mobile_phone": {
-      "type": ["string", "null"],
-      "x-eq-coerce": "phone-au",
-      "x-eq-source-aliases": ["mobile_phone", "mobile", "cell"]
-    },
-    "alt_phone": {
-      "type": ["string", "null"],
-      "x-eq-coerce": "phone-au",
-      "x-eq-source-aliases": ["alt_phone", "alternative_phone", "secondary_phone"]
-    },
-    "fax": {
-      "type": ["string", "null"],
-      "description": "Fax. Kept for completeness; rarely used now.",
-      "x-eq-source-aliases": ["company_fax", "fax"]
+      "pattern": "^[0-9 ]{9,11}$"
     },
     "email": {
       "type": ["string", "null"],
       "format": "email",
-      "description": "Primary email. Used for quote / invoice delivery when no contact-specific email is set.",
-      "x-eq-source-aliases": ["email", "company_email", "primary_email"]
+      "description": "Primary contact email.",
+      "x-eq-source-aliases": ["customer_email", "client_email", "billing_email", "contact_email"]
     },
-    "website": {
+    "phone": {
       "type": ["string", "null"],
-      "x-eq-source-aliases": ["website", "url", "homepage", "site"],
-      "maxLength": 200
+      "description": "Primary phone. Coerced to AU format where possible.",
+      "x-eq-source-aliases": ["customer_phone", "client_phone", "tel", "telephone", "contact_phone", "mobile"],
+      "x-eq-coerce": "phone-au"
     },
-    "customer_group": {
+    "address": {
       "type": ["string", "null"],
-      "description": "Segmentation (Commercial / Residential / etc.).",
-      "x-eq-source-aliases": ["customer_group", "group", "segment"],
-      "maxLength": 100
+      "description": "Free-text head office / billing address. Site-level addresses live on sites.",
+      "x-eq-source-aliases": ["billing_address", "head_office_address", "postal_address", "street_address"],
+      "maxLength": 500
     },
-    "customer_profile": {
+    "logo_url": {
       "type": ["string", "null"],
-      "x-eq-source-aliases": ["customer_profile", "profile"],
-      "maxLength": 100
+      "format": "uri",
+      "description": "Customer logo for report letterheads.",
+      "x-eq-source-aliases": ["logo", "logo_link", "brand_logo"]
     },
-    "account_manager": {
+    "first_engaged_at": {
       "type": ["string", "null"],
-      "description": "Internal owner / sales rep name.",
-      "x-eq-source-aliases": ["account_manager", "owner", "rep", "salesperson"],
-      "maxLength": 100
+      "format": "date",
+      "description": "Date this customer entered the CRM (lead create date).",
+      "x-eq-source-aliases": ["created_date", "lead_date", "first_contact"],
+      "x-eq-coerce": "date"
     },
-    "currency": {
+    "became_active_at": {
       "type": ["string", "null"],
-      "default": "AUD",
-      "description": "ISO 4217 currency code.",
-      "x-eq-source-aliases": ["currency"],
-      "maxLength": 3
+      "format": "date",
+      "description": "Date the customer became active (first contract signed). Null for leads / prospects.",
+      "x-eq-source-aliases": ["activation_date", "conversion_date", "first_contract_date"],
+      "x-eq-coerce": "date"
     },
-    "default_quote_method": {
+    "churned_at": {
       "type": ["string", "null"],
-      "description": "How quotes are typically delivered: Email / Print / etc.",
-      "x-eq-source-aliases": ["default_quote_method", "quote_method"]
-    },
-    "default_invoice_method": {
-      "type": ["string", "null"],
-      "description": "How invoices are typically delivered.",
-      "x-eq-source-aliases": ["default_invoice_method", "invoice_method"]
-    },
-    "default_job_method": {
-      "type": ["string", "null"],
-      "description": "How job paperwork is typically delivered.",
-      "x-eq-source-aliases": ["default_job_method", "job_method"]
-    },
-    "referred_by": {
-      "type": ["string", "null"],
-      "x-eq-source-aliases": ["referred_by", "referral", "source"]
-    },
-    "notes": {
-      "type": ["string", "null"],
-      "description": "Free-text context (e.g. \"always wants 30-day terms\").",
-      "x-eq-source-aliases": ["notes", "comments", "remarks"],
-      "maxLength": 2000
+      "format": "date",
+      "description": "Date the customer churned. Null while active.",
+      "x-eq-source-aliases": ["lost_date", "end_date", "churn_date"],
+      "x-eq-coerce": "date"
     },
     "active": {
       "type": "boolean",
-      "default": true,
-      "description": "Whether this customer is currently active.",
+      "description": "Whether this customer record is currently active (i.e. not soft-deleted). Distinct from `type=active` which is a lifecycle stage.",
+      "x-eq-source-aliases": ["is_active", "current", "enabled", "not_deleted"],
       "x-eq-coerce": "boolean",
-      "x-eq-source-aliases": ["active", "is_active", "current"]
+      "default": true
     },
-    "created_date": {
+    "notes": {
       "type": ["string", "null"],
-      "format": "date",
-      "description": "Date the customer was first created in the source system.",
-      "x-eq-coerce": "date",
-      "x-eq-source-aliases": ["create_date", "created", "created_at", "date_created"]
+      "x-eq-source-aliases": ["comment", "comments", "remarks", "note"],
+      "maxLength": 4000
     },
     "imported_at": {
       "type": ["string", "null"],
       "format": "date-time",
-      "description": "When this record was last touched by an intake. System-managed.",
       "x-eq-system-managed": true
     },
     "imported_from": {
       "type": ["string", "null"],
-      "description": "Source of the import (filename, system name). System-managed.",
       "x-eq-system-managed": true
     }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "customer_has_a_name",
+      "rule": "(company_name != null AND company_name != '') OR (first_name != null AND first_name != '') OR (last_name != null AND last_name != '')",
+      "message": "Customer must have either a company_name or a personal name (first_name / last_name).",
+      "severity": "error"
+    },
+    {
+      "id": "active_has_activation_date",
+      "rule": "type != 'active' OR became_active_at != null",
+      "message": "Customer is marked active but has no became_active_at date — should align with their first contract's term_start.",
+      "severity": "warning"
+    },
+    {
+      "id": "churned_has_churn_date",
+      "rule": "type != 'churned' OR churned_at != null",
+      "message": "Customer is marked churned but has no churned_at date.",
+      "severity": "warning"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Customer registers are usually small (10-100 rows) and come from accounting exports, CRM exports, or a manual list. The lifecycle stage often needs to be inferred from whether the customer has any contracts.",
+    "common_sources": [
+      {
+        "name": "Accounting export (Xero / MYOB customer list)",
+        "typical_columns": ["Name", "Account Number", "Email", "Phone", "Address", "ABN"],
+        "watchouts": ["ABN may have spaces or no formatting — preserve as text", "Some rows are individuals — populate first_name/last_name not company_name"]
+      },
+      {
+        "name": "SimPRO customer export",
+        "typical_columns": ["Customer ID", "Customer Name", "Type", "Email", "Phone"],
+        "watchouts": ["SimPRO 'Type' may not map 1:1 to our lifecycle enum — use x-eq-enum-aliases on `type`"]
+      },
+      {
+        "name": "CRM pipeline export",
+        "typical_columns": ["Lead", "Stage", "Owner", "Last Contact", "Notes"],
+        "watchouts": ["Stage maps to `type` via aliases (e.g. 'Qualified' → prospect)"]
+      }
+    ]
   }
 }

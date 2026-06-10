@@ -1,0 +1,117 @@
+name: Data Quality
+
+# Runs audits/run.sql against the Supabase project and fails the check
+# if any ERROR-level findings have fail_count > 0. WARN-level findings
+# are tabulated in the job summary but do NOT block the build.
+#
+# Runs on:
+#   - PRs that touch audits/**, supabase/migrations/**, or this workflow
+#   - Pushes to main (always)
+#   - Daily at 08:30 UTC (~18:30 AEST) — catches drift from manual changes
+#   - Manual workflow_dispatch
+#
+# Secrets required (set in GitHub repo -> Settings -> Secrets -> Actions):
+#   SUPABASE_ACCESS_TOKEN  - personal access token (sbp_...)
+#   SUPABASE_PROJECT_REF   - urjhmkhbgaxrofurpbgc
+#
+# The audit is read-only. It executes a single SELECT statement via the
+# Supabase Management API and never writes to the database.
+
+on:
+  pull_request:
+    paths:
+      - 'audits/**'
+      - 'supabase/migrations/**'
+      - '.github/workflows/data-quality.yml'
+  push:
+    branches: [main]
+  schedule:
+    # 08:30 UTC daily ~ 18:30 AEST
+    - cron: '30 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-audit:
+    name: Run data-quality audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check audits/run.sql exists
+        run: |
+          set -euo pipefail
+          test -f audits/run.sql
+          echo "audits/run.sql present ($(wc -l < audits/run.sql) lines)"
+
+      - name: Execute audit against Supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF:  ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          # The Supabase Management API execute_sql endpoint accepts a JSON
+          # body {"query": "..."} and returns a JSON array of rows.
+          jq -Rs '{query: .}' audits/run.sql > payload.json
+          curl -sS --fail-with-body \
+            -X POST \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data @payload.json \
+            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/database/query" \
+            -o audit.json
+          echo "--- audit.json ---"
+          jq '.' audit.json
+
+      - name: Classify findings
+        id: classify
+        run: |
+          set -euo pipefail
+          errors=$(jq '[.[] | select(.level=="ERROR" and .fail_count > 0)] | length' audit.json)
+          warns=$(jq  '[.[] | select(.level=="WARN"  and .fail_count > 0)] | length' audit.json)
+          total=$(jq  '[.[]] | length' audit.json)
+          echo "errors=$errors" >> "$GITHUB_OUTPUT"
+          echo "warns=$warns"   >> "$GITHUB_OUTPUT"
+          echo "total=$total"   >> "$GITHUB_OUTPUT"
+          echo "Checks total:  $total"
+          echo "ERRORs failing: $errors"
+          echo "WARNs  failing: $warns"
+
+      - name: Summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "## Data-quality audit summary"
+            echo ""
+            echo "- Total checks: ${{ steps.classify.outputs.total }}"
+            echo "- Failing ERRORs: ${{ steps.classify.outputs.errors }}"
+            echo "- Failing WARNs:  ${{ steps.classify.outputs.warns }}"
+            echo ""
+            echo "### Failing checks"
+            echo ""
+            echo "| Level | Check | Fail count | Detail |"
+            echo "|---|---|---:|---|"
+            jq -r '.[] | select(.fail_count > 0) | "| \(.level) | `\(.check_id)` | \(.fail_count) | \(.detail) |"' audit.json || echo "| - | (none) | 0 | all checks passing |"
+            echo ""
+            echo "### All checks"
+            echo ""
+            echo "<details><summary>Expand full audit output</summary>"
+            echo ""
+            echo '```json'
+            jq '.' audit.json
+            echo '```'
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: data-quality-audit
+          path: audit.json
+
+      - name: Fail on ERROR-level findings
+        if: steps.classify.outputs.errors != '0'
+        run: |
+          echo "::error::Data-quality audit reported ${{ steps.classify.outputs.errors }} ERROR-level failing check(s). See job summary."
+          exit 1

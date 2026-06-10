@@ -8,7 +8,7 @@
 
 export type { DeriveProfile, DeriveOutput, DeriveInputShape } from './types';
 export { getProfile, listProfiles } from './registry';
-export { toCsv, parseCsv, num } from './csv';
+export { encodeCsv, toCsv, parseCsv, num } from './csv';
 
 import { getProfile } from './registry';
 import type { DeriveOutput } from './types';

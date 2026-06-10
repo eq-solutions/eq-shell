@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.eq.solutions/service/asset_defect/v1.json",
+  "title": "Asset Defect",
+  "description": "An open issue or fault recorded against an asset. The structured source of truth for asset.defects_summary. One row per defect — lifecycle tracked from raised to resolved.",
+  "type": "object",
+  "x-eq-entity": "asset_defect",
+  "x-eq-module": "service",
+  "x-eq-version": "1.0.0",
+  "x-eq-table": "asset_defects",
+  "x-eq-primary-key": "defect_id",
+  "required": ["defect_id", "tenant_id", "asset_id", "raised_date", "severity", "description"],
+  "properties": {
+    "defect_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-source-aliases": ["id", "defect_id", "issue_id", "fault_id", "defect_no", "issue_no"],
+      "x-eq-required-on-import": false
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "x-eq-system-managed": true
+    },
+    "external_id": {
+      "type": ["string", "null"],
+      "description": "Source-system defect or work order reference.",
+      "x-eq-source-aliases": ["ref", "defect_ref", "wo_number", "work_order", "ticket", "issue_ref", "fault_ref"],
+      "maxLength": 64
+    },
+    "asset_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The asset this defect is raised against.",
+      "x-eq-foreign-key": "asset.asset_id",
+      "x-eq-fk-fuzzy-match-on": ["asset.name", "asset.external_id"],
+      "x-eq-source-aliases": ["asset", "tag", "equipment", "asset_tag", "asset_no", "plant_no", "board"]
+    },
+    "visit_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "The service visit during which this defect was identified.",
+      "x-eq-foreign-key": "service_visit.visit_id",
+      "x-eq-source-aliases": ["visit", "job", "job_id", "job_no", "found_on_visit"]
+    },
+    "raised_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the defect was identified and raised.",
+      "x-eq-source-aliases": ["date", "date_raised", "found_date", "identified_date", "reported_date", "date_found", "date_identified"],
+      "x-eq-coerce": "date"
+    },
+    "raised_by_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Staff member who identified and raised the defect.",
+      "x-eq-foreign-key": "staff.staff_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.first_name+staff.last_name", "staff.preferred_name", "staff.external_id"],
+      "x-eq-source-aliases": ["raised_by", "reported_by", "found_by", "identified_by", "tech", "technician"]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low"],
+      "description": "How urgent is the defect? Critical = immediate safety risk or service impact. High = resolve within days. Medium = next scheduled visit. Low = monitor or next annual.",
+      "x-eq-source-aliases": ["priority", "urgency", "risk", "risk_level", "severity_level", "impact"],
+      "x-eq-enum-aliases": {
+        "critical": ["1", "p1", "immediate", "urgent", "safety", "imminent", "danger", "emergency"],
+        "high":     ["2", "p2", "h", "soon", "high_priority"],
+        "medium":   ["3", "p3", "m", "med", "moderate", "next_visit"],
+        "low":      ["4", "p4", "l", "monitor", "watch", "minor", "cosmetic"]
+      }
+    },
+    "description": {
+      "type": "string",
+      "description": "What is the defect? Plain English description of what was found.",
+      "x-eq-source-aliases": ["defect", "fault", "issue", "problem", "finding", "observation", "defect_description", "fault_description"],
+      "minLength": 5,
+      "maxLength": 4000
+    },
+    "status": {
+      "type": "string",
+      "enum": ["open", "in_progress", "resolved", "deferred", "no_action"],
+      "description": "Current lifecycle state of the defect.",
+      "x-eq-source-aliases": ["state", "defect_status", "issue_status", "resolution_status"],
+      "x-eq-enum-aliases": {
+        "open":        ["new", "raised", "outstanding", "pending", "unresolved", "active"],
+        "in_progress": ["being_resolved", "work_in_progress", "wip", "underway", "in_repair"],
+        "resolved":    ["fixed", "repaired", "closed", "rectified", "complete", "done"],
+        "deferred":    ["deferred_to_next", "carry_over", "scheduled", "quoted", "approved_deferred"],
+        "no_action":   ["accepted", "risk_accepted", "no_fix_required", "not_a_defect", "n/a"]
+      },
+      "default": "open"
+    },
+    "resolution_date": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the defect was resolved, closed, or deferred.",
+      "x-eq-source-aliases": ["resolved_date", "closed_date", "fixed_date", "date_resolved", "date_closed"],
+      "x-eq-coerce": "date"
+    },
+    "resolved_by_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Staff member who resolved the defect.",
+      "x-eq-foreign-key": "staff.staff_id",
+      "x-eq-fk-fuzzy-match-on": ["staff.first_name+staff.last_name", "staff.preferred_name"],
+      "x-eq-source-aliases": ["resolved_by", "fixed_by", "closed_by", "repaired_by"]
+    },
+    "resolution_notes": {
+      "type": ["string", "null"],
+      "description": "What was done to resolve the defect. Required when status = resolved.",
+      "x-eq-source-aliases": ["resolution", "fix_notes", "corrective_action", "what_was_done", "remedy", "repair_notes"],
+      "maxLength": 4000
+    },
+    "estimated_cost": {
+      "type": ["number", "null"],
+      "description": "Estimated cost to rectify (AUD, ex-GST).",
+      "minimum": 0,
+      "x-eq-source-aliases": ["est_cost", "quote", "quoted_cost", "estimate", "budgeted_cost"],
+      "x-eq-coerce": "number"
+    },
+    "actual_cost": {
+      "type": ["number", "null"],
+      "description": "Actual cost to rectify (AUD, ex-GST).",
+      "minimum": 0,
+      "x-eq-source-aliases": ["cost", "invoice_amount", "rectification_cost", "repair_cost"],
+      "x-eq-coerce": "number"
+    },
+    "photo_attachments": {
+      "type": "array",
+      "description": "File reference URLs for photos of the defect.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url":      { "type": "string", "format": "uri" },
+          "filename": { "type": ["string", "null"] },
+          "caption":  { "type": ["string", "null"] }
+        }
+      },
+      "x-eq-source-aliases": ["photos", "images", "attachments", "evidence"]
+    },
+    "imported_at": { "type": ["string", "null"], "format": "date-time", "x-eq-system-managed": true },
+    "imported_from": { "type": ["string", "null"], "x-eq-system-managed": true }
+  },
+  "x-eq-cross-field-rules": [
+    {
+      "id": "resolved_has_notes",
+      "rule": "status != 'resolved' OR (resolution_notes != null AND resolution_notes != '')",
+      "message": "Resolved defects should have resolution notes.",
+      "severity": "warning"
+    },
+    {
+      "id": "resolved_has_date",
+      "rule": "status != 'resolved' OR resolution_date != null",
+      "message": "Resolved defects should have a resolution date.",
+      "severity": "warning"
+    },
+    {
+      "id": "resolution_after_raised",
+      "rule": "resolution_date == null OR resolution_date >= raised_date",
+      "message": "Resolution date is before the defect was raised.",
+      "severity": "error"
+    }
+  ],
+  "x-eq-import-hints": {
+    "description": "Defect data comes from service reports, defect registers, or asset management system exports.",
+    "common_sources": [
+      {
+        "name": "Hand-built defect register (Excel)",
+        "typical_columns": ["Tag", "Description", "Priority", "Date Found", "Found By", "Status", "Resolution", "Cost"],
+        "watchouts": ["Priority/urgency column often uses numeric codes (1-4) — use enum aliases", "Cost may include GST — strip if needed"]
+      },
+      {
+        "name": "SimPRO defect or quote export",
+        "typical_columns": ["Asset", "Issue Description", "Severity", "Date Raised", "Status", "Quote Amount"],
+        "watchouts": ["Quote Amount maps to estimated_cost; invoice amount maps to actual_cost"]
+      },
+      {
+        "name": "Service report narrative (imported from PDF capture)",
+        "watchouts": ["Free-form descriptions need careful mapping to severity and status fields", "May contain multiple defects per page — each becomes a separate row"]
+      }
+    ]
+  }
+}

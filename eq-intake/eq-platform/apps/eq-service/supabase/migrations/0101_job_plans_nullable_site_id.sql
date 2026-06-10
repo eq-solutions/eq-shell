@@ -1,0 +1,39 @@
+-- Migration 0101: align local job_plans.site_id with live (drop NOT NULL).
+--
+-- Background
+-- ----------
+-- Migration 0002 declared `job_plans.site_id` as NOT NULL. Some time later
+-- (2026-04-08 per the live Supabase migration history) the constraint was
+-- dropped on live so the three job-plan scope tiers documented in CLAUDE.md
+-- could exist:
+--
+--   * site-scoped     — site_id set, plan applies to one site
+--   * customer-scoped — customer_id set + site_id null, plan applies to all
+--                       sites of a customer (added in migration 0066)
+--   * global          — both null, plan available everywhere in the tenant
+--                       (the legacy default; all 47 SKS Equinix/Maximo plans
+--                       are global)
+--
+-- That live-side change was recorded as `20260408083137_job_plans_nullable_site_id`
+-- in the Supabase `supabase_migrations.schema_migrations` table, but the
+-- corresponding .sql file was never committed to `supabase/migrations/`.
+-- Net effect:
+--   * Live correctly allows null site_id; production data has thousands of
+--     rows relying on this.
+--   * Local dev + CI integration tests see the old NOT NULL constraint
+--     (cause of the 3 RLS test failures fixed in PR #150 by adding a
+--     site_id to test seeds).
+--   * Any fresh `supabase db reset` recreates the divergence.
+--
+-- Surfaced during the 2026-05-19 overnight session — see PR #150's body and
+-- docs/audits/2026-05-19-overnight-report.md.
+--
+-- Fix
+-- ---
+-- Re-declare the change locally. `DROP NOT NULL` is idempotent in Postgres,
+-- so when this migration ships to live it is a no-op (the column is already
+-- nullable). The only effect on live is one extra entry in
+-- supabase_migrations.schema_migrations; the column state is unchanged.
+
+ALTER TABLE public.job_plans
+  ALTER COLUMN site_id DROP NOT NULL;

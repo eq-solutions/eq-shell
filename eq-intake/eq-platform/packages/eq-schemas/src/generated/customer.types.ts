@@ -3,127 +3,89 @@
 // Source of truth lives in src/schemas/ - edit the JSON, regenerate.
 
 /**
- * A business or individual the tenant transacts with. Source for who gets quoted, invoiced, and serviced. Either company_name or first_name/last_name must be set (cross-field rule customer_has_a_name).
+ * A business or individual the tenant has any relationship with — leads, prospects, active customers, churned. The CRM-style entity. Contracts, billing terms, and SLAs live on a separate service_contract entity that links here (a customer can have many contracts over time; at most one is active at a time).
+ *
+ * v2 (2026-05-20): Door C split — the contract-side fields (CPI, payment terms, SLAs, hourly rates, contract_template) moved out to service_contract.schema.json. Identification fields (ABN/ACN/legal name) stay here because they're properties of the entity, not the contract.
  */
 export interface Customer {
   /**
    * Internal canonical ID. Generated on import if not provided.
    */
   customer_id: string;
-  /**
-   * Owning tenant. Set automatically by import context.
-   */
   tenant_id: string;
   /**
-   * Source-system ID (SimPRO Customer ID, MYOB CardID, etc.). Preserved for round-trip exports.
+   * Customer's own ID in an external system (SimPRO CustomerID, MYOB CardID, etc.). Preserved for round-trip exports.
    */
   external_id?: string | null;
   /**
-   * Lifecycle classification: customer / prospect / lead.
+   * Lifecycle classification. lead = early interest, no contact yet. prospect = engaged, quote in flight. active = under contract (has at least one service_contract with status=active). churned = was a customer, contract ended.
    */
-  type?: string | null;
+  type?: "lead" | "prospect" | "active" | "churned";
   /**
-   * Trading name. Set for business customers; null for individual customers.
+   * Business / company name. Either company_name OR (first_name + last_name) must be set (cross-field rule customer_has_a_name).
    */
   company_name?: string | null;
   /**
-   * Given name (for individual customers / sole traders).
+   * Given name for individual customers (sole traders, residential).
    */
   first_name?: string | null;
   /**
-   * Family name (for individual customers / sole traders).
+   * Surname for individual customers.
    */
   last_name?: string | null;
   /**
-   * Honorific (Mr / Mrs / Dr / etc.).
+   * Optional override for how the customer is shown in UI / reports. Falls back to company_name or full personal name.
    */
-  salutation?: string | null;
+  display_name?: string | null;
   /**
-   * Australian Business Number — 11 digits, formatted with spaces on output.
+   * Short identifier used in schedules and reports (e.g. 'EQX-NAT', 'EQX-HS', 'RHC').
    */
-  abn?: string | null;
+  code?: string | null;
   /**
-   * Australian Company Number — 9 digits.
+   * Full legal entity name on registration documents (may differ from display name). Property of the entity, not any specific contract.
    */
-  acn?: string | null;
+  customer_entity_legal_name?: string | null;
   /**
-   * Physical street address line 1.
+   * Australian Business Number (11 digits, stored as string to preserve formatting).
    */
-  street_address?: string | null;
-  suburb?: string | null;
+  customer_entity_abn?: string | null;
   /**
-   * Australian state code (NSW, VIC, QLD, etc.).
+   * Australian Company Number (9 digits, stored as string).
    */
-  state?: string | null;
-  postcode?: string | null;
-  country?: string | null;
+  customer_entity_acn?: string | null;
   /**
-   * Mailing address (when different from physical).
-   */
-  postal_address?: string | null;
-  postal_suburb?: string | null;
-  postal_state?: string | null;
-  postal_postcode?: string | null;
-  postal_country?: string | null;
-  /**
-   * Primary phone. Normalised to E.164 where possible.
-   */
-  primary_phone?: string | null;
-  mobile_phone?: string | null;
-  alt_phone?: string | null;
-  /**
-   * Fax. Kept for completeness; rarely used now.
-   */
-  fax?: string | null;
-  /**
-   * Primary email. Used for quote / invoice delivery when no contact-specific email is set.
+   * Primary contact email.
    */
   email?: string | null;
-  website?: string | null;
   /**
-   * Segmentation (Commercial / Residential / etc.).
+   * Primary phone. Coerced to AU format where possible.
    */
-  customer_group?: string | null;
-  customer_profile?: string | null;
+  phone?: string | null;
   /**
-   * Internal owner / sales rep name.
+   * Free-text head office / billing address. Site-level addresses live on sites.
    */
-  account_manager?: string | null;
+  address?: string | null;
   /**
-   * ISO 4217 currency code.
+   * Customer logo for report letterheads.
    */
-  currency?: string | null;
+  logo_url?: string | null;
   /**
-   * How quotes are typically delivered: Email / Print / etc.
+   * Date this customer entered the CRM (lead create date).
    */
-  default_quote_method?: string | null;
+  first_engaged_at?: string | null;
   /**
-   * How invoices are typically delivered.
+   * Date the customer became active (first contract signed). Null for leads / prospects.
    */
-  default_invoice_method?: string | null;
+  became_active_at?: string | null;
   /**
-   * How job paperwork is typically delivered.
+   * Date the customer churned. Null while active.
    */
-  default_job_method?: string | null;
-  referred_by?: string | null;
+  churned_at?: string | null;
   /**
-   * Free-text context (e.g. "always wants 30-day terms").
-   */
-  notes?: string | null;
-  /**
-   * Whether this customer is currently active.
+   * Whether this customer record is currently active (i.e. not soft-deleted). Distinct from `type=active` which is a lifecycle stage.
    */
   active?: boolean;
-  /**
-   * Date the customer was first created in the source system.
-   */
-  created_date?: string | null;
-  /**
-   * When this record was last touched by an intake. System-managed.
-   */
+  notes?: string | null;
   imported_at?: string | null;
-  /**
-   * Source of the import (filename, system name). System-managed.
-   */
   imported_from?: string | null;
 }

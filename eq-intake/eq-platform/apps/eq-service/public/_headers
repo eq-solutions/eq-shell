@@ -1,0 +1,35 @@
+/*
+  # Security headers — closes the 5 ZAP findings against eq-solves-service
+  # and establishes a baseline for future scans.
+
+  # HSTS: force HTTPS on every subdomain for 1 year, eligible for preload.
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+  # Clickjacking protection (legacy + modern browsers)
+  X-Frame-Options: DENY
+
+  # Stop MIME sniffing
+  X-Content-Type-Options: nosniff
+
+  # Don't leak full URLs to third parties
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # Lock down powerful browser APIs we don't use
+  Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()
+
+  # Content Security Policy — report-only for one week so we can watch for
+  # breakages in the Netlify deploy logs before enforcing. Tight enough to
+  # satisfy ZAP while still allowing:
+  #   - Supabase API (wss + https) for auth/data
+  #   - Supabase storage for attachments + logos
+  #   - Netlify hosting
+  #   - Leaflet basemap tiles from cartocdn
+  #   - Google Fonts (if used anywhere)
+  #   - PostHog EU (events, replay) — eu.i.posthog.com + *-assets.i.posthog.com
+  #   - Microsoft Clarity — clarity.ms + c.bing.com
+  # Note on PostHog wildcard: CSP wildcards match exactly one subdomain level,
+  # so BOTH `*.posthog.com` and `*.i.posthog.com` are needed to cover
+  # eu-assets.i.posthog.com which serves array.js.
+  # Flip "Content-Security-Policy-Report-Only" to "Content-Security-Policy"
+  # after confirming no legitimate requests are being blocked.
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.posthog.com https://*.i.posthog.com https://www.clarity.ms https://*.clarity.ms; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.supabase.co https://*.basemaps.cartocdn.com https://*.posthog.com https://*.i.posthog.com https://*.clarity.ms; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://urjhmkhbgaxrofurpbgc.supabase.co wss://urjhmkhbgaxrofurpbgc.supabase.co https://*.basemaps.cartocdn.com https://*.posthog.com https://*.i.posthog.com https://*.clarity.ms https://c.bing.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'

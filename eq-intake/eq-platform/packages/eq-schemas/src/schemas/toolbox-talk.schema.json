@@ -114,6 +114,13 @@
       "properties": { "lat": { "type": "number" }, "lng": { "type": "number" } }
     },
     "device_id": { "type": ["string", "null"] },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "submitted", "approved", "rejected"],
+      "description": "Workflow status. draft = captured, not reviewed. submitted = pending supervisor approval. approved = signed off. rejected = needs re-capture.",
+      "default": "draft",
+      "x-eq-source-aliases": ["status", "state", "review_status"]
+    },
     "source": {
       "type": "string",
       "enum": ["cards_mobile", "import_spreadsheet", "capture_pdf", "capture_photo", "manual_entry"],
