@@ -159,9 +159,14 @@ export function IntakeHealthHome({
     setLoading(true);
     setError(null);
 
+    // The demo SupabaseLikeClient and @eq/intake's SupabaseLikeClient are both
+    // structural stubs for the same real Supabase client. Cast through unknown so
+    // TypeScript is satisfied — the runtime object satisfies both shapes.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
     Promise.all([
-      computeHealthScores(supabase),
-      runLicenceExpiryCheck(supabase, tenantId),
+      computeHealthScores(sb),
+      runLicenceExpiryCheck(sb, tenantId),
     ])
       .then(([healthScores, licenceSummary]) => {
         if (cancelled) return;

@@ -165,7 +165,7 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
         drillEntity !== null ? (
           <EntityDrillDown
             entity={drillEntity}
-            supabase={props.supabase}
+            supabase={props.supabase as unknown as import("@eq/intake").CanonicalFetchClient}
             onBack={() => setDrillEntity(null)}
           />
         ) : (
