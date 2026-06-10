@@ -167,8 +167,9 @@ export function EntityDrillDown({
   const startEdit = useCallback(
     (rowIndex: number, field: string) => {
       const current = visibleRows[rowIndex][field];
-      setEditState({ rowIndex, field });
-      setEditDraft(current === null || current === undefined ? "" : String(current));
+      const draft = current === null || current === undefined ? "" : String(current);
+      setEditState({ rowIndex, field, value: draft });
+      setEditDraft(draft);
     },
     [visibleRows]
   );

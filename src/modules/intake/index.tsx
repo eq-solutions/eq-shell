@@ -82,7 +82,7 @@ function IntakeShell() {
     <IntakeModule
       tenantId={session?.tenant.id}
       supabase={client as unknown as SupabaseLikeClient}
-      ai={aiProvider}
+      ai={(aiProvider ?? null) as unknown as Parameters<typeof IntakeModule>[0]['ai']}
     />
   );
 }
