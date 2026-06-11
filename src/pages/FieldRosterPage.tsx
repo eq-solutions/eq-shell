@@ -1,7 +1,8 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Users, CheckCircle, Clock, Activity, UserCheck } from 'lucide-react';
-import { Table, type TableColumn } from '@eq-solutions/ui';
+import { Table, TableBulkAction, type TableColumn } from '@eq-solutions/ui';
 import { useSession } from '../session';
+import { useCan } from '../permissions';
 
 interface FieldPerson {
   id: string;
@@ -202,9 +203,13 @@ function ActivityFeed({ tenantId }: { tenantId: string }) {
 
 export default function FieldRosterPage() {
   const { session } = useSession();
+  const canApprove = useCan('admin.review_cards');
   const [rows, setRows] = useState<FieldPerson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [approving, setApproving] = useState(false);
+  const [actionMsg, setActionMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,6 +231,46 @@ export default function FieldRosterPage() {
     return () => { cancelled = true; };
   }, [session?.tenant.id]);
 
+  const approveSelected = useCallback(async (selectedRows: FieldPerson[], clearSelection: () => void) => {
+    const toApprove = selectedRows.filter((r) => r.field_approved !== true);
+    if (toApprove.length === 0) { clearSelection(); return; }
+
+    setApproving(true);
+    setActionMsg(null);
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const person of toApprove) {
+      try {
+        const res = await fetch('/.netlify/functions/cards-approve-staff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ staff_id: person.id, action: 'approve' }),
+        });
+        const body = (await res.json()) as { ok: boolean; error?: string };
+        if (body.ok) {
+          setRows((prev) => prev.map((r) => r.id === person.id ? { ...r, field_approved: true } : r));
+          succeeded++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    setApproving(false);
+    clearSelection();
+
+    if (succeeded > 0 && failed === 0) {
+      setActionMsg({ text: `${succeeded} person${succeeded > 1 ? 's' : ''} approved.`, ok: true });
+      setTimeout(() => setActionMsg(null), 5000);
+    } else if (failed > 0) {
+      setActionMsg({ text: `${succeeded} approved, ${failed} failed — check permissions.`, ok: false });
+    }
+  }, []);
+
   const approved = rows.filter((r) => r.field_approved === true).length;
   const pending  = rows.filter((r) => r.field_approved !== true).length;
 
@@ -237,14 +282,24 @@ export default function FieldRosterPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
-        <StatCard label="Total" value={loading ? '…' : String(rows.length)} />
+        <StatCard label="Total"    value={loading ? '…' : String(rows.length)} />
         <StatCard label="Approved" value={loading ? '…' : String(approved)} accent="#16a34a" />
-        <StatCard label="Pending" value={loading ? '…' : String(pending)} accent="#ca8a04" />
+        <StatCard label="Pending"  value={loading ? '…' : String(pending)}  accent="#ca8a04" />
       </div>
 
       {error && (
         <div style={{ padding: '12px 16px', background: '#fef2f2', color: '#dc2626', borderRadius: 6, marginBottom: 16, fontSize: 14 }}>
           {error}
+        </div>
+      )}
+
+      {actionMsg && (
+        <div style={{
+          padding: '12px 16px', borderRadius: 6, marginBottom: 16, fontSize: 14,
+          background: actionMsg.ok ? '#f0fdf4' : '#fef2f2',
+          color: actionMsg.ok ? '#16a34a' : '#dc2626',
+        }}>
+          {actionMsg.text}
         </div>
       )}
 
@@ -254,8 +309,8 @@ export default function FieldRosterPage() {
         getRowId={(r) => r.id}
         slicers={[
           { key: 'all',      label: 'All' },
-          { key: 'approved', label: 'Approved', filter: (r) => r.field_approved === true, dot: 'var(--eq-success-text)' },
-          { key: 'pending',  label: 'Pending',  filter: (r) => r.field_approved !== true, dot: 'var(--eq-warning-text)' },
+          { key: 'approved', label: 'Approved', filter: (r) => r.field_approved === true,  dot: 'var(--eq-success-text)' },
+          { key: 'pending',  label: 'Pending',  filter: (r) => r.field_approved !== true,  dot: 'var(--eq-warning-text)' },
         ]}
         globalSearch={{ placeholder: 'Search roster…' }}
         columnToggle
@@ -263,7 +318,22 @@ export default function FieldRosterPage() {
         rowIndicator={(r) => r.field_approved === true ? null : { color: 'var(--eq-warning-text)' }}
         loading={loading}
         emptyMessage="No people on the roster yet. Approve someone from Cards to get started."
-        summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
+        summary={(v: number, t: number) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
+        selectable={canApprove}
+        selectedIds={selected}
+        onSelectionChange={setSelected}
+        bulkActions={canApprove ? (selectedRows, clearSelection) => {
+          const pendingCount = selectedRows.filter((r) => r.field_approved !== true).length;
+          if (pendingCount === 0) return null;
+          return (
+            <TableBulkAction
+              icon={<UserCheck size={14} />}
+              onClick={() => { void approveSelected(selectedRows, clearSelection); }}
+            >
+              {approving ? 'Approving…' : `Approve ${pendingCount}`}
+            </TableBulkAction>
+          );
+        } : undefined}
       />
 
       {session?.tenant.id && <ActivityFeed tenantId={session.tenant.id} />}
