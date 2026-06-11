@@ -22,8 +22,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, FileText, FileCheck2, FileX2, MapPin, User, ChevronRight, ChevronDown,
   Check, Clock, AlertTriangle, Gauge, CalendarDays, ArrowRightLeft,
+  Download, UserCheck,
 } from 'lucide-react';
-import { Button } from '@eq-solutions/ui';
+import { Button, Table, TableBulkAction, type TableColumn } from '@eq-solutions/ui';
 import { useCan } from '../../permissions';
 import { HubLayout } from '../../components/HubLayout';
 import { defaultSidebarRecords } from '../../lib/sidebarConfig';
@@ -505,31 +506,6 @@ type GroupBy = 'site' | 'person';
 
 const UNASSIGNED_KEY = '__unassigned__';
 
-// Status segmented filter — All / Overdue / Due soon / No cert, each with a count.
-function SegFilter({
-  active,
-  label,
-  count,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  count: number;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`eq-seg__btn${active ? ' is-active' : ''}`}
-    >
-      {label}
-      <span className="eq-seg__n">{count.toLocaleString('en-AU')}</span>
-    </button>
-  );
-}
-
 // Group-by pill toggle button (Site | Person).
 function PillToggle({
   active,
@@ -613,6 +589,7 @@ export default function EquipmentModule() {
   // table; Person renders one collapsible card per custodian with rollups.
   const [groupBy, setGroupBy] = useState<GroupBy>('site');
   const [closedGroups, setClosedGroups] = useState<Set<string>>(() => new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -688,15 +665,14 @@ export default function EquipmentModule() {
     return (id: string | null | undefined): string => (id ? m.get(id) ?? 'Unknown' : 'Unassigned');
   }, [staff]);
 
-  // Per-status counts for the filter chips (computed over the full list).
+  // Per-status counts used only for the header lede text.
   const counts = useMemo(() => {
-    const c = { all: 0, overdue: 0, soon: 0, nocert: 0 };
+    const c = { all: 0, overdue: 0, soon: 0 };
     for (const r of rows ?? []) {
       c.all += 1;
       const { tone } = calStatus(r.next_service_due);
       if (tone === 'overdue') c.overdue += 1;
       else if (tone === 'soon') c.soon += 1;
-      if (!r.cert_url) c.nocert += 1;
     }
     return c;
   }, [rows]);
@@ -769,10 +745,76 @@ export default function EquipmentModule() {
     return parts.join(' · ');
   })();
 
-  // One register row. `showCustodian` is off inside person-group cards (the
-  // card head already names the custodian). Clicking a row opens the read-only
-  // detail drawer; the cert button opens the same drawer (stops propagation).
-  const renderRow = (r: AssetRow, i: number, showCustodian: boolean) => {
+  // Column definitions for the Site view Table.
+  const equipmentCols = useMemo<TableColumn<AssetRow>[]>(() => [
+    {
+      key: 'item',
+      header: 'Item',
+      sortAccessor: (r) => r.name ?? '',
+      render: (r) => {
+        const overdue = calStatus(r.next_service_due).tone === 'overdue';
+        const itemId = r.name || r.serial_number || (r.asset_id ?? '').slice(0, 8) || '—';
+        return (
+          <span className="eq-rc-itemid">
+            {overdue && <span className="eq-rc-reddot" aria-label="Overdue" />}
+            {itemId}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'make_model',
+      header: 'Make / model',
+      sortAccessor: (r) => `${r.make ?? ''} ${r.model ?? ''}`.trim(),
+      render: (r) => (
+        <span className="eq-rc-model">
+          <b>{r.model || '—'}</b>
+          {r.make && <span>{r.make}</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'serial',
+      header: 'Serial',
+      render: (r) => <span className="eq-rc-serial">{r.serial_number || '—'}</span>,
+    },
+    {
+      key: 'assigned_to',
+      header: 'Assigned to',
+      sortAccessor: (r) => staffName(r.assigned_to),
+      render: (r) => <Custodian id={r.assigned_to} name={staffName(r.assigned_to)} />,
+    },
+    {
+      key: 'site',
+      header: 'Site / location',
+      sortAccessor: (r) => siteName(r.site_id),
+      render: (r) => <span>{siteName(r.site_id)}</span>,
+    },
+    {
+      key: 'calibration',
+      header: 'Calibration',
+      sortAccessor: (r) => r.next_service_due ?? '',
+      render: (r) => {
+        const status = calStatus(r.next_service_due);
+        return <CalibrationCell tone={status.tone} label={status.label} next={fmtDate(r.next_service_due)} />;
+      },
+    },
+    {
+      key: 'cert',
+      header: 'Cert',
+      align: 'center',
+      locked: true,
+      render: (r) => {
+        const itemId = r.name || r.serial_number || (r.asset_id ?? '').slice(0, 8) || '—';
+        return (
+          <CertButton has={Boolean(r.cert_url)} onOpen={() => setDetail(r)} label={String(itemId)} />
+        );
+      },
+    },
+  ], [siteName, staffName, setDetail]);
+
+  // renderRow is kept for the Person view's bespoke group cards.
+  const renderRow = (r: AssetRow, i: number) => {
     const status = calStatus(r.next_service_due);
     const overdue = status.tone === 'overdue';
     const itemId = r.name || r.serial_number || (r.asset_id ?? '').slice(0, 8) || '—';
@@ -796,9 +838,6 @@ export default function EquipmentModule() {
           </span>
         </td>
         <td><span className="eq-rc-serial">{r.serial_number || '—'}</span></td>
-        {showCustodian && (
-          <td><Custodian id={r.assigned_to} name={staffName(r.assigned_to)} /></td>
-        )}
         <td>{siteName(r.site_id)}</td>
         <td>
           <CalibrationCell tone={status.tone} label={status.label} next={fmtDate(r.next_service_due)} />
@@ -813,13 +852,12 @@ export default function EquipmentModule() {
     );
   };
 
-  const tableHead = (showCustodian: boolean) => (
+  const personTableHead = () => (
     <thead>
       <tr>
         <th>Item</th>
         <th>Make / model</th>
         <th>Serial</th>
-        {showCustodian && <th>Assigned to</th>}
         <th>Site / location</th>
         <th>Calibration</th>
         <th style={{ textAlign: 'center' }}>Cert</th>
@@ -830,6 +868,7 @@ export default function EquipmentModule() {
 
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
+      {/* Zone A — page header */}
       <div className="eq-page__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
         <div>
           <p className="eq-page__eyebrow">Records · Register</p>
@@ -845,14 +884,9 @@ export default function EquipmentModule() {
 
       {err && <EqError message={err} onRetry={load} />}
 
+      {/* Zone B — group-by toggle (only when there's data) */}
       {rows && counts.all > 0 && (
-        <div className="eq-rc-toolbar">
-          <div className="eq-seg" role="tablist" aria-label="Filter by status">
-            <SegFilter active={filter === 'all'} label="All" count={counts.all} onClick={() => setFilter('all')} />
-            <SegFilter active={filter === 'overdue'} label="Overdue" count={counts.overdue} onClick={() => setFilter('overdue')} />
-            <SegFilter active={filter === 'soon'} label="Due soon" count={counts.soon} onClick={() => setFilter('soon')} />
-            <SegFilter active={filter === 'nocert'} label="No cert" count={counts.nocert} onClick={() => setFilter('nocert')} />
-          </div>
+        <div className="eq-rc-toolbar" style={{ justifyContent: 'flex-end' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--eq-grey)' }}>Group by</span>
             <div className="eq-pilltoggle" role="group" aria-label="Group by">
@@ -867,82 +901,110 @@ export default function EquipmentModule() {
         </div>
       )}
 
-      {/* Loading / empty states */}
+      {/* Loading / empty state */}
       {loading && !rows ? (
         <div className="eq-table-wrap"><div style={{ padding: 8 }}><Skeleton variant="row" count={8} /></div></div>
       ) : counts.all === 0 ? (
         <div className="eq-table-wrap">
           <div style={{ textAlign: 'center', padding: 48, color: 'var(--eq-mute)' }}>
             {canEdit
-              ? 'No equipment recorded yet — use “Add item” to start tracking calibration.'
+              ? 'No equipment recorded yet — use "Add item" to start tracking calibration.'
               : 'No equipment recorded yet.'}
           </div>
         </div>
-      ) : visibleRows.length === 0 ? (
-        <div className="eq-table-wrap">
-          <div style={{ textAlign: 'center', padding: 48, color: 'var(--eq-mute)' }}>Nothing matches this filter.</div>
-        </div>
       ) : groupBy === 'site' ? (
-        // ── Group by Site: one register table ──
-        <div className="eq-table-wrap eq-rc-tablescroll" style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 150ms' }}>
-          <table className="eq-table">
-            {tableHead(true)}
-            <tbody>{visibleRows.map((r, i) => renderRow(r, i, true))}</tbody>
-          </table>
-        </div>
+        // ── Group by Site: canonical Table with slicers, search, export ──
+        <Table
+          columns={equipmentCols}
+          rows={rows ?? []}
+          getRowId={(r) => r.asset_id ?? ''}
+          slicers={[
+            { key: 'all',     label: 'All' },
+            { key: 'overdue', label: 'Overdue',  filter: (r) => calStatus(r.next_service_due).tone === 'overdue', dot: 'var(--eq-error-text)'   },
+            { key: 'soon',    label: 'Due soon', filter: (r) => calStatus(r.next_service_due).tone === 'soon',    dot: 'var(--eq-warning-text)' },
+            { key: 'nocert',  label: 'No cert',  filter: (r) => !r.cert_url,                                      dot: 'var(--eq-gray-400)'     },
+          ]}
+          activeSlicer={filter}
+          onSlicerChange={(k) => setFilter(k as StatusFilter)}
+          rowIndicator={(r) => calStatus(r.next_service_due).tone === 'overdue' ? { color: 'var(--eq-error-text)' } : null}
+          globalSearch={{ placeholder: 'Search items…' }}
+          columnToggle
+          exportable={{ filename: 'equipment.csv' }}
+          selectable
+          selectedIds={selected}
+          onSelectionChange={setSelected}
+          bulkActions={(_rows, clear) => (
+            <>
+              <TableBulkAction icon={<UserCheck size={15} />} onClick={() => { console.warn('[equipment] bulk assign — not yet wired'); clear(); }}>Assign holder</TableBulkAction>
+              <TableBulkAction icon={<CalendarDays size={15} />} onClick={() => { console.warn('[equipment] bulk schedule — not yet wired'); clear(); }}>Schedule calibration</TableBulkAction>
+              <TableBulkAction icon={<Download size={15} />} onClick={clear}>Export</TableBulkAction>
+            </>
+          )}
+          onRowClick={setDetail}
+          loading={loading && !!rows}
+          emptyMessage="Nothing matches this filter."
+          pagination={{ pageSize: 25 }}
+          summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong> items</>}
+        />
       ) : (
-        // ── Group by Person: one collapsible card per custodian ──
+        // ── Group by Person: bespoke collapsible cards (Table doesn't support grouped layout) ──
         <div style={{ opacity: loading ? 0.6 : 1, transition: 'opacity 150ms' }}>
-          {personGroups.map((g) => {
-            const closed = closedGroups.has(g.key);
-            return (
-              <div key={g.key} className={`eq-pgroup${closed ? ' is-closed' : ''}`}>
-                <button
-                  type="button"
-                  className="eq-pgroup__head"
-                  aria-expanded={!closed}
-                  onClick={() => setClosedGroups((s) => {
-                    const next = new Set(s);
-                    if (next.has(g.key)) next.delete(g.key); else next.add(g.key);
-                    return next;
-                  })}
-                >
-                  <span
-                    className={`eq-pgroup__av${g.isNone ? ' eq-pgroup__av--none' : ''}`}
-                    style={g.isNone ? undefined : { background: avatarColour(g.key) }}
-                    aria-hidden="true"
+          {visibleRows.length === 0 ? (
+            <div className="eq-table-wrap">
+              <div style={{ textAlign: 'center', padding: 48, color: 'var(--eq-mute)' }}>Nothing matches this filter.</div>
+            </div>
+          ) : (
+            personGroups.map((g) => {
+              const closed = closedGroups.has(g.key);
+              return (
+                <div key={g.key} className={`eq-pgroup${closed ? ' is-closed' : ''}`}>
+                  <button
+                    type="button"
+                    className="eq-pgroup__head"
+                    aria-expanded={!closed}
+                    onClick={() => setClosedGroups((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(g.key)) next.delete(g.key); else next.add(g.key);
+                      return next;
+                    })}
                   >
-                    {g.isNone ? '?' : nameInitials(g.label)}
-                  </span>
-                  <div className="eq-pgroup__main">
-                    <div className="eq-pgroup__nm">{g.label}</div>
-                    <div className="eq-pgroup__role">{g.role}</div>
-                  </div>
-                  <div className="eq-pgroup__roll">
-                    <span className="eq-rollchip"><b>{g.items.length}</b> {g.items.length === 1 ? 'tool' : 'tools'}</span>
-                    {g.overdue > 0 && (
-                      <span className="eq-rollchip eq-rollchip--over"><span className="eq-rollchip__dot" aria-hidden="true" />{g.overdue} overdue</span>
-                    )}
-                    {g.overdue === 0 && g.soon > 0 && (
-                      <span className="eq-rollchip eq-rollchip--soon"><span className="eq-rollchip__dot" aria-hidden="true" />{g.soon} due soon</span>
-                    )}
-                    {g.overdue === 0 && g.soon === 0 && (
-                      <span className="eq-rollchip eq-rollchip--ok"><span className="eq-rollchip__dot" aria-hidden="true" />all current</span>
-                    )}
-                  </div>
-                  <span className="eq-pgroup__chev" aria-hidden="true"><ChevronDown size={18} /></span>
-                </button>
-                <div className="eq-pgroup__body">
-                  <div className="eq-rc-tablescroll">
-                    <table className="eq-table">
-                      {tableHead(false)}
-                      <tbody>{g.items.map((r, i) => renderRow(r, i, false))}</tbody>
-                    </table>
+                    <span
+                      className={`eq-pgroup__av${g.isNone ? ' eq-pgroup__av--none' : ''}`}
+                      style={g.isNone ? undefined : { background: avatarColour(g.key) }}
+                      aria-hidden="true"
+                    >
+                      {g.isNone ? '?' : nameInitials(g.label)}
+                    </span>
+                    <div className="eq-pgroup__main">
+                      <div className="eq-pgroup__nm">{g.label}</div>
+                      <div className="eq-pgroup__role">{g.role}</div>
+                    </div>
+                    <div className="eq-pgroup__roll">
+                      <span className="eq-rollchip"><b>{g.items.length}</b> {g.items.length === 1 ? 'tool' : 'tools'}</span>
+                      {g.overdue > 0 && (
+                        <span className="eq-rollchip eq-rollchip--over"><span className="eq-rollchip__dot" aria-hidden="true" />{g.overdue} overdue</span>
+                      )}
+                      {g.overdue === 0 && g.soon > 0 && (
+                        <span className="eq-rollchip eq-rollchip--soon"><span className="eq-rollchip__dot" aria-hidden="true" />{g.soon} due soon</span>
+                      )}
+                      {g.overdue === 0 && g.soon === 0 && (
+                        <span className="eq-rollchip eq-rollchip--ok"><span className="eq-rollchip__dot" aria-hidden="true" />all current</span>
+                      )}
+                    </div>
+                    <span className="eq-pgroup__chev" aria-hidden="true"><ChevronDown size={18} /></span>
+                  </button>
+                  <div className="eq-pgroup__body">
+                    <div className="eq-rc-tablescroll">
+                      <table className="eq-table">
+                        {personTableHead()}
+                        <tbody>{g.items.map((r, i) => renderRow(r, i))}</tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       )}
 

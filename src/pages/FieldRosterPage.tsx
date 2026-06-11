@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { Users, CheckCircle, Clock } from 'lucide-react';
-import { DataTable, type ColDef } from '../components/DataTable';
+import { Table, type TableColumn } from '@eq-solutions/ui';
 import { useSession } from '../session';
 
 interface FieldPerson {
@@ -56,35 +56,28 @@ function ApprovedBadge({ approved }: { approved: boolean | null }) {
   );
 }
 
-const COLS: ColDef<FieldPerson>[] = [
+const ROSTER_COLS: TableColumn<FieldPerson>[] = [
   {
     key: 'name',
-    label: 'Name',
-    defaultVisible: true,
-    sortable: true,
-    sortValue: (r) => r.name,
+    header: 'Name',
+    sortAccessor: (r) => r.name,
     render: (r) => <span style={{ fontWeight: 500 }}>{r.name || '—'}</span>,
   },
   {
     key: 'group',
-    label: 'Type',
-    defaultVisible: true,
-    sortable: true,
-    sortValue: (r) => r.group ?? '',
+    header: 'Type',
+    sortAccessor: (r) => r.group ?? '',
     render: (r) => <GroupBadge group={r.group} />,
   },
   {
     key: 'field_approved',
-    label: 'Status',
-    defaultVisible: true,
+    header: 'Status',
     render: (r) => <ApprovedBadge approved={r.field_approved} />,
   },
   {
     key: 'created_at',
-    label: 'Added',
-    defaultVisible: true,
-    sortable: true,
-    sortValue: (r) => r.created_at ?? '',
+    header: 'Added',
+    sortAccessor: (r) => r.created_at ?? '',
     render: (r) => <span style={{ color: 'var(--eq-text-secondary, #888)', fontSize: 13 }}>{fmtDate(r.created_at)}</span>,
   },
 ];
@@ -126,9 +119,9 @@ export default function FieldRosterPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
-        <StatCard label="Total" value={loading ? '…' : String(rows.length)} />
+        <StatCard label="Total"    value={loading ? '…' : String(rows.length)} />
         <StatCard label="Approved" value={loading ? '…' : String(approved)} accent="#16a34a" />
-        <StatCard label="Pending" value={loading ? '…' : String(pending)} accent="#ca8a04" />
+        <StatCard label="Pending"  value={loading ? '…' : String(pending)}  accent="#ca8a04" />
       </div>
 
       {error && (
@@ -137,13 +130,22 @@ export default function FieldRosterPage() {
         </div>
       )}
 
-      <DataTable
-        columns={COLS}
+      <Table
+        columns={ROSTER_COLS}
         rows={rows}
-        rowKey={(r) => r.id}
-        storageKey="field-roster"
+        getRowId={(r) => r.id}
+        slicers={[
+          { key: 'all',      label: 'All' },
+          { key: 'approved', label: 'Approved', filter: (r) => r.field_approved === true, dot: 'var(--eq-success-text)' },
+          { key: 'pending',  label: 'Pending',  filter: (r) => r.field_approved !== true, dot: 'var(--eq-warning-text)' },
+        ]}
+        globalSearch={{ placeholder: 'Search roster…' }}
+        columnToggle
+        exportable={{ filename: 'field-roster.csv' }}
+        rowIndicator={(r) => r.field_approved === true ? null : { color: 'var(--eq-warning-text)' }}
         loading={loading}
-        emptyMsg={loading ? 'Loading…' : 'No people on the roster yet. Approve someone from Cards to get started.'}
+        emptyMessage="No people on the roster yet. Approve someone from Cards to get started."
+        summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
       />
     </div>
   );

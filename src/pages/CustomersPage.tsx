@@ -1,11 +1,11 @@
 // CustomersPage — Tabbed Customers / Sites / Contacts view
 // Route: /:tenant/customers
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { Table, TableBulkAction, type TableColumn } from '@eq-solutions/ui';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
-import { DataTable, type ColDef, type RowAction } from '../components/DataTable';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
@@ -118,6 +118,130 @@ function mapContact(row: Record<string, unknown>): ContactItem {
   };
 }
 
+// ─── COLUMN DEFINITIONS ───────────────────────────────────────────────────────
+
+const CUSTOMER_COLS: TableColumn<CustomerItem>[] = [
+  {
+    key: 'company',
+    header: 'Company',
+    sortAccessor: (c) => c.name,
+    render: (c) => (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 7, background: avatarColour(c.id), color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          {initials(c.name)}
+        </div>
+        <span style={{ fontWeight: 700, color: '#1A1A2E', fontSize: 13 }}>{c.name}</span>
+      </div>
+    ),
+  },
+  {
+    key: 'group',
+    header: 'Group',
+    sortAccessor: (c) => c.group,
+    render: (c) => <span style={{ color: '#64748B' }}>{c.group ?? '—'}</span>,
+  },
+  {
+    key: 'state',
+    header: 'State',
+    sortAccessor: (c) => c.state,
+    render: (c) => <span style={{ color: '#64748B' }}>{c.state ?? '—'}</span>,
+  },
+  {
+    key: 'sites',
+    header: 'Sites',
+    align: 'center',
+    sortAccessor: (c) => c.site_count,
+    render: (c) =>
+      c.site_count > 0
+        ? <span style={{ background: 'rgba(61,168,216,0.1)', color: '#2986B4', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, display: 'inline-block' }}>{c.site_count}</span>
+        : <span style={{ color: '#CBD5E1' }}>—</span>,
+  },
+  {
+    key: 'contacts',
+    header: 'Contacts',
+    align: 'center',
+    sortAccessor: (c) => c.contact_count,
+    render: (c) =>
+      c.contact_count > 0
+        ? <span style={{ background: 'rgba(61,168,216,0.1)', color: '#2986B4', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, display: 'inline-block' }}>{c.contact_count}</span>
+        : <span style={{ color: '#CBD5E1' }}>—</span>,
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    sortAccessor: (c) => (c.active ? 'Active' : 'Inactive'),
+    render: (c) => (
+      <span style={c.active
+        ? { background: '#DCFCE7', color: '#15803D', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, display: 'inline-block' }
+        : { background: '#F1F5F9', color: '#64748B', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, display: 'inline-block' }}>
+        {c.active ? 'Active' : 'Inactive'}
+      </span>
+    ),
+  },
+];
+
+const SITE_COLS: TableColumn<SiteItem>[] = [
+  {
+    key: 'name',
+    header: 'Site name',
+    sortAccessor: (site) => site.name,
+    render: (site) => <span style={{ fontWeight: 700, color: '#1A1A2E', fontSize: 13 }}>{site.name}</span>,
+  },
+  {
+    key: 'kind',
+    header: 'Type',
+    sortAccessor: (site) => site.kind,
+    render: (site) => <span style={{ color: '#64748B' }}>{site.kind ?? '—'}</span>,
+  },
+  {
+    key: 'suburb',
+    header: 'Suburb',
+    sortAccessor: (site) => site.suburb,
+    render: (site) => <span style={{ color: '#64748B' }}>{site.suburb ?? '—'}</span>,
+  },
+  {
+    key: 'state',
+    header: 'State',
+    sortAccessor: (site) => site.state,
+    render: (site) => <span style={{ color: '#64748B' }}>{site.state ?? '—'}</span>,
+  },
+];
+
+const CONTACT_COLS: TableColumn<ContactItem>[] = [
+  {
+    key: 'name',
+    header: 'Name',
+    sortAccessor: (c) => personName(c.first_name, c.last_name),
+    render: (c) => {
+      const name = personName(c.first_name, c.last_name);
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 28, height: 28, borderRadius: '50%', background: avatarColour(c.id), color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {initials(name)}
+          </div>
+          <span style={{ fontWeight: 700, color: '#1A1A2E', fontSize: 13 }}>{name}</span>
+        </div>
+      );
+    },
+  },
+  {
+    key: 'position',
+    header: 'Role',
+    sortAccessor: (c) => c.position,
+    render: (c) => <span style={{ color: '#64748B' }}>{c.position ?? '—'}</span>,
+  },
+  {
+    key: 'phone',
+    header: 'Phone',
+    render: (c) => <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 11 }}>{c.phone ?? '—'}</span>,
+  },
+  {
+    key: 'email',
+    header: 'Email',
+    render: (c) => <span style={{ color: '#94A3B8', fontSize: 11 }}>{c.email ?? '—'}</span>,
+  },
+];
+
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 
 export function CustomersPage() {
@@ -130,8 +254,6 @@ export function CustomersPage() {
   const [selId,     setSelId]     = useState<string | null>(null);
   const [detail,    setDetail]    = useState<CustomerDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [query,     setQuery]     = useState('');
-  const [onlyActive, setOnlyActive] = useState(false);
 
   // Fetch all data on mount
   useEffect(() => {
@@ -174,31 +296,7 @@ export function CustomersPage() {
     setTab(t);
     setSelId(null);
     setDetail(null);
-    setQuery('');
   }, []);
-
-  // Filtered data
-  const filteredCustomers = useMemo(() => {
-    const q = query.toLowerCase().trim();
-    return customers.filter((c) => {
-      if (onlyActive && !c.active) return false;
-      if (q && !c.name.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [customers, query, onlyActive]);
-
-  const filteredSites = useMemo(() => {
-    const q = query.toLowerCase().trim();
-    return sites.filter((s) => !q || s.name.toLowerCase().includes(q) || s.suburb?.toLowerCase().includes(q) || false);
-  }, [sites, query]);
-
-  const filteredContacts = useMemo(() => {
-    const q = query.toLowerCase().trim();
-    return contacts.filter((c) => {
-      const name = personName(c.first_name, c.last_name);
-      return !q || name.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q) || false;
-    });
-  }, [contacts, query]);
 
   const panelOpen = selId !== null && tab === 'customers';
 
@@ -206,7 +304,7 @@ export function CustomersPage() {
     <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
       <div style={s.page}>
 
-        {/* Header */}
+        {/* Zone A — header */}
         <div style={s.ph}>
           <div>
             <h1 style={s.title}>Customers</h1>
@@ -216,7 +314,7 @@ export function CustomersPage() {
           </div>
         </div>
 
-        {/* Tab bar */}
+        {/* Zone B — tab bar */}
         <div style={s.tabBar}>
           {([
             { key: 'customers' as Tab, label: 'Customers', count: customers.length },
@@ -235,29 +333,6 @@ export function CustomersPage() {
           ))}
         </div>
 
-        {/* Filter bar */}
-        <div style={s.fb}>
-          {tab === 'customers' && (
-            <button
-              type="button"
-              style={{ ...s.chip, ...(onlyActive ? s.chipOn : {}) }}
-              onClick={() => setOnlyActive((v) => !v)}
-            >
-              ✓ Active only
-              {onlyActive && <span style={{ opacity: 0.6, marginLeft: 3 }}>×</span>}
-            </button>
-          )}
-          <div style={{ position: 'relative', marginLeft: tab === 'customers' ? 0 : undefined }}>
-            <span style={s.searchIcon}>🔍</span>
-            <input
-              style={s.search}
-              placeholder={`Search ${tab}…`}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-        </div>
-
         {/* Content */}
         {error ? (
           <div style={s.empty}>
@@ -268,20 +343,20 @@ export function CustomersPage() {
             <div style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
               {tab === 'customers' && (
                 <CustomersTab
-                  rows={filteredCustomers}
+                  rows={customers}
                   loading={loading}
                   selId={selId}
                   onSelect={selectRow}
                 />
               )}
               {tab === 'sites' && (
-                <SitesTab rows={filteredSites} loading={loading} />
+                <SitesTab rows={sites} loading={loading} />
               )}
               {tab === 'contacts' && (
-                <ContactsTab rows={filteredContacts} loading={loading} />
+                <ContactsTab rows={contacts} loading={loading} />
               )}
             </div>
-            {/* Split panel — only for customers tab */}
+            {/* Split panel — customers tab only */}
             <div style={{ ...s.pw, ...(panelOpen ? s.pwOpen : {}) }}>
               <div style={s.pi}>
                 {selId && (
@@ -302,228 +377,73 @@ export function CustomersPage() {
 
 // ─── CUSTOMERS TAB ───────────────────────────────────────────────────────────
 
-const CUSTOMER_COLS: ColDef<CustomerItem>[] = [
-  {
-    key: 'company',
-    label: 'Company',
-    sortable: true,
-    sortValue: (c) => c.name,
-    render: (c) => (
-      <div style={s.nameCell}>
-        <div style={{ ...s.av, borderRadius: 7, background: avatarColour(c.id) }}>{initials(c.name)}</div>
-        <span style={s.pn}>{c.name}</span>
-      </div>
-    ),
-  },
-  {
-    key: 'group',
-    label: 'Group',
-    sortable: true,
-    sortValue: (c) => c.group,
-    render: (c) => <span style={{ color: '#64748B' }}>{c.group ?? '—'}</span>,
-  },
-  {
-    key: 'state',
-    label: 'State',
-    sortable: true,
-    sortValue: (c) => c.state,
-    render: (c) => <span style={{ color: '#64748B' }}>{c.state ?? '—'}</span>,
-  },
-  {
-    key: 'sites',
-    label: 'Sites',
-    sortable: true,
-    sortValue: (c) => c.site_count,
-    cellStyle: { textAlign: 'center' },
-    render: (c) =>
-      c.site_count > 0
-        ? <span style={s.countBadge}>{c.site_count}</span>
-        : <span style={{ color: '#CBD5E1' }}>—</span>,
-  },
-  {
-    key: 'contacts',
-    label: 'Contacts',
-    sortable: true,
-    sortValue: (c) => c.contact_count,
-    cellStyle: { textAlign: 'center' },
-    render: (c) =>
-      c.contact_count > 0
-        ? <span style={s.countBadge}>{c.contact_count}</span>
-        : <span style={{ color: '#CBD5E1' }}>—</span>,
-  },
-  {
-    key: 'status',
-    label: 'Status',
-    sortable: true,
-    sortValue: (c) => (c.active ? 'Active' : 'Inactive'),
-    render: (c) => (
-      <span style={c.active ? s.badgeGreen : s.badgeGrey}>
-        {c.active ? 'Active' : 'Inactive'}
-      </span>
-    ),
-  },
-];
-
 function CustomersTab({ rows, loading, selId, onSelect }: {
   rows: CustomerItem[];
   loading: boolean;
   selId: string | null;
   onSelect: (id: string) => void;
 }) {
-  const actions = useMemo<RowAction<CustomerItem>[]>(() => [
-    { label: 'View', onClick: (c) => onSelect(c.id) },
-    { label: 'Edit', onClick: () => { /* TODO */ } },
-    {
-      label: 'Delete',
-      destructive: true,
-      onClick: (c) => {
-        if (window.confirm(`Delete "${c.name}"? This cannot be undone.`)) {
-          console.warn('[CustomersPage] customer delete not yet wired to backend:', c.id);
-        }
-      },
-    },
-  ], [onSelect]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   return (
-    <DataTable
+    <Table
       columns={CUSTOMER_COLS}
       rows={rows}
-      rowKey={(c) => c.id}
-      rowActions={actions}
-      storageKey="customers"
+      getRowId={(c) => c.id}
+      slicers={[
+        { key: 'all',    label: 'All' },
+        { key: 'active', label: 'Active only', filter: (c) => c.active },
+      ]}
+      globalSearch={{ placeholder: 'Search customers…' }}
+      columnToggle
+      exportable={{ filename: 'customers.csv' }}
+      selectable
+      selectedIds={selected}
+      onSelectionChange={setSelected}
+      bulkActions={(_rows, clear) => (
+        <TableBulkAction onClick={clear}>Clear selection</TableBulkAction>
+      )}
+      rowIndicator={(c) => c.active ? null : { color: 'var(--eq-gray-400)' }}
       loading={loading}
-      emptyIcon="🏢"
-      emptyMsg="No customers found"
+      emptyMessage="No customers found"
       onRowClick={(c) => onSelect(c.id)}
-      selectedId={selId}
+      rowStyle={(c) => c.id === selId ? { background: '#e1f1fb' } : undefined}
+      pagination={{ pageSize: 50 }}
+      summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
     />
   );
 }
 
 // ─── SITES TAB ───────────────────────────────────────────────────────────────
 
-const SITE_COLS: ColDef<SiteItem>[] = [
-  {
-    key: 'name',
-    label: 'Site name',
-    sortable: true,
-    sortValue: (site) => site.name,
-    render: (site) => <span style={s.pn}>{site.name}</span>,
-  },
-  {
-    key: 'kind',
-    label: 'Type',
-    sortable: true,
-    sortValue: (site) => site.kind,
-    render: (site) => <span style={{ color: '#64748B' }}>{site.kind ?? '—'}</span>,
-  },
-  {
-    key: 'suburb',
-    label: 'Suburb',
-    sortable: true,
-    sortValue: (site) => site.suburb,
-    render: (site) => <span style={{ color: '#64748B' }}>{site.suburb ?? '—'}</span>,
-  },
-  {
-    key: 'state',
-    label: 'State',
-    sortable: true,
-    sortValue: (site) => site.state,
-    render: (site) => <span style={{ color: '#64748B' }}>{site.state ?? '—'}</span>,
-  },
-];
-
 function SitesTab({ rows, loading }: { rows: SiteItem[]; loading: boolean }) {
-  const actions = useMemo<RowAction<SiteItem>[]>(() => [
-    { label: 'View', onClick: () => { /* TODO */ } },
-    { label: 'Edit', onClick: () => { /* TODO */ } },
-    {
-      label: 'Delete',
-      destructive: true,
-      onClick: (site) => {
-        if (window.confirm(`Delete "${site.name}"? This cannot be undone.`)) {
-          console.warn('[CustomersPage] site delete not yet wired to backend:', site.id);
-        }
-      },
-    },
-  ], []);
-
   return (
-    <DataTable
+    <Table
       columns={SITE_COLS}
       rows={rows}
-      rowKey={(site) => site.id}
-      rowActions={actions}
-      storageKey="sites"
+      getRowId={(site) => site.id}
+      globalSearch={{ placeholder: 'Search sites…' }}
+      columnToggle
+      exportable={{ filename: 'sites.csv' }}
       loading={loading}
-      emptyIcon="📍"
-      emptyMsg="No sites found"
+      emptyMessage="No sites found"
     />
   );
 }
 
 // ─── CONTACTS TAB ─────────────────────────────────────────────────────────────
 
-const CONTACT_COLS: ColDef<ContactItem>[] = [
-  {
-    key: 'name',
-    label: 'Name',
-    sortable: true,
-    sortValue: (c) => personName(c.first_name, c.last_name),
-    render: (c) => {
-      const name = personName(c.first_name, c.last_name);
-      return (
-        <div style={s.nameCell}>
-          <div style={{ ...s.av, background: avatarColour(c.id) }}>{initials(name)}</div>
-          <span style={s.pn}>{name}</span>
-        </div>
-      );
-    },
-  },
-  {
-    key: 'position',
-    label: 'Role',
-    sortable: true,
-    sortValue: (c) => c.position,
-    render: (c) => <span style={{ color: '#64748B' }}>{c.position ?? '—'}</span>,
-  },
-  {
-    key: 'phone',
-    label: 'Phone',
-    render: (c) => <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 11 }}>{c.phone ?? '—'}</span>,
-  },
-  {
-    key: 'email',
-    label: 'Email',
-    render: (c) => <span style={{ color: '#94A3B8', fontSize: 11 }}>{c.email ?? '—'}</span>,
-  },
-];
-
 function ContactsTab({ rows, loading }: { rows: ContactItem[]; loading: boolean }) {
-  const actions = useMemo<RowAction<ContactItem>[]>(() => [
-    { label: 'View', onClick: () => { /* TODO */ } },
-    { label: 'Edit', onClick: () => { /* TODO */ } },
-    {
-      label: 'Delete',
-      destructive: true,
-      onClick: (c) => {
-        if (window.confirm(`Delete "${personName(c.first_name, c.last_name)}"? This cannot be undone.`)) {
-          console.warn('[CustomersPage] contact delete not yet wired to backend:', c.id);
-        }
-      },
-    },
-  ], []);
-
   return (
-    <DataTable
+    <Table
       columns={CONTACT_COLS}
       rows={rows}
-      rowKey={(c) => c.id}
-      rowActions={actions}
-      storageKey="contacts"
+      getRowId={(c) => c.id}
+      globalSearch={{ placeholder: 'Search contacts…' }}
+      columnToggle
+      exportable={{ filename: 'contacts.csv' }}
       loading={loading}
-      emptyIcon="👤"
-      emptyMsg="No contacts found"
+      emptyMessage="No contacts found"
     />
   );
 }
@@ -539,7 +459,7 @@ function CustomerPanel({ detail, loading, onClose }: {
     <>
       <div style={s.phead}>
         {detail && (
-          <div style={{ ...s.av, borderRadius: 8, background: avatarColour(detail.id), width: 36, height: 36, fontSize: 12, fontWeight: 800 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: avatarColour(detail.id), color: 'white', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             {initials(detail.name)}
           </div>
         )}
@@ -574,7 +494,7 @@ function CustomerPanel({ detail, loading, onClose }: {
                   )}
                   {site.contact && (
                     <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>
-                      📞 {site.contact.name}
+                      {site.contact.name}
                     </div>
                   )}
                 </div>
@@ -615,38 +535,27 @@ function PField({ label, value }: { label: string; value: string }) {
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  page:        { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: 'inherit' },
-  ph:          { padding: '16px 24px 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0 },
-  title:       { fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A2E' },
-  subtitle:    { fontSize: 11, color: '#94A3B8', marginTop: 2 },
-  tabBar:      { padding: '12px 24px 0', display: 'flex', alignItems: 'flex-end', gap: 2, borderBottom: '1px solid #E2E8F0', flexShrink: 0 },
-  tab:         { padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#64748B', cursor: 'pointer', borderBottom: '2px solid transparent', marginBottom: -1, borderRadius: '5px 5px 0 0', border: 'none', background: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', userSelect: 'none' },
-  tabOn:       { color: '#3DA8D8', borderBottomColor: '#3DA8D8', fontWeight: 700 },
-  tabCount:    { background: '#F1F5F9', color: '#64748B', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 },
-  tabCountOn:  { background: 'rgba(61,168,216,0.12)', color: '#3DA8D8' },
-  fb:          { padding: '9px 24px', display: 'flex', alignItems: 'center', gap: 6, background: 'white', borderBottom: '1px solid #F1F5F9', flexShrink: 0 },
-  chip:        { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontFamily: 'inherit' },
-  chipOn:      { background: 'rgba(61,168,216,0.08)', borderColor: 'rgba(61,168,216,0.35)', color: '#2986B4' },
-  search:      { padding: '5px 10px 5px 28px', border: '1px solid #E2E8F0', borderRadius: 7, fontFamily: 'inherit', fontSize: 12, color: '#1A1A2E', outline: 'none', width: 200, background: 'white' },
-  searchIcon:  { position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 12, pointerEvents: 'none' },
-  empty:       { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#94A3B8' },
-  emptyNote:   { fontSize: 11, color: '#94A3B8', fontStyle: 'italic' },
-  nameCell:    { display: 'flex', alignItems: 'center', gap: 10 },
-  av:          { width: 28, height: 28, borderRadius: '50%', color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  pn:          { fontWeight: 700, color: '#1A1A2E', fontSize: 13 },
-  countBadge:  { background: 'rgba(61,168,216,0.1)', color: '#2986B4', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, display: 'inline-block' },
-  badgeGreen:  { background: '#DCFCE7', color: '#15803D', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, display: 'inline-block' },
-  badgeGrey:   { background: '#F1F5F9', color: '#64748B', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, display: 'inline-block' },
-  pw:          { width: 0, flexShrink: 0, overflow: 'hidden', transition: 'width .22s cubic-bezier(.4,0,.2,1)', borderLeft: '0px solid #E2E8F0', background: 'white' },
-  pwOpen:      { width: 320, borderLeftWidth: 1 },
-  pi:          { width: 320, height: '100%', display: 'flex', flexDirection: 'column' },
-  phead:       { padding: '14px 16px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'flex-start', gap: 10, flexShrink: 0 },
-  pname:       { fontSize: 14, fontWeight: 800, color: '#1A1A2E', lineHeight: 1.2 },
-  prole:       { fontSize: 11, color: '#64748B', marginTop: 2 },
-  pcls:        { width: 26, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  pbody:       { flex: 1, overflowY: 'auto', padding: '14px 16px' },
-  psec:        { fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '12px 0 6px' },
-  pfoot:       { padding: '10px 16px 14px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, flexShrink: 0 },
-  detailCard:  { padding: '8px 10px', borderRadius: 6, border: '1px solid #E2E8F0', marginBottom: 5, background: '#FAFAFA' },
-  btnPrimary:  { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
+  page:       { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: 'inherit' },
+  ph:         { padding: '16px 24px 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0 },
+  title:      { fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A2E' },
+  subtitle:   { fontSize: 11, color: '#94A3B8', marginTop: 2 },
+  tabBar:     { padding: '12px 24px 0', display: 'flex', alignItems: 'flex-end', gap: 2, borderBottom: '1px solid #E2E8F0', flexShrink: 0 },
+  tab:        { padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#64748B', cursor: 'pointer', borderBottom: '2px solid transparent', marginBottom: -1, borderRadius: '5px 5px 0 0', border: 'none', background: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', userSelect: 'none' },
+  tabOn:      { color: '#3DA8D8', borderBottomColor: '#3DA8D8', fontWeight: 700 },
+  tabCount:   { background: '#F1F5F9', color: '#64748B', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 },
+  tabCountOn: { background: 'rgba(61,168,216,0.12)', color: '#3DA8D8' },
+  empty:      { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#94A3B8' },
+  emptyNote:  { fontSize: 11, color: '#94A3B8', fontStyle: 'italic' },
+  pw:         { width: 0, flexShrink: 0, overflow: 'hidden', transition: 'width .22s cubic-bezier(.4,0,.2,1)', borderLeft: '0px solid #E2E8F0', background: 'white' },
+  pwOpen:     { width: 320, borderLeftWidth: 1 },
+  pi:         { width: 320, height: '100%', display: 'flex', flexDirection: 'column' },
+  phead:      { padding: '14px 16px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'flex-start', gap: 10, flexShrink: 0 },
+  pname:      { fontSize: 14, fontWeight: 800, color: '#1A1A2E', lineHeight: 1.2 },
+  prole:      { fontSize: 11, color: '#64748B', marginTop: 2 },
+  pcls:       { width: 26, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  pbody:      { flex: 1, overflowY: 'auto', padding: '14px 16px' },
+  psec:       { fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '12px 0 6px' },
+  pfoot:      { padding: '10px 16px 14px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, flexShrink: 0 },
+  detailCard: { padding: '8px 10px', borderRadius: 6, border: '1px solid #E2E8F0', marginBottom: 5, background: '#FAFAFA' },
+  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
 };
