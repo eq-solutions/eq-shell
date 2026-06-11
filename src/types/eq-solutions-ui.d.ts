@@ -136,8 +136,31 @@ declare module '@eq-solutions/ui' {
     className?: string
     width?: string | number
     align?: 'left' | 'right' | 'center'
+    locked?: boolean
   }
   export type TableColumnDef<T> = TableColumn<T>
+
+  export interface TableSlicer<T> {
+    key: string
+    label: string
+    filter?: (row: T) => boolean
+    dot?: string
+  }
+
+  export interface TablePagination {
+    pageSize: number
+    page?: number
+    onPageChange?: (page: number) => void
+  }
+
+  export interface TableBulkActionProps {
+    onClick: () => void
+    icon?: ReactNode
+    danger?: boolean
+    children?: ReactNode
+  }
+  export function TableBulkAction(props: TableBulkActionProps): React.ReactElement
+
   export interface TableProps<T> {
     columns: TableColumn<T>[]
     rows: T[]
@@ -150,6 +173,18 @@ declare module '@eq-solutions/ui' {
     selectedIds?: Set<string>
     onSelectionChange?: (ids: Set<string>) => void
     onRowClick?: (row: T) => void
+    loading?: boolean
+    // v1.4 props
+    slicers?: TableSlicer<T>[]
+    activeSlicer?: string
+    onSlicerChange?: (key: string) => void
+    globalSearch?: { placeholder?: string }
+    columnToggle?: boolean
+    exportable?: { filename?: string }
+    bulkActions?: (rows: T[], clearSelection: () => void) => ReactNode
+    rowIndicator?: (row: T) => { color: string } | null | undefined
+    pagination?: TablePagination
+    summary?: (visibleCount: number, totalCount: number) => ReactNode
   }
   export function Table<T>(props: TableProps<T>): React.ReactElement
 

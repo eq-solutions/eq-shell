@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import { Table, type TableColumn } from '@eq-solutions/ui';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 
@@ -32,7 +33,6 @@ interface LicenceRow {
 
 type LicStatus = 'current' | 'expiring' | 'expired' | 'ne';
 type View = 'list' | 'matrix';
-type Chip = 'expiring' | 'gaps';
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -110,19 +110,17 @@ export function StaffPage() {
   const [error,      setError]      = useState<string | null>(null);
   const [view,       setView]       = useState<View>('list');
   const [selId,      setSelId]      = useState<string | null>(null);
-  const [chips,      setChips]      = useState<Set<Chip>>(new Set());
-  const [query,      setQuery]      = useState('');
   const [tipId,      setTipId]      = useState<string | null>(null);
   const [tipRect,    setTipRect]    = useState<DOMRect | null>(null);
   const tipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Staff fetch
+  // Staff fetch — exclude inactive on arrival
   useEffect(() => {
     setLoading(true);
     fetchEntity('staff')
       .then((r) => {
         if (!r.ok) { setError(r.error ?? 'Failed to load staff'); return; }
-        setStaff((r.rows ?? []).map(mapStaff));
+        setStaff((r.rows ?? []).map(mapStaff).filter((s) => s.active !== false));
       })
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
@@ -153,32 +151,10 @@ export function StaffPage() {
 
   // Unique licence types (for matrix columns, sorted)
   const licTypes = useMemo(() => {
-    const s = new Set<string>();
-    for (const l of licences) { if (l.licence_type) s.add(l.licence_type); }
-    return [...s].sort();
+    const set = new Set<string>();
+    for (const l of licences) { if (l.licence_type) set.add(l.licence_type); }
+    return [...set].sort();
   }, [licences]);
-
-  // Filtered staff
-  const filtered = useMemo(() => {
-    const q = query.toLowerCase().trim();
-    return staff.filter((s) => {
-      if (s.active === false) return false;
-      if (q && !fullName(s).toLowerCase().includes(q) && !s.email?.toLowerCase().includes(q)) return false;
-      if (chips.has('expiring')) {
-        const ls = licByStaff.get(s.id) ?? [];
-        if (!ls.some((l) => licStatus(l) === 'expiring')) return false;
-      }
-      if (chips.has('gaps')) {
-        const ls = licByStaff.get(s.id) ?? [];
-        if (!ls.some((l) => { const st = licStatus(l); return st === 'expired' || st === 'expiring'; })) return false;
-      }
-      return true;
-    });
-  }, [staff, query, chips, licByStaff]);
-
-  const toggleChip = useCallback((chip: Chip) => {
-    setChips((prev) => { const n = new Set(prev); n.has(chip) ? n.delete(chip) : n.add(chip); return n; });
-  }, []);
 
   const selectRow = useCallback((id: string) => {
     setSelId((prev) => (prev === id ? null : id));
@@ -195,59 +171,36 @@ export function StaffPage() {
 
   const selStaff = selId ? staff.find((s) => s.id === selId) ?? null : null;
 
-  function summary(id: string) {
-    let cur = 0, exp = 0, red = 0;
-    for (const l of licByStaff.get(id) ?? []) {
-      const st = licStatus(l);
-      if (st === 'current' || st === 'ne') cur++;
-      else if (st === 'expiring') exp++;
-      else red++;
-    }
-    return { cur, exp, red };
-  }
-
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
       <div style={s.page}>
 
-        {/* Header */}
+        {/* Zone A — header */}
         <div style={s.ph}>
           <div>
             <h1 style={s.title}>Staff</h1>
             <p style={s.subtitle}>
-              {loading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'person' : 'people'}`}
+              {loading ? 'Loading…' : `${staff.length} ${staff.length === 1 ? 'person' : 'people'}`}
             </p>
           </div>
         </div>
 
-        {/* Filter bar */}
-        <div style={s.fb}>
-          <Chip active={chips.has('expiring')} onClick={() => toggleChip('expiring')}>⚠ Has expiring</Chip>
-          <Chip active={chips.has('gaps')}     onClick={() => toggleChip('gaps')}>⚡ Has gaps</Chip>
-          <div style={s.fdiv} />
-          <div style={{ position: 'relative' }}>
-            <span style={s.searchIcon}>🔍</span>
-            <input
-              style={s.search}
-              placeholder="Search staff…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-          <div style={{ ...s.viewToggle, marginLeft: 'auto' }}>
+        {/* Zone B — view toggle */}
+        <div style={s.vt}>
+          <div style={s.viewToggle}>
             <button
               type="button"
               style={{ ...s.vtBtn, ...(view === 'list' ? s.vtBtnOn : {}) }}
               onClick={() => setView('list')}
             >
-              ☰ List
+              List
             </button>
             <button
               type="button"
               style={{ ...s.vtBtn, ...(view === 'matrix' ? s.vtBtnOn : {}) }}
               onClick={() => setView('matrix')}
             >
-              ⊞ Training Matrix
+              Training Matrix
             </button>
           </div>
         </div>
@@ -260,10 +213,10 @@ export function StaffPage() {
         ) : view === 'list' ? (
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             <StaffList
-              rows={filtered}
+              rows={staff}
               loading={loading}
               selId={selId}
-              summary={summary}
+              licByStaff={licByStaff}
               onSelect={selectRow}
               onShowTip={showTip}
               onHideTip={hideTip}
@@ -276,7 +229,7 @@ export function StaffPage() {
           </div>
         ) : (
           <MatrixView
-            rows={filtered}
+            rows={staff}
             loading={loading || licLoading}
             licByStaff={licByStaff}
             licTypes={licTypes}
@@ -292,98 +245,99 @@ export function StaffPage() {
   );
 }
 
-// ─── CHIP ─────────────────────────────────────────────────────────────────────
-
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button type="button" onClick={onClick} style={{ ...s.chip, ...(active ? s.chipOn : {}) }}>
-      {children}
-      {active && <span style={{ opacity: 0.6, marginLeft: 3 }}>×</span>}
-    </button>
-  );
-}
-
 // ─── STAFF LIST ───────────────────────────────────────────────────────────────
 
 interface ListProps {
   rows: StaffRow[];
   loading: boolean;
   selId: string | null;
-  summary: (id: string) => { cur: number; exp: number; red: number };
+  licByStaff: Map<string, LicenceRow[]>;
   onSelect: (id: string) => void;
   onShowTip: (id: string, rect: DOMRect) => void;
   onHideTip: () => void;
 }
 
-function StaffList({ rows, loading, selId, summary, onSelect, onShowTip, onHideTip }: ListProps) {
-  if (loading) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8' }}>
-        Loading…
-      </div>
-    );
-  }
-  if (!rows.length) {
-    return (
-      <div style={s.empty}>
-        <div style={{ fontSize: 28, marginBottom: 10 }}>🔍</div>
-        <strong style={{ color: '#475569' }}>No results</strong>
-        <span>Try adjusting your search or filters</span>
-      </div>
-    );
-  }
+function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHideTip }: ListProps) {
+  const staffCols = useMemo<TableColumn<StaffRow>[]>(() => [
+    {
+      key: 'name',
+      header: 'Name',
+      sortAccessor: (row) => fullName(row),
+      render: (row) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 28, height: 28, borderRadius: '50%', background: avatarColour(row.id), color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {initials(row.first_name, row.last_name)}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, color: '#1A1A2E', fontSize: 13, lineHeight: 1.2 }}>{fullName(row)}</div>
+            {row.email && <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 1 }}>{row.email}</div>}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'trade',
+      header: 'Trade',
+      sortAccessor: (row) => row.trade,
+      render: (row) => <span style={{ color: '#475569' }}>{row.trade ?? '—'}</span>,
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      sortAccessor: (row) => row.employment_type,
+      render: (row) => <span style={{ color: '#64748B' }}>{row.employment_type ?? '—'}</span>,
+    },
+    {
+      key: 'licences',
+      header: 'Licences & Training',
+      render: (row) => {
+        let cur = 0, exp = 0, red = 0;
+        for (const l of licByStaff.get(row.id) ?? []) {
+          const st = licStatus(l);
+          if (st === 'current' || st === 'ne') cur++;
+          else if (st === 'expiring') exp++;
+          else red++;
+        }
+        return (
+          <span
+            onMouseEnter={(e) => onShowTip(row.id, (e.currentTarget as HTMLElement).getBoundingClientRect())}
+            onMouseLeave={onHideTip}
+          >
+            <LicDots cur={cur} exp={exp} red={red} />
+          </span>
+        );
+      },
+    },
+  ], [licByStaff, onShowTip, onHideTip]);
+
+  const worstStatus = useCallback((row: StaffRow): { color: string } | null => {
+    const lics = licByStaff.get(row.id) ?? [];
+    if (lics.some((l) => licStatus(l) === 'expired'))  return { color: 'var(--eq-error-text)'   };
+    if (lics.some((l) => licStatus(l) === 'expiring')) return { color: 'var(--eq-warning-text)' };
+    return null;
+  }, [licByStaff]);
 
   return (
     <div style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
-      <table style={s.table}>
-        <thead>
-          <tr>
-            {['Name', 'Trade', 'Type', 'Licences & Training', ''].map((h) => (
-              <th key={h} style={s.th}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const { cur, exp, red } = summary(row.id);
-            const sel = row.id === selId;
-            return (
-              <tr
-                key={row.id}
-                style={{ ...s.tr, ...(sel ? s.trSel : {}) }}
-                onClick={() => onSelect(row.id)}
-              >
-                <td style={s.td}>
-                  <div style={s.nameCell}>
-                    <div style={{ ...s.av, background: avatarColour(row.id) }}>
-                      {initials(row.first_name, row.last_name)}
-                    </div>
-                    <div>
-                      <div style={s.pn}>{fullName(row)}</div>
-                      {row.email && <div style={s.ps}>{row.email}</div>}
-                    </div>
-                  </div>
-                </td>
-                <td style={{ ...s.td, color: '#475569' }}>{row.trade ?? '—'}</td>
-                <td style={{ ...s.td, color: '#64748B' }}>{row.employment_type ?? '—'}</td>
-                <td
-                  style={s.td}
-                  onMouseEnter={(e) => onShowTip(row.id, (e.currentTarget as HTMLTableCellElement).getBoundingClientRect())}
-                  onMouseLeave={onHideTip}
-                >
-                  <LicDots cur={cur} exp={exp} red={red} />
-                </td>
-                <td style={s.td}>
-                  <div style={s.rowActions}>
-                    <button type="button" style={s.ra} onClick={(e) => { e.stopPropagation(); onSelect(row.id); }}>View</button>
-                    <button type="button" style={s.ra}>Edit</button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <Table
+        columns={staffCols}
+        rows={rows}
+        getRowId={(row) => row.id}
+        slicers={[
+          { key: 'all',      label: 'All' },
+          { key: 'expiring', label: 'Has expiring', filter: (row) => (licByStaff.get(row.id) ?? []).some((l) => licStatus(l) === 'expiring'), dot: 'var(--eq-warning-text)' },
+          { key: 'gaps',     label: 'Has gaps',     filter: (row) => (licByStaff.get(row.id) ?? []).some((l) => { const st = licStatus(l); return st === 'expired' || st === 'expiring'; }), dot: 'var(--eq-error-text)' },
+        ]}
+        globalSearch={{ placeholder: 'Search staff…' }}
+        columnToggle
+        exportable={{ filename: 'staff.csv' }}
+        rowIndicator={worstStatus}
+        loading={loading}
+        emptyMessage="No results — try adjusting your search or filters"
+        onRowClick={(row) => onSelect(row.id)}
+        rowStyle={(row) => row.id === selId ? { background: '#e1f1fb' } : undefined}
+        summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
+      />
     </div>
   );
 }
@@ -472,7 +426,7 @@ function MatrixView({ rows, loading, licByStaff, licTypes }: MatrixProps) {
                 <tr key={row.id}>
                   <td style={{ ...s.mtd, position: 'sticky', left: 0, zIndex: 1, background: 'white', borderRight: '1px solid #E2E8F0', minWidth: 180, padding: '6px 14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ ...s.av, width: 22, height: 22, fontSize: 8, flexShrink: 0, background: avatarColour(row.id) }}>
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: avatarColour(row.id), color: 'white', fontSize: 8, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {initials(row.first_name, row.last_name)}
                       </div>
                       <div>
@@ -545,7 +499,7 @@ function SplitPanel({ staff, lics, onClose }: { staff: StaffRow | null; lics: Li
         {staff && (
           <>
             <div style={s.phead}>
-              <div style={{ ...s.pav, background: avatarColour(staff.id) }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: avatarColour(staff.id), color: 'white', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 {initials(staff.first_name, staff.last_name)}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -612,9 +566,9 @@ function LicGroup({ label, colour, lics }: { label: string; colour: string; lics
         const expText = (l.no_expiry || !l.expiry_date)
           ? 'No expiry'
           : st === 'expiring'
-          ? `⚠ Expires ${fmtDate(l.expiry_date)}`
+          ? `Expires ${fmtDate(l.expiry_date)}`
           : st === 'expired'
-          ? `✕ Expired ${fmtDate(l.expiry_date)}`
+          ? `Expired ${fmtDate(l.expiry_date)}`
           : `Expires ${fmtDate(l.expiry_date)}`;
         const expColour = st === 'expiring' ? '#B45309' : st === 'expired' ? '#B91C1C' : '#94A3B8';
         return (
@@ -717,27 +671,11 @@ const s: Record<string, React.CSSProperties> = {
   ph:        { padding: '16px 24px 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0 },
   title:     { fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A2E' },
   subtitle:  { fontSize: 11, color: '#94A3B8', marginTop: 2 },
-  fb:        { padding: '9px 24px', display: 'flex', alignItems: 'center', gap: 6, background: 'white', borderBottom: '1px solid #F1F5F9', flexShrink: 0, flexWrap: 'wrap' },
-  fdiv:      { width: 1, height: 16, background: '#E2E8F0', flexShrink: 0 },
-  chip:      { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontFamily: 'inherit' },
-  chipOn:    { background: 'rgba(61,168,216,0.08)', borderColor: 'rgba(61,168,216,0.35)', color: '#2986B4' },
-  search:    { padding: '5px 10px 5px 28px', border: '1px solid #E2E8F0', borderRadius: 7, fontFamily: 'inherit', fontSize: 12, color: '#1A1A2E', outline: 'none', width: 180, background: 'white' },
-  searchIcon:{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 12, pointerEvents: 'none' },
+  vt:        { padding: '9px 24px', display: 'flex', alignItems: 'center', background: 'white', borderBottom: '1px solid #F1F5F9', flexShrink: 0 },
   viewToggle:{ display: 'inline-flex', border: '1px solid #E2E8F0', borderRadius: 7, overflow: 'hidden', background: 'white' },
   vtBtn:     { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none', background: 'transparent', color: '#64748B', fontFamily: 'inherit', borderRight: '1px solid #E2E8F0' },
   vtBtnOn:   { background: '#F1F5F9', color: '#1A1A2E' },
   empty:     { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#94A3B8', textAlign: 'center' },
-  table:     { width: '100%', borderCollapse: 'collapse' },
-  th:        { position: 'sticky', top: 0, zIndex: 1, background: 'white', textAlign: 'left', fontSize: 10, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#94A3B8', padding: '8px 14px', borderBottom: '1px solid #E2E8F0', whiteSpace: 'nowrap' },
-  tr:        { cursor: 'pointer', borderBottom: '1px solid #F1F5F9' },
-  trSel:     { background: 'rgba(61,168,216,0.05)' },
-  td:        { padding: '8px 14px', verticalAlign: 'middle', fontSize: 13 },
-  nameCell:  { display: 'flex', alignItems: 'center', gap: 10 },
-  av:        { width: 28, height: 28, borderRadius: '50%', color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  pn:        { fontWeight: 700, color: '#1A1A2E', fontSize: 13, lineHeight: 1.2 },
-  ps:        { fontSize: 10, color: '#94A3B8', marginTop: 1 },
-  rowActions:{ display: 'flex', gap: 4 },
-  ra:        { padding: '3px 8px', borderRadius: 5, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
   mth:       { position: 'sticky', top: 0, zIndex: 2, background: 'white', borderBottom: '2px solid #E2E8F0', width: 44, textAlign: 'center', padding: '6px 2px' },
   mtd:       { width: 44, height: 32, textAlign: 'center', verticalAlign: 'middle', padding: '0 2px', borderBottom: '1px solid #F1F5F9' },
   mc:        { display: 'flex', alignItems: 'center', justifyContent: 'center', height: 26, borderRadius: 5, fontSize: 9, fontWeight: 800, fontFamily: 'monospace', margin: '0 2px' },
@@ -745,7 +683,6 @@ const s: Record<string, React.CSSProperties> = {
   pwOpen:    { width: 320, borderLeftWidth: 1 },
   pi:        { width: 320, height: '100%', display: 'flex', flexDirection: 'column' },
   phead:     { padding: '14px 16px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'flex-start', gap: 10, flexShrink: 0 },
-  pav:       { width: 36, height: 36, borderRadius: '50%', color: 'white', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   pname:     { fontSize: 14, fontWeight: 800, color: '#1A1A2E', lineHeight: 1.2 },
   prole:     { fontSize: 11, color: '#64748B', marginTop: 2 },
   pcls:      { width: 26, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
