@@ -1,4 +1,4 @@
--- Migration: 0064_eq_ops_schema_extension
+-- Migration: 0065_eq_ops_schema_extension
 -- Target:    every tenant data-plane project (ehowgjardagevnrluult + zaapmfdkgedqupfjtchl)
 -- Purpose:   Extend the quotes/jobs canonical schema to support the full EQ Ops
 --            lifecycle (quote → won → PO matched → active job → ready to invoice),
@@ -291,13 +291,23 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================================================
--- 7. Register new entities in eq_schema_registry
+-- 7. Register new entities in eq_schema_registry (sks/core planes only)
 -- ============================================================================
 
-INSERT INTO shell_control.eq_schema_registry (entity, module, version, schema_json, description, is_current)
-VALUES
-  ('client_groups',         'quotes', '1.0.0', '{"x-eq-entity":"client_groups","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Named client group (e.g. Equinix)."}'::jsonb,         'Named client group.',       true),
-  ('client_group_members',  'quotes', '1.0.0', '{"x-eq-entity":"client_group_members","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Customer to client group mapping."}'::jsonb,  'Client group membership.',  true),
-  ('job_notes',             'quotes', '1.0.0', '{"x-eq-entity":"job_notes","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Append-only notes log on a quote or job."}'::jsonb,      'Job notes log.',            true)
-ON CONFLICT (entity, version) DO UPDATE
-  SET module = excluded.module, description = excluded.description, is_current = excluded.is_current;
+-- shell_control.eq_schema_registry exists on tenants that have run the full
+-- migration chain. Guard with an existence check so this migration is safe
+-- to apply to any plane regardless of whether the registry table is present.
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'shell_control' AND table_name = 'eq_schema_registry'
+  ) THEN
+    INSERT INTO shell_control.eq_schema_registry (entity, module, version, schema_json, description, is_current)
+    VALUES
+      ('client_groups',        'quotes', '1.0.0', '{"x-eq-entity":"client_groups","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Named client group (e.g. Equinix)."}'::jsonb,        'Named client group.',      true),
+      ('client_group_members', 'quotes', '1.0.0', '{"x-eq-entity":"client_group_members","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Customer to client group mapping."}'::jsonb, 'Client group membership.', true),
+      ('job_notes',            'quotes', '1.0.0', '{"x-eq-entity":"job_notes","x-eq-module":"quotes","x-eq-version":"1.0.0","type":"object","description":"Append-only notes log on a quote or job."}'::jsonb,     'Job notes log.',           true)
+    ON CONFLICT (entity, version) DO UPDATE
+      SET module = excluded.module, description = excluded.description, is_current = excluded.is_current;
+  END IF;
+END $$;
