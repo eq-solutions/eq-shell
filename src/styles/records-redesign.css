@@ -433,8 +433,8 @@
 }
 
 /* Merged Calibration column — chip + "Next <date>" sub. */
-.eq-rc-cal { display: flex; flex-direction: column; gap: 3px; }
-.eq-rc-calsub { font-size: 12px; color: var(--eq-grey); }
+.eq-rc-cal { display: flex; flex-direction: column; gap: 3px; min-width: 120px; }
+.eq-rc-calsub { font-size: 12px; color: var(--eq-grey); white-space: nowrap; }
 .eq-rc-calsub b { color: var(--eq-ink); font-weight: 600; }
 
 /* Status chip — dot + label + icon, never colour alone. */
