@@ -329,6 +329,16 @@ const KNOWN_LEGACY_ANON = {
     // security_invoker views — RLS enforced on underlying tables (see comment above)
     'app_data.field_managers', 'app_data.field_people', 'app_data.field_sites',
     'app_data.field_timesheet_locks',
+    // pass-through views on public.* (views cannot have RLS enabled — tracked debt)
+    'app_data.field_audit_log', 'app_data.field_leave_requests', 'app_data.field_prestarts',
+    'app_data.field_schedule', 'app_data.field_site_diaries', 'app_data.field_timesheets',
+    'app_data.field_toolbox_talks',
+    // Tender Pipeline + operational tables (open-policy: RLS on, USING(true) — Field JWT path)
+    'public.app_config', 'public.nomination_clashes', 'public.nominations',
+    'public.organisations', 'public.pending_schedule', 'public.pipeline_events',
+    'public.team_members', 'public.teams', 'public.tender_enrichment',
+    'public.tender_import_runs', 'public.tender_phases', 'public.tender_review_decisions',
+    'public.tenders',
   ]),
 };
 
