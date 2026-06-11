@@ -13,7 +13,10 @@
 --            The view's existing filter (field_approved IS TRUE OR NULL, active
 --            IS NOT FALSE) is unchanged.
 
-CREATE OR REPLACE VIEW app_data.field_people AS
+-- DROP + CREATE (not CREATE OR REPLACE) because adding columns before existing
+-- ones and changing column order is not permitted by CREATE OR REPLACE VIEW.
+DROP VIEW IF EXISTS app_data.field_people;
+CREATE VIEW app_data.field_people AS
 SELECT
   staff_id                                                     AS id,
   tenant_id,
