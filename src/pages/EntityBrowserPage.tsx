@@ -56,6 +56,7 @@ const ENTITY_VIEW: Record<
       { key: 'email', label: 'Email' },
       { key: 'mobile_phone', label: 'Mobile' },
       { key: 'position', label: 'Position' },
+      { key: 'active', label: 'Status' },
     ],
   },
   site: {
@@ -189,6 +190,7 @@ const ENTITY_VIEW: Record<
 
 function formatCell(value: unknown, key: string): string {
   if (value === null || value === undefined) return '—';
+  if (key === 'active' && typeof value === 'boolean') return value ? 'Active' : 'Archived';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (key.endsWith('_cents') && typeof value === 'number') {
     return `$${(value / 100).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -256,8 +258,9 @@ function EntityBrowserInner({ entity }: { entity: string }) {
 
   // Active filter — null = All, true = Active only, false = Inactive only.
   // Only shown for entities that have an `active` boolean column.
+  // Default is `true` (active only) so archived records don't surface by default.
   const supportsActiveFilter = ACTIVE_FILTER_ENTITIES.has(entity);
-  const [activeFilter, setActiveFilter] = useState<boolean | null>(null);
+  const [activeFilter, setActiveFilter] = useState<boolean | null>(supportsActiveFilter ? true : null);
 
   const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
   const [creating, setCreating] = useState(false);
@@ -475,7 +478,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
                 <tr
                   key={(r[`${entity}_id`] as string) ?? i}
                   onClick={() => setSelectedRow(r)}
-                  style={{ cursor: 'pointer' }}
+                  style={{ cursor: 'pointer', opacity: r.active === false ? 0.5 : 1 }}
                 >
                   {view.columns.map((col) => (
                     <td key={col.key}>{formatCell(r[col.key], col.key)}</td>

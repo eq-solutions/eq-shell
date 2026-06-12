@@ -727,7 +727,7 @@ export default function EquipmentModule() {
 
   if (!canView) {
     return (
-      <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
+      <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
         <div className="eq-empty">
           <p className="eq-empty__title">Not allowed</p>
           <p>You don't have access to plant &amp; equipment.</p>
@@ -867,13 +867,14 @@ export default function EquipmentModule() {
   );
 
   return (
-    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Zone A — page header */}
-      <div className="eq-page__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+      <div style={{ padding: '16px 24px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexShrink: 0, marginBottom: 16 }}>
         <div>
-          <p className="eq-page__eyebrow">Records · Register</p>
-          <h1 className="eq-page__title">Plant &amp; equipment</h1>
-          <p className="eq-page__lede">{lede}</p>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--eq-deep)', margin: '0 0 4px' }}>Records · Register</p>
+          <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A2E', margin: '0 0 4px' }}>Plant &amp; equipment</h1>
+          <p style={{ fontSize: 13, color: 'var(--eq-mute)', margin: 0 }}>{lede}</p>
         </div>
         {canEdit && (
           <Button type="button" icon={<Gauge size={16} />} onClick={() => setForm({ mode: 'create', row: null })}>
@@ -882,11 +883,11 @@ export default function EquipmentModule() {
         )}
       </div>
 
-      {err && <EqError message={err} onRetry={load} />}
+      {err && <div style={{ padding: '0 24px', flexShrink: 0 }}><EqError message={err} onRetry={load} /></div>}
 
       {/* Zone B — group-by toggle (only when there's data) */}
       {rows && counts.all > 0 && (
-        <div className="eq-rc-toolbar" style={{ justifyContent: 'flex-end' }}>
+        <div className="eq-rc-toolbar" style={{ padding: '0 24px', justifyContent: 'flex-end', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--eq-grey)' }}>Group by</span>
             <div className="eq-pilltoggle" role="group" aria-label="Group by">
@@ -901,7 +902,8 @@ export default function EquipmentModule() {
         </div>
       )}
 
-      {/* Loading / empty state */}
+      {/* Zone C — content area */}
+      <div style={{ flex: 1, overflow: 'auto', minWidth: 0, padding: '0 24px 24px' }}>
       {loading && !rows ? (
         <div className="eq-table-wrap"><div style={{ padding: 8 }}><Skeleton variant="row" count={8} /></div></div>
       ) : counts.all === 0 ? (
@@ -1007,6 +1009,9 @@ export default function EquipmentModule() {
           )}
         </div>
       )}
+
+      </div>{/* /Zone C */}
+      </div>{/* /flex column */}
 
       {detail && (
         <AssetDetailDrawer

@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { Users, CheckCircle, Clock, Activity, UserCheck } from 'lucide-react';
+import { CheckCircle, Clock, Activity, UserCheck } from 'lucide-react';
 import { Table, TableBulkAction, type TableColumn } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
+import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 interface FieldPerson {
   id: string;
@@ -274,70 +278,88 @@ export default function FieldRosterPage() {
   const approved = rows.filter((r) => r.field_approved === true).length;
   const pending  = rows.filter((r) => r.field_approved !== true).length;
 
+  const lede = loading ? 'Loading…' : `${rows.length} ${rows.length === 1 ? 'person' : 'people'} · ${approved} approved · ${pending} pending`;
+
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 960 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-        <Users size={20} style={{ color: 'var(--eq-brand, #3DA8D8)' }} />
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Field Roster</h1>
-      </div>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
-        <StatCard label="Total"    value={loading ? '…' : String(rows.length)} />
-        <StatCard label="Approved" value={loading ? '…' : String(approved)} accent="#16a34a" />
-        <StatCard label="Pending"  value={loading ? '…' : String(pending)}  accent="#ca8a04" />
-      </div>
-
-      {error && (
-        <div style={{ padding: '12px 16px', background: '#fef2f2', color: '#dc2626', borderRadius: 6, marginBottom: 16, fontSize: 14 }}>
-          {error}
+        {/* Zone A — header */}
+        <div style={{ padding: '16px 24px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0, marginBottom: 16 }}>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A2E', margin: '0 0 4px' }}>Field Roster</h1>
+            <p style={{ fontSize: 13, color: 'var(--eq-mute)', margin: 0 }}>{lede}</p>
+          </div>
         </div>
-      )}
 
-      {actionMsg && (
-        <div style={{
-          padding: '12px 16px', borderRadius: 6, marginBottom: 16, fontSize: 14,
-          background: actionMsg.ok ? '#f0fdf4' : '#fef2f2',
-          color: actionMsg.ok ? '#16a34a' : '#dc2626',
-        }}>
-          {actionMsg.text}
+        {/* Zone B — stat chips */}
+        <div style={{ padding: '0 24px', display: 'flex', gap: 12, marginBottom: 12, flexShrink: 0 }}>
+          <StatCard label="Total"    value={loading ? '…' : String(rows.length)} />
+          <StatCard label="Approved" value={loading ? '…' : String(approved)} accent="#16a34a" />
+          <StatCard label="Pending"  value={loading ? '…' : String(pending)}  accent="#ca8a04" />
         </div>
-      )}
 
-      <Table
-        columns={ROSTER_COLS}
-        rows={rows}
-        getRowId={(r) => r.id}
-        slicers={[
-          { key: 'all',      label: 'All' },
-          { key: 'approved', label: 'Approved', filter: (r) => r.field_approved === true,  dot: 'var(--eq-success-text)' },
-          { key: 'pending',  label: 'Pending',  filter: (r) => r.field_approved !== true,  dot: 'var(--eq-warning-text)' },
-        ]}
-        globalSearch={{ placeholder: 'Search roster…' }}
-        columnToggle
-        exportable={{ filename: 'field-roster.csv' }}
-        rowIndicator={(r) => r.field_approved === true ? null : { color: 'var(--eq-warning-text)' }}
-        loading={loading}
-        emptyMessage="No people on the roster yet. Approve someone from Cards to get started."
-        summary={(v: number, t: number) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
-        selectable={canApprove}
-        selectedIds={selected}
-        onSelectionChange={setSelected}
-        bulkActions={canApprove ? (selectedRows, clearSelection) => {
-          const pendingCount = selectedRows.filter((r) => r.field_approved !== true).length;
-          if (pendingCount === 0) return null;
-          return (
-            <TableBulkAction
-              icon={<UserCheck size={14} />}
-              onClick={() => { void approveSelected(selectedRows, clearSelection); }}
-            >
-              {approving ? 'Approving…' : `Approve ${pendingCount}`}
-            </TableBulkAction>
-          );
-        } : undefined}
-      />
+        {/* Inline messages */}
+        {error && (
+          <div style={{ padding: '0 24px', flexShrink: 0 }}>
+            <div style={{ padding: '12px 16px', background: '#fef2f2', color: '#dc2626', borderRadius: 6, marginBottom: 12, fontSize: 14 }}>
+              {error}
+            </div>
+          </div>
+        )}
+        {actionMsg && (
+          <div style={{ padding: '0 24px', flexShrink: 0 }}>
+            <div style={{
+              padding: '12px 16px', borderRadius: 6, marginBottom: 12, fontSize: 14,
+              background: actionMsg.ok ? '#f0fdf4' : '#fef2f2',
+              color: actionMsg.ok ? '#16a34a' : '#dc2626',
+            }}>
+              {actionMsg.text}
+            </div>
+          </div>
+        )}
 
-      {session?.tenant.id && <ActivityFeed tenantId={session.tenant.id} />}
-    </div>
+        {/* Zone C — table + activity feed */}
+        <div style={{ flex: 1, overflow: 'auto', minWidth: 0, padding: '0 24px 24px' }}>
+          <Table
+            columns={ROSTER_COLS}
+            rows={rows}
+            getRowId={(r) => r.id}
+            slicers={[
+              { key: 'all',      label: 'All' },
+              { key: 'approved', label: 'Approved', filter: (r) => r.field_approved === true,  dot: 'var(--eq-success-text)' },
+              { key: 'pending',  label: 'Pending',  filter: (r) => r.field_approved !== true,  dot: 'var(--eq-warning-text)' },
+            ]}
+            globalSearch={{ placeholder: 'Search roster…' }}
+            columnToggle
+            exportable={{ filename: 'field-roster.csv' }}
+            rowIndicator={(r) => r.field_approved === true ? null : { color: 'var(--eq-warning-text)' }}
+            loading={loading}
+            emptyMessage="No people on the roster yet. Approve someone from Cards to get started."
+            pagination={{ pageSize: 25 }}
+            summary={(v: number, t: number) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
+            selectable={canApprove}
+            selectedIds={selected}
+            onSelectionChange={setSelected}
+            bulkActions={canApprove ? (selectedRows, clearSelection) => {
+              const pendingCount = selectedRows.filter((r) => r.field_approved !== true).length;
+              if (pendingCount === 0) return null;
+              return (
+                <TableBulkAction
+                  icon={<UserCheck size={14} />}
+                  onClick={() => { void approveSelected(selectedRows, clearSelection); }}
+                >
+                  {approving ? 'Approving…' : `Approve ${pendingCount}`}
+                </TableBulkAction>
+              );
+            } : undefined}
+          />
+
+          {session?.tenant.id && <ActivityFeed tenantId={session.tenant.id} />}
+        </div>
+
+      </div>
+    </HubLayout>
   );
 }
 

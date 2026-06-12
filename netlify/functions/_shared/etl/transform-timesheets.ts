@@ -151,6 +151,8 @@ export function transformTimesheet(
   const staff = resolver.byName(src.name);
   if (!staff.staff_id) {
     issues.push(staff.via === 'ambiguous' ? 'ambiguous_staff' : 'unmatched_staff');
+  } else if (resolver.isArchived(staff.staff_id)) {
+    warnings.push('archived_staff');
   }
   if (!src.week || String(src.week).split('.').length !== 3) {
     issues.push('bad_week');

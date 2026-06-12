@@ -336,6 +336,7 @@ function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHi
         emptyMessage="No results — try adjusting your search or filters"
         onRowClick={(row) => onSelect(row.id)}
         rowStyle={(row) => row.id === selId ? { background: '#e1f1fb' } : undefined}
+        pagination={{ pageSize: 25 }}
         summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
       />
     </div>
