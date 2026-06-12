@@ -67,6 +67,7 @@ function PageLoadingFallback() {
 // page components. The lazy CardsModule is dropped.
 const IntakeModule = lazy(() => import('./modules/intake/index'));
 const GmReportsModule = lazy(() => import('./modules/gm-reports/index'));
+const CommsModule = lazy(() => import('./modules/comms/index'));
 // Unit 7 — per-domain landing pages.
 const IntakeCoreLanding = lazy(() =>
   import('./modules/intake/DomainLanding').then((m) => ({ default: m.CoreIntakeLanding })),
@@ -533,6 +534,14 @@ function TenantTree() {
           element={
             <Suspense fallback={<PageLoadingFallback />}>
               <GmReportsModule />
+            </Suspense>
+          }
+        />
+        <Route
+          path="comms/*"
+          element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              <CommsModule />
             </Suspense>
           }
         />
