@@ -68,6 +68,12 @@ function quote(name) {
 const SERVICE_ROLE_ONLY = new Set([
   'migration_baseline',
   '_eq_migrations',
+  // Pre-canonical SKS Comms tables: no tenant_id column, no browser path — service_role only.
+  // Locked down via migration 0066 (REVOKE authenticated/anon).
+  'sks_comms_jobs',
+  'sks_comms_labour_rates',
+  'sks_comms_materials',
+  'sks_comms_po_lines',
 ]);
 
 const { values: args } = parseArgs({
