@@ -809,6 +809,11 @@ function GroupsSection() {
             const updated = await sgFetch(`?action=detail&id=${encodeURIComponent(selected.id)}`) as { group: GroupDetail };
             setSelected(updated.group);
           }}
+          onAddMember={async (userId) => {
+            await sgFetch('', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_member', id: selected.id, user_id: userId }) });
+            const updated = await sgFetch(`?action=detail&id=${encodeURIComponent(selected.id)}`) as { group: GroupDetail };
+            setSelected(updated.group);
+          }}
         />
       )}
     </section>
@@ -1039,17 +1044,53 @@ function PermPillPicker({ grantedKeys, permBusy, onToggle }: PermPillPickerProps
 }
 
 function GroupDetailModal({
-  group, onClose, onUpdated, onPermChange, onRemoveMember,
+  group, onClose, onUpdated, onPermChange, onRemoveMember, onAddMember,
 }: {
   group: GroupDetail;
   onClose: () => void;
   onUpdated: () => void;
   onPermChange: (permKey: string, add: boolean) => Promise<void>;
   onRemoveMember: (userId: string) => Promise<void>;
+  onAddMember: (userId: string) => Promise<void>;
 }) {
   const [deleting, setDeleting] = useState(false);
   const [permBusy, setPermBusy] = useState<string | null>(null);
   const [memberBusy, setMemberBusy] = useState<string | null>(null);
+  const [allUsers, setAllUsers] = useState<TenantUser[] | null>(null);
+  const [addUserId, setAddUserId] = useState('');
+  const [addBusy, setAddBusy] = useState(false);
+  const [addErr, setAddErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const sb = await createSupabaseClient();
+        const { data } = await sb.rpc('eq_list_tenant_users');
+        if (!cancelled) setAllUsers((data as TenantUser[] | null) ?? []);
+      } catch {
+        if (!cancelled) setAllUsers([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const memberIds = new Set(group.members.map(m => m.user_id));
+  const addableUsers = (allUsers ?? []).filter(u => !memberIds.has(u.id));
+
+  const handleAddMember = async () => {
+    if (!addUserId) return;
+    setAddBusy(true);
+    setAddErr(null);
+    try {
+      await onAddMember(addUserId);
+      setAddUserId('');
+    } catch (e) {
+      setAddErr(e instanceof Error ? e.message : 'Could not add member');
+    } finally {
+      setAddBusy(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!window.confirm(`Delete "${group.name}"? This cannot be undone.`)) return;
@@ -1095,10 +1136,42 @@ function GroupDetailModal({
         <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--eq-ink)', marginBottom: 8 }}>
           Members ({group.members.length})
         </h3>
+
+        {/* Add member row */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <select
+            value={addUserId}
+            onChange={e => { setAddUserId(e.target.value); setAddErr(null); }}
+            style={{ ...inputStyle, flex: 1, margin: 0, height: 34, padding: '6px 8px' }}
+            disabled={allUsers === null || addBusy}
+          >
+            <option value="">
+              {allUsers === null ? 'Loading users…' : addableUsers.length === 0 ? 'All users already members' : 'Add a member…'}
+            </option>
+            {addableUsers.map(u => (
+              <option key={u.id} value={u.id}>
+                {u.name ?? u.email}{u.name ? ` — ${u.role.replace('_', ' ')}` : ` (${u.role.replace('_', ' ')})`}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => void handleAddMember()}
+            disabled={!addUserId || addBusy}
+            style={{
+              ...primaryBtnStyle,
+              padding: '6px 14px', fontSize: 13,
+              opacity: !addUserId || addBusy ? 0.45 : 1,
+              cursor: !addUserId || addBusy ? 'not-allowed' : 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            {addBusy ? '…' : 'Add'}
+          </button>
+        </div>
+        {addErr && <p style={{ color: 'var(--eq-danger, #e53935)', fontSize: 12, margin: '0 0 8px' }}>{addErr}</p>}
+
         {group.members.length === 0 ? (
-          <p style={{ color: 'var(--eq-grey)', fontSize: 13 }}>
-            No members. Assign from a user's profile page.
-          </p>
+          <p style={{ color: 'var(--eq-grey)', fontSize: 13, margin: 0 }}>No members yet.</p>
         ) : (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {group.members.map(m => (
