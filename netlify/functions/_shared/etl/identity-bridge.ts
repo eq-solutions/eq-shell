@@ -24,6 +24,7 @@ export interface StaffRow {
   staff_id: string;            // ehow app_data.staff PK (uuid)
   external_id: string | null;  // mirrors legacy nspbmir person id (stringified bigint)
   name: string | null;         // canonical display name
+  active?: boolean | null;     // false = archived; omitted rows treated as active
 }
 
 export interface ResolveResult {
@@ -35,6 +36,8 @@ export interface IdentityResolver {
   // person_id is the legacy nspbmir people.id (bigint, arrives as number|string|bigint)
   byExternalId(personId: number | string | bigint | null | undefined): ResolveResult;
   byName(fullName: string | null | undefined): ResolveResult;
+  // Returns true if the resolved staff member has active === false.
+  isArchived(staffId: string): boolean;
   // Diagnostics for the dry-run report.
   stats(): { staffCount: number; ambiguousNames: string[] };
 }
@@ -53,6 +56,7 @@ export function buildResolver(staff: StaffRow[]): IdentityResolver {
   const byExt = new Map<string, string>();
   const byNameMap = new Map<string, string>();
   const ambiguous = new Set<string>();
+  const archivedIds = new Set<string>();
 
   for (const s of staff) {
     if (s.external_id != null && s.external_id !== '') {
@@ -66,6 +70,7 @@ export function buildResolver(staff: StaffRow[]): IdentityResolver {
         byNameMap.set(n, s.staff_id);
       }
     }
+    if (s.active === false) archivedIds.add(s.staff_id);
   }
   // Drop ambiguous names from the positive map so byName can't return a stale
   // first-wins value.
@@ -87,6 +92,9 @@ export function buildResolver(staff: StaffRow[]): IdentityResolver {
       return hit
         ? { staff_id: hit, via: 'name' }
         : { staff_id: null, via: 'unmatched' };
+    },
+    isArchived(staffId) {
+      return archivedIds.has(staffId);
     },
     stats() {
       return { staffCount: staff.length, ambiguousNames: [...ambiguous].sort() };
