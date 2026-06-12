@@ -68,6 +68,11 @@ function quote(name) {
 const SERVICE_ROLE_ONLY = new Set([
   'migration_baseline',
   '_eq_migrations',
+  // SKS-only comms tables (0066) — service_role path via Netlify fns; no browser access.
+  'sks_comms_jobs',
+  'sks_comms_po_lines',
+  'sks_comms_materials',
+  'sks_comms_labour_rates',
 ]);
 
 const { values: args } = parseArgs({

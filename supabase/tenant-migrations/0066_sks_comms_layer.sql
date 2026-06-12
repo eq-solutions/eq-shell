@@ -1,4 +1,5 @@
 -- Migration: 0066_sks_comms_layer
+-- @tenant-scope: sks
 -- Target:    ehowgjardagevnrluult (SKS tenant plane only — not zaap/EQ)
 -- Purpose:   NSW Comms job tracking layer.
 --            Replaces the Microsoft Working Job List Excel workbook.

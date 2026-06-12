@@ -581,7 +581,15 @@ if (!args['anon-only']) {
 // tables are informational (lineages diverge by design), not a failure.
 //
 // Keep SERVICE_ROLE_ONLY in sync with scripts/regen-tenant-baseline.mjs.
-const SERVICE_ROLE_ONLY = new Set(['migration_baseline', '_eq_migrations']);
+const SERVICE_ROLE_ONLY = new Set([
+  'migration_baseline',
+  '_eq_migrations',
+  // SKS-only comms tables (0066) — service_role path via Netlify fns; no browser access.
+  'sks_comms_jobs',
+  'sks_comms_po_lines',
+  'sks_comms_materials',
+  'sks_comms_labour_rates',
+]);
 
 function spineRlsSql(spineTables) {
   const values = spineTables.map(t => `('${t}')`).join(',');
@@ -943,8 +951,15 @@ async function loadSpineTables() {
   const files = (await readdir(dir)).filter(f => f.endsWith('.sql')).sort();
   const spine = new Set();
   const re = /create\s+table\s+(?:if\s+not\s+exists\s+)?app_data\.([a-z0-9_]+)/gi;
+  // Migrations annotated with `-- @tenant-scope: <slug>` apply to one plane only.
+  // Their tables are excluded from the universal spine so the drift check doesn't
+  // flag them as EXTRA/MISSING on the planes they don't target.
+  const tenantScopeRe = /--\s*@tenant-scope\s*:/i;
   for (const f of files) {
     const sql = await readFile(join(dir, f), 'utf8');
+    // Skip this file's CREATE TABLE statements if it's scoped to a single tenant.
+    if (tenantScopeRe.test(sql.slice(0, 500))) continue;
+    re.lastIndex = 0;
     let m;
     while ((m = re.exec(sql))) spine.add(m[1].toLowerCase());
   }
