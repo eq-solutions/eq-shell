@@ -33,6 +33,9 @@ const ALLOW = new Set([
   'eq-card', 'eq-field', 'eq-field__label', 'eq-field__error', 'eq-input', 'eq-field__input',
   // Intake:
   'eq-intake-pivots__head',
+  // QuotesSetup root container — unstyled wrapper from the ops-quotes work
+  // (deferred; quotes domain owns styling it). Children carry their own layout.
+  'eq-quotes__setup',
 ]);
 
 function walk(dir, exts, acc = []) {
@@ -55,7 +58,11 @@ if (existsSync('public/eq-tokens.css')) cssText += '\n' + readFileSync('public/e
 const defined = new Set();
 for (const m of cssText.matchAll(/\.(eq-[a-z0-9_-]+)/g)) defined.add(m[1]);
 
-const CLASS_RE = /\b(eq-[a-z0-9]+(?:-[a-z0-9]+)*(?:__[a-z0-9-]+)?(?:--[a-z0-9-]+)?)\b/g;
+// (?<!-) skips eq-* tokens that are part of a CSS custom property, e.g.
+// `var(--eq-sky)` appearing in an inline style on a line that ALSO has a
+// className. Those are design tokens, not classes — matching them produced a
+// false "missing CSS rule" failure. Real classNames are never preceded by `-`.
+const CLASS_RE = /(?<!-)\b(eq-[a-z0-9]+(?:-[a-z0-9]+)*(?:__[a-z0-9-]+)?(?:--[a-z0-9-]+)?)\b/g;
 const referenced = new Map(); // class -> "file:line"
 for (const f of tsxFiles) {
   const lines = readFileSync(f, 'utf8').split('\n');
