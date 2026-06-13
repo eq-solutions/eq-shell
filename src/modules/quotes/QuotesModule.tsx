@@ -433,10 +433,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     [supabase],
   );
 
+  // Data-fetch effect: loaders setState only after an await, so the synchronous
+  // cascading-render case react-hooks/set-state-in-effect targets doesn't apply.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     void loadQuotes(statusFilter, search);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const openDetail = useCallback(
     async (quoteId: string) => {
@@ -488,10 +492,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setAccordionQuotes((q.data as Quote[]) ?? []);
   }, [supabase]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (view === "accordion") void loadAccordion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const loadCustomers = useCallback(async () => {
     if (!supabase) return;
@@ -581,6 +587,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCalcOpen(false);
   };
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (view === "create" || view === "edit") {
       void loadCustomers();
@@ -590,6 +597,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── Create form helpers ───────────────────────────────────────────────────
 
