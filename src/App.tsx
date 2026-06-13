@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, lazy, Suspense, type ReactNode, type CSSProperties } from 'react';
+﻿import { useCallback, useEffect, useRef, useState, lazy, Suspense, type ReactNode, type CSSProperties } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -44,7 +44,7 @@ import CustomersHubPage from './pages/CustomersHubPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { StaffPage } from './pages/StaffPage';
 import ServiceIframe from './pages/ServiceIframe';
-import QuotesIframe from './pages/QuotesIframe';
+const QuotesNative = lazy(() => import('./pages/QuotesNative'));
 import StorageBrowser from './pages/StorageBrowser';
 import LicenceOcrPage from './pages/ocr/LicenceOcrPage';
 import NotFound from './pages/NotFound';
@@ -87,7 +87,6 @@ const IntakeServiceLanding = lazy(() =>
 // Plant & Equipment — internal calibration register. Permission-gated inside
 // the component (useCan), not an entitlement module, so no ModuleGate.
 const EquipmentModule = lazy(() => import('./modules/equipment/index'));
-// QuotesModule (link-out stub) replaced by QuotesIframe — persistent keeper below.
 
 // Inactive iframe keepers stay mounted but hidden. We must NOT use
 // `display: none`: an iframe laid out under display:none collapses to 0×0,
@@ -349,14 +348,13 @@ function TenantTree() {
     if (rest === 'field') return 'field' as const;
     if (rest === 'cards' || rest.startsWith('cards/')) return 'cards' as const;
     if (rest === 'service' || rest.startsWith('service/')) return 'service' as const;
-    if (rest === 'quotes' || rest.startsWith('quotes/')) return 'quotes' as const;
     return null;
   })();
 
   // Tracks iframes that have ever been activated. Ref (not state) so the
   // mutation doesn't trigger extra renders. Mutated during render — safe
   // because Set.add is idempotent and refs are not tracked by React.
-  const evermounted = useRef(new Set<'field' | 'cards' | 'service' | 'quotes'>());
+  const evermounted = useRef(new Set<'field' | 'cards' | 'service'>());
   if (activeIframe) evermounted.current.add(activeIframe);
 
   // Eager pre-warm: mount all enabled iframe apps in the background 2.5s
@@ -374,7 +372,6 @@ function TenantTree() {
   const fieldEnabled = moduleEnabled(session, 'field');
   const cardsEnabled = moduleEnabled(session, 'cards');
   const serviceEnabled = moduleEnabled(session, 'service');
-  const quotesEnabled = moduleEnabled(session, 'quotes');
 
   // Forced second-step gate: a manager/supervisor/platform-admin past
   // their grace runway is held on /settings/2fa until they enrol. Placed
@@ -403,11 +400,6 @@ function TenantTree() {
       {serviceEnabled && (evermounted.current.has('service') || eagerTriggered) && (
         <div style={activeIframe === 'service' ? undefined : HIDDEN_IFRAME_KEEPER_STYLE}>
           <ServiceIframe />
-        </div>
-      )}
-      {quotesEnabled && (evermounted.current.has('quotes') || eagerTriggered) && (
-        <div style={activeIframe === 'quotes' ? undefined : HIDDEN_IFRAME_KEEPER_STYLE}>
-          <QuotesIframe />
         </div>
       )}
       <Routes>
@@ -492,12 +484,16 @@ function TenantTree() {
           path="service"
           element={<ModuleGate module="service">{null}</ModuleGate>}
         />
-        {/* Quotes is a persistent iframe keeper (see above) — the route just
-            needs to exist so the active-iframe detection fires and the keeper
-            div becomes visible. No children required. */}
+        {/* Quotes — native pipeline module, reads from sks-canonical via eq_list_quotes RPCs */}
         <Route
           path="quotes"
-          element={<ModuleGate module="quotes">{null}</ModuleGate>}
+          element={
+            <ModuleGate module="quotes">
+              <Suspense fallback={<PageLoadingFallback />}>
+                <QuotesNative />
+              </Suspense>
+            </ModuleGate>
+          }
         />
         {/* Phase 1.F: admin user-management routes. Permission checks
             live in the page components via <Gate perm="..."> — the
