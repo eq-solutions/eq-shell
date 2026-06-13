@@ -43,6 +43,7 @@ import { getServiceClient, getUserSecurityGroupPerms } from './_shared/supabase.
 import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, signShellToken, signBridgeToken, hasBridgeSecret, hasSecretSalt } from './_shared/token.js';
 import { withSentry } from './_shared/sentry.js';
+import { checkShellOrigin } from './_shared/origin-check.js';
 
 const IFRAME_TOKEN_TTL_MS = 60 * 1000;
 
@@ -80,6 +81,10 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }
+
+  // Cross-subdomain CSRF guard (report-only until ENFORCE_IFRAME_ORIGIN=true).
+  const originBlock = checkShellOrigin(req, 'mint-iframe-token');
+  if (originBlock) return originBlock;
 
   if (!hasSecretSalt()) {
     return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });
