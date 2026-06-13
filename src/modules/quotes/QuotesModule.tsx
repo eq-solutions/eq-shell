@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
 import { computeSellRate, computeMarkupPct } from "./quoteMath";
+import { QuotesSetup } from "./QuotesSetup";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -314,7 +315,7 @@ function parseCSV(text: string): CoupaRow[] {
 // ---------------------------------------------------------------------------
 
 export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element {
-  type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit";
+  type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit" | "setup";
 
   // ── Main navigation ──────────────────────────────────────────────────────
   const [view, setView] = useState<ModuleView>("pipeline");
@@ -2030,19 +2031,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             + New Quote
           </button>
           <div className="eq-quotes__view-tabs">
-            {(["pipeline", "accordion", "import"] as ModuleView[]).map((v) => (
+            {(["pipeline", "accordion", "import", "setup"] as ModuleView[]).map((v) => (
               <button
                 key={v}
                 type="button"
                 className={`eq-quotes__view-tab${view === v ? " eq-quotes__view-tab--active" : ""}`}
                 onClick={() => setView(v)}
               >
-                {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : "Import Coupa"}
+                {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : v === "import" ? "Import Coupa" : "Setup"}
               </button>
             ))}
           </div>
         </div>
       </div>
+
+      {view === "setup" && <QuotesSetup supabase={supabase} />}
 
       {/* Pipeline view */}
       {view === "pipeline" && (
