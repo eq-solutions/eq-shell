@@ -45,6 +45,7 @@ import { CustomersPage } from './pages/CustomersPage';
 import { StaffPage } from './pages/StaffPage';
 import ServiceIframe from './pages/ServiceIframe';
 const QuotesNative = lazy(() => import('./pages/QuotesNative'));
+const EqQuotesExternal = lazy(() => import('./pages/EqQuotesExternal'));
 import StorageBrowser from './pages/StorageBrowser';
 import LicenceOcrPage from './pages/ocr/LicenceOcrPage';
 import NotFound from './pages/NotFound';
@@ -493,6 +494,15 @@ function TenantTree() {
                 <QuotesNative />
               </Suspense>
             </ModuleGate>
+          }
+        />
+        {/* EQ Quotes — opens quotes.eq.solutions in a new tab; always accessible */}
+        <Route
+          path="eq-quotes"
+          element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              <EqQuotesExternal />
+            </Suspense>
           }
         />
         {/* Phase 1.F: admin user-management routes. Permission checks
