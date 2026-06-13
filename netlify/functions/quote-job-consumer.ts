@@ -99,6 +99,13 @@ function extractQuoteId(payload: Record<string, unknown> | null): string | null 
   return val && UUID_RE.test(val) ? val : null;
 }
 
+/** Pull a canonical UUID (customer_id / site_id) out of a quote.accepted payload. */
+function extractUuid(payload: Record<string, unknown> | null, key: string): string | null {
+  if (!payload) return null;
+  const raw = payload[key];
+  return typeof raw === 'string' && UUID_RE.test(raw) ? raw : null;
+}
+
 /** Human-readable job title from the quote.accepted payload. */
 function buildTitle(payload: Record<string, unknown> | null): string {
   const ref  = payload && typeof payload.reference === 'string' ? payload.reference : null;
@@ -135,6 +142,11 @@ async function processTenant(slug: string, sinceIso: string): Promise<TenantStat
       console.warn('[quote-job-consumer] quote.accepted without a usable quote_id — skipped', { slug, eventId: ev.id });
       continue;
     }
+    // Canonical ids carried by the quote.accepted payload (emitted by
+    // eq_update_quote_status, migration 0082) link the job to the spine. Omitted
+    // keys leave the column null — the upsert tolerates partial bodies.
+    const customerId = extractUuid(ev.payload, 'customer_id');
+    const siteId     = extractUuid(ev.payload, 'site_id');
     const jobRes = await fetch(CANONICAL_ENDPOINT, {
       method: 'PUT',
       headers: {
@@ -147,7 +159,9 @@ async function processTenant(slug: string, sinceIso: string): Promise<TenantStat
         external_id: `eq-quotes:job:${quoteId}`,
         quote_id:    quoteId,
         title:       buildTitle(ev.payload),
-        // status omitted — DB default 'active'. customer_id/site_id enriched later.
+        ...(customerId ? { customer_id: customerId } : {}),
+        ...(siteId ? { site_id: siteId } : {}),
+        // status omitted — DB default 'active'.
       }),
       signal: AbortSignal.timeout(20_000),
     });
