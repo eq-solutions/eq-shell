@@ -707,6 +707,78 @@
   padding-top: 4px;
 }
 
+/* ── Overdue badge ───────────────────────────────────────────────────────── */
+.comms-overdue-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--eq-error, #C0392B);
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 10px;
+  padding: 1px 6px;
+}
+
+.comms-job-card--overdue {
+  border-left-color: var(--eq-error, #C0392B);
+}
+
+/* ── Line edit / delete actions column ───────────────────────────────────── */
+.comms-line-actions {
+  white-space: nowrap;
+}
+
+.comms-line-edit-btn--danger {
+  color: var(--eq-error, #C0392B);
+}
+
+.comms-line-edit-btn--danger:hover {
+  color: #7F1D1D;
+  background: #FEF2F2;
+}
+
+.comms-line-delete-confirm {
+  font-size: 0.7rem;
+  color: var(--eq-error, #C0392B);
+  margin-right: 4px;
+}
+
+/* ── Inline line edit form (full-row expand in table) ────────────────────── */
+.comms-line-edit-row td {
+  padding: 0;
+  background: var(--eq-bg, #F9FAFB);
+  border-bottom: 2px solid var(--eq-sky, #3DA8D8);
+}
+
+.comms-line-row--editing td {
+  background: var(--eq-ice, #EAF5FB);
+}
+
+.comms-line-edit-form {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comms-line-edit-form__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.comms-line-edit-form__actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* ── Monday brief overdue item ───────────────────────────────────────────── */
+.comms-brief__item--overdue strong { color: var(--eq-error, #C0392B); }
+
 /* ── Client tag (non-Microsoft jobs) ──────────────────────────────────────── */
 .comms-client-tag {
   background: var(--eq-ice, #EAF5FB);

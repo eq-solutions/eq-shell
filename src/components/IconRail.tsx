@@ -1,5 +1,5 @@
 import { useParams, useMatch } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, ScrollText } from 'lucide-react';
 import { AppRail, type AppRailItem } from '@eq-solutions/ui';
 import { useSession, type EqTier } from '../session';
 import { EqLogo } from './EqLogo';
@@ -24,10 +24,11 @@ interface RailItemDef {
 }
 
 const RAIL_ITEMS: RailItemDef[] = [
-  { key: 'field',   label: 'EQ Field',   icon: <Users size={20} strokeWidth={2} aria-hidden="true" />,      to: 'field'   },
-  { key: 'service', label: 'EQ Service', icon: <Wrench size={20} strokeWidth={2} aria-hidden="true" />,     to: 'service' },
-  { key: 'quotes',  label: 'EQ Ops',     icon: <FileText size={20} strokeWidth={2} aria-hidden="true" />,   to: 'quotes',  hideForTier: TRIAL_TIERS },
-  { key: 'cards',   label: 'EQ Cards',   icon: <CreditCard size={20} strokeWidth={2} aria-hidden="true" />, to: 'cards'   },
+  { key: 'field',     label: 'EQ Field',   icon: <Users size={20} strokeWidth={2} aria-hidden="true" />,       to: 'field'     },
+  { key: 'service',   label: 'EQ Service', icon: <Wrench size={20} strokeWidth={2} aria-hidden="true" />,      to: 'service'   },
+  { key: 'quotes',    label: 'EQ Ops',     icon: <FileText size={20} strokeWidth={2} aria-hidden="true" />,    to: 'quotes',    hideForTier: TRIAL_TIERS },
+  { key: 'eq-quotes', label: 'EQ Quotes',  icon: <ScrollText size={20} strokeWidth={2} aria-hidden="true" />, to: 'eq-quotes' },
+  { key: 'cards',     label: 'EQ Cards',   icon: <CreditCard size={20} strokeWidth={2} aria-hidden="true" />,  to: 'cards'     },
 ];
 
 export function IconRail() {

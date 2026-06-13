@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback, useId } from 'react';
-import { ChevronDown, ChevronRight, CheckCircle2, Circle, AlertTriangle, Plus, X, Pencil, Download, Search } from 'lucide-react';
+import { useState, useEffect, useCallback, useId, Fragment } from 'react';
+import {
+  ChevronDown, ChevronRight, CheckCircle2, Circle, AlertTriangle,
+  Plus, X, Pencil, Download, Search, Trash2, Check, AlertCircle,
+} from 'lucide-react';
 import { HubLayout } from '../../components/HubLayout';
 import { useSession } from '../../session';
 import { useCan } from '../../permissions';
@@ -33,23 +36,24 @@ interface CommsJob {
   total_value:       number;
   total_invoiced:    number;
   total_hours:       number;
+  total_materials:   number;
   line_count:        number;
 }
 
 interface PoLine {
-  line_id:          string;
-  po_number:        string | null;
-  description:      string;
-  requestor:        string | null;
-  fid_number:       string | null;
-  quote_number:     string | null;
-  date_approval:    string | null;
-  hours:            number | null;
-  materials_cost:   number | null;
-  price_ex_gst:     number | null;
-  complete_notes:   string | null;
-  invoice_number:   string | null;
-  invoiced_amount:  number | null;
+  line_id:         string;
+  po_number:       string | null;
+  description:     string;
+  requestor:       string | null;
+  fid_number:      string | null;
+  quote_number:    string | null;
+  date_approval:   string | null;
+  hours:           number | null;
+  materials_cost:  number | null;
+  price_ex_gst:    number | null;
+  complete_notes:  string | null;
+  invoice_number:  string | null;
+  invoiced_amount: number | null;
 }
 
 interface CommsEvent {
@@ -63,6 +67,21 @@ interface CommsEvent {
 interface StaffMember {
   id:   string;
   name: string;
+}
+
+interface LineEditForm {
+  po_number:       string;
+  description:     string;
+  requestor:       string;
+  fid_number:      string;
+  quote_number:    string;
+  date_approval:   string;
+  hours:           string;
+  materials_cost:  string;
+  price_ex_gst:    string;
+  invoice_number:  string;
+  invoiced_amount: string;
+  complete_notes:  string;
 }
 
 type TabKey = 'all' | JobStatus;
@@ -88,11 +107,21 @@ function matchesSearch(job: CommsJob, q: string): boolean {
     .some((v) => v?.toLowerCase().includes(lower));
 }
 
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isJobOverdue(job: CommsJob): boolean {
+  return !!job.target_completion
+    && job.target_completion < todayIso()
+    && (job.status === 'active' || job.status === 'on_hold');
+}
+
 function exportCSV(jobs: CommsJob[]) {
   const headers = [
     'Job #', 'Site Code', 'Site Name', 'Client', 'Status', 'Assigned',
     'Description', 'Start', 'Target', 'On Hold Since',
-    'Value ex-GST', 'Invoiced', 'Hours', 'Lines',
+    'Value ex-GST', 'Invoiced', 'Materials', 'Hours', 'Lines',
     'MOP', 'Pre-cable', 'Post-dock', 'Invoice raised',
   ];
   const rows = jobs.map((j) => [
@@ -108,6 +137,7 @@ function exportCSV(jobs: CommsJob[]) {
     j.on_hold_since ?? '',
     j.total_value,
     j.total_invoiced,
+    j.total_materials,
     j.total_hours,
     j.line_count,
     j.mop_received    ? 'Yes' : '',
@@ -122,8 +152,7 @@ function exportCSV(jobs: CommsJob[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const today = new Date().toISOString().slice(0, 10);
-  a.download = `nsw-comms-${today}.csv`;
+  a.download = `nsw-comms-${todayIso()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -149,11 +178,14 @@ const TABS: { key: TabKey; label: string }[] = [
 // ── Monday brief ─────────────────────────────────────────────────────────────
 
 function MondayBrief({ jobs }: { jobs: CommsJob[] }) {
+  const today           = todayIso();
+  const overdue         = jobs.filter((j) => j.target_completion && j.target_completion < today && (j.status === 'active' || j.status === 'on_hold'));
   const readyToInvoice  = jobs.filter((j) => j.post_dock_done && !j.invoice_raised && j.total_value > 0 && j.status !== 'closed');
   const unassignedActive = jobs.filter((j) => j.status === 'active' && !j.assigned_to);
-  const longOnHold      = jobs.filter((j) => j.status === 'on_hold');
+  const overdueIds      = new Set(overdue.map((j) => j.job_id));
+  const longOnHold      = jobs.filter((j) => j.status === 'on_hold' && !overdueIds.has(j.job_id));
 
-  const total = readyToInvoice.length + unassignedActive.length + longOnHold.length;
+  const total = overdue.length + readyToInvoice.length + unassignedActive.length + longOnHold.length;
   if (total === 0) return null;
 
   return (
@@ -163,6 +195,12 @@ function MondayBrief({ jobs }: { jobs: CommsJob[] }) {
         Action needed
       </div>
       <ul className="comms-brief__list">
+        {overdue.length > 0 && (
+          <li className="comms-brief__item comms-brief__item--overdue">
+            <strong>{overdue.length} job{overdue.length > 1 ? 's' : ''} overdue</strong>
+            {' — '}{overdue.map((j) => j.site_code).join(', ')}
+          </li>
+        )}
         {readyToInvoice.length > 0 && (
           <li className="comms-brief__item comms-brief__item--invoice">
             <strong>{readyToInvoice.length} job{readyToInvoice.length > 1 ? 's' : ''} ready to invoice</strong>
@@ -342,15 +380,15 @@ function AddLineForm({
   onCancel: () => void;
 }) {
   const [form, setForm] = useState({
-    po_number:     '',
-    description:   '',
-    requestor:     '',
-    fid_number:    '',
-    quote_number:  '',
-    date_approval: '',
-    hours:         '',
+    po_number:      '',
+    description:    '',
+    requestor:      '',
+    fid_number:     '',
+    quote_number:   '',
+    date_approval:  '',
+    hours:          '',
     materials_cost: '',
-    price_ex_gst:  '',
+    price_ex_gst:   '',
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr]       = useState<string | null>(null);
@@ -371,15 +409,15 @@ function AddLineForm({
         body: JSON.stringify({
           job_id: jobId,
           line: {
-            po_number:     form.po_number.trim()     || null,
-            description:   form.description.trim(),
-            requestor:     form.requestor.trim()     || null,
-            fid_number:    form.fid_number.trim()    || null,
-            quote_number:  form.quote_number.trim()  || null,
-            date_approval: form.date_approval        || null,
-            hours:         form.hours         ? parseFloat(form.hours)         : null,
+            po_number:      form.po_number.trim()      || null,
+            description:    form.description.trim(),
+            requestor:      form.requestor.trim()      || null,
+            fid_number:     form.fid_number.trim()     || null,
+            quote_number:   form.quote_number.trim()   || null,
+            date_approval:  form.date_approval         || null,
+            hours:          form.hours          ? parseFloat(form.hours)          : null,
             materials_cost: form.materials_cost ? parseFloat(form.materials_cost) : null,
-            price_ex_gst:  form.price_ex_gst  ? parseFloat(form.price_ex_gst)  : null,
+            price_ex_gst:   form.price_ex_gst   ? parseFloat(form.price_ex_gst)   : null,
           },
         }),
       });
@@ -398,7 +436,7 @@ function AddLineForm({
       <div className="comms-add-line-form__row">
         <div className="comms-edit-field comms-edit-field--grow">
           <label>Description *</label>
-          <input type="text" value={form.description} onChange={set('description')} placeholder="Work description" />
+          <input type="text" value={form.description} onChange={set('description')} placeholder="Work description" autoFocus />
         </div>
         <div className="comms-edit-field">
           <label>PO #</label>
@@ -470,23 +508,28 @@ function JobCard({
   const [status, setStatus]         = useState<JobStatus>(job.status);
 
   // Header edit state
-  const [siteCode, setSiteCode]             = useState(job.site_code);
-  const [siteName, setSiteName]             = useState(job.site_name ?? '');
-  const [client, setClient]                 = useState(job.client);
-  const [jobNumber, setJobNumber]           = useState(job.job_number ?? '');
-  const [description, setDescription]       = useState(job.description ?? '');
-  const [startDate, setStartDate]           = useState(job.start_date ?? '');
+  const [siteCode, setSiteCode]                 = useState(job.site_code);
+  const [siteName, setSiteName]                 = useState(job.site_name ?? '');
+  const [client, setClient]                     = useState(job.client);
+  const [jobNumber, setJobNumber]               = useState(job.job_number ?? '');
+  const [description, setDescription]           = useState(job.description ?? '');
+  const [startDate, setStartDate]               = useState(job.start_date ?? '');
   const [targetCompletion, setTargetCompletion] = useState(job.target_completion ?? '');
-  const [onHoldSince, setOnHoldSince]       = useState(job.on_hold_since ?? '');
+  const [onHoldSince, setOnHoldSince]           = useState(job.on_hold_since ?? '');
 
-  const [saving, setSaving]       = useState(false);
+  const [saving, setSaving]         = useState(false);
   const [showAddLine, setShowAddLine] = useState(false);
 
-  // Per-line invoice edit
-  const [editLineId, setEditLineId] = useState<string | null>(null);
-  const [invNumber, setInvNumber]   = useState('');
-  const [invAmount, setInvAmount]   = useState('');
-  const [savingLine, setSavingLine] = useState(false);
+  // Per-line edit state (full form)
+  const [editLineId, setEditLineId]     = useState<string | null>(null);
+  const [lineEditForm, setLineEditForm] = useState<LineEditForm | null>(null);
+  const [savingLine, setSavingLine]     = useState(false);
+
+  // Per-line delete state
+  const [deleteLineId, setDeleteLineId] = useState<string | null>(null);
+  const [deletingLine, setDeletingLine] = useState(false);
+
+  const overdue = isJobOverdue(job);
 
   const fetchDetail = useCallback(async (force = false) => {
     if (!force && lines !== null) return;
@@ -537,32 +580,62 @@ function JobCard({
 
   const saveEdits = () => {
     const patch: Record<string, unknown> = {};
-    // Operational fields
     if (assignedTo !== (job.assigned_to ?? '')) patch.assigned_to = assignedTo || null;
     if (notes      !== (job.notes      ?? '')) patch.notes       = notes || null;
     if (status     !== job.status)             patch.status      = status;
-    // Header fields
-    if (siteCode        !== job.site_code)              patch.site_code         = siteCode.trim().toUpperCase() || job.site_code;
-    if (siteName        !== (job.site_name ?? ''))       patch.site_name         = siteName.trim() || null;
-    if (client          !== job.client)                  patch.client            = client.trim() || job.client;
-    if (jobNumber       !== (job.job_number ?? ''))      patch.job_number        = jobNumber.trim() || null;
-    if (description     !== (job.description ?? ''))     patch.description       = description.trim() || null;
-    if (startDate       !== (job.start_date ?? ''))      patch.start_date        = startDate || null;
+    if (siteCode        !== job.site_code)                patch.site_code         = siteCode.trim().toUpperCase() || job.site_code;
+    if (siteName        !== (job.site_name ?? ''))         patch.site_name         = siteName.trim() || null;
+    if (client          !== job.client)                    patch.client            = client.trim() || job.client;
+    if (jobNumber       !== (job.job_number ?? ''))        patch.job_number        = jobNumber.trim() || null;
+    if (description     !== (job.description ?? ''))       patch.description       = description.trim() || null;
+    if (startDate       !== (job.start_date ?? ''))        patch.start_date        = startDate || null;
     if (targetCompletion !== (job.target_completion ?? '')) patch.target_completion = targetCompletion || null;
-    if (onHoldSince     !== (job.on_hold_since ?? ''))   patch.on_hold_since     = onHoldSince || null;
+
+    // Auto-set on_hold_since when moving to on_hold; clear when leaving
+    let effectiveHoldSince = onHoldSince;
+    if (status === 'on_hold' && !effectiveHoldSince) {
+      effectiveHoldSince = todayIso();
+      setOnHoldSince(effectiveHoldSince);
+    } else if (status !== 'on_hold') {
+      effectiveHoldSince = '';
+    }
+    if (effectiveHoldSince !== (job.on_hold_since ?? '')) patch.on_hold_since = effectiveHoldSince || null;
 
     if (Object.keys(patch).length === 0) return;
     patchJob(patch);
   };
 
+  // ── Line editing ───────────────────────────────────────────────────────────
+
   const startLineEdit = (line: PoLine) => {
+    setDeleteLineId(null);
     setEditLineId(line.line_id);
-    setInvNumber(line.invoice_number ?? '');
-    setInvAmount(line.invoiced_amount != null ? String(line.invoiced_amount) : '');
+    setLineEditForm({
+      po_number:       line.po_number ?? '',
+      description:     line.description,
+      requestor:       line.requestor ?? '',
+      fid_number:      line.fid_number ?? '',
+      quote_number:    line.quote_number ?? '',
+      date_approval:   line.date_approval ? line.date_approval.slice(0, 10) : '',
+      hours:           line.hours != null ? String(line.hours) : '',
+      materials_cost:  line.materials_cost != null ? String(line.materials_cost) : '',
+      price_ex_gst:    line.price_ex_gst != null ? String(line.price_ex_gst) : '',
+      invoice_number:  line.invoice_number ?? '',
+      invoiced_amount: line.invoiced_amount != null ? String(line.invoiced_amount) : '',
+      complete_notes:  line.complete_notes ?? '',
+    });
   };
 
-  const saveLineInvoice = async () => {
-    if (!editLineId) return;
+  const cancelLineEdit = () => {
+    setEditLineId(null);
+    setLineEditForm(null);
+  };
+
+  const setLineField = (k: keyof LineEditForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setLineEditForm((f) => f ? { ...f, [k]: e.target.value } : f);
+
+  const saveLineEdit = async () => {
+    if (!editLineId || !lineEditForm) return;
     setSavingLine(true);
     try {
       const res = await fetch('/.netlify/functions/comms-jobs', {
@@ -570,20 +643,28 @@ function JobCard({
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          job_id: job.job_id,
-          line_id: editLineId,
+          job_id:     job.job_id,
+          line_id:    editLineId,
           line_patch: {
-            invoice_number:  invNumber || null,
-            invoiced_amount: invAmount ? parseFloat(invAmount) : null,
+            po_number:       lineEditForm.po_number.trim()      || null,
+            description:     lineEditForm.description.trim()    || null,
+            requestor:       lineEditForm.requestor.trim()      || null,
+            fid_number:      lineEditForm.fid_number.trim()     || null,
+            quote_number:    lineEditForm.quote_number.trim()   || null,
+            date_approval:   lineEditForm.date_approval         || null,
+            hours:           lineEditForm.hours          ? parseFloat(lineEditForm.hours)          : null,
+            materials_cost:  lineEditForm.materials_cost ? parseFloat(lineEditForm.materials_cost) : null,
+            price_ex_gst:    lineEditForm.price_ex_gst   ? parseFloat(lineEditForm.price_ex_gst)   : null,
+            invoice_number:  lineEditForm.invoice_number.trim()  || null,
+            invoiced_amount: lineEditForm.invoiced_amount ? parseFloat(lineEditForm.invoiced_amount) : null,
+            complete_notes:  lineEditForm.complete_notes.trim()  || null,
           },
         }),
       });
       const data = await res.json();
       if (data.ok) {
-        setLines((prev) =>
-          prev ? prev.map((l) => l.line_id === editLineId ? { ...l, ...data.line } : l) : prev,
-        );
-        setEditLineId(null);
+        setLines((prev) => prev ? prev.map((l) => l.line_id === editLineId ? { ...l, ...data.line } : l) : prev);
+        cancelLineEdit();
         fetchDetail(true);
       }
     } finally {
@@ -591,11 +672,32 @@ function JobCard({
     }
   };
 
+  const confirmDeleteLine = async () => {
+    if (!deleteLineId) return;
+    setDeletingLine(true);
+    try {
+      const res = await fetch('/.netlify/functions/comms-jobs', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: job.job_id, line_id: deleteLineId, delete_line: true }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setLines((prev) => prev ? prev.filter((l) => l.line_id !== deleteLineId) : prev);
+        setDeleteLineId(null);
+        fetchDetail(true);
+      }
+    } finally {
+      setDeletingLine(false);
+    }
+  };
+
   const invoiceNeeded = job.total_value > 0 && !job.invoice_raised && (job.post_dock_done || job.status === 'complete');
   const staffListId   = 'comms-staff-list';
 
   return (
-    <div className={`comms-job-card comms-job-card--${job.status}${open ? ' comms-job-card--expanded' : ''}`}>
+    <div className={`comms-job-card comms-job-card--${job.status}${open ? ' comms-job-card--expanded' : ''}${overdue ? ' comms-job-card--overdue' : ''}`}>
       {/* ── Header ── */}
       <button
         type="button"
@@ -613,9 +715,10 @@ function JobCard({
           <div className="comms-job-card__meta">
             <span>{STATUS_LABELS[job.status]}</span>
             {job.client !== 'Microsoft' && <span className="comms-client-tag">{job.client}</span>}
+            {overdue && <span className="comms-overdue-badge"><AlertCircle size={10} /> Overdue</span>}
             {job.total_hours > 0 && <span>{Math.round(job.total_hours)}h</span>}
             {job.line_count > 1 && <span>{job.line_count} PO lines</span>}
-            {job.target_completion && <span>Target: {job.target_completion}</span>}
+            {job.target_completion && !overdue && <span>Target: {job.target_completion}</span>}
           </div>
         </div>
         <div className="comms-job-card__right">
@@ -648,7 +751,6 @@ function JobCard({
       {/* ── Expanded detail ── */}
       {open && (
         <div id={cardDetailId}>
-          {/* Sub-tabs */}
           <div className="comms-detail-tabs" role="tablist" aria-label="Job details">
             {(['lines', 'history'] as const).map((t) => (
               <button
@@ -692,71 +794,137 @@ function JobCard({
                       </thead>
                       <tbody>
                         {lines.map((l) => (
-                          <tr key={l.line_id}>
-                            {editLineId === l.line_id ? (
-                              <>
-                                <td colSpan={9}>{l.po_number ?? '—'} · {l.description}</td>
-                                <td className="num">
-                                  <input
-                                    className="comms-line-edit-input"
-                                    type="text"
-                                    value={invNumber}
-                                    onChange={(e) => setInvNumber(e.target.value)}
-                                    placeholder="Inv #"
-                                    aria-label="Invoice number"
-                                  />
+                          <Fragment key={l.line_id}>
+                            {/* Data row */}
+                            <tr className={editLineId === l.line_id ? 'comms-line-row--editing' : ''}>
+                              <td>{l.po_number ?? '—'}</td>
+                              <td>{l.fid_number ?? '—'}</td>
+                              <td>{l.description}</td>
+                              <td>{l.quote_number ?? '—'}</td>
+                              <td>{l.requestor ?? '—'}</td>
+                              <td>{l.date_approval ? l.date_approval.slice(0, 10) : '—'}</td>
+                              <td className="num">{l.hours ?? '—'}</td>
+                              <td className="num">{fmtMoney(l.materials_cost)}</td>
+                              <td className="num">{fmtMoney(l.price_ex_gst)}</td>
+                              <td className="num">{l.invoice_number ?? '—'}</td>
+                              <td className="num">{l.invoiced_amount != null ? fmtMoney(l.invoiced_amount) : '—'}</td>
+                              {canEdit && (
+                                <td className="comms-line-actions">
+                                  {deleteLineId === l.line_id ? (
+                                    <>
+                                      <span className="comms-line-delete-confirm">Remove?</span>
+                                      <button
+                                        type="button"
+                                        className="comms-line-edit-btn comms-line-edit-btn--danger"
+                                        onClick={confirmDeleteLine}
+                                        disabled={deletingLine}
+                                        aria-label="Confirm delete"
+                                      >
+                                        {deletingLine ? '…' : <Check size={12} />}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="comms-line-edit-btn"
+                                        onClick={() => setDeleteLineId(null)}
+                                        aria-label="Cancel delete"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="comms-line-edit-btn"
+                                        onClick={() => startLineEdit(l)}
+                                        aria-label={`Edit ${l.description}`}
+                                      >
+                                        <Pencil size={12} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="comms-line-edit-btn comms-line-edit-btn--danger"
+                                        onClick={() => { cancelLineEdit(); setDeleteLineId(l.line_id); }}
+                                        aria-label={`Delete ${l.description}`}
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </>
+                                  )}
                                 </td>
-                                <td className="num">
-                                  <input
-                                    className="comms-line-edit-input comms-line-edit-input--num"
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={invAmount}
-                                    onChange={(e) => setInvAmount(e.target.value)}
-                                    placeholder="0.00"
-                                    aria-label="Invoiced amount"
-                                  />
+                              )}
+                            </tr>
+
+                            {/* Full edit form — expands inline below the data row */}
+                            {editLineId === l.line_id && lineEditForm && (
+                              <tr className="comms-line-edit-row">
+                                <td colSpan={canEdit ? 12 : 11}>
+                                  <div className="comms-line-edit-form">
+                                    <div className="comms-line-edit-form__row">
+                                      <div className="comms-edit-field comms-edit-field--grow2">
+                                        <label>Description</label>
+                                        <input type="text" value={lineEditForm.description} onChange={setLineField('description')} />
+                                      </div>
+                                      <div className="comms-edit-field comms-edit-field--grow">
+                                        <label>Requestor</label>
+                                        <input type="text" value={lineEditForm.requestor} onChange={setLineField('requestor')} />
+                                      </div>
+                                    </div>
+                                    <div className="comms-line-edit-form__row">
+                                      <div className="comms-edit-field">
+                                        <label>PO #</label>
+                                        <input type="text" value={lineEditForm.po_number} onChange={setLineField('po_number')} />
+                                      </div>
+                                      <div className="comms-edit-field">
+                                        <label>FID #</label>
+                                        <input type="text" value={lineEditForm.fid_number} onChange={setLineField('fid_number')} />
+                                      </div>
+                                      <div className="comms-edit-field">
+                                        <label>Quote #</label>
+                                        <input type="text" value={lineEditForm.quote_number} onChange={setLineField('quote_number')} />
+                                      </div>
+                                      <div className="comms-edit-field">
+                                        <label>Approved</label>
+                                        <input type="date" value={lineEditForm.date_approval} onChange={setLineField('date_approval')} />
+                                      </div>
+                                      <div className="comms-edit-field comms-edit-field--num">
+                                        <label>Hours</label>
+                                        <input type="number" min="0" step="0.5" value={lineEditForm.hours} onChange={setLineField('hours')} />
+                                      </div>
+                                      <div className="comms-edit-field comms-edit-field--num">
+                                        <label>Materials ($)</label>
+                                        <input type="number" min="0" step="0.01" value={lineEditForm.materials_cost} onChange={setLineField('materials_cost')} />
+                                      </div>
+                                      <div className="comms-edit-field comms-edit-field--num">
+                                        <label>Value ($)</label>
+                                        <input type="number" min="0" step="0.01" value={lineEditForm.price_ex_gst} onChange={setLineField('price_ex_gst')} />
+                                      </div>
+                                      <div className="comms-edit-field">
+                                        <label>Invoice #</label>
+                                        <input type="text" value={lineEditForm.invoice_number} onChange={setLineField('invoice_number')} />
+                                      </div>
+                                      <div className="comms-edit-field comms-edit-field--num">
+                                        <label>Invoiced ($)</label>
+                                        <input type="number" min="0" step="0.01" value={lineEditForm.invoiced_amount} onChange={setLineField('invoiced_amount')} />
+                                      </div>
+                                    </div>
+                                    <div className="comms-line-edit-form__row">
+                                      <div className="comms-edit-field comms-edit-field--grow2">
+                                        <label>Completion notes</label>
+                                        <input type="text" value={lineEditForm.complete_notes} onChange={setLineField('complete_notes')} placeholder="Any notes on completion…" />
+                                      </div>
+                                    </div>
+                                    <div className="comms-line-edit-form__actions">
+                                      <button type="button" className="comms-save-btn" onClick={saveLineEdit} disabled={savingLine}>
+                                        {savingLine ? 'Saving…' : 'Save changes'}
+                                      </button>
+                                      <button type="button" className="comms-cancel-btn" onClick={cancelLineEdit}>Cancel</button>
+                                    </div>
+                                  </div>
                                 </td>
-                                {canEdit && (
-                                  <td>
-                                    <button type="button" className="comms-save-btn comms-save-btn--sm" onClick={saveLineInvoice} disabled={savingLine}>
-                                      {savingLine ? '…' : 'Save'}
-                                    </button>
-                                    <button type="button" className="comms-cancel-btn comms-cancel-btn--sm" onClick={() => setEditLineId(null)}>
-                                      <X size={12} />
-                                    </button>
-                                  </td>
-                                )}
-                              </>
-                            ) : (
-                              <>
-                                <td>{l.po_number ?? '—'}</td>
-                                <td>{l.fid_number ?? '—'}</td>
-                                <td>{l.description}</td>
-                                <td>{l.quote_number ?? '—'}</td>
-                                <td>{l.requestor ?? '—'}</td>
-                                <td>{l.date_approval ? l.date_approval.slice(0, 10) : '—'}</td>
-                                <td className="num">{l.hours ?? '—'}</td>
-                                <td className="num">{fmtMoney(l.materials_cost)}</td>
-                                <td className="num">{fmtMoney(l.price_ex_gst)}</td>
-                                <td className="num">{l.invoice_number ?? '—'}</td>
-                                <td className="num">{l.invoiced_amount != null ? fmtMoney(l.invoiced_amount) : '—'}</td>
-                                {canEdit && (
-                                  <td>
-                                    <button
-                                      type="button"
-                                      className="comms-line-edit-btn"
-                                      onClick={() => startLineEdit(l)}
-                                      aria-label={`Edit invoice for ${l.description}`}
-                                    >
-                                      <Pencil size={12} />
-                                    </button>
-                                  </td>
-                                )}
-                              </>
+                              </tr>
                             )}
-                          </tr>
+                          </Fragment>
                         ))}
                       </tbody>
                     </table>
@@ -804,7 +972,6 @@ function JobCard({
           {/* ── Edit bar ── */}
           {canEdit && (
             <div className="comms-edit-bar">
-              {/* Row 1: operational */}
               <div className="comms-edit-bar__row">
                 <div className="comms-edit-field">
                   <label htmlFor={`${cardId}-status`}>Status</label>
@@ -851,7 +1018,6 @@ function JobCard({
                   </div>
                 )}
               </div>
-              {/* Row 2: header fields */}
               <div className="comms-edit-bar__row comms-edit-bar__row--header">
                 <div className="comms-edit-field">
                   <label htmlFor={`${cardId}-site-code`}>Site code</label>
@@ -946,13 +1112,13 @@ export default function CommsModule() {
   const session = useSession();
   const canEdit = useCan(COMMS_UPDATE_PERM);
 
-  const [jobs, setJobs]       = useState<CommsJob[]>([]);
-  const [staff, setStaff]     = useState<StaffMember[]>([]);
-  const [tab, setTab]         = useState<TabKey>('active');
-  const [search, setSearch]   = useState('');
+  const [jobs, setJobs]         = useState<CommsJob[]>([]);
+  const [staff, setStaff]       = useState<StaffMember[]>([]);
+  const [tab, setTab]           = useState<TabKey>('active');
+  const [search, setSearch]     = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -994,132 +1160,136 @@ export default function CommsModule() {
   const totalInvoiced = activeJobs.reduce((s, j) => s + j.total_invoiced, 0);
   const uninvoiced    = activeJobs.filter((j) => j.post_dock_done && !j.invoice_raised).length;
   const unassigned    = activeJobs.filter((j) => !j.assigned_to).length;
+  const overdueCount  = jobs.filter(isJobOverdue).length;
 
   if (!session) return null;
 
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
-      {/* Staff datalist — available to all JobCard inputs in this tree */}
-      <datalist id="comms-staff-list">
-        {staff.map((s) => <option key={s.id} value={s.name} />)}
-      </datalist>
-
-      {/* ── Page header ── */}
-      <div className="comms-header">
-        <div>
-          <h1 className="comms-header__title">NSW Comms — Job Pipeline</h1>
-          <div className="comms-header__sub">Microsoft / Equinix NSW jobs · SKS Technologies</div>
-        </div>
-        <div className="comms-header__actions">
-          <div className="comms-search">
-            <Search size={14} className="comms-search__icon" aria-hidden="true" />
-            <input
-              type="search"
-              className="comms-search__input"
-              placeholder="Search site, job #, client…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search jobs"
-            />
+      <div style={{ padding: '24px 28px', maxWidth: 1400 }}>
+        {/* Header */}
+        <div className="comms-header">
+          <div>
+            <h1 className="comms-header__title">NSW Comms</h1>
+            <div className="comms-header__sub">Job tracker · Microsoft · SKS Technologies</div>
           </div>
-          <button
-            type="button"
-            className="comms-icon-btn"
-            onClick={() => exportCSV(filtered)}
-            title="Export current view to CSV"
-            aria-label="Export to CSV"
-          >
-            <Download size={15} />
-          </button>
-          {canEdit && (
+          <div className="comms-header__actions">
+            <div className="comms-search">
+              <Search size={14} className="comms-search__icon" />
+              <input
+                type="search"
+                className="comms-search__input"
+                placeholder="Search jobs…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search jobs"
+              />
+            </div>
             <button
               type="button"
-              className="comms-save-btn"
-              onClick={() => setShowCreate((v) => !v)}
+              className="comms-icon-btn"
+              onClick={() => exportCSV(filtered)}
+              aria-label="Export CSV"
+              title="Export current view to CSV"
             >
-              <Plus size={14} /> New job
+              <Download size={15} />
             </button>
-          )}
-        </div>
-      </div>
-
-      {/* ── Create job form ── */}
-      {showCreate && canEdit && (
-        <CreateJobForm
-          onCreated={handleJobCreated}
-          onCancel={() => setShowCreate(false)}
-          staffListId="comms-staff-list"
-        />
-      )}
-
-      {/* ── KPI bar ── */}
-      <div className="comms-kpi-bar">
-        <div className="comms-kpi">
-          <div className="comms-kpi__label">Active jobs</div>
-          <div className="comms-kpi__value comms-kpi__value--sky">{activeJobs.length}</div>
-        </div>
-        <div className="comms-kpi">
-          <div className="comms-kpi__label">Active value</div>
-          <div className="comms-kpi__value">{fmtMoney(totalActive)}</div>
-        </div>
-        <div className="comms-kpi">
-          <div className="comms-kpi__label">Invoiced</div>
-          <div className="comms-kpi__value">{fmtMoney(totalInvoiced)}</div>
-        </div>
-        <div className="comms-kpi">
-          <div className="comms-kpi__label">Invoice needed</div>
-          <div className={`comms-kpi__value ${uninvoiced > 0 ? 'comms-kpi__value--amber' : ''}`}>{uninvoiced}</div>
-        </div>
-        <div className="comms-kpi">
-          <div className="comms-kpi__label">Unassigned</div>
-          <div className={`comms-kpi__value ${unassigned > 0 ? 'comms-kpi__value--red' : ''}`}>{unassigned}</div>
-        </div>
-      </div>
-
-      {/* ── Monday brief ── */}
-      {!loading && !error && <MondayBrief jobs={jobs} />}
-
-      {/* ── Tabs ── */}
-      <div className="comms-tabs" role="tablist" aria-label="Filter by status">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            role="tab"
-            type="button"
-            aria-selected={tab === t.key}
-            className={`comms-tab${tab === t.key ? ' comms-tab--active' : ''}`}
-            onClick={() => setTab(t.key)}
-          >
-            {t.label}
-            {(counts[t.key] ?? 0) > 0 && (
-              <span className="comms-tab__count">{counts[t.key]}</span>
+            {canEdit && (
+              <button
+                type="button"
+                className="comms-save-btn"
+                onClick={() => setShowCreate((v) => !v)}
+              >
+                <Plus size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                New job
+              </button>
             )}
-          </button>
-        ))}
-      </div>
+          </div>
+        </div>
 
-      {/* ── Content ── */}
-      {loading && <div className="comms-loading">Loading jobs…</div>}
-      {error   && <div className="comms-empty">{error}</div>}
-      {!loading && !error && (
-        <div className="comms-job-list">
-          {filtered.length === 0 && (
-            <div className="comms-empty">
-              {search
-                ? `No jobs matching "${search}".`
-                : `No ${tab === 'all' ? '' : STATUS_LABELS[tab as JobStatus] + ' '}jobs found.`}
-            </div>
-          )}
-          {filtered.map((job) => (
-            <JobCard
-              key={job.job_id}
-              job={job}
-              canEdit={canEdit}
-              onJobUpdated={handleJobUpdated}
-            />
+        {/* KPI bar */}
+        <div className="comms-kpi-bar">
+          <div className="comms-kpi">
+            <div className="comms-kpi__label">Active value</div>
+            <div className="comms-kpi__value comms-kpi__value--sky">{fmtMoney(totalActive)}</div>
+          </div>
+          <div className="comms-kpi">
+            <div className="comms-kpi__label">Invoiced</div>
+            <div className="comms-kpi__value">{fmtMoney(totalInvoiced)}</div>
+          </div>
+          <div className="comms-kpi">
+            <div className="comms-kpi__label">Hours (active)</div>
+            <div className="comms-kpi__value">{Math.round(activeJobs.reduce((s, j) => s + j.total_hours, 0))}</div>
+          </div>
+          <div className="comms-kpi">
+            <div className="comms-kpi__label">Unassigned</div>
+            <div className={`comms-kpi__value${unassigned > 0 ? ' comms-kpi__value--amber' : ''}`}>{unassigned}</div>
+          </div>
+          <div className="comms-kpi">
+            <div className="comms-kpi__label">Invoice needed</div>
+            <div className={`comms-kpi__value${uninvoiced > 0 ? ' comms-kpi__value--amber' : ''}`}>{uninvoiced}</div>
+          </div>
+          <div className="comms-kpi">
+            <div className="comms-kpi__label">Overdue</div>
+            <div className={`comms-kpi__value${overdueCount > 0 ? ' comms-kpi__value--red' : ''}`}>{overdueCount}</div>
+          </div>
+        </div>
+
+        {/* Monday brief */}
+        <MondayBrief jobs={jobs} />
+
+        {/* Create job form */}
+        {showCreate && canEdit && (
+          <CreateJobForm
+            onCreated={handleJobCreated}
+            onCancel={() => setShowCreate(false)}
+            staffListId="comms-staff-list"
+          />
+        )}
+
+        {/* Status tabs */}
+        <div className="comms-tabs" role="tablist" aria-label="Filter by status">
+          {TABS.map(({ key, label }) => (
+            <button
+              key={key}
+              role="tab"
+              type="button"
+              aria-selected={tab === key}
+              className={`comms-tab${tab === key ? ' comms-tab--active' : ''}`}
+              onClick={() => setTab(key)}
+            >
+              {label}
+              {counts[key] != null && counts[key]! > 0 && (
+                <span className="comms-tab__count">{counts[key]}</span>
+              )}
+            </button>
           ))}
         </div>
-      )}
+
+        {error && <div className="comms-empty">{error}</div>}
+        {loading && !error && <div className="comms-loading">Loading jobs…</div>}
+        {!loading && !error && filtered.length === 0 && (
+          <div className="comms-empty">
+            {search ? `No jobs match "${search}"` : 'No jobs in this status.'}
+          </div>
+        )}
+
+        {!loading && !error && filtered.length > 0 && (
+          <div className="comms-job-list">
+            <datalist id="comms-staff-list">
+              {staff.map((s) => <option key={s.id} value={s.name} />)}
+            </datalist>
+            {filtered.map((job) => (
+              <JobCard
+                key={job.job_id}
+                job={job}
+                canEdit={canEdit}
+                onJobUpdated={handleJobUpdated}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </HubLayout>
   );
 }
