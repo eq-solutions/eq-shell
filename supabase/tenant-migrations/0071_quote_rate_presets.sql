@@ -85,18 +85,13 @@ BEGIN
     INSERT INTO app_data.quote_rate_presets
       (tenant_id, category, description, unit, unit_rate_cents, qty_thousandths, sort_order)
     VALUES
-      -- Labour
-      (v_tenant_id, 'Labour',    'Electrician — Day Rate',          'hr',   22000,  8000,  10),
-      (v_tenant_id, 'Labour',    'Electrician — Night / OT Rate',   'hr',   33000,  8000,  20),
-      (v_tenant_id, 'Labour',    'Supervisor — Day Rate',           'hr',   25000,  8000,  30),
-      (v_tenant_id, 'Labour',    'Labourer / Offsider',             'hr',   16500,  8000,  40),
-      -- Site costs
-      (v_tenant_id, 'Site',      'Site Induction',                  'ea',   15000,  1000,  10),
-      (v_tenant_id, 'Site',      'Traffic Control',                 'day',  85000,  1000,  20),
-      (v_tenant_id, 'Site',      'EWP Hire',                        'day',  48000,  1000,  30),
-      -- Materials
-      (v_tenant_id, 'Materials', 'Materials — Allowance',           'lot',      0,  1000,  10),
-      (v_tenant_id, 'Materials', 'Cabling — Allowance',             'lot',      0,  1000,  20);
+      -- Labour — rates drawn from actual SKS line items
+      (v_tenant_id, 'Labour',    'Equinix — Normal Hours',          'hrs', 12500, 1000, 10),
+      (v_tenant_id, 'Labour',    'Equinix — After Hours',           'hrs', 19000, 1000, 20),
+      (v_tenant_id, 'Labour',    'Electrician — Normal Hours',      'hrs', 13500, 1000, 30),
+      (v_tenant_id, 'Labour',    'SE Field Services — Normal Hours','hrs', 13500, 1000, 40),
+      -- Materials — common placeholder lines
+      (v_tenant_id, 'Materials', 'Materials / Consumables / Sundries', 'ea', 0, 1000, 10);
   END IF;
 END;
 $$;
