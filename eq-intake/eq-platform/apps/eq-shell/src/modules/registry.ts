@@ -58,9 +58,8 @@ export const MODULE_REGISTRY: ModuleDefinition[] = [
     id: "quotes",
     label: "Quotes",
     path: "/quotes",
-    // Stub for now — slot in @eq/quotes when it exists
     component: lazy(() =>
-      import("./QuotesStub.js").then((m) => ({ default: m.QuotesStub })),
+      import("./QuotesModuleHost.js").then((m) => ({ default: m.QuotesModuleHost })),
     ),
   },
   {
