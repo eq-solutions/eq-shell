@@ -100,10 +100,30 @@ const FINGERPRINT_SQL = `
     'columns', (
       select coalesce(jsonb_agg(sig order by sig), '[]'::jsonb) from (
         select table_name || '.' || column_name || ' ' || data_type
+               -- B3: capture precision/scale/length so varchar(50) vs varchar(100) or
+               -- numeric(10,2) vs numeric(12,4) registers as drift instead of silence.
+               || case
+                    when character_maximum_length is not null then '(' || character_maximum_length || ')'
+                    when numeric_precision is not null then '(' || numeric_precision || ',' || coalesce(numeric_scale, 0) || ')'
+                    else ''
+                  end
                || case when is_nullable = 'NO' then ' NOT NULL' else '' end as sig
         from information_schema.columns
         where table_schema = 'app_data'
       ) c
+    ),
+    'enums', (
+      -- B1: enum type label-sets across app_data + public. Without this dimension the
+      -- gate is BLIND to enum drift (e.g. eq_role 5-vs-6 labels, worker_credential_type
+      -- 26-vs-7) — the labels never appeared in any fingerprint, so the drift persisted.
+      select coalesce(jsonb_agg(sig order by sig), '[]'::jsonb) from (
+        select t.typname || ' = [' || string_agg(e.enumlabel, ',' order by e.enumsortorder) || ']' as sig
+        from pg_type t
+        join pg_enum e on e.enumtypid = t.oid
+        join pg_namespace n on n.oid = t.typnamespace
+        where t.typtype = 'e' and n.nspname in ('app_data', 'public')
+        group by t.typname
+      ) en
     ),
     'functions', (
       select coalesce(jsonb_agg(sig order by sig), '[]'::jsonb) from (
@@ -203,7 +223,7 @@ const FINGERPRINT_SQL = `
 
 async function fingerprint(ref) {
   const rows = await mgmtRows(ref, FINGERPRINT_SQL);
-  return rows?.[0]?.fp ?? { tables: [], columns: [], functions: [], policies: [], foreign_keys: [], effective_rls: [] };
+  return rows?.[0]?.fp ?? { tables: [], columns: [], functions: [], policies: [], foreign_keys: [], effective_rls: [], enums: [] };
 }
 
 // ─── load tenants ───────────────────────────────────────────────────────────
@@ -242,7 +262,7 @@ if (!args['anon-only']) {
   // 'effective_rls' is the SEMANTIC isolation dimension used for spine enforcement;
   // 'policies' is kept for raw visibility but is informational only (its name/
   // decomposition differences are cosmetic — see tag() below).
-  const CATS = ['tables', 'columns', 'functions', 'policies', 'foreign_keys', 'effective_rls'];
+  const CATS = ['tables', 'columns', 'functions', 'policies', 'foreign_keys', 'effective_rls', 'enums'];
   const report = {};
   let drift = false;       // any cross-tenant difference (informational umbrella)
   let spineDrift = false;  // a difference that touches a SPINE table (blocking surface)
@@ -684,16 +704,28 @@ const POLICY_LINT_SQL = `
   SELECT
     t.tablename,
     c.relrowsecurity AS rls_on,
+    -- B4: is the table reachable by a browser role at all? RLS=on with NO
+    -- anon/authenticated grant and no policy is an INTENTIONAL lockdown (deny-all
+    -- is correct) and must PASS — not be pressured open. Only browser-reachable
+    -- tables that lack an isolation policy are real bugs.
+    exists(
+      SELECT 1 FROM information_schema.role_table_grants g
+      WHERE g.table_schema = 'app_data' AND g.table_name = t.tablename
+        AND g.grantee IN ('anon', 'authenticated')
+    ) AS caller_grant,
     (
+      -- B5: org_id is a valid isolation column too (tender_* scope on org_id, not
+      -- tenant_id). Count a policy scoping by EITHER so org_id-scoped tables are
+      -- not false-flagged as missing isolation.
       SELECT count(*)::int
       FROM pg_policies p
       WHERE p.schemaname = 'app_data' AND p.tablename = t.tablename
         AND p.permissive = 'PERMISSIVE'
         AND (
-          (p.qual       IS NOT NULL AND p.qual       LIKE '%tenant_id%') OR
-          (p.with_check IS NOT NULL AND p.with_check LIKE '%tenant_id%')
+          (p.qual       IS NOT NULL AND (p.qual       LIKE '%tenant_id%' OR p.qual       LIKE '%org_id%')) OR
+          (p.with_check IS NOT NULL AND (p.with_check LIKE '%tenant_id%' OR p.with_check LIKE '%org_id%'))
         )
-    ) AS tenant_policy_count
+    ) AS iso_policy_count
   FROM pg_tables t
   JOIN pg_class     c ON c.relname = t.tablename
   JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'app_data'
@@ -728,8 +760,12 @@ async function checkPolicyLint() {
       if (SERVICE_ROLE_ONLY.has(tbl)) continue;
       // RLS-off tables are caught by CHECK 4 — skip here (avoid double-reporting).
       if (r.rls_on === false) continue;
-      // RLS=on + no tenant_id policy = isolation gap.
-      if (r.tenant_policy_count === 0) {
+      // B4: RLS=on with NO browser grant is an intentional lockdown (deny-all is
+      // correct) — PASS, don't pressure it open. Only browser-reachable tables
+      // need an isolation policy.
+      if (r.caller_grant === false) continue;
+      // B5: RLS=on + browser-reachable + no tenant_id/org_id policy = real gap.
+      if (r.iso_policy_count === 0) {
         const isSpine = spine.has(tbl);
         violations.push({ table: tbl, isSpine });
       }
@@ -932,15 +968,15 @@ if (args.json) {
       if (p.error)   { console.log(`  ✗ ${p.label}: query error — ${p.error}`); continue; }
       if (!p.violations.length) {
         const miss = p.missing?.length ? ` (${p.missing.length} spine tables absent — lineage divergence)` : '';
-        console.log(`  ✓ ${p.label}: all RLS-on app_data tables have a tenant_id policy${miss}`);
+        console.log(`  ✓ ${p.label}: all browser-reachable RLS-on app_data tables have a tenant_id/org_id policy${miss}`);
       } else {
         const spineCount = p.violations.filter(v => v.isSpine).length;
-        console.log(`  ✗ ${p.label}: ${p.violations.length} table(s) with RLS=on but NO tenant_id policy (${spineCount} spine):`);
+        console.log(`  ✗ ${p.label}: ${p.violations.length} browser-reachable table(s) with RLS=on but NO tenant_id/org_id policy (${spineCount} spine):`);
         for (const v of p.violations) {
           const tag = v.isSpine ? ' [SPINE]' : '';
-          console.log(`      app_data.${v.table}${tag} — RLS-on, zero tenant_id-scoped policies → deny-all for browser`);
+          console.log(`      app_data.${v.table}${tag} — RLS-on + anon/authenticated grant, zero tenant-scoped policies → deny-all for browser`);
         }
-        console.log(`    Fix: add a permissive policy with USING (tenant_id = ...) to each table above.`);
+        console.log(`    Fix: add a permissive policy USING (tenant_id = ...) or USING (org_id = ...), or revoke the anon/authenticated grant if it is service-role-only.`);
       }
     }
   }

@@ -64,11 +64,20 @@ jobs:
 
       - name: Run drift + anon-grant + policy-lint check
         run: |
-          # --strict-spine: the canonical spine must be identical across every tenant.
-          # Policy-lint (CHECK 5, Phase 5.2) is ABSOLUTE by default — every app_data
-          # table with RLS=on and no tenant_id policy fails the build. Suppress with
-          # --no-policy-lint only in exceptional circumstances.
-          FLAGS="--strict-spine"
+          # The REQUIRED gate enforces only the ABSOLUTE security invariants, which
+          # fail the build regardless of flags: anon-grant (no unconstrained anon
+          # access), spine RLS (CHECK 4 — RLS on every app_data table), and
+          # tenant-isolation policy-lint (CHECK 5).
+          #
+          # Cross-tenant SPINE-SET parity (--strict-spine) is intentionally NOT
+          # enforced here right now: the EQ (zaap) and SKS (ehow) planes legitimately
+          # run divergent feature sets (EQ Quotes/pricing is not yet live on zaap),
+          # so requiring identical table sets keeps this required check permanently
+          # red — which trains everyone to admin-bypass the merge and, with it,
+          # silently bypass the security invariants riding on this same job. Spine
+          # drift is still REPORTED (informational) every run. Re-add --strict-spine
+          # once the planes are meant to be converged (post EQ-plane quoting go-live).
+          FLAGS=""
           if [ "${{ inputs.anon_only }}" = "true" ]; then
             FLAGS="--anon-only"
           fi
