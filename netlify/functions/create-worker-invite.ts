@@ -21,6 +21,7 @@ import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { normalizeAuPhone } from './_shared/phone.js';
 import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
+import { sendEmail } from './_shared/email.js';
 
 const VALID_ROLES = new Set(['manager', 'supervisor', 'employee', 'apprentice', 'labour_hire']);
 const INVITE_TTL_DAYS = 30;
@@ -73,12 +74,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const { data: org, error: orgErr } = await sb
     .schema('public')
     .from('organisations')
-    .select('id')
+    .select('id, name')
     .eq('tenant_id', session.tenant_id)
-    .maybeSingle<{ id: string }>();
+    .maybeSingle<{ id: string; name: string }>();
 
   if (orgErr) return json(500, { error: 'DB error resolving org: ' + orgErr.message });
   if (!org)   return json(400, { error: 'No organisation found for this tenant. Contact support.' });
+
+  const orgName = org.name || 'Your employer';
 
   // Find existing worker by phone (workers are global — a tradie can belong to
   // multiple orgs, so we match on phone across the whole workers table).
@@ -105,13 +108,24 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .maybeSingle<{ token: string; expires_at: string }>();
 
     if (existingInvite) {
+      const claimUrl = `https://cards.eq.solutions/claim/${existingInvite.token}`;
+      let emailDelivered = false;
+      if (email) {
+        const result = await sendEmail({
+          to: email,
+          subject: `You've been invited to join ${orgName}`,
+          text: `Hi ${firstName},\n\n${orgName} has invited you to join their team on EQ.\n\nClick the link below to set up your profile:\n${claimUrl}\n\nThis link expires on ${new Date(existingInvite.expires_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}.\n\nIf you didn't expect this invite, you can ignore it.`,
+        });
+        emailDelivered = result.delivered;
+      }
       return json(200, {
         ok: true,
-        claim_url: `https://cards.eq.solutions/claim/${existingInvite.token}`,
+        claim_url: claimUrl,
         token: existingInvite.token,
         worker_id: existingWorker.id,
         expires_at: existingInvite.expires_at,
         reused: true,
+        email_delivered: emailDelivered,
       });
     }
   }
@@ -165,12 +179,24 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(500, { error: 'Failed to create invite: ' + (inviteErr?.message ?? 'unknown') });
   }
 
+  const claimUrl = `https://cards.eq.solutions/claim/${invite.token}`;
+  let emailDelivered = false;
+  if (email) {
+    const result = await sendEmail({
+      to: email,
+      subject: `You've been invited to join ${orgName}`,
+      text: `Hi ${firstName},\n\n${orgName} has invited you to join their team on EQ.\n\nClick the link below to set up your profile:\n${claimUrl}\n\nThis link expires on ${new Date(invite.expires_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}.\n\nIf you didn't expect this invite, you can ignore it.`,
+    });
+    emailDelivered = result.delivered;
+  }
+
   return json(201, {
     ok: true,
-    claim_url:  `https://cards.eq.solutions/claim/${invite.token}`,
+    claim_url:  claimUrl,
     token:      invite.token,
     worker_id:  workerId,
     expires_at: invite.expires_at,
     reused:     false,
+    email_delivered: emailDelivered,
   });
 });
