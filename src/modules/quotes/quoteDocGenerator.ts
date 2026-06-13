@@ -226,9 +226,10 @@ const CAT_DOC_LABELS: Record<string, string> = {
   labour: "LABOUR",
   material: "MATERIALS",
   subcontractor: "SUBCONTRACTORS",
+  one_off: "ONE-OFF",
   "": "OTHER",
 };
-const CAT_ORDER = ["labour", "material", "subcontractor", ""];
+const CAT_ORDER = ["labour", "material", "subcontractor", "one_off", ""];
 
 function mkCell(w: number, text: string, opts: { bold?: boolean; right?: boolean; fill?: string; white?: boolean } = {}): string {
   const shd = opts.fill
@@ -498,10 +499,13 @@ export async function generateJobExcel(q: QuoteDocData): Promise<void> {
       : { t: "s", v: val };
   };
 
-  // Calculate category subtotals from line items
+  // Calculate category subtotals from line items. One-off items fold into the
+  // subcontractor budget bucket so no line total is dropped from the job sheet
+  // (the Word quote still shows One-off as its own group for the client).
   const catSubtotals: Record<string, number> = { labour: 0, material: 0, subcontractor: 0 };
   for (const li of q.line_items) {
-    const cat = li.category?.toLowerCase() ?? "";
+    let cat = li.category?.toLowerCase() ?? "";
+    if (cat === "one_off") cat = "subcontractor";
     if (cat in catSubtotals) catSubtotals[cat] += li.line_total_cents;
   }
 

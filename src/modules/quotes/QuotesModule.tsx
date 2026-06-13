@@ -4,6 +4,7 @@ import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
 import { computeSellRate, computeMarkupPct } from "./quoteMath";
 import { QuotesSetup } from "./QuotesSetup";
 import { captureRpcError } from "./quoteTelemetry";
+import { Table, type TableColumn } from "@eq-solutions/ui";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,6 +48,14 @@ interface QuoteNote {
   note_type: string;
   body: string;
   initials: string | null;
+  created_at: string;
+}
+
+interface QuoteAuditEntry {
+  audit_id: string;
+  action: string;
+  changes: Record<string, unknown> | null;
+  actor_initials: string | null;
   created_at: string;
 }
 
@@ -193,13 +202,52 @@ interface QuotesModuleProps {
 // Constants
 // ---------------------------------------------------------------------------
 
-const CAT_ORDER = ["labour", "material", "subcontractor", ""] as const;
+const CAT_ORDER = ["labour", "material", "subcontractor", "one_off", ""] as const;
 const CAT_LABELS: Record<string, string> = {
   labour: "Labour",
   material: "Materials",
   subcontractor: "Subcontractors",
+  one_off: "One-off",
   "": "Other",
 };
+
+// The four fixed line-item sections offered in the quote form. Stored keys are
+// kept singular (labour/material/subcontractor) to match existing data; one_off
+// is the new section. Display labels are the trade-standard plural forms.
+const QUOTE_SECTIONS: { value: string; label: string }[] = [
+  { value: "labour", label: "Labour" },
+  { value: "material", label: "Materials" },
+  { value: "subcontractor", label: "Subcontractors" },
+  { value: "one_off", label: "One-off" },
+];
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  header: "edited details",
+  pricing: "changed pricing",
+  duplicate: "duplicated",
+};
+function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABELS[action] ?? action;
+}
+function fmtAuditCents(n: number): string {
+  return "$" + (n / 100).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function summariseAudit(a: QuoteAuditEntry): string {
+  const c = a.changes;
+  if (!c) return auditActionLabel(a.action);
+  if (a.action === "duplicate") {
+    const src = c["source_quote_number"];
+    return `Copied from ${typeof src === "string" ? src : "another quote"}`;
+  }
+  if (a.action === "pricing") {
+    const t = c["total_cents"] as { old?: number; new?: number } | undefined;
+    if (t && typeof t.new === "number") {
+      return `Total ${fmtAuditCents(Number(t.old ?? 0))} → ${fmtAuditCents(t.new)}`;
+    }
+    return "Line items changed";
+  }
+  return "Changed " + Object.keys(c).map((f) => f.replace(/_/g, " ")).join(", ");
+}
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -384,6 +432,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [createAddress, setCreateAddress] = useState("");
   const [createPaymentTerms, setCreatePaymentTerms] = useState("");
   const [createValidityDays, setCreateValidityDays] = useState("30");
+  const [createQuoteNumber, setCreateQuoteNumber] = useState("");
   const [createClarifications, setCreateClarifications] = useState("");
   const [createLineItems, setCreateLineItems] = useState<CreateLineItem[]>([
     { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "" },
@@ -403,6 +452,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
+  const [audit, setAudit] = useState<QuoteAuditEntry[]>([]);
 
   // ── Import state ──────────────────────────────────────────────────────────
   const [csvText, setCsvText] = useState("");
@@ -448,6 +499,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       if (!supabase) return;
       setDetailId(quoteId);
       setDetail(null);
+      setAudit([]);
       setDetailLoading(true);
       setDetailError(null);
       setAdvanceStatus("");
@@ -474,6 +526,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         setJobNoInput(row.workbench_job_no ?? "");
         setPoInput(row.po_number ?? "");
       }
+      // Change history (best-effort; never blocks the detail view).
+      const { data: auditData } = await supabase.rpc("eq_list_quote_audit", { p_quote_id: quoteId });
+      setAudit((auditData as QuoteAuditEntry[]) ?? []);
     },
     [supabase],
   );
@@ -617,6 +672,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCreateAddress("");
     setCreatePaymentTerms("");
     setCreateValidityDays("30");
+    setCreateQuoteNumber("");
     setCreateClarifications("");
     setCreateLineItems([{ description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "" }]);
     setCreateError(null);
@@ -639,6 +695,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCreateAddress(d.address ?? "");
     setCreatePaymentTerms(d.payment_terms ?? "");
     setCreateValidityDays(String(d.validity_days ?? 30));
+    setCreateQuoteNumber(d.quote_number);
     setCreateClarifications(d.clarifications ?? "");
     setCreateLineItems(
       d.line_items.length > 0
@@ -796,6 +853,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_address: createAddress.trim() || null,
       p_payment_terms: createPaymentTerms.trim() || null,
       p_clarifications: createClarifications.trim() || null,
+      p_quote_number: createQuoteNumber.trim() || null,
     });
 
     if (headerErr) { captureRpcError("eq_update_quote", headerErr, { quote_id: editingQuoteId }); setCreateError(headerErr.message); setCreating(false); return; }
@@ -823,6 +881,22 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setView("pipeline");
     void loadQuotes(statusFilter, search);
     void openDetail(savedQuoteId);
+  };
+
+  const handleDuplicate = async (quoteId: string) => {
+    if (!supabase) return;
+    setDuplicating(true);
+    const { data, error } = await supabase.rpc("eq_duplicate_quote", { p_source_quote_id: quoteId });
+    setDuplicating(false);
+    if (error) {
+      captureRpcError("eq_duplicate_quote", error, { quote_id: quoteId });
+      setDetailError(error.message);
+      return;
+    }
+    const row = (data as Array<{ quote_id: string; quote_number: string }>)[0];
+    if (!row) { setDetailError("Duplicate failed: no quote returned."); return; }
+    void loadQuotes(statusFilter, search);
+    void openDetail(row.quote_id);
   };
 
   // ── Pipeline actions ──────────────────────────────────────────────────────
@@ -1001,6 +1075,64 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     .filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
     .reduce((s, q) => s + q.total_cents, 0);
 
+  // Canonical eq-ui table: sortable columns + per-column text/select filters.
+  const pipelineColumns: TableColumn<Quote>[] = [
+    {
+      key: "quote_number", header: "Quote #",
+      sortAccessor: (q) => q.quote_number,
+      className: "eq-quotes__td--mono eq-quotes__td--bold",
+    },
+    {
+      key: "customer_name", header: "Customer / Site", filterable: "text",
+      sortAccessor: (q) => q.customer_name ?? "",
+      render: (q) => (
+        <div className="eq-quotes__customer-cell">
+          <span>{q.customer_name ?? "—"}</span>
+          {q.site_code && <span className="eq-quotes__site-code">{q.site_code}</span>}
+        </div>
+      ),
+    },
+    {
+      key: "project_name", header: "Project", filterable: "text",
+      sortAccessor: (q) => q.project_name ?? "",
+      render: (q) => q.project_name ?? <span className="eq-quotes__muted">—</span>,
+    },
+    {
+      key: "estimator_initials", header: "Est.",
+      sortAccessor: (q) => q.estimator_initials ?? "",
+      render: (q) => q.estimator_initials
+        ? <span className="eq-quotes__initials-badge">{q.estimator_initials}</span>
+        : <span className="eq-quotes__muted">—</span>,
+    },
+    {
+      key: "total_cents", header: "Total", align: "right",
+      sortAccessor: (q) => q.total_cents,
+      render: (q) => <span className="eq-quotes__td--bold">{aud(q.total_cents)}</span>,
+    },
+    {
+      key: "status", header: "Status", filterable: "select",
+      filterOptions: STATUS_FILTERS
+        .filter((f) => f.key !== "active-jobs" && f.key !== "all")
+        .map((f) => ({ value: f.key, label: f.label })),
+      sortAccessor: (q) => STATUS_LABELS[q.status] ?? q.status,
+      render: (q) => <span className={statusClass(q.status)}>{STATUS_LABELS[q.status] ?? q.status}</span>,
+    },
+    {
+      key: "workbench_job_no", header: "Job No.",
+      sortAccessor: (q) => q.workbench_job_no ?? "",
+      render: (q) => q.workbench_job_no
+        ? <span className="eq-quotes__td--mono">{q.workbench_job_no}</span>
+        : ACTIVE_JOB_STATUSES.has(q.status)
+          ? <span className="eq-quotes__badge eq-quotes__badge--amber eq-quotes__badge--xs">Needs no.</span>
+          : <span className="eq-quotes__muted">—</span>,
+    },
+    {
+      key: "sent_at", header: "Sent",
+      sortAccessor: (q) => q.sent_at ?? "",
+      render: (q) => fmtDate(q.sent_at),
+    },
+  ];
+
   // ── Render detail view ────────────────────────────────────────────────────
 
   if (detailId !== null) {
@@ -1021,20 +1153,26 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <span className={statusClass(detail.status)}>
                 {STATUS_LABELS[detail.status] ?? detail.status}
               </span>
-              {(detail.status === "draft" || detail.status === "submitted") && (
-                <button
-                  type="button"
-                  className="eq-quotes__btn eq-quotes__btn--outline"
-                  style={{ marginLeft: "auto" }}
-                  onClick={() => openEditForm(detail)}
-                >
-                  Edit
-                </button>
-              )}
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
-                style={(detail.status === "draft" || detail.status === "submitted") ? {} : { marginLeft: "auto" }}
+                style={{ marginLeft: "auto" }}
+                onClick={() => openEditForm(detail)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                disabled={duplicating}
+                onClick={() => void handleDuplicate(detail.quote_id)}
+                title="Create a draft copy of this quote"
+              >
+                {duplicating ? "Duplicating…" : "Duplicate"}
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
                 onClick={() => void handleGenerateDoc()}
               >
                 Download Quote
@@ -1364,6 +1502,27 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 </div>
               )}
             </div>
+
+            {/* Change history — structured audit (who changed what, when) */}
+            {audit.length > 0 && (
+              <div className="eq-quotes__detail-card">
+                <h3 className="eq-quotes__section-title">Change History</h3>
+                <div className="eq-quotes__notes-list">
+                  {audit.map((a) => (
+                    <div key={a.audit_id} className="eq-quotes__note">
+                      <div className="eq-quotes__note-meta">
+                        {a.actor_initials && (
+                          <span className="eq-quotes__initials-badge">{a.actor_initials}</span>
+                        )}
+                        <span className="eq-quotes__note-type">{auditActionLabel(a.action)}</span>
+                        <span className="eq-quotes__note-date">{fmtDate(a.created_at)}</span>
+                      </div>
+                      <p className="eq-quotes__note-body">{summariseAudit(a)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1417,6 +1576,18 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           <div className="eq-quotes__detail-card">
             <h3 className="eq-quotes__section-title">Quote Details</h3>
             <div className="eq-quotes__info-grid">
+              {isEditMode && (
+                <div className="eq-quotes__info-item">
+                  <span className="eq-quotes__info-label">Quote Number</span>
+                  <input
+                    className="eq-quotes__input eq-quotes__td--mono"
+                    style={{ maxWidth: 220 }}
+                    value={createQuoteNumber}
+                    onChange={(e) => setCreateQuoteNumber(e.target.value)}
+                    placeholder="EQ-YYMMDD-NNNN"
+                  />
+                </div>
+              )}
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
                 <span className="eq-quotes__info-label">
                   Customer <span style={{ color: "var(--eq-err)", fontWeight: 700 }}>*</span>
@@ -1743,9 +1914,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                           onChange={(e) => updateLineItem(i, "category", e.target.value)}
                         >
                           <option value="">—</option>
-                          <option value="labour">labour</option>
-                          <option value="material">material</option>
-                          <option value="subcontractor">subcontractor</option>
+                          {QUOTE_SECTIONS.map((s) => (
+                            <option key={s.value} value={s.value}>{s.label}</option>
+                          ))}
                         </select>
                       </td>
                       <td className="eq-quotes__td--right eq-quotes__td--bold">
@@ -2107,75 +2278,19 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             )}
           </div>
 
-          {/* Table */}
-          {pipelineLoading ? (
-            <div className="eq-quotes__loading">Loading…</div>
-          ) : pipelineError ? (
+          {/* Table — canonical eq-ui Table (sortable + per-column filters) */}
+          {pipelineError ? (
             <div className="eq-quotes__error-banner">{pipelineError}</div>
-          ) : displayedQuotes.length === 0 ? (
-            <div className="eq-quotes__empty">
-              {search ? `No quotes match "${search}".` : "No quotes in this filter."}
-            </div>
           ) : (
-            <div className="eq-quotes__table-wrap">
-              <table className="eq-quotes__table eq-quotes__table--pipeline">
-                <thead>
-                  <tr>
-                    <th>Quote #</th>
-                    <th>Customer / Site</th>
-                    <th>Project</th>
-                    <th>Est.</th>
-                    <th className="eq-quotes__th--right">Total</th>
-                    <th>Status</th>
-                    <th>Job No.</th>
-                    <th>Sent</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedQuotes.map((q) => (
-                    <tr
-                      key={q.quote_id}
-                      className="eq-quotes__row eq-quotes__row--clickable"
-                      onClick={() => void openDetail(q.quote_id)}
-                    >
-                      <td className="eq-quotes__td--mono eq-quotes__td--bold">{q.quote_number}</td>
-                      <td>
-                        <div className="eq-quotes__customer-cell">
-                          <span>{q.customer_name ?? "—"}</span>
-                          {q.site_code && (
-                            <span className="eq-quotes__site-code">{q.site_code}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td>{q.project_name ?? <span className="eq-quotes__muted">—</span>}</td>
-                      <td>
-                        {q.estimator_initials ? (
-                          <span className="eq-quotes__initials-badge">{q.estimator_initials}</span>
-                        ) : (
-                          <span className="eq-quotes__muted">—</span>
-                        )}
-                      </td>
-                      <td className="eq-quotes__td--right eq-quotes__td--bold">{aud(q.total_cents)}</td>
-                      <td>
-                        <span className={statusClass(q.status)}>
-                          {STATUS_LABELS[q.status] ?? q.status}
-                        </span>
-                      </td>
-                      <td>
-                        {q.workbench_job_no ? (
-                          <span className="eq-quotes__td--mono">{q.workbench_job_no}</span>
-                        ) : ACTIVE_JOB_STATUSES.has(q.status) ? (
-                          <span className="eq-quotes__badge eq-quotes__badge--amber eq-quotes__badge--xs">Needs no.</span>
-                        ) : (
-                          <span className="eq-quotes__muted">—</span>
-                        )}
-                      </td>
-                      <td>{fmtDate(q.sent_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table
+              className="eq-quotes__pipeline-table"
+              rows={displayedQuotes}
+              columns={pipelineColumns}
+              getRowId={(q) => q.quote_id}
+              onRowClick={(q) => void openDetail(q.quote_id)}
+              loading={pipelineLoading}
+              emptyMessage={search ? `No quotes match "${search}".` : "No quotes in this filter."}
+            />
           )}
         </div>
       )}
