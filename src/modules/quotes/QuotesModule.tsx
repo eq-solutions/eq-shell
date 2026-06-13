@@ -102,6 +102,19 @@ interface ImportResult {
   message: string;
 }
 
+interface Customer {
+  customer_id: string;
+  company_name: string;
+  external_id: string | null;
+}
+
+interface CreateLineItem {
+  description: string;
+  qty: string;
+  unit: string;
+  rate: string;
+}
+
 interface QuotesModuleProps {
   supabase: SupabaseClient | null;
 }
@@ -159,6 +172,12 @@ const NEXT_STATUSES: Record<string, string[]> = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function calcLineTotal(li: CreateLineItem): number {
+  const q = parseFloat(li.qty) || 0;
+  const r = parseFloat(li.rate) || 0;
+  return Math.round(q * r * 100);
+}
 
 function aud(cents: number): string {
   return (cents / 100).toLocaleString("en-AU", {
@@ -219,7 +238,7 @@ function parseCSV(text: string): CoupaRow[] {
 // ---------------------------------------------------------------------------
 
 export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element {
-  type ModuleView = "pipeline" | "accordion" | "import";
+  type ModuleView = "pipeline" | "accordion" | "import" | "create";
 
   // ── Main navigation ──────────────────────────────────────────────────────
   const [view, setView] = useState<ModuleView>("pipeline");
@@ -261,6 +280,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [accordionLoading, setAccordionLoading] = useState(false);
   const [accordionError, setAccordionError] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["equinix"]));
+
+  // ── Customers + create form state ────────────────────────────────────────
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [createCustomerId, setCreateCustomerId] = useState("");
+  const [createProjectName, setCreateProjectName] = useState("");
+  const [createEstimatorName, setCreateEstimatorName] = useState("");
+  const [createEstimatorInitials, setCreateEstimatorInitials] = useState("");
+  const [createScope, setCreateScope] = useState("");
+  const [createNotes, setCreateNotes] = useState("");
+  const [createLineItems, setCreateLineItems] = useState<CreateLineItem[]>([
+    { description: "", qty: "1", unit: "", rate: "" },
+  ]);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // ── Import state ──────────────────────────────────────────────────────────
   const [csvText, setCsvText] = useState("");
@@ -350,6 +384,93 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (view === "accordion") void loadAccordion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
+
+  const loadCustomers = useCallback(async () => {
+    if (!supabase) return;
+    setCustomersLoading(true);
+    const { data, error } = await supabase.rpc("eq_list_customers");
+    setCustomersLoading(false);
+    if (!error) setCustomers((data as Customer[]) ?? []);
+  }, [supabase]);
+
+  useEffect(() => {
+    if (view === "create") void loadCustomers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
+  // ── Create form helpers ───────────────────────────────────────────────────
+
+  const resetCreateForm = () => {
+    setCreateCustomerId("");
+    setCreateProjectName("");
+    setCreateEstimatorName("");
+    setCreateEstimatorInitials("");
+    setCreateScope("");
+    setCreateNotes("");
+    setCreateLineItems([{ description: "", qty: "1", unit: "", rate: "" }]);
+    setCreateError(null);
+  };
+
+  const updateLineItem = (i: number, field: keyof CreateLineItem, value: string) => {
+    setCreateLineItems((prev) => {
+      const next = [...prev];
+      next[i] = { ...next[i], [field]: value };
+      return next;
+    });
+  };
+
+  const addLineItem = () => {
+    setCreateLineItems((prev) => [...prev, { description: "", qty: "1", unit: "", rate: "" }]);
+  };
+
+  const removeLineItem = (i: number) => {
+    setCreateLineItems((prev) => prev.filter((_, j) => j !== i));
+  };
+
+  const handleCreateQuote = async () => {
+    if (!supabase || !createCustomerId) return;
+    const validLines = createLineItems.filter((li) => li.description.trim());
+    if (validLines.length === 0) {
+      setCreateError("Add at least one line item with a description.");
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+
+    const { data, error } = await supabase.rpc("eq_create_quote", {
+      p_customer_id: createCustomerId,
+      p_project_name: createProjectName.trim() || null,
+      p_estimator_name: createEstimatorName.trim() || null,
+      p_estimator_initials: createEstimatorInitials.trim() || null,
+      p_scope_of_works: createScope.trim() || null,
+      p_notes: createNotes.trim() || null,
+      p_validity_days: 30,
+    });
+
+    if (error) { setCreateError(error.message); setCreating(false); return; }
+    const row = (data as Array<{ quote_id: string; quote_number: string }>)[0];
+    if (!row) { setCreateError("No quote returned."); setCreating(false); return; }
+
+    for (let i = 0; i < validLines.length; i++) {
+      const li = validLines[i];
+      const qtyVal = Math.max(0, parseFloat(li.qty) || 1);
+      const rateVal = Math.max(0, parseFloat(li.rate) || 0);
+      const { error: liErr } = await supabase.rpc("eq_add_line_item", {
+        p_quote_id: row.quote_id,
+        p_line_number: i + 1,
+        p_description: li.description.trim(),
+        p_qty_thousandths: Math.round(qtyVal * 1000),
+        p_unit_rate_cents: Math.round(rateVal * 100),
+        p_unit: li.unit.trim() || null,
+      });
+      if (liErr) { setCreateError(liErr.message); setCreating(false); return; }
+    }
+
+    setCreating(false);
+    resetCreateForm();
+    void loadQuotes(statusFilter, search);
+    void openDetail(row.quote_id);
+  };
 
   // ── Pipeline actions ──────────────────────────────────────────────────────
 
@@ -775,6 +896,253 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     );
   }
 
+  // ── Computed create totals ────────────────────────────────────────────────
+
+  const createSubtotal = createLineItems.reduce((s, li) => s + calcLineTotal(li), 0);
+  const createGst = Math.round(createSubtotal / 10);
+  const createTotal = createSubtotal + createGst;
+
+  // ── Render: create view ───────────────────────────────────────────────────
+
+  if (view === "create") {
+    return (
+      <div className="eq-quotes">
+        <div className="eq-quotes__detail-header">
+          <button
+            type="button"
+            className="eq-quotes__back"
+            onClick={() => { resetCreateForm(); setView("pipeline"); }}
+          >
+            ← EQ Ops
+          </button>
+          <div className="eq-quotes__detail-title-row">
+            <h2 className="eq-quotes__detail-num" style={{ fontFamily: "inherit", fontSize: 20 }}>
+              New Quote
+            </h2>
+          </div>
+        </div>
+
+        <div className="eq-quotes__detail-body">
+          {/* Quote details */}
+          <div className="eq-quotes__detail-card">
+            <h3 className="eq-quotes__section-title">Quote Details</h3>
+            <div className="eq-quotes__info-grid">
+              <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                <span className="eq-quotes__info-label">
+                  Customer <span style={{ color: "var(--eq-err)", fontWeight: 700 }}>*</span>
+                </span>
+                {customersLoading ? (
+                  <span className="eq-quotes__muted" style={{ fontSize: 14 }}>Loading…</span>
+                ) : (
+                  <select
+                    className="eq-quotes__select"
+                    style={{ maxWidth: 440 }}
+                    value={createCustomerId}
+                    onChange={(e) => setCreateCustomerId(e.target.value)}
+                  >
+                    <option value="">Select a customer…</option>
+                    {customers.map((c) => (
+                      <option key={c.customer_id} value={c.customer_id}>
+                        {c.company_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                <span className="eq-quotes__info-label">Project Name</span>
+                <input
+                  className="eq-quotes__input"
+                  style={{ maxWidth: 440 }}
+                  value={createProjectName}
+                  onChange={(e) => setCreateProjectName(e.target.value)}
+                  placeholder="e.g. Equinix SY2 — UPS Replacement"
+                />
+              </div>
+              <div className="eq-quotes__info-item">
+                <span className="eq-quotes__info-label">Estimator Name</span>
+                <input
+                  className="eq-quotes__input"
+                  value={createEstimatorName}
+                  onChange={(e) => setCreateEstimatorName(e.target.value)}
+                  placeholder="e.g. Royce Milmlow"
+                />
+              </div>
+              <div className="eq-quotes__info-item">
+                <span className="eq-quotes__info-label">Initials</span>
+                <input
+                  className="eq-quotes__input eq-quotes__input--sm"
+                  value={createEstimatorInitials}
+                  onChange={(e) => setCreateEstimatorInitials(e.target.value.toUpperCase())}
+                  placeholder="RM"
+                  maxLength={4}
+                />
+              </div>
+              <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                <span className="eq-quotes__info-label">Scope of Works</span>
+                <textarea
+                  className="eq-quotes__textarea"
+                  style={{ maxWidth: 560, minHeight: 72 }}
+                  value={createScope}
+                  onChange={(e) => setCreateScope(e.target.value)}
+                  placeholder="Describe the scope of works…"
+                  rows={3}
+                />
+              </div>
+              <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                <span className="eq-quotes__info-label">
+                  Notes{" "}
+                  <span className="eq-quotes__muted" style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, fontSize: 11 }}>
+                    (optional)
+                  </span>
+                </span>
+                <textarea
+                  className="eq-quotes__textarea"
+                  style={{ maxWidth: 560 }}
+                  value={createNotes}
+                  onChange={(e) => setCreateNotes(e.target.value)}
+                  placeholder="Internal notes…"
+                  rows={2}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Line items */}
+          <div className="eq-quotes__detail-card">
+            <h3 className="eq-quotes__section-title">Line Items</h3>
+            <div className="eq-quotes__table-wrap">
+              <table className="eq-quotes__table">
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th style={{ width: 80 }}>Qty</th>
+                    <th style={{ width: 72 }}>Unit</th>
+                    <th style={{ width: 110 }}>Rate ($)</th>
+                    <th className="eq-quotes__th--right" style={{ width: 110 }}>Total</th>
+                    <th style={{ width: 36 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {createLineItems.map((li, i) => (
+                    <tr key={i} className="eq-quotes__row">
+                      <td>
+                        <input
+                          className="eq-quotes__input"
+                          style={{ width: "100%", padding: "5px 8px", fontSize: 13 }}
+                          value={li.description}
+                          onChange={(e) => updateLineItem(i, "description", e.target.value)}
+                          placeholder="Description…"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="eq-quotes__input"
+                          style={{ width: 68, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          value={li.qty}
+                          onChange={(e) => updateLineItem(i, "qty", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="eq-quotes__input"
+                          style={{ width: 60, padding: "5px 8px", fontSize: 13 }}
+                          value={li.unit}
+                          onChange={(e) => updateLineItem(i, "unit", e.target.value)}
+                          placeholder="ea"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="eq-quotes__input"
+                          style={{ width: 98, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={li.rate}
+                          onChange={(e) => updateLineItem(i, "rate", e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </td>
+                      <td className="eq-quotes__td--right eq-quotes__td--bold">
+                        {calcLineTotal(li) > 0
+                          ? aud(calcLineTotal(li))
+                          : <span className="eq-quotes__muted">—</span>}
+                      </td>
+                      <td>
+                        {createLineItems.length > 1 && (
+                          <button
+                            type="button"
+                            style={{
+                              background: "none", border: "none", color: "var(--eq-muted)",
+                              cursor: "pointer", fontSize: 18, padding: "2px 6px", lineHeight: 1,
+                            }}
+                            onClick={() => removeLineItem(i)}
+                            title="Remove row"
+                            aria-label="Remove line item"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14, flexWrap: "wrap", gap: 12 }}>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={addLineItem}
+              >
+                + Add Line
+              </button>
+              <div className="eq-quotes__financials" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+                <div className="eq-quotes__financial-row">
+                  <span>Subtotal</span>
+                  <span>{aud(createSubtotal)}</span>
+                </div>
+                <div className="eq-quotes__financial-row">
+                  <span>GST (10%)</span>
+                  <span>{aud(createGst)}</span>
+                </div>
+                <div className="eq-quotes__financial-row eq-quotes__financial-row--total">
+                  <span>Total</span>
+                  <span>{aud(createTotal)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Submit row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "4px 0", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="eq-quotes__btn eq-quotes__btn--primary"
+              style={{ padding: "9px 24px", fontSize: 14 }}
+              disabled={creating || !createCustomerId || createLineItems.filter((li) => li.description.trim()).length === 0}
+              onClick={() => void handleCreateQuote()}
+            >
+              {creating ? "Creating…" : "Create Quote"}
+            </button>
+            <button
+              type="button"
+              className="eq-quotes__btn eq-quotes__btn--outline"
+              onClick={() => { resetCreateForm(); setView("pipeline"); }}
+            >
+              Cancel
+            </button>
+            {createError && <div className="eq-quotes__inline-err">{createError}</div>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Render main views ─────────────────────────────────────────────────────
 
   return (
@@ -783,14 +1151,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       <div className="eq-quotes__module-header">
         <h2 className="eq-quotes__title">EQ Ops</h2>
         <div className="eq-quotes__header-right">
-          <a
-            href="https://quotes.eq.solutions/quotes/new"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="eq-quotes__btn eq-quotes__btn--outline eq-quotes__btn--new-quote"
+          <button
+            type="button"
+            className="eq-quotes__btn eq-quotes__btn--primary eq-quotes__btn--new-quote"
+            onClick={() => setView("create")}
           >
-            New Quote ↗
-          </a>
+            + New Quote
+          </button>
           <div className="eq-quotes__view-tabs">
             {(["pipeline", "accordion", "import"] as ModuleView[]).map((v) => (
               <button
