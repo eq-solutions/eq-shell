@@ -181,6 +181,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'quoted',   label: 'Quoted' },
   { key: 'on_hold',  label: 'On Hold' },
   { key: 'complete', label: 'Complete' },
+  { key: 'closed',   label: 'Closed' },
 ];
 
 // ── Monday brief ─────────────────────────────────────────────────────────────
@@ -809,7 +810,12 @@ function JobCard({
                               </td>
                               <td>{l.po_number ?? '—'}</td>
                               <td>{l.fid_number ?? '—'}</td>
-                              <td>{l.description}</td>
+                              <td>
+                                {l.description}
+                                {l.complete_notes && (
+                                  <div className="comms-line-notes">{l.complete_notes}</div>
+                                )}
+                              </td>
                               <td>{l.quote_number ?? '—'}</td>
                               <td>{l.requestor ?? '—'}</td>
                               <td>{l.date_approval ? l.date_approval.slice(0, 10) : '—'}</td>

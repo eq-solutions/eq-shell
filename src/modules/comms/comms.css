@@ -882,3 +882,12 @@
   color: var(--eq-ink-60, #666) !important;
   font-weight: 500 !important;
 }
+
+/* Complete notes sub-line in description cell */
+.comms-line-notes {
+  font-size:   0.72rem;
+  color:       var(--eq-ink-60, #666);
+  font-style:  italic;
+  margin-top:  2px;
+  line-height: 1.3;
+}
