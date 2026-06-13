@@ -863,7 +863,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_initials: initials.trim() || null,
     });
     setAddingNote(false);
-    if (error) { setNoteMutErr(error.message); return; }
+    if (error) { captureRpcError("eq_add_quote_note", error, { quote_id: detail.quote_id }); setNoteMutErr(error.message); return; }
     setNoteBody("");
     await openDetail(detail.quote_id);
   };
@@ -878,7 +878,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_initials: initials.trim() || null,
     });
     setSavingJobNo(false);
-    if (error) { setJobNoErr(error.message); return; }
+    if (error) { captureRpcError("eq_set_workbench_job_no", error, { quote_id: detail.quote_id }); setJobNoErr(error.message); return; }
     await openDetail(detail.quote_id);
     void loadQuotes(statusFilter, search);
   };
@@ -893,7 +893,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_initials: initials.trim() || null,
     });
     setSavingPo(false);
-    if (error) { setPoErr(error.message); return; }
+    if (error) { captureRpcError("eq_set_po_number", error, { quote_id: detail.quote_id }); setPoErr(error.message); return; }
     await openDetail(detail.quote_id);
   };
 

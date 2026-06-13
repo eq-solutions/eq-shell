@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { captureRpcError } from "./quoteTelemetry";
 
 // EQ Ops — Setup / admin. Lets the business manage outlet pricing and quote
 // snippet templates without touching SQL. All writes go through the tenant-scoped
@@ -196,7 +197,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       p_removal_markup: num(config.removal_markup),
     });
     setConfigSaving(false);
-    if (e) { setError(e.message); return; }
+    if (e) { captureRpcError("eq_upsert_pricing_config", e); setError(e.message); return; }
     flash("Pricing settings saved.");
   };
 
@@ -223,7 +224,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       p_unit_cost: num(m.unit_cost),
       p_sort_order: m.sort_order,
     });
-    if (e) { setError(e.message); return; }
+    if (e) { captureRpcError("eq_upsert_pricing_material", e); setError(e.message); return; }
     await loadMaterials();
     flash("Material saved.");
   };
@@ -233,7 +234,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     const m = materials[i];
     if (!m.material_id) { setMaterials((prev) => prev.filter((_, j) => j !== i)); return; }
     const { error: e } = await supabase.rpc("eq_archive_pricing_material", { p_material_id: m.material_id, p_archived: true });
-    if (e) { setError(e.message); return; }
+    if (e) { captureRpcError("eq_archive_pricing_material", e); setError(e.message); return; }
     await loadMaterials();
     flash("Material archived.");
   };
@@ -271,7 +272,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       p_mgmt_hours: num(p.mgmt_hours),
       p_sort_order: p.sort_order,
     });
-    if (e) { setError(e.message); return; }
+    if (e) { captureRpcError("eq_upsert_pricing_product", e); setError(e.message); return; }
     await loadProducts();
     flash("Product saved.");
   };
@@ -281,7 +282,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     const p = products[i];
     if (!p.product_id) { setProducts((prev) => prev.filter((_, j) => j !== i)); return; }
     const { error: e } = await supabase.rpc("eq_archive_pricing_product", { p_product_id: p.product_id, p_archived: true });
-    if (e) { setError(e.message); return; }
+    if (e) { captureRpcError("eq_archive_pricing_product", e); setError(e.message); return; }
     await loadProducts();
     flash("Product archived.");
   };
@@ -306,7 +307,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       }));
     const { error: e } = await supabase.rpc("eq_replace_pricing_bands", { p_category: "outlets", p_bands: payload });
     setBandsSaving(false);
-    if (e) { setError(e.message); return; }
+    if (e) { captureRpcError("eq_replace_pricing_bands", e); setError(e.message); return; }
     await loadBands();
     flash("Volume bands saved.");
   };
@@ -332,7 +333,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       p_body: t.body.trim(),
       p_sort_order: t.sort_order,
     });
-    if (e) { setError(e.message); return; }
+    if (e) { captureRpcError("eq_upsert_quote_template", e); setError(e.message); return; }
     await loadTemplates();
     flash("Template saved.");
   };
@@ -342,7 +343,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     const t = templates[i];
     if (!t.template_id) { setTemplates((prev) => prev.filter((_, j) => j !== i)); return; }
     const { error: e } = await supabase.rpc("eq_archive_quote_template", { p_template_id: t.template_id, p_archived: true });
-    if (e) { setError(e.message); return; }
+    if (e) { captureRpcError("eq_archive_quote_template", e); setError(e.message); return; }
     await loadTemplates();
     flash("Template archived.");
   };
