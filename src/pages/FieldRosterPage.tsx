@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { CheckCircle, Clock, Activity, UserCheck } from 'lucide-react';
-import { Table, TableBulkAction, type TableColumn } from '@eq-solutions/ui';
+import { Table, type TableColumn } from '@eq-solutions/ui';
+import { TableBulkAction } from '../components/TableBulkAction';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
 import { HubLayout } from '../components/HubLayout';

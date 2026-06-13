@@ -3,7 +3,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { Table, TableBulkAction, type TableColumn } from '@eq-solutions/ui';
+import { Table, type TableColumn } from '@eq-solutions/ui';
+import { TableBulkAction } from '../components/TableBulkAction';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 

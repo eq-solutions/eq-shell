@@ -1,3 +1,7 @@
+// @ts-nocheck
+// DEAD CODE — nspbmirochztcjijmcrx ABANDONED 2026-06-13. Do not activate.
+// Types intentionally suppressed: schema evolved past this file's type assumptions.
+//
 // netlify/functions/sync-quotes-nightly.ts
 //
 // Nightly ETL: eq-quotes (nspbmirochztcjijmcrx) → sks-canonical (ehowgjardagevnrluult)

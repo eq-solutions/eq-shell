@@ -24,7 +24,8 @@ import {
   Check, Clock, AlertTriangle, Gauge, CalendarDays, ArrowRightLeft,
   Download, UserCheck,
 } from 'lucide-react';
-import { Button, Table, TableBulkAction, type TableColumn } from '@eq-solutions/ui';
+import { Button, Table, type TableColumn } from '@eq-solutions/ui';
+import { TableBulkAction } from '../../components/TableBulkAction';
 import { useCan } from '../../permissions';
 import { HubLayout } from '../../components/HubLayout';
 import { defaultSidebarRecords } from '../../lib/sidebarConfig';
