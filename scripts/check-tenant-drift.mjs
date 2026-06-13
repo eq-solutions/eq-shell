@@ -589,6 +589,7 @@ const SERVICE_ROLE_ONLY = new Set([
   'sks_comms_po_lines',
   'sks_comms_materials',
   'sks_comms_labour_rates',
+  'sks_comms_events',
 ]);
 
 function spineRlsSql(spineTables) {

@@ -377,3 +377,249 @@
   text-align: center;
   color: var(--eq-ink-40, #888);
 }
+
+/* ── Button reset on job card header ─────────────────────────────────────── */
+.comms-job-card__header {
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.comms-job-card__header:focus-visible {
+  outline: 2px solid var(--eq-sky, #3DA8D8);
+  outline-offset: -2px;
+  border-radius: 10px 10px 0 0;
+}
+
+.comms-milestone:focus-visible {
+  outline: 2px solid var(--eq-sky, #3DA8D8);
+  outline-offset: 2px;
+}
+
+/* ── Monday brief ────────────────────────────────────────────────────────── */
+.comms-brief {
+  background: #FFFBEB;
+  border: 1px solid #FCD34D;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 0.82rem;
+}
+
+.comms-brief__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: #92400E;
+  margin-bottom: 6px;
+}
+
+.comms-brief__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.comms-brief__item { color: var(--eq-ink, #1A1A2E); }
+.comms-brief__item--invoice strong { color: #B45309; }
+.comms-brief__item--assign  strong { color: var(--eq-error, #C0392B); }
+.comms-brief__item--hold    strong { color: var(--eq-ink-40, #888); }
+
+/* ── Save error banner ───────────────────────────────────────────────────── */
+.comms-save-error {
+  margin: 0 16px 8px;
+  padding: 6px 10px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 6px;
+  color: var(--eq-error, #C0392B);
+  font-size: 0.78rem;
+}
+
+/* ── Detail sub-tabs ─────────────────────────────────────────────────────── */
+.comms-detail-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--eq-border, #E5E7EB);
+  padding: 0 16px;
+  background: var(--eq-surface, #fff);
+}
+
+.comms-detail-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--eq-ink-40, #888);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.comms-detail-tab--active {
+  color: var(--eq-sky, #3DA8D8);
+  border-bottom-color: var(--eq-sky, #3DA8D8);
+  font-weight: 600;
+}
+
+/* ── PO lines scrollable wrapper ─────────────────────────────────────────── */
+.comms-lines-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 10px;
+}
+
+.comms-lines-table {
+  min-width: 560px;
+}
+
+/* ── Per-line invoice edit ───────────────────────────────────────────────── */
+.comms-line-edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--eq-ink-40, #888);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.comms-line-edit-btn:hover { color: var(--eq-sky, #3DA8D8); }
+
+.comms-line-edit-input {
+  border: 1px solid var(--eq-border, #E5E7EB);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 0.78rem;
+  color: var(--eq-ink, #1A1A2E);
+  width: 90px;
+}
+.comms-line-edit-input:focus {
+  outline: none;
+  border-color: var(--eq-sky, #3DA8D8);
+}
+.comms-line-edit-input--num { text-align: right; }
+
+.comms-save-btn--sm {
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  margin-right: 4px;
+}
+
+.comms-cancel-btn {
+  background: none;
+  border: 1px solid var(--eq-border, #E5E7EB);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  color: var(--eq-ink-40, #888);
+  cursor: pointer;
+}
+.comms-cancel-btn:hover { border-color: var(--eq-ink-40, #888); }
+.comms-cancel-btn--sm { padding: 3px 6px; font-size: 0.75rem; }
+
+/* ── Add PO line ─────────────────────────────────────────────────────────── */
+.comms-add-line-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  background: none;
+  border: 1px dashed var(--eq-sky, #3DA8D8);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  color: var(--eq-sky, #3DA8D8);
+  cursor: pointer;
+}
+.comms-add-line-btn:hover { background: var(--eq-ice, #EAF5FB); }
+
+.comms-add-line-form {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--eq-bg, #F9FAFB);
+  border: 1px solid var(--eq-border, #E5E7EB);
+  border-radius: 8px;
+}
+
+.comms-add-line-form__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.comms-add-line-form__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── Edit-field flex helpers ─────────────────────────────────────────────── */
+.comms-edit-field--grow  { flex: 1 1 140px; }
+.comms-edit-field--grow2 { flex: 2 1 200px; }
+.comms-edit-field--num   { flex: 0 0 90px; }
+
+/* ── Event history ───────────────────────────────────────────────────────── */
+.comms-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comms-history__row {
+  display: flex;
+  gap: 10px;
+  font-size: 0.78rem;
+  align-items: baseline;
+}
+
+.comms-history__date {
+  color: var(--eq-ink-40, #888);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+}
+
+.comms-history__note {
+  color: var(--eq-ink, #1A1A2E);
+}
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .comms-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .comms-edit-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .comms-edit-bar .comms-save-btn {
+    width: 100%;
+  }
+
+  .comms-add-line-form__row {
+    flex-direction: column;
+  }
+
+  .comms-edit-field--grow,
+  .comms-edit-field--grow2,
+  .comms-edit-field--num {
+    flex: unset;
+    width: 100%;
+  }
+
+  .comms-brief__list {
+    gap: 4px;
+  }
+}
