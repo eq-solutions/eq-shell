@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// B3: eq-quotes (nspbmirochztcjijmcrx) → eq-canonical (jvknxcmbtrfnxfrwfimn)
+// eq-quotes (nspbmirochztcjijmcrx) → sks-canonical (ehowgjardagevnrluult)
 //
 // 1. Sync sks_quotes_customers → app_data.customers
 // 2. Sync sks_quotes headers + line items → app_data.quote + app_data.quote_line_item
@@ -8,32 +8,30 @@
 // Run idempotently — safe to re-run after data changes.
 //
 // Usage:
-//   node scripts/sync-quotes-to-canonical.mjs
+//   NSPBMIR_SUPABASE_URL=... NSPBMIR_SERVICE_KEY=... EHOW_SERVICE_KEY=... node scripts/sync-quotes-to-canonical.mjs
 //
 // Required env vars:
-//   CANONICAL_SUPABASE_URL          eq-canonical project URL
-//   CANONICAL_SUPABASE_SERVICE_KEY  eq-canonical service role key
-//   QUOTES_SUPABASE_URL             eq-quotes (nspbmirochztcjijmcrx) URL
-//   QUOTES_SUPABASE_SERVICE_KEY     eq-quotes service role key
+//   NSPBMIR_SUPABASE_URL      eq-quotes (nspbmirochztcjijmcrx) URL
+//   NSPBMIR_SERVICE_KEY       eq-quotes service role key
+//   EHOW_SERVICE_KEY          sks-canonical (ehowgjardagevnrluult) service role key
 //
 // Tenant mapping:
 //   Source SKS org:   1eb831f9-aeae-4e57-b49e-9681e8f51e15  (sks_quotes.org_id)
-//   Canonical SKS:    7dee117c-98bd-4d39-af8c-2c81d02a1e85
+//   Canonical SKS:    7dee117c-98bd-4d39-af8c-2c81d02a1e85  (sks-canonical tenant)
 
 import { createClient } from '@supabase/supabase-js';
 
 const SOURCE_ORG_ID       = '1eb831f9-aeae-4e57-b49e-9681e8f51e15';
 const CANONICAL_TENANT_ID = '7dee117c-98bd-4d39-af8c-2c81d02a1e85';
 
-// sks_quotes status → canonical status
 const STATUS_MAP = {
   'Draft':               'draft',
-  'Submitted':           'sent',
-  'Client Reviewing':    'sent',
-  'Verbal Win':          'accepted',
-  'Won-Awaiting Job No': 'accepted',
-  'Won-Job Created':     'accepted',
-  'Lost':                'rejected',
+  'Submitted':           'submitted',
+  'Client Reviewing':    'submitted',
+  'Verbal Win':          'verbal-win',
+  'Won-Awaiting Job No': 'won-awaiting-job-no',
+  'Won-Job Created':     'won-job-created',
+  'Lost':                'lost',
   'On Hold':             'draft',
   'Withdrawn':           'superseded',
 };
@@ -54,13 +52,13 @@ function requireEnv(name) {
 }
 
 const canonical = createClient(
-  requireEnv('CANONICAL_SUPABASE_URL'),
-  requireEnv('CANONICAL_SUPABASE_SERVICE_KEY'),
+  'https://ehowgjardagevnrluult.supabase.co',
+  requireEnv('EHOW_SERVICE_KEY'),
   { auth: { persistSession: false, autoRefreshToken: false } },
 );
 const source = createClient(
-  requireEnv('QUOTES_SUPABASE_URL'),
-  requireEnv('QUOTES_SUPABASE_SERVICE_KEY'),
+  requireEnv('NSPBMIR_SUPABASE_URL'),
+  requireEnv('NSPBMIR_SERVICE_KEY'),
   { auth: { persistSession: false, autoRefreshToken: false } },
 );
 

@@ -171,6 +171,7 @@ const HUB_APPS: { key: string; label: string; to: string; isBeta: boolean; hideF
   { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
   { key: 'service', label: 'EQ Service', to: 'service', isBeta: false, hideForTier: ['trial'] },
   { key: 'quotes',  label: 'EQ Quotes',  to: 'quotes',  isBeta: false, hideForTier: ['trial'] },
+  { key: 'comms',   label: 'NSW Comms',  to: 'comms',   isBeta: true  },
 ];
 
 const APP_DESCRIPTIONS: Record<string, string> = {
@@ -178,6 +179,7 @@ const APP_DESCRIPTIONS: Record<string, string> = {
   service: 'Maintenance, defects and customer reports.',
   quotes:  'Quoting and proposals.',
   cards:   'Staff profiles and licence cards.',
+  comms:   'NSW Comms job pipeline — quotes, POs and invoicing.',
 };
 
 

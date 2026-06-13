@@ -1,12 +1,12 @@
-// GET  /.netlify/functions/comms-jobs              → all jobs with PO line summary
-// GET  /.netlify/functions/comms-jobs?id=<uuid>    → single job + PO lines
-// POST /.netlify/functions/comms-jobs { patch }    → update job fields
-// POST /.netlify/functions/comms-jobs { line }     → add PO line to job
-//   body: { job_id: string; patch: Partial<CommsJobPatch> }
-//       | { job_id: string; line: CommsPoLineInput }
+// GET  /.netlify/functions/comms-jobs                → all jobs with PO line summary
+// GET  /.netlify/functions/comms-jobs?id=<uuid>      → single job + PO lines + last 10 events
+// GET  /.netlify/functions/comms-jobs?resource=staff → active staff list for autocomplete
+// POST /.netlify/functions/comms-jobs                → create / update
+//   body { job_id, patch }                           → update job fields
+//   body { job_id, line }                            → add PO line
+//   body { job_id, line_id, line_patch }             → update PO line (invoice fields)
 //
-// Target: ehow tenant plane (SKS) only — tables don't exist on other planes.
-// Perm: field.view (GET) / field.dispatch (POST)
+// SKS tenant only. Perm: comms.view (GET) / comms.update (POST / field.dispatch guard)
 
 import type { Context } from '@netlify/functions';
 import { getTenantDataClientById, TenantNotFoundError, TenantNotActiveError } from './_shared/tenant-routing.js';
@@ -14,7 +14,6 @@ import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
-// This module is SKS-only — comms tables exist on ehow only.
 const SKS_TENANT_ID = '7dee117c-98bd-4d39-af8c-2c81d02a1e85';
 
 const VALID_STATUSES = new Set(['quoted', 'active', 'on_hold', 'complete', 'closed']);
@@ -32,15 +31,18 @@ interface CommsJobPatch {
 }
 
 interface CommsPoLineInput {
-  po_number:      string | null;
-  description:    string;
-  requestor:      string | null;
-  fid_number:     string | null;
-  quote_number:   string | null;
-  date_approval:  string | null;
-  hours:          number | null;
-  materials_cost: number | null;
-  price_ex_gst:   number | null;
+  po_number:    string | null;
+  description:  string;
+  requestor:    string | null;
+  quote_number: string | null;
+  hours:        number | null;
+  price_ex_gst: number | null;
+}
+
+interface CommsPoLinePatch {
+  invoice_number:  string | null;
+  invoiced_amount: number | null;
+  complete_notes:  string | null;
 }
 
 function json(status: number, body: unknown): Response {
@@ -56,18 +58,28 @@ const ALLOWED_PATCH_KEYS: (keyof CommsJobPatch)[] = [
 ];
 
 const ALLOWED_LINE_KEYS: (keyof CommsPoLineInput)[] = [
-  'po_number', 'description', 'requestor', 'fid_number', 'quote_number',
-  'date_approval', 'hours', 'materials_cost', 'price_ex_gst',
+  'po_number', 'description', 'requestor', 'quote_number', 'hours', 'price_ex_gst',
 ];
+
+const ALLOWED_LINE_PATCH_KEYS: (keyof CommsPoLinePatch)[] = [
+  'invoice_number', 'invoiced_amount', 'complete_notes',
+];
+
+type DbClient = Awaited<ReturnType<typeof getTenantDataClientById>>;
+
+async function logEvent(db: DbClient, job_id: string, user_id: string, action: string, note: string) {
+  await db.from('sks_comms_events').insert({ job_id, user_id, action, note });
+}
 
 export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
   const session = verifySessionToken(readSessionCookie(req));
   if (!session) return json(401, { error: 'not_signed_in' });
-  // SKS-only: comms tables don't exist on other tenant planes
-  if (session.tenant_id !== SKS_TENANT_ID) return json(404, { error: 'not_found' });
   if (!can(session, 'field.view')) return json(403, { error: 'forbidden' });
 
-  let db;
+  // SKS-only — fast-fail before any DB call
+  if (session.tenant_id !== SKS_TENANT_ID) return json(404, { error: 'not_found' });
+
+  let db: DbClient;
   try {
     db = await getTenantDataClientById(session.tenant_id);
   } catch (e) {
@@ -77,55 +89,69 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     throw e;
   }
 
-  // ── POST ──────────────────────────────────────────────────────────────────
+  // ── POST: create / update ────────────────────────────────────────────────
   if (req.method === 'POST') {
     if (!can(session, 'field.dispatch')) return json(403, { error: 'forbidden' });
 
-    let body: { job_id?: string; patch?: Partial<CommsJobPatch>; line?: Partial<CommsPoLineInput> };
-    try {
-      body = (await req.json()) as typeof body;
-    } catch {
-      return json(400, { error: 'invalid_json' });
-    }
+    let body: Record<string, unknown>;
+    try { body = (await req.json()) as Record<string, unknown>; } catch { return json(400, { error: 'invalid_json' }); }
 
-    const { job_id } = body;
+    const job_id = body.job_id as string | undefined;
     if (!job_id) return json(400, { error: 'missing_job_id' });
 
-    // ── Add PO line ──────────────────────────────────────────────────────
-    if (body.line !== undefined) {
-      const line = body.line;
-      if (!line || typeof line !== 'object') return json(400, { error: 'invalid_line' });
-      if (!line.description?.trim()) return json(400, { error: 'description_required' });
-
-      const safeInsert: Record<string, unknown> = { job_id };
-      for (const k of ALLOWED_LINE_KEYS) {
-        if (k in line) safeInsert[k] = (line as Record<string, unknown>)[k];
+    // ── Update PO line (invoice fields) ──────────────────────────────────
+    if (body.line_id !== undefined) {
+      const line_id = body.line_id as string;
+      const raw = (body.line_patch ?? {}) as Record<string, unknown>;
+      const safe: Partial<CommsPoLinePatch> = {};
+      for (const k of ALLOWED_LINE_PATCH_KEYS) {
+        if (k in raw) (safe as Record<string, unknown>)[k] = raw[k];
       }
-
       const { data, error } = await db
         .from('sks_comms_po_lines')
-        .insert(safeInsert)
-        .select('line_id, po_number, description, requestor, fid_number, quote_number, date_approval, hours, materials_cost, price_ex_gst, complete_notes, invoice_number, invoiced_amount')
+        .update(safe)
+        .eq('line_id', line_id)
+        .eq('job_id', job_id)
+        .select('line_id, invoice_number, invoiced_amount, complete_notes')
         .single();
-
       if (error) return json(500, { error: 'db_error', detail: error.message });
+
+      const parts: string[] = [];
+      if (safe.invoice_number) parts.push(`invoice ${safe.invoice_number}`);
+      if (safe.invoiced_amount != null) parts.push(`$${safe.invoiced_amount}`);
+      await logEvent(db, job_id, session.user_id, 'update_line', `Line updated: ${parts.join(', ') || 'fields cleared'}`);
+
       return json(200, { ok: true, line: data });
     }
 
-    // ── Update job ───────────────────────────────────────────────────────
-    const { patch } = body;
-    if (!patch || typeof patch !== 'object') {
-      return json(400, { error: 'missing_patch_or_line' });
+    // ── Add PO line ───────────────────────────────────────────────────────
+    if (body.line !== undefined) {
+      const raw = (body.line ?? {}) as Record<string, unknown>;
+      if (!raw.description) return json(400, { error: 'description_required' });
+      const safe: Partial<CommsPoLineInput> & { job_id: string } = { job_id };
+      for (const k of ALLOWED_LINE_KEYS) {
+        if (k in raw) (safe as Record<string, unknown>)[k] = raw[k];
+      }
+      const { data, error } = await db
+        .from('sks_comms_po_lines')
+        .insert(safe)
+        .select('line_id, po_number, description, requestor, fid_number, quote_number, date_approval, hours, materials_cost, price_ex_gst, complete_notes, invoice_number, invoiced_amount')
+        .single();
+      if (error) return json(500, { error: 'db_error', detail: error.message });
+
+      await logEvent(db, job_id, session.user_id, 'add_line', `PO line added: ${String(raw.description)}`);
+      return json(200, { ok: true, line: data });
     }
 
+    // ── Patch job ─────────────────────────────────────────────────────────
+    const raw = (body.patch ?? {}) as Record<string, unknown>;
     const safe: Partial<CommsJobPatch> = {};
     for (const k of ALLOWED_PATCH_KEYS) {
-      if (k in patch) (safe as Record<string, unknown>)[k] = patch[k];
+      if (k in raw) (safe as Record<string, unknown>)[k] = raw[k];
     }
 
-    // Validate status value before hitting the DB
     if ('status' in safe && !VALID_STATUSES.has(safe.status as string)) {
-      return json(400, { error: 'invalid_status', valid: [...VALID_STATUSES] });
+      return json(400, { error: 'invalid_status' });
     }
 
     const { data, error } = await db
@@ -136,6 +162,16 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .single();
 
     if (error) return json(500, { error: 'db_error', detail: error.message });
+
+    const parts: string[] = [];
+    if ('status' in safe)      parts.push(`status → ${safe.status}`);
+    if ('assigned_to' in safe) parts.push(`assigned → ${safe.assigned_to ?? 'none'}`);
+    const boolFields: (keyof CommsJobPatch)[] = ['mop_received', 'pre_cable_done', 'post_dock_done', 'invoice_raised'];
+    for (const f of boolFields) {
+      if (f in safe) parts.push(`${f} → ${safe[f]}`);
+    }
+    await logEvent(db, job_id, session.user_id, 'update_job', parts.join(', ') || 'fields updated');
+
     return json(200, { ok: true, job: data });
   }
 
@@ -143,34 +179,44 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   if (req.method !== 'GET') return json(405, { error: 'method_not_allowed' });
 
   const url = new URL(req.url);
-  const jobId = url.searchParams.get('id');
+  const jobId    = url.searchParams.get('id');
+  const resource = url.searchParams.get('resource');
 
-  if (jobId) {
-    // Single job with PO lines (used on card expand)
-    const [jobRes, linesRes] = await Promise.all([
-      db.from('sks_comms_jobs')
-        .select('job_id, site_code, site_name, client, status, description, assigned_to, start_date, target_completion, mop_received, pre_cable_done, post_dock_done, invoice_raised, notes')
-        .eq('job_id', jobId)
-        .single(),
-      db.from('sks_comms_po_lines')
-        .select('line_id, po_number, description, requestor, fid_number, quote_number, date_approval, hours, materials_cost, price_ex_gst, complete_notes, invoice_number, invoiced_amount, created_at')
-        .eq('job_id', jobId)
-        .order('created_at', { ascending: true }),
-    ]);
-    if (jobRes.error || !jobRes.data) return json(404, { error: 'not_found' });
-
-    // Compute totals from freshly-fetched lines
-    const lines = linesRes.data ?? [];
-    type FetchedLine = { price_ex_gst: number | null; invoiced_amount: number | null; hours: number | null };
-    const total_value    = (lines as FetchedLine[]).reduce((s, l) => s + (l.price_ex_gst    ?? 0), 0);
-    const total_invoiced = (lines as FetchedLine[]).reduce((s, l) => s + (l.invoiced_amount ?? 0), 0);
-    const total_hours    = (lines as FetchedLine[]).reduce((s, l) => s + (l.hours           ?? 0), 0);
-    const line_count     = lines.length;
-
-    return json(200, { ok: true, job: { ...jobRes.data, total_value, total_invoiced, total_hours, line_count }, lines });
+  // Staff list for assigned_to autocomplete
+  if (resource === 'staff') {
+    const { data, error } = await db
+      .from('staff')
+      .select('staff_id, first_name, last_name, preferred_name')
+      .or('end_date.is.null,end_date.gt.now()')
+      .order('last_name');
+    if (error) return json(500, { error: 'db_error', detail: error.message });
+    type StaffRow = { staff_id: string; first_name: string; last_name: string; preferred_name: string | null };
+    const staff = ((data ?? []) as StaffRow[]).map((s) => ({
+      id: s.staff_id,
+      name: `${s.preferred_name ?? s.first_name} ${s.last_name}`,
+    }));
+    return json(200, { ok: true, staff });
   }
 
-  // ── All jobs with aggregated PO line totals ───────────────────────────────
+  // Single job with PO lines + last 10 events
+  if (jobId) {
+    const [jobRes, linesRes, eventsRes] = await Promise.all([
+      db.from('sks_comms_jobs').select('*').eq('job_id', jobId).single(),
+      db.from('sks_comms_po_lines')
+        .select('line_id, po_number, description, requestor, fid_number, quote_number, date_approval, hours, materials_cost, price_ex_gst, complete_notes, invoice_number, invoiced_amount')
+        .eq('job_id', jobId)
+        .order('created_at', { ascending: true }),
+      db.from('sks_comms_events')
+        .select('event_id, action, note, user_id, created_at')
+        .eq('job_id', jobId)
+        .order('created_at', { ascending: false })
+        .limit(10),
+    ]);
+    if (jobRes.error || !jobRes.data) return json(404, { error: 'not_found' });
+    return json(200, { ok: true, job: jobRes.data, lines: linesRes.data ?? [], events: eventsRes.data ?? [] });
+  }
+
+  // All jobs with aggregated PO line totals
   const { data: jobs, error: jErr } = await db
     .from('sks_comms_jobs')
     .select(
@@ -201,8 +247,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 
   type JobRow = { job_id: string; [k: string]: unknown };
-  const jobRows = (jobs ?? []) as unknown as JobRow[];
-  const result = jobRows.map((j) => ({
+  const result = ((jobs ?? []) as unknown as JobRow[]).map((j) => ({
     ...j,
     ...(totals[j.job_id] ?? { total_value: 0, total_invoiced: 0, total_hours: 0, line_count: 0 }),
   }));

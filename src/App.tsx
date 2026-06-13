@@ -540,7 +540,7 @@ function TenantTree() {
         <Route
           path="comms/*"
           element={
-            <ModuleGate module="field">
+            <ModuleGate module="comms">
               <Suspense fallback={<PageLoadingFallback />}>
                 <CommsModule />
               </Suspense>

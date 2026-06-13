@@ -129,3 +129,24 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
 }
+
+/* TableBulkAction — local shim pending @eq-solutions/ui export */
+.eq-table-bulk-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border: 1px solid var(--eq-gray-300, #d1d5db);
+  border-radius: 6px;
+  background: var(--eq-white, #ffffff);
+  color: var(--eq-gray-700, #374151);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.eq-table-bulk-action:hover { background: var(--eq-gray-50, #f9fafb); }
+.eq-table-bulk-action--danger { color: var(--eq-red-600, #dc2626); border-color: var(--eq-red-200, #fecaca); }
+.eq-table-bulk-action--danger:hover { background: var(--eq-red-50, #fef2f2); }
+.eq-table-bulk-action__icon { display: flex; align-items: center; }
