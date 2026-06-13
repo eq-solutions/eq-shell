@@ -564,6 +564,34 @@ function enrichPayload(payload: Record<string, unknown>, names: NameMaps): Recor
   return out;
 }
 
+// Multiple EQ Field roster views emit shift.started for the same calendar day with
+// different scheduled_count values (0, ~30, ~50, ~150). Deduplicate: keep the most
+// informative event per day — prefer one with named on_shift data, then highest count.
+function deduplicateShiftEvents(events: CanonicalEvent[]): CanonicalEvent[] {
+  const bestByDay = new Map<string, CanonicalEvent>();
+  const other: CanonicalEvent[] = [];
+
+  for (const e of events) {
+    if (e.event !== 'shift.started') { other.push(e); continue; }
+    const day = e.occurred_at.slice(0, 10);
+    const existing = bestByDay.get(day);
+    if (!existing) { bestByDay.set(day, e); continue; }
+
+    const curNames  = Array.isArray(existing.payload?.on_shift) && (existing.payload.on_shift as unknown[]).length > 0;
+    const candNames = Array.isArray(e.payload?.on_shift)        && (e.payload.on_shift        as unknown[]).length > 0;
+    const curCount  = typeof existing.payload?.scheduled_count === 'number' ? existing.payload.scheduled_count : 0;
+    const candCount = typeof e.payload?.scheduled_count        === 'number' ? e.payload.scheduled_count        : 0;
+
+    if ((!curNames && candNames) || (curNames === candNames && candCount > curCount)) {
+      bestByDay.set(day, e);
+    }
+  }
+
+  const deduped = [...bestByDay.values(), ...other];
+  deduped.sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
+  return deduped;
+}
+
 // Server-side grounding guard — defense in depth behind the prompt rules. Drops
 // any on_shift entry whose worker name does not appear in the data we actually
 // sent the model. shift.started payloads carry no names today, so this strips a
@@ -801,7 +829,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(500, { ok: false, error: 'db_error', detail: eventsRes.error.message });
   }
 
-  const events  = (eventsRes.data ?? [])   as CanonicalEvent[];
+  const events  = deduplicateShiftEvents((eventsRes.data ?? []) as CanonicalEvent[]);
 
   if (actionedRes.error) {
     // Non-fatal: actioned list only prevents re-surfacing dismissed items; proceed without it.
