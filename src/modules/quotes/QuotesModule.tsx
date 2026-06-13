@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,6 +34,7 @@ interface LineItem {
   quantity_thousandths: number;
   unit: string | null;
   unit_rate_cents: number;
+  cost_rate_cents: number;
   line_total_cents: number;
   category: string | null;
 }
@@ -64,6 +66,7 @@ interface QuoteDetail {
   po_number: string | null;
   coupa_entity: string | null;
   scope_of_works: string | null;
+  clarifications: string | null;
   quote_notes: string | null;
   attn_name: string | null;
   attn_first_name: string | null;
@@ -132,8 +135,51 @@ interface CreateLineItem {
   description: string;
   qty: string;
   unit: string;
-  rate: string;
+  cost: string;    // buy rate ($/unit)
+  markup: string;  // markup % — drives rate auto-calc
+  rate: string;    // sell rate ($/unit), auto-computed when cost/markup set
   category: string;
+}
+
+interface QuoteTemplate {
+  template_id: string;
+  template_type: string;
+  name: string;
+  body: string;
+  sort_order: number;
+}
+
+interface PricingProduct {
+  product_id: string;
+  name: string;
+  brand: string;
+  phase: string;
+  plug_type: string;
+}
+
+interface CalcLine {
+  section: string;
+  description: string;
+  unit: string;
+  qty_thousandths: number;
+  unit_rate_cents: number;
+  line_total_cents: number;
+}
+
+interface CalcResult {
+  ok: boolean;
+  product_name: string;
+  pairs: number;
+  discount_factor: number;
+  total_cents: number;
+  lines: CalcLine[];
+}
+
+interface RemovalResult {
+  ok: boolean;
+  pairs: number;
+  total_cents: number;
+  line: CalcLine;
 }
 
 interface QuotesModuleProps {
@@ -298,6 +344,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [savingJobNo, setSavingJobNo] = useState(false);
   const [jobNoErr, setJobNoErr] = useState<string | null>(null);
 
+  // PO number inline edit
+  const [poInput, setPoInput] = useState("");
+  const [savingPo, setSavingPo] = useState(false);
+  const [poErr, setPoErr] = useState<string | null>(null);
+
   // Note
   const [noteBody, setNoteBody] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -324,9 +375,28 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [createEstimatorInitials, setCreateEstimatorInitials] = useState("");
   const [createScope, setCreateScope] = useState("");
   const [createNotes, setCreateNotes] = useState("");
+  const [createAttnName, setCreateAttnName] = useState("");
+  const [createAttnFirstName, setCreateAttnFirstName] = useState("");
+  const [createAttnPhone, setCreateAttnPhone] = useState("");
+  const [createAddress, setCreateAddress] = useState("");
+  const [createPaymentTerms, setCreatePaymentTerms] = useState("");
+  const [createValidityDays, setCreateValidityDays] = useState("30");
+  const [createClarifications, setCreateClarifications] = useState("");
   const [createLineItems, setCreateLineItems] = useState<CreateLineItem[]>([
-    { description: "", qty: "1", unit: "", rate: "", category: "" },
+    { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "" },
   ]);
+  const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
+
+  // ── Outlet calculator state ───────────────────────────────────────────────
+
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcMode, setCalcMode] = useState<"install" | "removal">("install");
+  const [calcProducts, setCalcProducts] = useState<PricingProduct[]>([]);
+  const [calcProductId, setCalcProductId] = useState("");
+  const [calcPairs, setCalcPairs] = useState("1");
+  const [calcResult, setCalcResult] = useState<CalcResult | RemovalResult | null>(null);
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [calcError, setCalcError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
@@ -395,6 +465,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         const nexts = NEXT_STATUSES[row.status] ?? [];
         if (nexts.length > 0) setAdvanceStatus(nexts[0]);
         setJobNoInput(row.workbench_job_no ?? "");
+        setPoInput(row.po_number ?? "");
       }
     },
     [supabase],
@@ -444,10 +515,76 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (!error) setPresets((data as RatePreset[]) ?? []);
   }, [supabase]);
 
+  const loadTemplates = useCallback(async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.rpc("eq_list_quote_templates");
+    if (!error) setTemplates((data as QuoteTemplate[]) ?? []);
+  }, [supabase]);
+
+  const loadCalcProducts = useCallback(async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.rpc("eq_list_pricing_products");
+    if (!error && data) {
+      const prods = data as PricingProduct[];
+      setCalcProducts(prods);
+      if (prods.length > 0 && !calcProductId) setCalcProductId(prods[0].product_id);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
+
+  const runCalc = async () => {
+    if (!supabase) return;
+    const pairs = Math.max(1, parseInt(calcPairs, 10) || 1);
+    setCalcLoading(true);
+    setCalcError(null);
+    setCalcResult(null);
+    if (calcMode === "install") {
+      if (!calcProductId) { setCalcError("Select a product first."); setCalcLoading(false); return; }
+      const { data, error } = await supabase.rpc("eq_price_outlet_install", {
+        p_product_id: calcProductId,
+        p_pairs: pairs,
+      });
+      setCalcLoading(false);
+      if (error) { setCalcError(error.message); return; }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setCalcResult(data as any);
+    } else {
+      const { data, error } = await supabase.rpc("eq_price_outlet_removal", { p_pairs: pairs });
+      setCalcLoading(false);
+      if (error) { setCalcError(error.message); return; }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setCalcResult(data as any);
+    }
+  };
+
+  const addCalcLinesToQuote = () => {
+    if (!calcResult) return;
+    const lines: CalcLine[] = "lines" in calcResult
+      ? calcResult.lines
+      : [calcResult.line];
+    const newItems: CreateLineItem[] = lines.map((l) => ({
+      description: l.description,
+      qty: (l.qty_thousandths / 1000).toString(),
+      unit: l.unit,
+      cost: "",
+      markup: "",
+      rate: (l.unit_rate_cents / 100).toFixed(2),
+      category: l.section === "labour" ? "labour" : "material",
+    }));
+    setCreateLineItems((prev) => {
+      const existing = prev.filter((li) => li.description.trim());
+      return [...existing, ...newItems];
+    });
+    setCalcResult(null);
+    setCalcOpen(false);
+  };
+
   useEffect(() => {
     if (view === "create" || view === "edit") {
       void loadCustomers();
       void loadPresets();
+      void loadTemplates();
+      void loadCalcProducts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
@@ -463,7 +600,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCreateEstimatorInitials("");
     setCreateScope("");
     setCreateNotes("");
-    setCreateLineItems([{ description: "", qty: "1", unit: "", rate: "", category: "" }]);
+    setCreateAttnName("");
+    setCreateAttnFirstName("");
+    setCreateAttnPhone("");
+    setCreateAddress("");
+    setCreatePaymentTerms("");
+    setCreateValidityDays("30");
+    setCreateClarifications("");
+    setCreateLineItems([{ description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "" }]);
     setCreateError(null);
     setEditingQuoteId(null);
   };
@@ -478,16 +622,33 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCreateEstimatorInitials(d.estimator_initials ?? "");
     setCreateScope(d.scope_of_works ?? "");
     setCreateNotes(d.quote_notes ?? "");
+    setCreateAttnName(d.attn_name ?? "");
+    setCreateAttnFirstName(d.attn_first_name ?? "");
+    setCreateAttnPhone(d.attn_phone ?? "");
+    setCreateAddress(d.address ?? "");
+    setCreatePaymentTerms(d.payment_terms ?? "");
+    setCreateValidityDays(String(d.validity_days ?? 30));
+    setCreateClarifications(d.clarifications ?? "");
     setCreateLineItems(
       d.line_items.length > 0
-        ? d.line_items.map((li) => ({
-            description: li.description,
-            qty: (li.quantity_thousandths / 1000).toString(),
-            unit: li.unit ?? "",
-            rate: (li.unit_rate_cents / 100).toString(),
-            category: li.category ?? "",
-          }))
-        : [{ description: "", qty: "1", unit: "", rate: "", category: "" }],
+        ? d.line_items.map((li) => {
+            const costDollars = li.cost_rate_cents > 0 ? (li.cost_rate_cents / 100).toFixed(2) : "";
+            const rateDollars = (li.unit_rate_cents / 100).toFixed(2);
+            let markup = "";
+            if (li.cost_rate_cents > 0 && li.unit_rate_cents > 0) {
+              markup = (((li.unit_rate_cents - li.cost_rate_cents) / li.cost_rate_cents) * 100).toFixed(1);
+            }
+            return {
+              description: li.description,
+              qty: (li.quantity_thousandths / 1000).toString(),
+              unit: li.unit ?? "",
+              cost: costDollars,
+              markup,
+              rate: rateDollars,
+              category: li.category ?? "",
+            };
+          })
+        : [{ description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "" }],
     );
     setCreateError(null);
     void loadSites(d.customer_id);
@@ -497,13 +658,22 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const updateLineItem = (i: number, field: keyof CreateLineItem, value: string) => {
     setCreateLineItems((prev) => {
       const next = [...prev];
-      next[i] = { ...next[i], [field]: value };
+      const updated = { ...next[i], [field]: value };
+      if (field === "cost" || field === "markup") {
+        const c = parseFloat(field === "cost" ? value : updated.cost);
+        const m = parseFloat(field === "markup" ? value : updated.markup);
+        if (!isNaN(c) && c > 0) {
+          const mk = isNaN(m) ? 0 : m;
+          updated.rate = (c * (1 + mk / 100)).toFixed(2);
+        }
+      }
+      next[i] = updated;
       return next;
     });
   };
 
   const addLineItem = () => {
-    setCreateLineItems((prev) => [...prev, { description: "", qty: "1", unit: "", rate: "", category: "" }]);
+    setCreateLineItems((prev) => [...prev, { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "" }]);
   };
 
   const applyPreset = (preset: RatePreset) => {
@@ -511,6 +681,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       description: preset.description,
       qty: (preset.qty_thousandths / 1000).toString(),
       unit: preset.unit ?? "",
+      cost: "",
+      markup: "",
       rate: (preset.unit_rate_cents / 100).toString(),
       category: preset.category ?? "",
     };
@@ -544,7 +716,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_estimator_initials: createEstimatorInitials.trim() || null,
       p_scope_of_works: createScope.trim() || null,
       p_notes: createNotes.trim() || null,
-      p_validity_days: 30,
+      p_validity_days: parseInt(createValidityDays, 10) || 30,
+      p_attn_name: createAttnName.trim() || null,
+      p_attn_first_name: createAttnFirstName.trim() || null,
+      p_attn_phone: createAttnPhone.trim() || null,
+      p_address: createAddress.trim() || null,
+      p_payment_terms: createPaymentTerms.trim() || null,
+      p_clarifications: createClarifications.trim() || null,
     });
 
     if (error) { setCreateError(error.message); setCreating(false); return; }
@@ -555,6 +733,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       const li = validLines[i];
       const qtyVal = Math.max(0, parseFloat(li.qty) || 1);
       const rateVal = Math.max(0, parseFloat(li.rate) || 0);
+      const costVal = Math.max(0, parseFloat(li.cost) || 0);
       const { error: liErr } = await supabase.rpc("eq_add_line_item", {
         p_quote_id: row.quote_id,
         p_line_number: i + 1,
@@ -563,6 +742,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         p_unit_rate_cents: Math.round(rateVal * 100),
         p_unit: li.unit.trim() || null,
         p_category: li.category.trim() || null,
+        p_cost_rate_cents: Math.round(costVal * 100),
       });
       if (liErr) { setCreateError(liErr.message); setCreating(false); return; }
     }
@@ -592,7 +772,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_estimator_initials: createEstimatorInitials.trim() || null,
       p_scope_of_works: createScope.trim() || null,
       p_notes: createNotes.trim() || null,
-      p_validity_days: 30,
+      p_validity_days: parseInt(createValidityDays, 10) || 30,
+      p_attn_name: createAttnName.trim() || null,
+      p_attn_first_name: createAttnFirstName.trim() || null,
+      p_attn_phone: createAttnPhone.trim() || null,
+      p_address: createAddress.trim() || null,
+      p_payment_terms: createPaymentTerms.trim() || null,
+      p_clarifications: createClarifications.trim() || null,
     });
 
     if (headerErr) { setCreateError(headerErr.message); setCreating(false); return; }
@@ -602,6 +788,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       description: li.description.trim(),
       qty_thousandths: Math.round(Math.max(0, parseFloat(li.qty) || 1) * 1000),
       unit_rate_cents: Math.round(Math.max(0, parseFloat(li.rate) || 0) * 100),
+      cost_rate_cents: Math.round(Math.max(0, parseFloat(li.cost) || 0) * 100),
       unit: li.unit.trim() || null,
       category: li.category.trim() || null,
     }));
@@ -677,6 +864,20 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (error) { setJobNoErr(error.message); return; }
     await openDetail(detail.quote_id);
     void loadQuotes(statusFilter, search);
+  };
+
+  const handleSavePoNumber = async () => {
+    if (!supabase || !detail || !poInput.trim()) return;
+    setSavingPo(true);
+    setPoErr(null);
+    const { error } = await supabase.rpc("eq_set_po_number", {
+      p_quote_id: detail.quote_id,
+      p_po_number: poInput.trim(),
+      p_initials: initials.trim() || null,
+    });
+    setSavingPo(false);
+    if (error) { setPoErr(error.message); return; }
+    await openDetail(detail.quote_id);
   };
 
   // ── Import actions ────────────────────────────────────────────────────────
@@ -800,6 +1001,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   Edit
                 </button>
               )}
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                style={(detail.status === "draft" || detail.status === "submitted") ? {} : { marginLeft: "auto" }}
+                onClick={() => void generateQuoteDoc(detail)}
+              >
+                Download Quote
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => void generateJobExcel(detail)}
+              >
+                Create Job
+              </button>
             </div>
           )}
         </div>
@@ -879,11 +1095,26 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   </div>
                   {jobNoErr && <div className="eq-quotes__inline-err">{jobNoErr}</div>}
                 </div>
-                <div className="eq-quotes__info-item">
+                <div className="eq-quotes__info-item eq-quotes__info-item--full">
                   <span className="eq-quotes__info-label">PO Number</span>
-                  <span className="eq-quotes__info-val">
-                    {detail.po_number || <span className="eq-quotes__muted">—</span>}
-                  </span>
+                  <div className="eq-quotes__job-no-row">
+                    <input
+                      className="eq-quotes__input eq-quotes__input--job-no"
+                      value={poInput}
+                      onChange={(e) => setPoInput(e.target.value)}
+                      placeholder={detail.po_number || "—"}
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleSavePoNumber(); }}
+                    />
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={savingPo || poInput.trim() === (detail.po_number ?? "")}
+                      onClick={() => void handleSavePoNumber()}
+                    >
+                      {savingPo ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                  {poErr && <div className="eq-quotes__inline-err">{poErr}</div>}
                 </div>
                 {detail.coupa_entity && (
                   <div className="eq-quotes__info-item">
@@ -917,6 +1148,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 <div className="eq-quotes__scope">
                   <span className="eq-quotes__info-label">Scope of Works</span>
                   <p className="eq-quotes__scope-text">{detail.scope_of_works}</p>
+                </div>
+              )}
+
+              {detail.clarifications && (
+                <div className="eq-quotes__scope">
+                  <span className="eq-quotes__info-label">Clarifications</span>
+                  <p className="eq-quotes__scope-text">{detail.clarifications}</p>
                 </div>
               )}
 
@@ -1229,7 +1467,25 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 />
               </div>
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
-                <span className="eq-quotes__info-label">Scope of Works</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                  <span className="eq-quotes__info-label" style={{ marginBottom: 0 }}>Scope of Works</span>
+                  {templates.filter((t) => t.template_type === "scope").length > 0 && (
+                    <select
+                      className="eq-quotes__select"
+                      style={{ fontSize: 11, padding: "2px 6px", height: 24 }}
+                      value=""
+                      onChange={(e) => {
+                        const tpl = templates.find((t) => t.template_id === e.target.value);
+                        if (tpl) setCreateScope((prev) => prev ? prev + "\n\n" + tpl.body : tpl.body);
+                      }}
+                    >
+                      <option value="">Insert template…</option>
+                      {templates.filter((t) => t.template_type === "scope").map((t) => (
+                        <option key={t.template_id} value={t.template_id}>{t.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
                 <textarea
                   className="eq-quotes__textarea"
                   style={{ maxWidth: 560, minHeight: 72 }}
@@ -1240,10 +1496,39 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 />
               </div>
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                  <span className="eq-quotes__info-label" style={{ marginBottom: 0 }}>Clarifications</span>
+                  {templates.filter((t) => t.template_type === "clarification").length > 0 && (
+                    <select
+                      className="eq-quotes__select"
+                      style={{ fontSize: 11, padding: "2px 6px", height: 24 }}
+                      value=""
+                      onChange={(e) => {
+                        const tpl = templates.find((t) => t.template_id === e.target.value);
+                        if (tpl) setCreateClarifications((prev) => prev ? prev + "\n\n" + tpl.body : tpl.body);
+                      }}
+                    >
+                      <option value="">Insert template…</option>
+                      {templates.filter((t) => t.template_type === "clarification").map((t) => (
+                        <option key={t.template_id} value={t.template_id}>{t.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <textarea
+                  className="eq-quotes__textarea"
+                  style={{ maxWidth: 560, minHeight: 72 }}
+                  value={createClarifications}
+                  onChange={(e) => setCreateClarifications(e.target.value)}
+                  placeholder="Clarifications, exclusions, and conditions…"
+                  rows={3}
+                />
+              </div>
+              <div className="eq-quotes__info-item eq-quotes__info-item--full">
                 <span className="eq-quotes__info-label">
                   Notes{" "}
                   <span className="eq-quotes__muted" style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, fontSize: 11 }}>
-                    (optional)
+                    (internal)
                   </span>
                 </span>
                 <textarea
@@ -1256,6 +1541,77 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 />
               </div>
             </div>
+
+            {/* Contact / address — for the quote document */}
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--eq-border)" }}>
+              <span style={{
+                display: "block", marginBottom: 10, fontSize: 11,
+                textTransform: "uppercase", letterSpacing: "0.06em",
+                color: "var(--eq-muted)", fontWeight: 600,
+              }}>
+                Contact &amp; Address
+              </span>
+              <div className="eq-quotes__info-grid">
+                <div className="eq-quotes__info-item">
+                  <span className="eq-quotes__info-label">First Name</span>
+                  <input
+                    className="eq-quotes__input"
+                    value={createAttnFirstName}
+                    onChange={(e) => setCreateAttnFirstName(e.target.value)}
+                    placeholder="e.g. Jacob"
+                  />
+                </div>
+                <div className="eq-quotes__info-item">
+                  <span className="eq-quotes__info-label">Last Name</span>
+                  <input
+                    className="eq-quotes__input"
+                    value={createAttnName}
+                    onChange={(e) => setCreateAttnName(e.target.value)}
+                    placeholder="e.g. Brennan"
+                  />
+                </div>
+                <div className="eq-quotes__info-item">
+                  <span className="eq-quotes__info-label">Phone</span>
+                  <input
+                    className="eq-quotes__input"
+                    value={createAttnPhone}
+                    onChange={(e) => setCreateAttnPhone(e.target.value)}
+                    placeholder="e.g. 02 9999 0000"
+                  />
+                </div>
+                <div className="eq-quotes__info-item">
+                  <span className="eq-quotes__info-label">Payment Terms</span>
+                  <input
+                    className="eq-quotes__input"
+                    value={createPaymentTerms}
+                    onChange={(e) => setCreatePaymentTerms(e.target.value)}
+                    placeholder="e.g. 30 days net"
+                  />
+                </div>
+                <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                  <span className="eq-quotes__info-label">Address</span>
+                  <input
+                    className="eq-quotes__input"
+                    style={{ maxWidth: 440 }}
+                    value={createAddress}
+                    onChange={(e) => setCreateAddress(e.target.value)}
+                    placeholder="e.g. Herbert St, St Leonards NSW 2065"
+                  />
+                </div>
+                <div className="eq-quotes__info-item">
+                  <span className="eq-quotes__info-label">Validity (days)</span>
+                  <input
+                    className="eq-quotes__input eq-quotes__input--sm"
+                    type="number"
+                    min="1"
+                    max="365"
+                    style={{ width: 80 }}
+                    value={createValidityDays}
+                    onChange={(e) => setCreateValidityDays(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Line items */}
@@ -1266,12 +1622,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 <thead>
                   <tr>
                     <th>Description</th>
-                    <th style={{ width: 80 }}>Qty</th>
-                    <th style={{ width: 72 }}>Unit</th>
-                    <th style={{ width: 110 }}>Rate ($)</th>
-                    <th style={{ width: 120 }}>Category</th>
-                    <th className="eq-quotes__th--right" style={{ width: 110 }}>Total</th>
-                    <th style={{ width: 36 }}></th>
+                    <th style={{ width: 70 }}>Qty</th>
+                    <th style={{ width: 56 }}>Unit</th>
+                    <th style={{ width: 88 }}>Cost ($)</th>
+                    <th style={{ width: 72 }}>Mark-up%</th>
+                    <th style={{ width: 96 }}>Rate ($)</th>
+                    <th style={{ width: 108 }}>Category</th>
+                    <th className="eq-quotes__th--right" style={{ width: 96 }}>Total</th>
+                    <th style={{ width: 30 }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1300,7 +1658,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                       <td>
                         <input
                           className="eq-quotes__input"
-                          style={{ width: 60, padding: "5px 8px", fontSize: 13 }}
+                          style={{ width: 44, padding: "5px 6px", fontSize: 13 }}
                           value={li.unit}
                           onChange={(e) => updateLineItem(i, "unit", e.target.value)}
                           placeholder="ea"
@@ -1309,19 +1667,48 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                       <td>
                         <input
                           className="eq-quotes__input"
-                          style={{ width: 98, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
+                          style={{ width: 76, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={li.cost}
+                          onChange={(e) => updateLineItem(i, "cost", e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="eq-quotes__input"
+                          style={{ width: 60, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={li.markup}
+                          onChange={(e) => updateLineItem(i, "markup", e.target.value)}
+                          placeholder="0"
+                          title="Markup %. Rate auto-computes from Cost × (1 + Markup/100)"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="eq-quotes__input"
+                          style={{
+                            width: 84, padding: "5px 8px", fontSize: 13, textAlign: "right",
+                            background: li.cost ? "var(--eq-surface-2, var(--eq-surface))" : undefined,
+                          }}
                           type="number"
                           min="0"
                           step="0.01"
                           value={li.rate}
                           onChange={(e) => updateLineItem(i, "rate", e.target.value)}
                           placeholder="0.00"
+                          title={li.cost ? "Auto-computed from Cost × (1 + Markup%)" : "Enter sell rate"}
                         />
                       </td>
                       <td>
                         <select
                           className="eq-quotes__select"
-                          style={{ width: 112, padding: "5px 8px", fontSize: 13 }}
+                          style={{ width: 100, padding: "5px 6px", fontSize: 13 }}
                           value={li.category}
                           onChange={(e) => updateLineItem(i, "category", e.target.value)}
                         >
@@ -1412,6 +1799,142 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 </div>
               );
             })()}
+
+            {/* Outlet pricing calculator */}
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--eq-border)" }}>
+              <button
+                type="button"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  background: "none", border: "none", cursor: "pointer",
+                  fontSize: 12, color: "var(--eq-muted)", fontWeight: 600,
+                  textTransform: "uppercase", letterSpacing: "0.06em", padding: 0,
+                }}
+                onClick={() => {
+                  setCalcOpen((o) => !o);
+                  if (!calcOpen && calcProducts.length === 0) void loadCalcProducts();
+                }}
+              >
+                <span style={{ fontSize: 14 }}>{calcOpen ? "▾" : "▸"}</span>
+                Outlet Pricing Calculator
+              </button>
+
+              {calcOpen && (
+                <div style={{ marginTop: 12, padding: "12px 14px", background: "var(--eq-surface-alt, var(--eq-surface))", borderRadius: 8, border: "1px solid var(--eq-border)" }}>
+                  {/* Mode tabs */}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                    {(["install", "removal"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => { setCalcMode(m); setCalcResult(null); setCalcError(null); }}
+                        style={{
+                          padding: "4px 12px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                          cursor: "pointer", border: "1px solid var(--eq-border)",
+                          background: calcMode === m ? "var(--eq-sky, #3DA8D8)" : "var(--eq-surface)",
+                          color: calcMode === m ? "#fff" : "var(--eq-text)",
+                        }}
+                      >
+                        {m === "install" ? "Install" : "Removal"}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                    {calcMode === "install" && (
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                        <span style={{ color: "var(--eq-muted)", fontWeight: 600, textTransform: "uppercase", fontSize: 11, letterSpacing: "0.04em" }}>Product</span>
+                        <select
+                          className="eq-quotes__select"
+                          style={{ minWidth: 280, fontSize: 13 }}
+                          value={calcProductId}
+                          onChange={(e) => { setCalcProductId(e.target.value); setCalcResult(null); }}
+                        >
+                          {calcProducts.length === 0 && <option value="">Loading…</option>}
+                          {calcProducts.map((p) => (
+                            <option key={p.product_id} value={p.product_id}>{p.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                      <span style={{ color: "var(--eq-muted)", fontWeight: 600, textTransform: "uppercase", fontSize: 11, letterSpacing: "0.04em" }}>Pairs</span>
+                      <input
+                        className="eq-quotes__input"
+                        type="number"
+                        min="1"
+                        style={{ width: 72, fontSize: 13, textAlign: "right" }}
+                        value={calcPairs}
+                        onChange={(e) => { setCalcPairs(e.target.value); setCalcResult(null); }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={calcLoading}
+                      onClick={() => void runCalc()}
+                    >
+                      {calcLoading ? "Calculating…" : "Calculate"}
+                    </button>
+                  </div>
+
+                  {calcError && <div className="eq-quotes__inline-err" style={{ marginTop: 8 }}>{calcError}</div>}
+
+                  {calcResult && (() => {
+                    const lines: CalcLine[] = "lines" in calcResult ? calcResult.lines : [calcResult.line];
+                    const discountFactor = "discount_factor" in calcResult ? calcResult.discount_factor : 1;
+                    return (
+                      <div style={{ marginTop: 12 }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ borderBottom: "1px solid var(--eq-border)" }}>
+                              <th style={{ textAlign: "left", padding: "3px 6px", fontWeight: 600 }}>Description</th>
+                              <th style={{ textAlign: "right", padding: "3px 6px", fontWeight: 600 }}>Qty</th>
+                              <th style={{ textAlign: "right", padding: "3px 6px", fontWeight: 600 }}>Rate</th>
+                              <th style={{ textAlign: "right", padding: "3px 6px", fontWeight: 600 }}>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {lines.map((l, i) => (
+                              <tr key={i}>
+                                <td style={{ padding: "3px 6px" }}>{l.description}</td>
+                                <td style={{ textAlign: "right", padding: "3px 6px" }}>{qty(l.qty_thousandths)} {l.unit}</td>
+                                <td style={{ textAlign: "right", padding: "3px 6px" }}>{aud(l.unit_rate_cents)}</td>
+                                <td style={{ textAlign: "right", padding: "3px 6px", fontWeight: 600 }}>{aud(l.line_total_cents)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{ borderTop: "1px solid var(--eq-border)" }}>
+                              <td colSpan={3} style={{ textAlign: "right", padding: "4px 6px", fontSize: 11, color: "var(--eq-muted)" }}>
+                                {discountFactor < 1 && `${Math.round((1 - discountFactor) * 100)}% volume discount applied · `}Total (ex GST)
+                              </td>
+                              <td style={{ textAlign: "right", padding: "4px 6px", fontWeight: 700 }}>{aud(calcResult.total_cents)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                        <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            className="eq-quotes__btn eq-quotes__btn--primary"
+                            onClick={addCalcLinesToQuote}
+                          >
+                            Add to Quote
+                          </button>
+                          <button
+                            type="button"
+                            className="eq-quotes__btn eq-quotes__btn--outline"
+                            onClick={() => setCalcResult(null)}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
 
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14, flexWrap: "wrap", gap: 12 }}>
               <button
