@@ -118,11 +118,19 @@ interface RatePreset {
   sort_order: number;
 }
 
+interface Site {
+  site_id: string;
+  name: string;
+  code: string | null;
+  customer_id: string | null;
+}
+
 interface CreateLineItem {
   description: string;
   qty: string;
   unit: string;
   rate: string;
+  category: string;
 }
 
 interface QuotesModuleProps {
@@ -291,19 +299,22 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [accordionError, setAccordionError] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["equinix"]));
 
-  // ── Customers + presets + create form state ──────────────────────────────
+  // ── Customers + sites + presets + create form state ─────────────────────
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [sitesLoading, setSitesLoading] = useState(false);
   const [presets, setPresets] = useState<RatePreset[]>([]);
   const [presetsLoading, setPresetsLoading] = useState(false);
   const [createCustomerId, setCreateCustomerId] = useState("");
+  const [createSiteId, setCreateSiteId] = useState("");
   const [createProjectName, setCreateProjectName] = useState("");
   const [createEstimatorName, setCreateEstimatorName] = useState("");
   const [createEstimatorInitials, setCreateEstimatorInitials] = useState("");
   const [createScope, setCreateScope] = useState("");
   const [createNotes, setCreateNotes] = useState("");
   const [createLineItems, setCreateLineItems] = useState<CreateLineItem[]>([
-    { description: "", qty: "1", unit: "", rate: "" },
+    { description: "", qty: "1", unit: "", rate: "", category: "" },
   ]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -405,6 +416,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (!error) setCustomers((data as Customer[]) ?? []);
   }, [supabase]);
 
+  const loadSites = useCallback(async (customerId: string) => {
+    if (!supabase || !customerId) { setSites([]); return; }
+    setSitesLoading(true);
+    const { data, error } = await supabase.rpc("eq_list_sites", { p_customer_id: customerId });
+    setSitesLoading(false);
+    if (!error) setSites((data as Site[]) ?? []);
+  }, [supabase]);
+
   const loadPresets = useCallback(async () => {
     if (!supabase) return;
     setPresetsLoading(true);
@@ -425,12 +444,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   const resetCreateForm = () => {
     setCreateCustomerId("");
+    setCreateSiteId("");
+    setSites([]);
     setCreateProjectName("");
     setCreateEstimatorName("");
     setCreateEstimatorInitials("");
     setCreateScope("");
     setCreateNotes("");
-    setCreateLineItems([{ description: "", qty: "1", unit: "", rate: "" }]);
+    setCreateLineItems([{ description: "", qty: "1", unit: "", rate: "", category: "" }]);
     setCreateError(null);
   };
 
@@ -443,7 +464,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   };
 
   const addLineItem = () => {
-    setCreateLineItems((prev) => [...prev, { description: "", qty: "1", unit: "", rate: "" }]);
+    setCreateLineItems((prev) => [...prev, { description: "", qty: "1", unit: "", rate: "", category: "" }]);
   };
 
   const applyPreset = (preset: RatePreset) => {
@@ -452,6 +473,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       qty: (preset.qty_thousandths / 1000).toString(),
       unit: preset.unit ?? "",
       rate: (preset.unit_rate_cents / 100).toString(),
+      category: preset.category ?? "",
     };
     setCreateLineItems((prev) => {
       if (prev.length === 1 && !prev[0].description.trim() && !prev[0].rate.trim()) {
@@ -477,6 +499,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
     const { data, error } = await supabase.rpc("eq_create_quote", {
       p_customer_id: createCustomerId,
+      p_site_id: createSiteId || null,
       p_project_name: createProjectName.trim() || null,
       p_estimator_name: createEstimatorName.trim() || null,
       p_estimator_initials: createEstimatorInitials.trim() || null,
@@ -500,6 +523,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         p_qty_thousandths: Math.round(qtyVal * 1000),
         p_unit_rate_cents: Math.round(rateVal * 100),
         p_unit: li.unit.trim() || null,
+        p_category: li.category.trim() || null,
       });
       if (liErr) { setCreateError(liErr.message); setCreating(false); return; }
     }
@@ -976,12 +1000,40 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     className="eq-quotes__select"
                     style={{ maxWidth: 440 }}
                     value={createCustomerId}
-                    onChange={(e) => setCreateCustomerId(e.target.value)}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setCreateCustomerId(id);
+                      setCreateSiteId("");
+                      void loadSites(id);
+                    }}
                   >
                     <option value="">Select a customer…</option>
                     {customers.map((c) => (
                       <option key={c.customer_id} value={c.customer_id}>
                         {c.company_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                <span className="eq-quotes__info-label">Site</span>
+                {sitesLoading ? (
+                  <span className="eq-quotes__muted" style={{ fontSize: 14 }}>Loading…</span>
+                ) : (
+                  <select
+                    className="eq-quotes__select"
+                    style={{ maxWidth: 440 }}
+                    value={createSiteId}
+                    onChange={(e) => setCreateSiteId(e.target.value)}
+                    disabled={!createCustomerId}
+                  >
+                    <option value="">
+                      {createCustomerId ? (sites.length === 0 ? "No sites for this customer" : "Select a site (optional)…") : "Select a customer first"}
+                    </option>
+                    {sites.map((s) => (
+                      <option key={s.site_id} value={s.site_id}>
+                        {s.name}{s.code ? ` [${s.code}]` : ""}
                       </option>
                     ))}
                   </select>
@@ -1057,6 +1109,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     <th style={{ width: 80 }}>Qty</th>
                     <th style={{ width: 72 }}>Unit</th>
                     <th style={{ width: 110 }}>Rate ($)</th>
+                    <th style={{ width: 120 }}>Category</th>
                     <th className="eq-quotes__th--right" style={{ width: 110 }}>Total</th>
                     <th style={{ width: 36 }}></th>
                   </tr>
@@ -1104,6 +1157,19 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                           onChange={(e) => updateLineItem(i, "rate", e.target.value)}
                           placeholder="0.00"
                         />
+                      </td>
+                      <td>
+                        <select
+                          className="eq-quotes__select"
+                          style={{ width: 112, padding: "5px 8px", fontSize: 13 }}
+                          value={li.category}
+                          onChange={(e) => updateLineItem(i, "category", e.target.value)}
+                        >
+                          <option value="">—</option>
+                          <option value="labour">labour</option>
+                          <option value="material">material</option>
+                          <option value="subcontractor">subcontractor</option>
+                        </select>
                       </td>
                       <td className="eq-quotes__td--right eq-quotes__td--bold">
                         {calcLineTotal(li) > 0
