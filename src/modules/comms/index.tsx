@@ -595,7 +595,7 @@ function JobCard({
   const staffListId   = 'comms-staff-list';
 
   return (
-    <div className={`comms-job-card comms-job-card--${job.status}`}>
+    <div className={`comms-job-card comms-job-card--${job.status}${open ? ' comms-job-card--expanded' : ''}`}>
       {/* ── Header ── */}
       <button
         type="button"
