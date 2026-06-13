@@ -47,6 +47,8 @@ interface QuoteNote {
 
 interface QuoteDetail {
   quote_id: string;
+  customer_id: string;
+  site_id: string | null;
   quote_number: string;
   status: string;
   project_name: string | null;
@@ -62,6 +64,7 @@ interface QuoteDetail {
   po_number: string | null;
   coupa_entity: string | null;
   scope_of_works: string | null;
+  quote_notes: string | null;
   attn_name: string | null;
   attn_first_name: string | null;
   attn_phone: string | null;
@@ -256,7 +259,7 @@ function parseCSV(text: string): CoupaRow[] {
 // ---------------------------------------------------------------------------
 
 export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element {
-  type ModuleView = "pipeline" | "accordion" | "import" | "create";
+  type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit";
 
   // ── Main navigation ──────────────────────────────────────────────────────
   const [view, setView] = useState<ModuleView>("pipeline");
@@ -318,6 +321,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   ]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
 
   // ── Import state ──────────────────────────────────────────────────────────
   const [csvText, setCsvText] = useState("");
@@ -433,7 +437,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   }, [supabase]);
 
   useEffect(() => {
-    if (view === "create") {
+    if (view === "create" || view === "edit") {
       void loadCustomers();
       void loadPresets();
     }
@@ -453,7 +457,34 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCreateNotes("");
     setCreateLineItems([{ description: "", qty: "1", unit: "", rate: "", category: "" }]);
     setCreateError(null);
+    setEditingQuoteId(null);
   };
+
+  const openEditForm = useCallback((d: QuoteDetail) => {
+    setEditingQuoteId(d.quote_id);
+    setDetailId(null);
+    setCreateCustomerId(d.customer_id);
+    setCreateSiteId(d.site_id ?? "");
+    setCreateProjectName(d.project_name ?? "");
+    setCreateEstimatorName(d.estimator_name ?? "");
+    setCreateEstimatorInitials(d.estimator_initials ?? "");
+    setCreateScope(d.scope_of_works ?? "");
+    setCreateNotes(d.quote_notes ?? "");
+    setCreateLineItems(
+      d.line_items.length > 0
+        ? d.line_items.map((li) => ({
+            description: li.description,
+            qty: (li.quantity_thousandths / 1000).toString(),
+            unit: li.unit ?? "",
+            rate: (li.unit_rate_cents / 100).toString(),
+            category: li.category ?? "",
+          }))
+        : [{ description: "", qty: "1", unit: "", rate: "", category: "" }],
+    );
+    setCreateError(null);
+    void loadSites(d.customer_id);
+    setView("edit");
+  }, [loadSites]);
 
   const updateLineItem = (i: number, field: keyof CreateLineItem, value: string) => {
     setCreateLineItems((prev) => {
@@ -532,6 +563,54 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     resetCreateForm();
     void loadQuotes(statusFilter, search);
     void openDetail(row.quote_id);
+  };
+
+  const handleEditQuote = async () => {
+    if (!supabase || !editingQuoteId || !createCustomerId) return;
+    const validLines = createLineItems.filter((li) => li.description.trim());
+    if (validLines.length === 0) {
+      setCreateError("Add at least one line item with a description.");
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+
+    const { error: headerErr } = await supabase.rpc("eq_update_quote", {
+      p_quote_id: editingQuoteId,
+      p_customer_id: createCustomerId,
+      p_site_id: createSiteId || null,
+      p_project_name: createProjectName.trim() || null,
+      p_estimator_name: createEstimatorName.trim() || null,
+      p_estimator_initials: createEstimatorInitials.trim() || null,
+      p_scope_of_works: createScope.trim() || null,
+      p_notes: createNotes.trim() || null,
+      p_validity_days: 30,
+    });
+
+    if (headerErr) { setCreateError(headerErr.message); setCreating(false); return; }
+
+    const lineItemsJson = validLines.map((li, idx) => ({
+      line_number: idx + 1,
+      description: li.description.trim(),
+      qty_thousandths: Math.round(Math.max(0, parseFloat(li.qty) || 1) * 1000),
+      unit_rate_cents: Math.round(Math.max(0, parseFloat(li.rate) || 0) * 100),
+      unit: li.unit.trim() || null,
+      category: li.category.trim() || null,
+    }));
+
+    const { error: itemsErr } = await supabase.rpc("eq_replace_line_items", {
+      p_quote_id: editingQuoteId,
+      p_line_items: lineItemsJson,
+    });
+
+    if (itemsErr) { setCreateError(itemsErr.message); setCreating(false); return; }
+
+    const savedQuoteId = editingQuoteId;
+    setCreating(false);
+    resetCreateForm();
+    setView("pipeline");
+    void loadQuotes(statusFilter, search);
+    void openDetail(savedQuoteId);
   };
 
   // ── Pipeline actions ──────────────────────────────────────────────────────
@@ -703,6 +782,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <span className={statusClass(detail.status)}>
                 {STATUS_LABELS[detail.status] ?? detail.status}
               </span>
+              {(detail.status === "draft" || detail.status === "submitted") && (
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  style={{ marginLeft: "auto" }}
+                  onClick={() => openEditForm(detail)}
+                >
+                  Edit
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -891,7 +980,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   </select>
                   <input
                     className="eq-quotes__input eq-quotes__input--note"
-                    placeholder="Optional note…"
+                    placeholder={advanceStatus === "lost" ? "Loss reason…" : "Optional note…"}
                     value={statusNote}
                     onChange={(e) => setStatusNote(e.target.value)}
                   />
@@ -938,12 +1027,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               ) : (
                 <div className="eq-quotes__notes-list">
                   {detail.notes.map((n) => (
-                    <div key={n.note_id} className="eq-quotes__note">
+                    <div
+                      key={n.note_id}
+                      className={`eq-quotes__note${n.note_type === "status-change" ? " eq-quotes__note--status" : ""}`}
+                    >
                       <div className="eq-quotes__note-meta">
                         {n.initials && (
                           <span className="eq-quotes__initials-badge">{n.initials}</span>
                         )}
-                        <span className="eq-quotes__note-type">{n.note_type}</span>
+                        <span className="eq-quotes__note-type">
+                          {n.note_type === "status-change" ? "status" : n.note_type}
+                        </span>
                         <span className="eq-quotes__note-date">{fmtDate(n.created_at)}</span>
                       </div>
                       <p className="eq-quotes__note-body">{n.body}</p>
@@ -966,20 +1060,27 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // ── Render: create view ───────────────────────────────────────────────────
 
-  if (view === "create") {
+  if (view === "create" || view === "edit") {
+    const isEditMode = view === "edit";
+    const handleCancelCreateEdit = () => {
+      const savedId = editingQuoteId;
+      resetCreateForm();
+      setView("pipeline");
+      if (savedId) void openDetail(savedId);
+    };
     return (
       <div className="eq-quotes">
         <div className="eq-quotes__detail-header">
           <button
             type="button"
             className="eq-quotes__back"
-            onClick={() => { resetCreateForm(); setView("pipeline"); }}
+            onClick={handleCancelCreateEdit}
           >
             ← EQ Ops
           </button>
           <div className="eq-quotes__detail-title-row">
             <h2 className="eq-quotes__detail-num" style={{ fontFamily: "inherit", fontSize: 20 }}>
-              New Quote
+              {isEditMode ? "Edit Quote" : "New Quote"}
             </h2>
           </div>
         </div>
@@ -1285,14 +1386,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               className="eq-quotes__btn eq-quotes__btn--primary"
               style={{ padding: "9px 24px", fontSize: 14 }}
               disabled={creating || !createCustomerId || createLineItems.filter((li) => li.description.trim()).length === 0}
-              onClick={() => void handleCreateQuote()}
+              onClick={() => isEditMode ? void handleEditQuote() : void handleCreateQuote()}
             >
-              {creating ? "Creating…" : "Create Quote"}
+              {creating
+                ? (isEditMode ? "Saving…" : "Creating…")
+                : (isEditMode ? "Save Changes" : "Create Quote")}
             </button>
             <button
               type="button"
               className="eq-quotes__btn eq-quotes__btn--outline"
-              onClick={() => { resetCreateForm(); setView("pipeline"); }}
+              onClick={handleCancelCreateEdit}
             >
               Cancel
             </button>
