@@ -757,3 +757,80 @@
     gap: 4px;
   }
 }
+
+/* ── Sprint 4 additions ──────────────────────────────────────────────────── */
+
+.comms-overdue-badge {
+  display:         inline-flex;
+  align-items:     center;
+  gap:             3px;
+  font-size:       0.68rem;
+  font-weight:     600;
+  letter-spacing:  0.02em;
+  padding:         1px 6px;
+  border-radius:   999px;
+  color:           var(--eq-error, #C0392B);
+  background:      #FEF2F2;
+  border:          1px solid #FECACA;
+}
+
+.comms-job-card--overdue {
+  border-left-color: var(--eq-error, #C0392B) !important;
+}
+
+.comms-brief__item--overdue strong {
+  color: var(--eq-error, #C0392B);
+}
+
+/* Line actions column */
+.comms-line-actions {
+  white-space: nowrap;
+  text-align:  right;
+  padding-right: 4px !important;
+}
+
+.comms-line-edit-btn--danger {
+  color:      var(--eq-error, #C0392B) !important;
+}
+.comms-line-edit-btn--danger:hover {
+  background: #FEF2F2 !important;
+}
+
+.comms-line-delete-confirm {
+  font-size:   0.72rem;
+  color:       var(--eq-error, #C0392B);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* Line edit row */
+.comms-line-row--editing td {
+  background: var(--eq-ice);
+}
+
+.comms-line-edit-row td {
+  background:    var(--eq-bg);
+  border-bottom: 2px solid var(--eq-sky);
+  padding:       0 !important;
+}
+
+.comms-line-edit-form {
+  padding:    12px 16px;
+  display:    flex;
+  flex-direction: column;
+  gap:        10px;
+}
+
+.comms-line-edit-form__row {
+  display:   flex;
+  flex-wrap: wrap;
+  gap:       8px;
+  align-items: flex-end;
+}
+
+.comms-line-edit-form__actions {
+  display:    flex;
+  gap:        8px;
+  align-items: center;
+  padding-top: 4px;
+}
