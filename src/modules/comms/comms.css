@@ -834,3 +834,51 @@
   align-items: center;
   padding-top: 4px;
 }
+
+/* ── Sprint 5 additions ──────────────────────────────────────────────────── */
+
+/* On-hold duration chip */
+.comms-hold-duration {
+  display:         inline-flex;
+  align-items:     center;
+  font-size:       0.68rem;
+  font-weight:     600;
+  padding:         1px 6px;
+  border-radius:   999px;
+  color:           #92400E;
+  background:      #FFFBEB;
+  border:          1px solid #FDE68A;
+}
+
+/* Invoice status dot */
+.comms-line-status-col {
+  width:   16px;
+  padding: 0 4px !important;
+}
+
+.comms-line-dot {
+  display:       inline-block;
+  width:         8px;
+  height:        8px;
+  border-radius: 50%;
+  flex-shrink:   0;
+}
+.comms-line-dot--invoiced { background: #16A34A; }
+.comms-line-dot--notes    { background: #D97706; }
+.comms-line-dot--pending  { background: var(--eq-ink-20, #ccc); }
+
+/* Line totals footer */
+.comms-lines-totals {
+  border-top: 2px solid var(--eq-sky);
+}
+.comms-lines-totals td {
+  padding:     6px 8px !important;
+  font-size:   0.78rem;
+  font-weight: 600;
+  color:       var(--eq-ink);
+  background:  var(--eq-ice) !important;
+}
+.comms-lines-totals__label {
+  color: var(--eq-ink-60, #666) !important;
+  font-weight: 500 !important;
+}
