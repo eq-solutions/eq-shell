@@ -26,6 +26,7 @@ import {
   signQuotesToken,
 } from './_shared/token.js';
 import { withSentry } from './_shared/sentry.js';
+import { checkShellOrigin } from './_shared/origin-check.js';
 
 const QUOTES_TOKEN_TTL_MS = 60 * 1000; // 60 seconds — one-shot exchange
 
@@ -43,6 +44,10 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }
+
+  // Cross-subdomain CSRF guard (report-only until ENFORCE_IFRAME_ORIGIN=true).
+  const originBlock = checkShellOrigin(req, 'mint-quotes-iframe-token');
+  if (originBlock) return originBlock;
 
   if (!hasSecretSalt()) {
     return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });

@@ -24,6 +24,7 @@ import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { withSentry } from './_shared/sentry.js';
+import { checkShellOrigin } from './_shared/origin-check.js';
 
 // Ensures the user has a row in Supabase's auth.users table.
 // Flutter's setSession() routes through GoTrue which calls getUser() on
@@ -83,6 +84,10 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }
+
+  // Cross-subdomain CSRF guard (report-only until ENFORCE_IFRAME_ORIGIN=true).
+  const originBlock = checkShellOrigin(req, 'mint-cards-iframe-token');
+  if (originBlock) return originBlock;
 
   if (!hasSecretSalt() || !hasSupabaseJwtSecret()) {
     return jsonResponse(500, { error: 'Server misconfigured' });
