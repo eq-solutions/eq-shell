@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
+import { computeSellRate, computeMarkupPct } from "./quoteMath";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -634,10 +635,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         ? d.line_items.map((li) => {
             const costDollars = li.cost_rate_cents > 0 ? (li.cost_rate_cents / 100).toFixed(2) : "";
             const rateDollars = (li.unit_rate_cents / 100).toFixed(2);
-            let markup = "";
-            if (li.cost_rate_cents > 0 && li.unit_rate_cents > 0) {
-              markup = (((li.unit_rate_cents - li.cost_rate_cents) / li.cost_rate_cents) * 100).toFixed(1);
-            }
+            const markup =
+              li.cost_rate_cents > 0 && li.unit_rate_cents > 0
+                ? computeMarkupPct(li.cost_rate_cents, li.unit_rate_cents).toFixed(1)
+                : "";
             return {
               description: li.description,
               qty: (li.quantity_thousandths / 1000).toString(),
@@ -662,10 +663,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       if (field === "cost" || field === "markup") {
         const c = parseFloat(field === "cost" ? value : updated.cost);
         const m = parseFloat(field === "markup" ? value : updated.markup);
-        if (!isNaN(c) && c > 0) {
-          const mk = isNaN(m) ? 0 : m;
-          updated.rate = (c * (1 + mk / 100)).toFixed(2);
-        }
+        const rate = computeSellRate(c, m);
+        if (!isNaN(rate)) updated.rate = rate.toFixed(2);
       }
       next[i] = updated;
       return next;
@@ -729,23 +728,31 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     const row = (data as Array<{ quote_id: string; quote_number: string }>)[0];
     if (!row) { setCreateError("No quote returned."); setCreating(false); return; }
 
-    for (let i = 0; i < validLines.length; i++) {
-      const li = validLines[i];
-      const qtyVal = Math.max(0, parseFloat(li.qty) || 1);
-      const rateVal = Math.max(0, parseFloat(li.rate) || 0);
-      const costVal = Math.max(0, parseFloat(li.cost) || 0);
-      const { error: liErr } = await supabase.rpc("eq_add_line_item", {
-        p_quote_id: row.quote_id,
-        p_line_number: i + 1,
-        p_description: li.description.trim(),
-        p_qty_thousandths: Math.round(qtyVal * 1000),
-        p_unit_rate_cents: Math.round(rateVal * 100),
-        p_unit: li.unit.trim() || null,
-        p_category: li.category.trim() || null,
-        p_cost_rate_cents: Math.round(costVal * 100),
-      });
-      if (liErr) { setCreateError(liErr.message); setCreating(false); return; }
-    }
+    // Set line items via the same rollup path as edit, so subtotal/gst/total/margin
+    // are computed once, server-side, on create too (no $0/null-margin-until-edit gap).
+    const lineItemsJson = validLines.map((li, idx) => ({
+      line_number: idx + 1,
+      description: li.description.trim(),
+      qty_thousandths: Math.round(Math.max(0, parseFloat(li.qty) || 1) * 1000),
+      unit_rate_cents: Math.round(Math.max(0, parseFloat(li.rate) || 0) * 100),
+      cost_rate_cents: Math.round(Math.max(0, parseFloat(li.cost) || 0) * 100),
+      unit: li.unit.trim() || null,
+      category: li.category.trim() || null,
+    }));
+
+    const { error: itemsErr } = await supabase.rpc("eq_replace_line_items", {
+      p_quote_id: row.quote_id,
+      p_line_items: lineItemsJson,
+    });
+    if (itemsErr) { setCreateError(itemsErr.message); setCreating(false); return; }
+
+    // Audit: record creation on the quote timeline (best-effort, non-blocking).
+    await supabase.rpc("eq_add_quote_note", {
+      p_quote_id: row.quote_id,
+      p_body: "Quote created",
+      p_note_type: "system",
+      p_initials: createEstimatorInitials.trim() || null,
+    });
 
     setCreating(false);
     resetCreateForm();
@@ -880,6 +887,19 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     await openDetail(detail.quote_id);
   };
 
+  const handleGenerateDoc = async () => {
+    if (!supabase || !detail) return;
+    await generateQuoteDoc(detail);
+    // Audit: record the document generation on the quote timeline.
+    await supabase.rpc("eq_add_quote_note", {
+      p_quote_id: detail.quote_id,
+      p_body: "Quote document generated",
+      p_note_type: "system",
+      p_initials: initials.trim() || null,
+    });
+    await openDetail(detail.quote_id);
+  };
+
   // ── Import actions ────────────────────────────────────────────────────────
 
   const handleCsvChange = (text: string) => {
@@ -1005,7 +1025,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
                 style={(detail.status === "draft" || detail.status === "submitted") ? {} : { marginLeft: "auto" }}
-                onClick={() => void generateQuoteDoc(detail)}
+                onClick={() => void handleGenerateDoc()}
               >
                 Download Quote
               </button>
