@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
 import { computeSellRate, computeMarkupPct } from "./quoteMath";
 import { QuotesSetup } from "./QuotesSetup";
+import { captureRpcError } from "./quoteTelemetry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -733,7 +734,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_clarifications: createClarifications.trim() || null,
     });
 
-    if (error) { setCreateError(error.message); setCreating(false); return; }
+    if (error) { captureRpcError("eq_create_quote", error, { customer_id: createCustomerId }); setCreateError(error.message); setCreating(false); return; }
     const row = (data as Array<{ quote_id: string; quote_number: string }>)[0];
     if (!row) { setCreateError("No quote returned."); setCreating(false); return; }
 
@@ -753,7 +754,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_quote_id: row.quote_id,
       p_line_items: lineItemsJson,
     });
-    if (itemsErr) { setCreateError(itemsErr.message); setCreating(false); return; }
+    if (itemsErr) { captureRpcError("eq_replace_line_items", itemsErr, { quote_id: row.quote_id, op: "create" }); setCreateError(itemsErr.message); setCreating(false); return; }
 
     // Audit: record creation on the quote timeline (best-effort, non-blocking).
     await supabase.rpc("eq_add_quote_note", {
@@ -797,7 +798,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_clarifications: createClarifications.trim() || null,
     });
 
-    if (headerErr) { setCreateError(headerErr.message); setCreating(false); return; }
+    if (headerErr) { captureRpcError("eq_update_quote", headerErr, { quote_id: editingQuoteId }); setCreateError(headerErr.message); setCreating(false); return; }
 
     const lineItemsJson = validLines.map((li, idx) => ({
       line_number: idx + 1,
@@ -814,7 +815,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_line_items: lineItemsJson,
     });
 
-    if (itemsErr) { setCreateError(itemsErr.message); setCreating(false); return; }
+    if (itemsErr) { captureRpcError("eq_replace_line_items", itemsErr, { quote_id: editingQuoteId, op: "edit" }); setCreateError(itemsErr.message); setCreating(false); return; }
 
     const savedQuoteId = editingQuoteId;
     setCreating(false);
@@ -845,7 +846,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_initials: initials.trim() || null,
     });
     setUpdatingStatus(false);
-    if (error) { setStatusMutErr(error.message); return; }
+    if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: detail.quote_id, new_status: advanceStatus }); setStatusMutErr(error.message); return; }
     setStatusNote("");
     await openDetail(detail.quote_id);
     void loadQuotes(statusFilter, search);
