@@ -16,7 +16,9 @@
 // Manager + platform_admin only.
 
 import type { Context } from '@netlify/functions';
+import { createHash, randomBytes } from 'node:crypto';
 import { getServiceClient } from './_shared/supabase.js';
+import type { EqRole } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { normalizeAuPhone } from './_shared/phone.js';
 import { can } from './_shared/permissions.js';
@@ -25,6 +27,11 @@ import { sendEmail } from './_shared/email.js';
 
 const VALID_ROLES = new Set(['manager', 'supervisor', 'employee', 'apprentice', 'labour_hire']);
 const INVITE_TTL_DAYS = 30;
+
+function shellInviteUrl(req: Request, token: string): string {
+  const url = new URL(req.url);
+  return `${url.protocol}//${url.host}/accept-invite?token=${encodeURIComponent(token)}`;
+}
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -180,23 +187,57 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   }
 
   const claimUrl = `https://cards.eq.solutions/claim/${invite.token}`;
+
+  // Create a Shell (Core) user_invite when email is provided, linked to the worker record
+  // via worker_id. When the worker accepts this invite, accept-invite.ts writes
+  // workers.user_id = created shell user id — from that point, mint-iframe-token can emit
+  // canonical_user_id = worker.id in the Field JWT, completing the identity chain.
+  let coreInviteUrl: string | null = null;
+  if (email) {
+    const shellToken = randomBytes(32).toString('hex');
+    const shellTokenHash = createHash('sha256').update(shellToken).digest('hex');
+    const { error: shellErr } = await sb
+      .from('user_invites')
+      .insert({
+        tenant_id:         session.tenant_id,
+        email,
+        role:              role as EqRole,
+        entitlements:      ['field'],
+        phone,
+        invited_by:        session.user_id,
+        invite_token_hash: shellTokenHash,
+        expires_at:        expiresAt,
+        worker_id:         workerId,
+      });
+    if (!shellErr) {
+      coreInviteUrl = shellInviteUrl(req, shellToken);
+    } else {
+      console.warn('[create-worker-invite] shell user_invite insert failed (non-fatal):', shellErr.message);
+    }
+  }
+
   let emailDelivered = false;
   if (email) {
+    const expiryDate = new Date(invite.expires_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+    const text = coreInviteUrl
+      ? `Hi ${firstName},\n\n${orgName} has invited you to join their team on EQ.\n\nStep 1 — Set up your profile in EQ Cards:\n${claimUrl}\n\nStep 2 — Create your EQ Core login to access Field and other apps:\n${coreInviteUrl}\n\nBoth links expire on ${expiryDate}.\n\nIf you didn't expect this invite, you can ignore it.`
+      : `Hi ${firstName},\n\n${orgName} has invited you to join their team on EQ.\n\nClick the link below to set up your profile:\n${claimUrl}\n\nThis link expires on ${expiryDate}.\n\nIf you didn't expect this invite, you can ignore it.`;
     const result = await sendEmail({
       to: email,
-      subject: `You've been invited to join ${orgName}`,
-      text: `Hi ${firstName},\n\n${orgName} has invited you to join their team on EQ.\n\nClick the link below to set up your profile:\n${claimUrl}\n\nThis link expires on ${new Date(invite.expires_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}.\n\nIf you didn't expect this invite, you can ignore it.`,
+      subject: `You've been invited to join ${orgName} on EQ`,
+      text,
     });
     emailDelivered = result.delivered;
   }
 
   return json(201, {
     ok: true,
-    claim_url:  claimUrl,
-    token:      invite.token,
-    worker_id:  workerId,
-    expires_at: invite.expires_at,
-    reused:     false,
+    claim_url:      claimUrl,
+    core_invite_url: coreInviteUrl,
+    token:          invite.token,
+    worker_id:      workerId,
+    expires_at:     invite.expires_at,
+    reused:         false,
     email_delivered: emailDelivered,
   });
 });
