@@ -817,6 +817,18 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     )}
                   </span>
                 </div>
+                {detail.attn_name && (
+                  <div className="eq-quotes__info-item">
+                    <span className="eq-quotes__info-label">Attention</span>
+                    <span className="eq-quotes__info-val">{detail.attn_name}</span>
+                  </div>
+                )}
+                {detail.attn_phone && (
+                  <div className="eq-quotes__info-item">
+                    <span className="eq-quotes__info-label">Phone</span>
+                    <span className="eq-quotes__info-val">{detail.attn_phone}</span>
+                  </div>
+                )}
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">Project</span>
                   <span className="eq-quotes__info-val">{detail.project_name ?? "—"}</span>
@@ -875,6 +887,20 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <div className="eq-quotes__info-item">
                     <span className="eq-quotes__info-label">Payment Terms</span>
                     <span className="eq-quotes__info-val">{detail.payment_terms}</span>
+                  </div>
+                )}
+                {detail.address && (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label">Address</span>
+                    <span className="eq-quotes__info-val">{detail.address}</span>
+                  </div>
+                )}
+                {detail.loss_reason && (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label">Loss Reason</span>
+                    <span className="eq-quotes__info-val" style={{ color: "var(--eq-err)" }}>
+                      {detail.loss_reason}
+                    </span>
                   </div>
                 )}
               </div>
