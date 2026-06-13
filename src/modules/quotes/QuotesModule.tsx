@@ -500,10 +500,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const displayedQuotes = statusFilter === "active-jobs"
     ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
     : quotes;
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
   const visibleTotal = displayedQuotes.reduce((s, q) => s + q.total_cents, 0);
   const wonTotal = displayedQuotes
     .filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
@@ -791,19 +787,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       {/* Module header */}
       <div className="eq-quotes__module-header">
         <h2 className="eq-quotes__title">EQ Ops</h2>
-<<<<<<< Updated upstream
-        <div className="eq-quotes__view-tabs">
-          {(["pipeline", "accordion", "import"] as ModuleView[]).map((v) => (
-            <button
-              key={v}
-              type="button"
-              className={`eq-quotes__view-tab${view === v ? " eq-quotes__view-tab--active" : ""}`}
-              onClick={() => setView(v)}
-            >
-              {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : "Import Coupa"}
-            </button>
-          ))}
-=======
         <div className="eq-quotes__header-right">
           <a
             href="https://quotes.eq.solutions/quotes/new"
@@ -825,7 +808,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               </button>
             ))}
           </div>
->>>>>>> Stashed changes
         </div>
       </div>
 
@@ -835,14 +817,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           {/* Status filter tabs */}
           <div className="eq-quotes__status-filters">
             {STATUS_FILTERS.map((f) => {
-<<<<<<< Updated upstream
-              const count = f.key === "all" ? quotes.length
-                : f.key === "active-jobs" ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status)).length
-=======
               const count = f.key === "active-jobs"
                 ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status)).length
                 : f.key === "all" ? quotes.length
->>>>>>> Stashed changes
                 : quotes.filter((q) => q.status === f.key).length;
               return (
                 <button
