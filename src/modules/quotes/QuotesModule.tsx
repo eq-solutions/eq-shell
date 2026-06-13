@@ -255,11 +255,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [addingNote, setAddingNote] = useState(false);
   const [noteMutErr, setNoteMutErr] = useState<string | null>(null);
 
-  // Job number
-  const [jobNoInput, setJobNoInput] = useState("");
-  const [savingJobNo, setSavingJobNo] = useState(false);
-  const [jobNoErr, setJobNoErr] = useState<string | null>(null);
-
   // ── Accordion state ───────────────────────────────────────────────────────
   const [clientGroups, setClientGroups] = useState<ClientGroup[]>([]);
   const [accordionQuotes, setAccordionQuotes] = useState<Quote[]>([]);
