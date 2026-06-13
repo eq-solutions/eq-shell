@@ -111,21 +111,27 @@
 
 /* Job cards */
 .comms-job-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+  align-items: start;
 }
 
 .comms-job-card {
   background: var(--eq-surface, #fff);
   border: 1px solid var(--eq-border, #E5E7EB);
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
   transition: border-color 0.12s;
 }
 
 .comms-job-card:hover {
   border-color: var(--eq-sky, #3DA8D8);
+}
+
+/* Expanded card spans the full grid row */
+.comms-job-card--expanded {
+  grid-column: 1 / -1;
 }
 
 .comms-job-card--active  { border-left: 3px solid var(--eq-sky, #3DA8D8); }
@@ -138,8 +144,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px 10px;
+  gap: 10px;
+  padding: 10px 12px 6px;
   cursor: pointer;
   user-select: none;
 }
@@ -147,20 +153,23 @@
 .comms-job-card__left {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 
 .comms-job-card__site {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: var(--eq-sky, #3DA8D8);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .comms-job-card__desc {
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--eq-ink, #1A1A2E);
   white-space: nowrap;
@@ -169,10 +178,10 @@
 }
 
 .comms-job-card__meta {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--eq-ink-40, #888);
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -180,32 +189,32 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
 .comms-job-card__value {
-  font-size: 1rem;
+  font-size: 0.88rem;
   font-weight: 700;
   color: var(--eq-ink, #1A1A2E);
 }
 
-/* Milestone pills */
+/* Milestone pills — compact row inside card */
 .comms-milestones {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
-  padding: 0 16px 10px;
+  padding: 0 12px 8px;
 }
 
 .comms-milestone {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.7rem;
+  gap: 3px;
+  font-size: 0.65rem;
   font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 12px;
+  padding: 2px 6px;
+  border-radius: 10px;
   border: 1px solid;
   cursor: default;
 }
@@ -710,6 +719,14 @@
 
 /* ── Mobile ──────────────────────────────────────────────────────────────── */
 @media (max-width: 600px) {
+  .comms-job-list {
+    grid-template-columns: 1fr;
+  }
+
+  .comms-job-card--expanded {
+    grid-column: 1;
+  }
+
   .comms-tabs {
     overflow-x: auto;
     flex-wrap: nowrap;
