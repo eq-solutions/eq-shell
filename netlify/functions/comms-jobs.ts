@@ -1,12 +1,13 @@
 // GET  /.netlify/functions/comms-jobs                → all jobs with PO line summary
 // GET  /.netlify/functions/comms-jobs?id=<uuid>      → single job + PO lines + last 10 events
 // GET  /.netlify/functions/comms-jobs?resource=staff → active staff list for autocomplete
-// POST /.netlify/functions/comms-jobs                → create / update
-//   body { job_id, patch }                           → update job fields
+// POST /.netlify/functions/comms-jobs
+//   body { create: { site_code, ... } }              → create new job (status defaults to 'quoted')
+//   body { job_id, patch }                           → update job fields (incl. header fields)
 //   body { job_id, line }                            → add PO line
 //   body { job_id, line_id, line_patch }             → update PO line (invoice fields)
 //
-// SKS tenant only. Perm: comms.view (GET) / comms.update (POST / field.dispatch guard)
+// SKS tenant only. Perm: field.view (GET) / field.dispatch (POST)
 
 import type { Context } from '@netlify/functions';
 import { getTenantDataClientById, TenantNotFoundError, TenantNotActiveError } from './_shared/tenant-routing.js';
@@ -18,7 +19,23 @@ const SKS_TENANT_ID = '7dee117c-98bd-4d39-af8c-2c81d02a1e85';
 
 const VALID_STATUSES = new Set(['quoted', 'active', 'on_hold', 'complete', 'closed']);
 
+interface CommsJobCreate {
+  site_code:         string;
+  site_name:         string | null;
+  client:            string;
+  job_number:        string | null;
+  description:       string | null;
+  assigned_to:       string | null;
+  start_date:        string | null;
+  target_completion: string | null;
+}
+
 interface CommsJobPatch {
+  site_code:         string;
+  site_name:         string | null;
+  client:            string;
+  job_number:        string | null;
+  description:       string | null;
   assigned_to:       string | null;
   status:            string;
   mop_received:      boolean;
@@ -28,15 +45,19 @@ interface CommsJobPatch {
   notes:             string | null;
   start_date:        string | null;
   target_completion: string | null;
+  on_hold_since:     string | null;
 }
 
 interface CommsPoLineInput {
-  po_number:    string | null;
-  description:  string;
-  requestor:    string | null;
-  quote_number: string | null;
-  hours:        number | null;
-  price_ex_gst: number | null;
+  po_number:     string | null;
+  description:   string;
+  requestor:     string | null;
+  fid_number:    string | null;
+  quote_number:  string | null;
+  date_approval: string | null;
+  hours:         number | null;
+  materials_cost: number | null;
+  price_ex_gst:  number | null;
 }
 
 interface CommsPoLinePatch {
@@ -52,13 +73,21 @@ function json(status: number, body: unknown): Response {
   });
 }
 
+const ALLOWED_CREATE_KEYS: (keyof CommsJobCreate)[] = [
+  'site_code', 'site_name', 'client', 'job_number', 'description', 'assigned_to',
+  'start_date', 'target_completion',
+];
+
 const ALLOWED_PATCH_KEYS: (keyof CommsJobPatch)[] = [
+  'site_code', 'site_name', 'client', 'job_number', 'description',
   'assigned_to', 'status', 'mop_received', 'pre_cable_done',
-  'post_dock_done', 'invoice_raised', 'notes', 'start_date', 'target_completion',
+  'post_dock_done', 'invoice_raised', 'notes',
+  'start_date', 'target_completion', 'on_hold_since',
 ];
 
 const ALLOWED_LINE_KEYS: (keyof CommsPoLineInput)[] = [
-  'po_number', 'description', 'requestor', 'quote_number', 'hours', 'price_ex_gst',
+  'po_number', 'description', 'requestor', 'fid_number', 'quote_number',
+  'date_approval', 'hours', 'materials_cost', 'price_ex_gst',
 ];
 
 const ALLOWED_LINE_PATCH_KEYS: (keyof CommsPoLinePatch)[] = [
@@ -95,6 +124,34 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
     let body: Record<string, unknown>;
     try { body = (await req.json()) as Record<string, unknown>; } catch { return json(400, { error: 'invalid_json' }); }
+
+    // ── Create new job ────────────────────────────────────────────────────
+    if (body.create !== undefined) {
+      const raw = (body.create ?? {}) as Record<string, unknown>;
+      if (!raw.site_code) return json(400, { error: 'site_code_required' });
+      const safe: Partial<CommsJobCreate> = {};
+      for (const k of ALLOWED_CREATE_KEYS) {
+        if (k in raw) (safe as Record<string, unknown>)[k] = raw[k];
+      }
+      const insert = { client: 'Microsoft', ...safe, status: 'quoted' };
+      const { data: created, error: cErr } = await db
+        .from('sks_comms_jobs')
+        .insert(insert)
+        .select(
+          'job_id, job_number, site_code, site_name, client, status, description, ' +
+          'assigned_to, start_date, target_completion, on_hold_since, ' +
+          'mop_received, pre_cable_done, post_dock_done, invoice_raised, notes, created_at, updated_at',
+        )
+        .single();
+      if (cErr || !created) return json(500, { error: 'db_error', detail: cErr?.message });
+      const row = created as unknown as Record<string, unknown>;
+      await logEvent(db, row.job_id as string, session.user_id, 'create_job',
+        `Job created: ${String(raw.site_code)}${raw.job_number ? ` #${String(raw.job_number)}` : ''}`);
+      return json(200, {
+        ok: true,
+        job: { ...row, total_value: 0, total_invoiced: 0, total_hours: 0, line_count: 0 },
+      });
+    }
 
     const job_id = body.job_id as string | undefined;
     if (!job_id) return json(400, { error: 'missing_job_id' });
@@ -135,7 +192,10 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       const { data, error } = await db
         .from('sks_comms_po_lines')
         .insert(safe)
-        .select('line_id, po_number, description, requestor, fid_number, quote_number, date_approval, hours, materials_cost, price_ex_gst, complete_notes, invoice_number, invoiced_amount')
+        .select(
+          'line_id, po_number, description, requestor, fid_number, quote_number, ' +
+          'date_approval, hours, materials_cost, price_ex_gst, complete_notes, invoice_number, invoiced_amount',
+        )
         .single();
       if (error) return json(500, { error: 'db_error', detail: error.message });
 
@@ -158,7 +218,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .from('sks_comms_jobs')
       .update(safe)
       .eq('job_id', job_id)
-      .select('job_id, status, assigned_to, mop_received, pre_cable_done, post_dock_done, invoice_raised, notes, updated_at')
+      .select(
+        'job_id, site_code, site_name, client, job_number, description, status, ' +
+        'assigned_to, mop_received, pre_cable_done, post_dock_done, invoice_raised, ' +
+        'notes, start_date, target_completion, on_hold_since, updated_at',
+      )
       .single();
 
     if (error) return json(500, { error: 'db_error', detail: error.message });
@@ -166,6 +230,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     const parts: string[] = [];
     if ('status' in safe)      parts.push(`status → ${safe.status}`);
     if ('assigned_to' in safe) parts.push(`assigned → ${safe.assigned_to ?? 'none'}`);
+    if ('site_code' in safe)   parts.push(`site → ${safe.site_code}`);
+    if ('client' in safe)      parts.push(`client → ${safe.client}`);
     const boolFields: (keyof CommsJobPatch)[] = ['mop_received', 'pre_cable_done', 'post_dock_done', 'invoice_raised'];
     for (const f of boolFields) {
       if (f in safe) parts.push(`${f} → ${safe[f]}`);
@@ -203,7 +269,10 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     const [jobRes, linesRes, eventsRes] = await Promise.all([
       db.from('sks_comms_jobs').select('*').eq('job_id', jobId).single(),
       db.from('sks_comms_po_lines')
-        .select('line_id, po_number, description, requestor, fid_number, quote_number, date_approval, hours, materials_cost, price_ex_gst, complete_notes, invoice_number, invoiced_amount')
+        .select(
+          'line_id, po_number, description, requestor, fid_number, quote_number, ' +
+          'date_approval, hours, materials_cost, price_ex_gst, complete_notes, invoice_number, invoiced_amount',
+        )
         .eq('job_id', jobId)
         .order('created_at', { ascending: true }),
       db.from('sks_comms_events')
