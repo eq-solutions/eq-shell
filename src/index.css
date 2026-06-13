@@ -222,6 +222,10 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
 .eq-quotes__section-title { margin: 0 0 14px; font-size: 13px; font-weight: 700; color: var(--eq-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .eq-quotes__info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px 24px; margin-bottom: 16px; }
 .eq-quotes__info-item { display: flex; flex-direction: column; gap: 3px; }
+.eq-quotes__info-item--full { grid-column: 1 / -1; }
+.eq-quotes__job-no-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.eq-quotes__input--job-no { width: 140px; }
+.eq-quotes__badge--xs { font-size: 10px; padding: 1px 6px; }
 .eq-quotes__info-label { font-size: 11px; font-weight: 600; color: var(--eq-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .eq-quotes__info-val { font-size: 14px; color: var(--eq-ink); display: flex; align-items: center; }
 .eq-quotes__scope { border-top: 1px solid var(--eq-line); padding-top: 14px; margin-top: 4px; }
