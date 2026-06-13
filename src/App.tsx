@@ -45,6 +45,7 @@ import { CustomersPage } from './pages/CustomersPage';
 import { StaffPage } from './pages/StaffPage';
 import ServiceIframe from './pages/ServiceIframe';
 const QuotesNative = lazy(() => import('./pages/QuotesNative'));
+const EqQuotesExternal = lazy(() => import('./pages/EqQuotesExternal'));
 import StorageBrowser from './pages/StorageBrowser';
 import LicenceOcrPage from './pages/ocr/LicenceOcrPage';
 import NotFound from './pages/NotFound';
@@ -484,7 +485,7 @@ function TenantTree() {
           path="service"
           element={<ModuleGate module="service">{null}</ModuleGate>}
         />
-        {/* Quotes — native pipeline module, reads from sks-canonical via eq_list_quotes RPCs */}
+        {/* EQ Ops — native job-tracking module (reads sks-canonical via eq_list_quotes RPCs) */}
         <Route
           path="quotes"
           element={
@@ -493,6 +494,15 @@ function TenantTree() {
                 <QuotesNative />
               </Suspense>
             </ModuleGate>
+          }
+        />
+        {/* EQ Quotes — external redirect; opens quotes.eq.solutions in a new tab */}
+        <Route
+          path="eq-quotes"
+          element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              <EqQuotesExternal />
+            </Suspense>
           }
         />
         {/* Phase 1.F: admin user-management routes. Permission checks

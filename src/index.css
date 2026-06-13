@@ -247,6 +247,13 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
 .eq-quotes__btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .eq-quotes__btn--primary { background: var(--eq-primary); color: white; border-color: var(--eq-primary); }
 .eq-quotes__btn--primary:hover:not(:disabled) { background: var(--eq-primary-dark); border-color: var(--eq-primary-dark); }
+.eq-quotes__btn--outline { background: transparent; color: var(--eq-primary); border-color: var(--eq-primary); text-decoration: none; display: inline-flex; align-items: center; }
+.eq-quotes__btn--outline:hover { background: var(--eq-ice); }
+.eq-quotes__header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-left: auto; }
+.eq-quotes__info-item--full { grid-column: 1 / -1; }
+.eq-quotes__job-no-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.eq-quotes__input--job-no { width: 140px; }
+.eq-quotes__badge--xs { font-size: 10px; padding: 1px 6px; }
 .eq-quotes__note-add { margin-bottom: 16px; }
 .eq-quotes__textarea { font-family: inherit; font-size: 13px; padding: 10px 12px; border: 1px solid var(--eq-line); border-radius: 6px; background: var(--eq-paper); color: var(--eq-ink); width: 100%; resize: vertical; line-height: 1.5; }
 .eq-quotes__textarea:focus { outline: none; border-color: var(--eq-primary); }
