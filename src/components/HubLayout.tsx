@@ -26,22 +26,13 @@ function setCachedDashboard(key: string, data: DashboardResponse): void {
   _dashboardCache.set(key, { data, ts: Date.now() });
 }
 
-<<<<<<< Updated upstream
-const HUB_APPS = [
-  { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
-  { key: 'service', label: 'EQ Service', to: 'service', isBeta: true  },
-  { key: 'quotes',  label: 'EQ Ops',     to: 'quotes',  isBeta: false },
-  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: true  },
-  { key: 'comms',   label: 'NSW Comms',  to: 'comms',   isBeta: true  },
-=======
 const HUB_APPS: Array<{ key: string; label: string; to: string; isBeta: boolean; alwaysShow?: boolean }> = [
   { key: 'field',     label: 'EQ Field',   to: 'field',     isBeta: false },
   { key: 'service',   label: 'EQ Service', to: 'service',   isBeta: true  },
-  { key: 'quotes',    label: 'EQ Ops',     to: 'quotes',    isBeta: true  },
+  { key: 'quotes',    label: 'EQ Ops',     to: 'quotes',    isBeta: false },
   { key: 'eq-quotes', label: 'EQ Quotes',  to: 'eq-quotes', isBeta: false, alwaysShow: true },
   { key: 'cards',     label: 'EQ Cards',   to: 'cards',     isBeta: true  },
   { key: 'comms',     label: 'NSW Comms',  to: 'comms',     isBeta: true  },
->>>>>>> Stashed changes
 ];
 
 interface DashboardCounts {

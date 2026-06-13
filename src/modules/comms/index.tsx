@@ -117,6 +117,19 @@ function isJobOverdue(job: CommsJob): boolean {
     && (job.status === 'active' || job.status === 'on_hold');
 }
 
+function holdDays(since: string | null): number | null {
+  if (!since) return null;
+  const ms = Date.now() - new Date(since).getTime();
+  return Math.max(0, Math.floor(ms / 86_400_000));
+}
+
+type LineInvoiceStatus = 'invoiced' | 'notes' | 'pending';
+function lineInvoiceStatus(line: PoLine): LineInvoiceStatus {
+  if (line.invoice_number && line.invoiced_amount != null && line.invoiced_amount > 0) return 'invoiced';
+  if (line.complete_notes || line.invoice_number) return 'notes';
+  return 'pending';
+}
+
 function exportCSV(jobs: CommsJob[]) {
   const headers = [
     'Job #', 'Site Code', 'Site Name', 'Client', 'Status', 'Assigned',
@@ -173,6 +186,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'quoted',   label: 'Quoted' },
   { key: 'on_hold',  label: 'On Hold' },
   { key: 'complete', label: 'Complete' },
+  { key: 'closed',   label: 'Closed' },
 ];
 
 // ── Monday brief ─────────────────────────────────────────────────────────────
@@ -716,6 +730,10 @@ function JobCard({
             <span>{STATUS_LABELS[job.status]}</span>
             {job.client !== 'Microsoft' && <span className="comms-client-tag">{job.client}</span>}
             {overdue && <span className="comms-overdue-badge"><AlertCircle size={10} /> Overdue</span>}
+            {job.status === 'on_hold' && (() => {
+              const d = holdDays(job.on_hold_since);
+              return d !== null ? <span className="comms-hold-duration">{d}d on hold</span> : null;
+            })()}
             {job.total_hours > 0 && <span>{Math.round(job.total_hours)}h</span>}
             {job.line_count > 1 && <span>{job.line_count} PO lines</span>}
             {job.target_completion && !overdue && <span>Target: {job.target_completion}</span>}
@@ -778,6 +796,7 @@ function JobCard({
                     <table className="comms-lines-table">
                       <thead>
                         <tr>
+                          <th className="comms-line-status-col"></th>
                           <th>PO #</th>
                           <th>FID #</th>
                           <th>Description</th>
@@ -797,9 +816,17 @@ function JobCard({
                           <Fragment key={l.line_id}>
                             {/* Data row */}
                             <tr className={editLineId === l.line_id ? 'comms-line-row--editing' : ''}>
+                              <td className="comms-line-status-col">
+                                <span className={`comms-line-dot comms-line-dot--${lineInvoiceStatus(l)}`} title={lineInvoiceStatus(l)} />
+                              </td>
                               <td>{l.po_number ?? '—'}</td>
                               <td>{l.fid_number ?? '—'}</td>
-                              <td>{l.description}</td>
+                              <td>
+                                {l.description}
+                                {l.complete_notes && (
+                                  <div className="comms-line-notes">{l.complete_notes}</div>
+                                )}
+                              </td>
                               <td>{l.quote_number ?? '—'}</td>
                               <td>{l.requestor ?? '—'}</td>
                               <td>{l.date_approval ? l.date_approval.slice(0, 10) : '—'}</td>
@@ -858,7 +885,7 @@ function JobCard({
                             {/* Full edit form — expands inline below the data row */}
                             {editLineId === l.line_id && lineEditForm && (
                               <tr className="comms-line-edit-row">
-                                <td colSpan={canEdit ? 12 : 11}>
+                                <td colSpan={canEdit ? 13 : 12}>
                                   <div className="comms-line-edit-form">
                                     <div className="comms-line-edit-form__row">
                                       <div className="comms-edit-field comms-edit-field--grow2">
@@ -927,6 +954,25 @@ function JobCard({
                           </Fragment>
                         ))}
                       </tbody>
+                      {lines.length > 1 && (() => {
+                        const totH = lines.reduce((s, l) => s + (l.hours ?? 0), 0);
+                        const totM = lines.reduce((s, l) => s + (l.materials_cost ?? 0), 0);
+                        const totV = lines.reduce((s, l) => s + (l.price_ex_gst ?? 0), 0);
+                        const totI = lines.reduce((s, l) => s + (l.invoiced_amount ?? 0), 0);
+                        return (
+                          <tfoot>
+                            <tr className="comms-lines-totals">
+                              <td colSpan={7} className="comms-lines-totals__label">Total ({lines.length} lines)</td>
+                              <td className="num">{totH > 0 ? Math.round(totH) : '—'}</td>
+                              <td className="num">{totM > 0 ? fmtMoney(totM) : '—'}</td>
+                              <td className="num">{totV > 0 ? fmtMoney(totV) : '—'}</td>
+                              <td className="num"></td>
+                              <td className="num">{totI > 0 ? fmtMoney(totI) : '—'}</td>
+                              {canEdit && <td></td>}
+                            </tr>
+                          </tfoot>
+                        );
+                      })()}
                     </table>
                   </div>
                 )}
