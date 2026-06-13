@@ -1,4 +1,4 @@
--- Migration: 0083_harden_eq_ops_grants
+-- Migration: 0085_harden_eq_ops_grants
 -- Target:    Per-tenant data plane
 -- Purpose:   Security hardening — remove anon EXECUTE from the EQ Ops RPC surface.
 --
