@@ -108,6 +108,16 @@ interface Customer {
   external_id: string | null;
 }
 
+interface RatePreset {
+  preset_id: string;
+  category: string | null;
+  description: string;
+  unit: string | null;
+  unit_rate_cents: number;
+  qty_thousandths: number;
+  sort_order: number;
+}
+
 interface CreateLineItem {
   description: string;
   qty: string;
@@ -281,9 +291,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [accordionError, setAccordionError] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["equinix"]));
 
-  // ── Customers + create form state ────────────────────────────────────────
+  // ── Customers + presets + create form state ──────────────────────────────
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
+  const [presets, setPresets] = useState<RatePreset[]>([]);
+  const [presetsLoading, setPresetsLoading] = useState(false);
   const [createCustomerId, setCreateCustomerId] = useState("");
   const [createProjectName, setCreateProjectName] = useState("");
   const [createEstimatorName, setCreateEstimatorName] = useState("");
@@ -393,8 +405,19 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (!error) setCustomers((data as Customer[]) ?? []);
   }, [supabase]);
 
+  const loadPresets = useCallback(async () => {
+    if (!supabase) return;
+    setPresetsLoading(true);
+    const { data, error } = await supabase.rpc("eq_list_rate_presets");
+    setPresetsLoading(false);
+    if (!error) setPresets((data as RatePreset[]) ?? []);
+  }, [supabase]);
+
   useEffect(() => {
-    if (view === "create") void loadCustomers();
+    if (view === "create") {
+      void loadCustomers();
+      void loadPresets();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
@@ -421,6 +444,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   const addLineItem = () => {
     setCreateLineItems((prev) => [...prev, { description: "", qty: "1", unit: "", rate: "" }]);
+  };
+
+  const applyPreset = (preset: RatePreset) => {
+    const item: CreateLineItem = {
+      description: preset.description,
+      qty: (preset.qty_thousandths / 1000).toString(),
+      unit: preset.unit ?? "",
+      rate: (preset.unit_rate_cents / 100).toString(),
+    };
+    setCreateLineItems((prev) => {
+      if (prev.length === 1 && !prev[0].description.trim() && !prev[0].rate.trim()) {
+        return [item];
+      }
+      return [...prev, item];
+    });
   };
 
   const removeLineItem = (i: number) => {
@@ -1093,6 +1131,62 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 </tbody>
               </table>
             </div>
+            {/* Rate preset chips */}
+            {!presetsLoading && presets.length > 0 && (() => {
+              const categories = Array.from(new Set(presets.map((p) => p.category ?? "")));
+              return (
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--eq-border)" }}>
+                  <span style={{
+                    display: "block", marginBottom: 8, fontSize: 11,
+                    textTransform: "uppercase", letterSpacing: "0.06em",
+                    color: "var(--eq-muted)", fontWeight: 600,
+                  }}>
+                    Quick Add
+                  </span>
+                  {categories.map((cat) => (
+                    <div key={cat} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                      {cat && (
+                        <span style={{
+                          fontSize: 11, color: "var(--eq-muted)", minWidth: 64,
+                          textTransform: "uppercase", letterSpacing: "0.04em",
+                        }}>
+                          {cat}
+                        </span>
+                      )}
+                      {presets.filter((p) => (p.category ?? "") === cat).map((p) => (
+                        <button
+                          key={p.preset_id}
+                          type="button"
+                          onClick={() => applyPreset(p)}
+                          title={`${p.description}${p.unit_rate_cents > 0 ? ` — ${aud(p.unit_rate_cents)}${p.unit ? " / " + p.unit : ""}` : ""}`}
+                          style={{
+                            border: "1px solid var(--eq-border)",
+                            borderRadius: 6,
+                            background: "var(--eq-surface)",
+                            color: "var(--eq-text)",
+                            fontSize: 12,
+                            padding: "3px 10px",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {p.description}
+                          {p.unit_rate_cents > 0 && (
+                            <span style={{ color: "var(--eq-muted)", fontSize: 11 }}>
+                              {aud(p.unit_rate_cents)}{p.unit ? ` / ${p.unit}` : ""}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14, flexWrap: "wrap", gap: 12 }}>
               <button
                 type="button"
