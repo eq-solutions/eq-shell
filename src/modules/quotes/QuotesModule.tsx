@@ -126,7 +126,12 @@ const STATUS_LABELS: Record<string, string> = {
   superseded: "Superseded",
 };
 
+const ACTIVE_JOB_STATUSES = new Set([
+  "verbal-win", "won-awaiting-job-no", "won-job-created", "po-matched", "active",
+]);
+
 const STATUS_FILTERS = [
+  { key: "active-jobs", label: "Active Jobs" },
   { key: "all", label: "All" },
   { key: "draft", label: "Draft" },
   { key: "submitted", label: "Submitted" },
@@ -222,7 +227,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // ── Pipeline state ────────────────────────────────────────────────────────
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active-jobs");
   const [search, setSearch] = useState("");
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
@@ -244,6 +249,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [noteBody, setNoteBody] = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const [noteMutErr, setNoteMutErr] = useState<string | null>(null);
+
+  // Job number
+  const [jobNoInput, setJobNoInput] = useState("");
+  const [savingJobNo, setSavingJobNo] = useState(false);
+  const [jobNoErr, setJobNoErr] = useState<string | null>(null);
 
   // ── Accordion state ───────────────────────────────────────────────────────
   const [clientGroups, setClientGroups] = useState<ClientGroup[]>([]);
@@ -272,7 +282,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       setPipelineLoading(true);
       setPipelineError(null);
       const { data, error } = await supabase.rpc("eq_list_quotes", {
-        p_status: status === "all" ? null : status,
+        p_status: status === "all" || status === "active-jobs" ? null : status,
         p_search: q.trim() || null,
       });
       setPipelineLoading(false);
@@ -313,6 +323,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       if (row) {
         const nexts = NEXT_STATUSES[row.status] ?? [];
         if (nexts.length > 0) setAdvanceStatus(nexts[0]);
+        setJobNoInput(row.workbench_job_no ?? "");
       }
     },
     [supabase],
@@ -379,6 +390,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (error) { setNoteMutErr(error.message); return; }
     setNoteBody("");
     await openDetail(detail.quote_id);
+  };
+
+  const handleSaveJobNo = async () => {
+    if (!supabase || !detail || !jobNoInput.trim()) return;
+    setSavingJobNo(true);
+    setJobNoErr(null);
+    const { error } = await supabase.rpc("eq_set_workbench_job_no", {
+      p_quote_id: detail.quote_id,
+      p_workbench_job_no: jobNoInput.trim(),
+      p_initials: initials.trim() || null,
+    });
+    setSavingJobNo(false);
+    if (error) { setJobNoErr(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
   };
 
   // ── Import actions ────────────────────────────────────────────────────────
@@ -464,11 +490,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // ── Computed totals ───────────────────────────────────────────────────────
 
-  const visibleTotal = quotes.reduce((s, q) => s + q.total_cents, 0);
-  const wonTotal = quotes
-    .filter((q) =>
-      ["verbal-win", "won-awaiting-job-no", "won-job-created", "po-matched", "active"].includes(q.status),
-    )
+  const displayedQuotes = statusFilter === "active-jobs"
+    ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
+    : quotes;
+
+  const visibleTotal = displayedQuotes.reduce((s, q) => s + q.total_cents, 0);
+  const wonTotal = displayedQuotes
+    .filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
     .reduce((s, q) => s + q.total_cents, 0);
 
   // ── Render detail view ────────────────────────────────────────────────────
@@ -483,7 +511,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             className="eq-quotes__back"
             onClick={() => { setDetailId(null); setDetail(null); }}
           >
-            ← Quotes
+            ← EQ Ops
           </button>
           {detail && (
             <div className="eq-quotes__detail-title-row">
@@ -537,11 +565,26 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <span className="eq-quotes__info-label">Expires</span>
                   <span className="eq-quotes__info-val">{fmtDate(detail.expires_at)}</span>
                 </div>
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">Workbench Job</span>
-                  <span className="eq-quotes__info-val">
-                    {detail.workbench_job_no || <span className="eq-quotes__muted">Not set</span>}
-                  </span>
+                <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                  <span className="eq-quotes__info-label">Workbench Job No.</span>
+                  <div className="eq-quotes__job-no-row">
+                    <input
+                      className="eq-quotes__input eq-quotes__input--job-no"
+                      value={jobNoInput}
+                      onChange={(e) => setJobNoInput(e.target.value)}
+                      placeholder="e.g. 12345"
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleSaveJobNo(); }}
+                    />
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={savingJobNo || jobNoInput.trim() === (detail.workbench_job_no ?? "")}
+                      onClick={() => void handleSaveJobNo()}
+                    >
+                      {savingJobNo ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                  {jobNoErr && <div className="eq-quotes__inline-err">{jobNoErr}</div>}
                 </div>
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">PO Number</span>
@@ -737,7 +780,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     <div className="eq-quotes">
       {/* Module header */}
       <div className="eq-quotes__module-header">
-        <h2 className="eq-quotes__title">Quotes</h2>
+        <h2 className="eq-quotes__title">EQ Ops</h2>
         <div className="eq-quotes__view-tabs">
           {(["pipeline", "accordion", "import"] as ModuleView[]).map((v) => (
             <button
@@ -746,7 +789,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               className={`eq-quotes__view-tab${view === v ? " eq-quotes__view-tab--active" : ""}`}
               onClick={() => setView(v)}
             >
-              {v === "pipeline" ? "Pipeline" : v === "accordion" ? "By Client" : "Import Coupa"}
+              {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : "Import Coupa"}
             </button>
           ))}
         </div>
@@ -758,7 +801,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           {/* Status filter tabs */}
           <div className="eq-quotes__status-filters">
             {STATUS_FILTERS.map((f) => {
-              const count = f.key === "all" ? quotes.length : quotes.filter((q) => q.status === f.key).length;
+              const count = f.key === "all" ? quotes.length
+                : f.key === "active-jobs" ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status)).length
+                : quotes.filter((q) => q.status === f.key).length;
               return (
                 <button
                   key={f.key}
@@ -805,7 +850,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             <div className="eq-quotes__loading">Loading…</div>
           ) : pipelineError ? (
             <div className="eq-quotes__error-banner">{pipelineError}</div>
-          ) : quotes.length === 0 ? (
+          ) : displayedQuotes.length === 0 ? (
             <div className="eq-quotes__empty">
               {search ? `No quotes match "${search}".` : "No quotes in this filter."}
             </div>
@@ -825,7 +870,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   </tr>
                 </thead>
                 <tbody>
-                  {quotes.map((q) => (
+                  {displayedQuotes.map((q) => (
                     <tr
                       key={q.quote_id}
                       className="eq-quotes__row eq-quotes__row--clickable"
@@ -857,6 +902,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                       <td>
                         {q.workbench_job_no ? (
                           <span className="eq-quotes__td--mono">{q.workbench_job_no}</span>
+                        ) : ACTIVE_JOB_STATUSES.has(q.status) ? (
+                          <span className="eq-quotes__badge eq-quotes__badge--amber eq-quotes__badge--xs">Needs no.</span>
                         ) : (
                           <span className="eq-quotes__muted">—</span>
                         )}
