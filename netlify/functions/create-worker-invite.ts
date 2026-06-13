@@ -196,13 +196,19 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   if (email) {
     const shellToken = randomBytes(32).toString('hex');
     const shellTokenHash = createHash('sha256').update(shellToken).digest('hex');
+    // Entitlements scoped by role: managers/supervisors get broader app access.
+    const inviteEntitlements =
+      (role === 'manager' || role === 'supervisor')
+        ? ['field', 'service', 'quotes']
+        : ['field'];
+
     const { error: shellErr } = await sb
       .from('user_invites')
       .insert({
         tenant_id:         session.tenant_id,
         email,
         role:              role as EqRole,
-        entitlements:      ['field'],
+        entitlements:      inviteEntitlements,
         phone,
         invited_by:        session.user_id,
         invite_token_hash: shellTokenHash,
