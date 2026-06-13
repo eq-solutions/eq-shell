@@ -198,6 +198,29 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     extraPerms = [];
   }
 
+  // 2026-06-13: Worker identity for Field person resolution. Looks up the
+  // worker record linked to this Shell user so Field can match them to a
+  // people/staff row in the tenant data plane. Non-fatal — on any failure
+  // (admin with no worker record, DB error) the token mints without these
+  // fields and Field falls back to name matching.
+  let workerIdentity: { canonical_user_id?: string; phone?: string } = {};
+  try {
+    const { data: worker } = await sb
+      .schema('public')
+      .from('workers')
+      .select('id, phone')
+      .eq('user_id', user.id)
+      .maybeSingle<{ id: string; phone: string | null }>();
+    if (worker) {
+      workerIdentity = {
+        canonical_user_id: worker.id,
+        ...(worker.phone ? { phone: worker.phone } : {}),
+      };
+    }
+  } catch {
+    // Non-fatal: worker lookup failure must never block login
+  }
+
   const shellToken = signShellToken({
     kind: 'shell-token',
     name: displayName,
@@ -219,6 +242,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     // against tenant B's URL.
     tenant_slug: tenantSlug!,
     shell_user_id: user.id,
+    ...workerIdentity,
     exp: Date.now() + IFRAME_TOKEN_TTL_MS,
   });
 

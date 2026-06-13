@@ -269,6 +269,20 @@ export interface ShellTokenPayload {
    * don't reference it are unaffected (JSON.parse ignores unknown fields).
    */
   shell_user_id: string;
+  /**
+   * 2026-06-13: workers.id in eq-canonical — the global identity key for
+   * this worker. Carried so Field can match the Shell user to their
+   * people/staff record in the tenant's data plane (via canonical_id once
+   * the jvkn→ehow sync populates it). Optional — omitted for Shell users
+   * with no linked worker record (e.g. platform admins, non-tradie staff).
+   */
+  canonical_user_id?: string;
+  /**
+   * 2026-06-13: workers.phone (E.164) from eq-canonical. Fallback
+   * identity signal for Field when canonical_user_id→people matching is
+   * not yet available. Optional — omitted when absent on the worker record.
+   */
+  phone?: string;
   exp: number;
 }
 
