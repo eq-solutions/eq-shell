@@ -265,6 +265,8 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
 .eq-quotes__note-type { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--eq-muted); letter-spacing: 0.04em; }
 .eq-quotes__note-date { font-size: 12px; color: var(--eq-muted); margin-left: auto; }
 .eq-quotes__note-body { margin: 0; font-size: 13px; color: var(--eq-ink); line-height: 1.6; white-space: pre-wrap; }
+.eq-quotes__note--status { background: var(--eq-ice); border-radius: 6px; padding: 8px 12px; border-top: none; margin-top: 0; }
+.eq-quotes__note--status .eq-quotes__note-type { color: var(--eq-primary); }
 .eq-quotes__accordion { display: flex; flex-direction: column; gap: 10px; }
 .eq-quotes__group { border: 1px solid var(--eq-line); border-radius: 8px; background: var(--eq-paper); overflow: hidden; }
 .eq-quotes__group-header { width: 100%; display: flex; align-items: center; gap: 10px; padding: 14px 18px; background: none; border: none; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--eq-ink); cursor: pointer; text-align: left; transition: background 0.1s ease; }
@@ -292,3 +294,8 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
 .eq-quotes__import-preview-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--eq-line); font-size: 13px; color: var(--eq-muted); }
 .eq-quotes__import-ok { font-size: 12px; font-weight: 600; color: var(--eq-ok); }
 .eq-quotes__import-miss { font-size: 12px; color: var(--eq-err); }
+/* Line item category grouping */
+.eq-quotes__row--group-header td { background: var(--eq-ice); padding: 6px 14px !important; border-bottom: 1px solid var(--eq-line) !important; }
+.eq-quotes__group-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--eq-primary-dark); }
+.eq-quotes__row--cat-subtotal td { background: var(--eq-paper); border-top: 1px solid var(--eq-line) !important; border-bottom: 2px solid var(--eq-line) !important; padding: 7px 14px !important; }
+.eq-quotes__financial-row--cat { border-left: 2px solid var(--eq-line); padding-left: 8px; }

@@ -144,6 +144,14 @@ interface QuotesModuleProps {
 // Constants
 // ---------------------------------------------------------------------------
 
+const CAT_ORDER = ["labour", "material", "subcontractor", ""] as const;
+const CAT_LABELS: Record<string, string> = {
+  labour: "Labour",
+  material: "Materials",
+  subcontractor: "Subcontractors",
+  "": "Other",
+};
+
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   submitted: "Submitted",
@@ -935,7 +943,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               </div>
             </div>
 
-            {/* Line items */}
+            {/* Line items — grouped by category */}
             {detail.line_items.length > 0 && (
               <div className="eq-quotes__detail-card">
                 <h3 className="eq-quotes__section-title">Line Items</h3>
@@ -943,33 +951,49 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <table className="eq-quotes__table">
                     <thead>
                       <tr>
-                        <th>#</th>
+                        <th style={{ width: 32 }}>#</th>
                         <th>Description</th>
-                        <th>Category</th>
-                        <th className="eq-quotes__th--right">Qty</th>
-                        <th>Unit</th>
-                        <th className="eq-quotes__th--right">Rate</th>
-                        <th className="eq-quotes__th--right">Total</th>
+                        <th className="eq-quotes__th--right" style={{ width: 60 }}>Qty</th>
+                        <th style={{ width: 48 }}>Unit</th>
+                        <th className="eq-quotes__th--right" style={{ width: 100 }}>Rate</th>
+                        <th className="eq-quotes__th--right" style={{ width: 110 }}>Total</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {detail.line_items.map((li) => (
-                        <tr key={li.line_number}>
-                          <td className="eq-quotes__td--mono">{li.line_number}</td>
-                          <td>{li.description}</td>
-                          <td>
-                            {li.category ? (
-                              <span className="eq-quotes__cat-badge">{li.category}</span>
-                            ) : (
-                              <span className="eq-quotes__muted">—</span>
-                            )}
-                          </td>
-                          <td className="eq-quotes__td--right">{qty(li.quantity_thousandths)}</td>
-                          <td>{li.unit ?? <span className="eq-quotes__muted">—</span>}</td>
-                          <td className="eq-quotes__td--right">{aud(li.unit_rate_cents)}</td>
-                          <td className="eq-quotes__td--right eq-quotes__td--bold">{aud(li.line_total_cents)}</td>
-                        </tr>
-                      ))}
+                      {CAT_ORDER.map((cat) => {
+                        const items = detail.line_items.filter(
+                          (li) => (li.category ?? "") === cat,
+                        );
+                        if (items.length === 0) return null;
+                        const catTotal = items.reduce((s, li) => s + li.line_total_cents, 0);
+                        return (
+                          <React.Fragment key={cat || "_other"}>
+                            <tr className="eq-quotes__row--group-header">
+                              <td colSpan={6} className="eq-quotes__group-label">
+                                {CAT_LABELS[cat] ?? cat}
+                              </td>
+                            </tr>
+                            {items.map((li) => (
+                              <tr key={li.line_number}>
+                                <td className="eq-quotes__td--mono">{li.line_number}</td>
+                                <td>{li.description}</td>
+                                <td className="eq-quotes__td--right">{qty(li.quantity_thousandths)}</td>
+                                <td>{li.unit ?? <span className="eq-quotes__muted">—</span>}</td>
+                                <td className="eq-quotes__td--right">{aud(li.unit_rate_cents)}</td>
+                                <td className="eq-quotes__td--right eq-quotes__td--bold">{aud(li.line_total_cents)}</td>
+                              </tr>
+                            ))}
+                            <tr className="eq-quotes__row--cat-subtotal">
+                              <td colSpan={5} className="eq-quotes__td--right">
+                                <span className="eq-quotes__muted" style={{ fontSize: 12 }}>
+                                  {CAT_LABELS[cat] ?? cat} subtotal
+                                </span>
+                              </td>
+                              <td className="eq-quotes__td--right eq-quotes__td--bold">{aud(catTotal)}</td>
+                            </tr>
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1083,6 +1107,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const createSubtotal = createLineItems.reduce((s, li) => s + calcLineTotal(li), 0);
   const createGst = Math.round(createSubtotal / 10);
   const createTotal = createSubtotal + createGst;
+
+  const createCatBreakdown = CAT_ORDER
+    .map((cat) => {
+      const items = createLineItems.filter(
+        (li) => (li.category || "") === cat && li.description.trim(),
+      );
+      return { cat, label: CAT_LABELS[cat] ?? cat, total: items.reduce((s, li) => s + calcLineTotal(li), 0) };
+    })
+    .filter((g) => g.total > 0);
 
   // ── Render: create view ───────────────────────────────────────────────────
 
@@ -1389,6 +1422,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 + Add Line
               </button>
               <div className="eq-quotes__financials" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+                {createCatBreakdown.length > 1 && createCatBreakdown.map((g) => (
+                  <div key={g.cat || "_other"} className="eq-quotes__financial-row eq-quotes__financial-row--cat">
+                    <span className="eq-quotes__muted" style={{ fontSize: 13 }}>{g.label}</span>
+                    <span className="eq-quotes__muted" style={{ fontSize: 13 }}>{aud(g.total)}</span>
+                  </div>
+                ))}
                 <div className="eq-quotes__financial-row">
                   <span>Subtotal</span>
                   <span>{aud(createSubtotal)}</span>
