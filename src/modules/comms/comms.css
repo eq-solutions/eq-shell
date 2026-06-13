@@ -307,9 +307,8 @@
 /* Edit panel */
 .comms-edit-bar {
   display: flex;
-  gap: 10px;
-  align-items: flex-end;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0;
   padding: 10px 16px 12px;
   border-top: 1px solid var(--eq-border, #E5E7EB);
   background: var(--eq-surface, #fff);
@@ -589,6 +588,124 @@
 
 .comms-history__note {
   color: var(--eq-ink, #1A1A2E);
+}
+
+/* ── Header actions (search, export, new job) ────────────────────────────── */
+.comms-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.comms-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.comms-search__icon {
+  position: absolute;
+  left: 8px;
+  color: var(--eq-ink-40, #888);
+  pointer-events: none;
+}
+
+.comms-search__input {
+  padding: 6px 10px 6px 28px;
+  border: 1px solid var(--eq-border, #E5E7EB);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  width: 220px;
+  background: var(--eq-surface, #fff);
+  color: var(--eq-ink, #1A1A2E);
+}
+
+.comms-search__input:focus {
+  outline: 2px solid var(--eq-sky, #3DA8D8);
+  outline-offset: -1px;
+}
+
+.comms-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--eq-border, #E5E7EB);
+  border-radius: 6px;
+  background: var(--eq-surface, #fff);
+  color: var(--eq-ink-60, #555);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.comms-icon-btn:hover {
+  background: var(--eq-ice, #EAF5FB);
+  color: var(--eq-sky, #3DA8D8);
+}
+
+/* ── Create job form ──────────────────────────────────────────────────────── */
+.comms-create-form {
+  background: var(--eq-surface, #fff);
+  border: 1px solid var(--eq-sky, #3DA8D8);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.comms-create-form__heading {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--eq-ink-60, #555);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 12px;
+}
+
+.comms-create-form__row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.comms-create-form__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ── Edit bar rows ────────────────────────────────────────────────────────── */
+.comms-edit-bar__row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 8px;
+}
+
+.comms-edit-bar__row:last-child {
+  margin-bottom: 0;
+}
+
+.comms-edit-bar__row--header {
+  padding-top: 8px;
+  border-top: 1px solid var(--eq-border, #E5E7EB);
+}
+
+.comms-edit-bar__row--actions {
+  padding-top: 4px;
+}
+
+/* ── Client tag (non-Microsoft jobs) ──────────────────────────────────────── */
+.comms-client-tag {
+  background: var(--eq-ice, #EAF5FB);
+  color: var(--eq-deep, #2986B4);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
 /* ── Mobile ──────────────────────────────────────────────────────────────── */

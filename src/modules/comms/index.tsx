@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useId } from 'react';
-import { ChevronDown, ChevronRight, CheckCircle2, Circle, AlertTriangle, Plus, X, Pencil } from 'lucide-react';
+import { ChevronDown, ChevronRight, CheckCircle2, Circle, AlertTriangle, Plus, X, Pencil, Download, Search } from 'lucide-react';
 import { HubLayout } from '../../components/HubLayout';
 import { useSession } from '../../session';
 import { useCan } from '../../permissions';
@@ -24,6 +24,7 @@ interface CommsJob {
   assigned_to:       string | null;
   start_date:        string | null;
   target_completion: string | null;
+  on_hold_since:     string | null;
   mop_received:      boolean;
   pre_cable_done:    boolean;
   post_dock_done:    boolean;
@@ -80,6 +81,53 @@ function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+function matchesSearch(job: CommsJob, q: string): boolean {
+  if (!q) return true;
+  const lower = q.toLowerCase();
+  return [job.site_code, job.site_name, job.job_number, job.description, job.assigned_to, job.client]
+    .some((v) => v?.toLowerCase().includes(lower));
+}
+
+function exportCSV(jobs: CommsJob[]) {
+  const headers = [
+    'Job #', 'Site Code', 'Site Name', 'Client', 'Status', 'Assigned',
+    'Description', 'Start', 'Target', 'On Hold Since',
+    'Value ex-GST', 'Invoiced', 'Hours', 'Lines',
+    'MOP', 'Pre-cable', 'Post-dock', 'Invoice raised',
+  ];
+  const rows = jobs.map((j) => [
+    j.job_number ?? '',
+    j.site_code,
+    j.site_name ?? '',
+    j.client,
+    STATUS_LABELS[j.status],
+    j.assigned_to ?? '',
+    j.description ?? '',
+    j.start_date ?? '',
+    j.target_completion ?? '',
+    j.on_hold_since ?? '',
+    j.total_value,
+    j.total_invoiced,
+    j.total_hours,
+    j.line_count,
+    j.mop_received    ? 'Yes' : '',
+    j.pre_cable_done  ? 'Yes' : '',
+    j.post_dock_done  ? 'Yes' : '',
+    j.invoice_raised  ? 'Yes' : '',
+  ]);
+  const csv = [headers, ...rows]
+    .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const today = new Date().toISOString().slice(0, 10);
+  a.download = `nsw-comms-${today}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const STATUS_LABELS: Record<JobStatus, string> = {
   quoted:   'Quoted',
   active:   'Active',
@@ -101,11 +149,9 @@ const TABS: { key: TabKey; label: string }[] = [
 // ── Monday brief ─────────────────────────────────────────────────────────────
 
 function MondayBrief({ jobs }: { jobs: CommsJob[] }) {
-  const readyToInvoice = jobs.filter(
-    (j) => j.post_dock_done && !j.invoice_raised && j.total_value > 0 && j.status !== 'closed',
-  );
+  const readyToInvoice  = jobs.filter((j) => j.post_dock_done && !j.invoice_raised && j.total_value > 0 && j.status !== 'closed');
   const unassignedActive = jobs.filter((j) => j.status === 'active' && !j.assigned_to);
-  const longOnHold = jobs.filter((j) => j.status === 'on_hold');
+  const longOnHold      = jobs.filter((j) => j.status === 'on_hold');
 
   const total = readyToInvoice.length + unassignedActive.length + longOnHold.length;
   if (total === 0) return null;
@@ -143,11 +189,7 @@ function MondayBrief({ jobs }: { jobs: CommsJob[] }) {
 // ── Milestone pill ────────────────────────────────────────────────────────────
 
 function MilestonePill({
-  label,
-  fullLabel,
-  done,
-  canEdit,
-  onClick,
+  label, fullLabel, done, canEdit, onClick,
 }: {
   label:     string;
   fullLabel: string;
@@ -160,8 +202,8 @@ function MilestonePill({
       type="button"
       className={[
         'comms-milestone',
-        done     ? 'comms-milestone--done'      : 'comms-milestone--pending',
-        canEdit  ? 'comms-milestone--clickable' : '',
+        done    ? 'comms-milestone--done'      : 'comms-milestone--pending',
+        canEdit ? 'comms-milestone--clickable' : '',
       ].join(' ')}
       onClick={canEdit ? onClick : undefined}
       aria-pressed={done}
@@ -174,24 +216,141 @@ function MilestonePill({
   );
 }
 
-// ── Add line form ────────────────────────────────────────────────────────────
+// ── Create job form ───────────────────────────────────────────────────────────
+
+function CreateJobForm({
+  onCreated,
+  onCancel,
+  staffListId,
+}: {
+  onCreated:   (job: CommsJob) => void;
+  onCancel:    () => void;
+  staffListId: string;
+}) {
+  const [form, setForm] = useState({
+    site_code:         '',
+    site_name:         '',
+    client:            'Microsoft',
+    job_number:        '',
+    description:       '',
+    assigned_to:       '',
+    start_date:        '',
+    target_completion: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr]       = useState<string | null>(null);
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.site_code.trim()) { setErr('Site code is required'); return; }
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch('/.netlify/functions/comms-jobs', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          create: {
+            site_code:         form.site_code.trim().toUpperCase(),
+            site_name:         form.site_name.trim()         || null,
+            client:            form.client.trim()            || 'Microsoft',
+            job_number:        form.job_number.trim()        || null,
+            description:       form.description.trim()       || null,
+            assigned_to:       form.assigned_to.trim()       || null,
+            start_date:        form.start_date               || null,
+            target_completion: form.target_completion        || null,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) { setErr(data.error ?? 'Save failed'); return; }
+      onCreated(data.job as CommsJob);
+    } catch {
+      setErr('Network error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="comms-create-form" onSubmit={submit}>
+      <div className="comms-create-form__heading">New job</div>
+      <div className="comms-create-form__row">
+        <div className="comms-edit-field">
+          <label>Site code *</label>
+          <input type="text" value={form.site_code} onChange={set('site_code')}
+            placeholder="SYD27" autoFocus />
+        </div>
+        <div className="comms-edit-field comms-edit-field--grow">
+          <label>Site name</label>
+          <input type="text" value={form.site_name} onChange={set('site_name')}
+            placeholder="Equinix SY9" />
+        </div>
+        <div className="comms-edit-field">
+          <label>Client</label>
+          <input type="text" value={form.client} onChange={set('client')}
+            placeholder="Microsoft" />
+        </div>
+        <div className="comms-edit-field">
+          <label>Job #</label>
+          <input type="text" value={form.job_number} onChange={set('job_number')}
+            placeholder="SKS-1234" />
+        </div>
+      </div>
+      <div className="comms-create-form__row">
+        <div className="comms-edit-field comms-edit-field--grow2">
+          <label>Description</label>
+          <input type="text" value={form.description} onChange={set('description')}
+            placeholder="Copper decommission, rack relocation…" />
+        </div>
+        <div className="comms-edit-field comms-edit-field--grow">
+          <label>Assigned to</label>
+          <input type="text" value={form.assigned_to} onChange={set('assigned_to')}
+            list={staffListId} placeholder="Tech name" />
+        </div>
+        <div className="comms-edit-field">
+          <label>Start date</label>
+          <input type="date" value={form.start_date} onChange={set('start_date')} />
+        </div>
+        <div className="comms-edit-field">
+          <label>Target completion</label>
+          <input type="date" value={form.target_completion} onChange={set('target_completion')} />
+        </div>
+      </div>
+      {err && <div className="comms-save-error" role="alert">{err}</div>}
+      <div className="comms-create-form__actions">
+        <button type="submit" className="comms-save-btn" disabled={saving}>
+          {saving ? 'Creating…' : 'Create job'}
+        </button>
+        <button type="button" className="comms-cancel-btn" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+// ── Add line form ─────────────────────────────────────────────────────────────
 
 function AddLineForm({
-  jobId,
-  onAdded,
-  onCancel,
+  jobId, onAdded, onCancel,
 }: {
   jobId:    string;
   onAdded:  (line: PoLine) => void;
   onCancel: () => void;
 }) {
   const [form, setForm] = useState({
-    po_number:    '',
-    description:  '',
-    requestor:    '',
-    quote_number: '',
-    hours:        '',
-    price_ex_gst: '',
+    po_number:     '',
+    description:   '',
+    requestor:     '',
+    fid_number:    '',
+    quote_number:  '',
+    date_approval: '',
+    hours:         '',
+    materials_cost: '',
+    price_ex_gst:  '',
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr]       = useState<string | null>(null);
@@ -212,12 +371,15 @@ function AddLineForm({
         body: JSON.stringify({
           job_id: jobId,
           line: {
-            po_number:    form.po_number    || null,
-            description:  form.description.trim(),
-            requestor:    form.requestor    || null,
-            quote_number: form.quote_number || null,
-            hours:        form.hours        ? parseFloat(form.hours)        : null,
-            price_ex_gst: form.price_ex_gst ? parseFloat(form.price_ex_gst) : null,
+            po_number:     form.po_number.trim()     || null,
+            description:   form.description.trim(),
+            requestor:     form.requestor.trim()     || null,
+            fid_number:    form.fid_number.trim()    || null,
+            quote_number:  form.quote_number.trim()  || null,
+            date_approval: form.date_approval        || null,
+            hours:         form.hours         ? parseFloat(form.hours)         : null,
+            materials_cost: form.materials_cost ? parseFloat(form.materials_cost) : null,
+            price_ex_gst:  form.price_ex_gst  ? parseFloat(form.price_ex_gst)  : null,
           },
         }),
       });
@@ -243,6 +405,10 @@ function AddLineForm({
           <input type="text" value={form.po_number} onChange={set('po_number')} placeholder="PO number" />
         </div>
         <div className="comms-edit-field">
+          <label>FID #</label>
+          <input type="text" value={form.fid_number} onChange={set('fid_number')} placeholder="FID" />
+        </div>
+        <div className="comms-edit-field">
           <label>Requestor</label>
           <input type="text" value={form.requestor} onChange={set('requestor')} placeholder="Name" />
         </div>
@@ -250,9 +416,19 @@ function AddLineForm({
           <label>Quote #</label>
           <input type="text" value={form.quote_number} onChange={set('quote_number')} placeholder="Quote" />
         </div>
+        <div className="comms-edit-field">
+          <label>Date approved</label>
+          <input type="date" value={form.date_approval} onChange={set('date_approval')} />
+        </div>
+      </div>
+      <div className="comms-add-line-form__row">
         <div className="comms-edit-field comms-edit-field--num">
           <label>Hours</label>
           <input type="number" min="0" step="0.5" value={form.hours} onChange={set('hours')} placeholder="0" />
+        </div>
+        <div className="comms-edit-field comms-edit-field--num">
+          <label>Materials ex-GST</label>
+          <input type="number" min="0" step="0.01" value={form.materials_cost} onChange={set('materials_cost')} placeholder="0.00" />
         </div>
         <div className="comms-edit-field comms-edit-field--num">
           <label>Value ex-GST</label>
@@ -271,39 +447,46 @@ function AddLineForm({
 // ── Job card ─────────────────────────────────────────────────────────────────
 
 function JobCard({
-  job,
-  canEdit,
-  onJobUpdated,
+  job, canEdit, onJobUpdated,
 }: {
   job:          CommsJob;
   canEdit:      boolean;
-  onJobUpdated: (updated: CommsJob) => void;
+  onJobUpdated: (updated: Partial<CommsJob> & { job_id: string }) => void;
 }) {
-  const cardId      = useId();
+  const cardId       = useId();
   const cardDetailId = `${cardId}-detail`;
-  const tabPanelId  = `${cardId}-tabpanel`;
+  const tabPanelId   = `${cardId}-tabpanel`;
 
-  const [open, setOpen]         = useState(false);
-  const [lines, setLines]       = useState<PoLine[] | null>(null);
-  const [events, setEvents]     = useState<CommsEvent[]>([]);
-  const [loading, setLoading]   = useState(false);
+  const [open, setOpen]           = useState(false);
+  const [lines, setLines]         = useState<PoLine[] | null>(null);
+  const [events, setEvents]       = useState<CommsEvent[]>([]);
+  const [loading, setLoading]     = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [tab, setTab]           = useState<'lines' | 'history'>('lines');
+  const [tab, setTab]             = useState<'lines' | 'history'>('lines');
 
-  // Edit state
+  // Operational edit state
   const [assignedTo, setAssignedTo] = useState(job.assigned_to ?? '');
   const [notes, setNotes]           = useState(job.notes ?? '');
   const [status, setStatus]         = useState<JobStatus>(job.status);
-  const [saving, setSaving]         = useState(false);
 
-  // Add line form
+  // Header edit state
+  const [siteCode, setSiteCode]             = useState(job.site_code);
+  const [siteName, setSiteName]             = useState(job.site_name ?? '');
+  const [client, setClient]                 = useState(job.client);
+  const [jobNumber, setJobNumber]           = useState(job.job_number ?? '');
+  const [description, setDescription]       = useState(job.description ?? '');
+  const [startDate, setStartDate]           = useState(job.start_date ?? '');
+  const [targetCompletion, setTargetCompletion] = useState(job.target_completion ?? '');
+  const [onHoldSince, setOnHoldSince]       = useState(job.on_hold_since ?? '');
+
+  const [saving, setSaving]       = useState(false);
   const [showAddLine, setShowAddLine] = useState(false);
 
   // Per-line invoice edit
-  const [editLineId, setEditLineId]     = useState<string | null>(null);
-  const [invNumber, setInvNumber]       = useState('');
-  const [invAmount, setInvAmount]       = useState('');
-  const [savingLine, setSavingLine]     = useState(false);
+  const [editLineId, setEditLineId] = useState<string | null>(null);
+  const [invNumber, setInvNumber]   = useState('');
+  const [invAmount, setInvAmount]   = useState('');
+  const [savingLine, setSavingLine] = useState(false);
 
   const fetchDetail = useCallback(async (force = false) => {
     if (!force && lines !== null) return;
@@ -325,7 +508,7 @@ function JobCard({
     if (!open) fetchDetail();
   };
 
-  const patchJob = useCallback(async (patch: Partial<CommsJob>) => {
+  const patchJob = useCallback(async (patch: Record<string, unknown>) => {
     setSaving(true);
     setSaveError(null);
     try {
@@ -337,7 +520,7 @@ function JobCard({
       });
       const data = await res.json();
       if (data.ok) {
-        onJobUpdated({ ...job, ...patch });
+        onJobUpdated({ job_id: job.job_id, ...patch });
       } else {
         setSaveError(data.error ?? 'Save failed');
       }
@@ -346,17 +529,28 @@ function JobCard({
     } finally {
       setSaving(false);
     }
-  }, [job, onJobUpdated]);
+  }, [job.job_id, onJobUpdated]);
 
   const toggleMilestone = (field: 'mop_received' | 'pre_cable_done' | 'post_dock_done' | 'invoice_raised') => {
     patchJob({ [field]: !job[field] });
   };
 
   const saveEdits = () => {
-    const patch: Partial<CommsJob> = {};
+    const patch: Record<string, unknown> = {};
+    // Operational fields
     if (assignedTo !== (job.assigned_to ?? '')) patch.assigned_to = assignedTo || null;
-    if (notes      !== (job.notes      ?? '')) patch.notes = notes || null;
-    if (status     !== job.status)             patch.status = status;
+    if (notes      !== (job.notes      ?? '')) patch.notes       = notes || null;
+    if (status     !== job.status)             patch.status      = status;
+    // Header fields
+    if (siteCode        !== job.site_code)              patch.site_code         = siteCode.trim().toUpperCase() || job.site_code;
+    if (siteName        !== (job.site_name ?? ''))       patch.site_name         = siteName.trim() || null;
+    if (client          !== job.client)                  patch.client            = client.trim() || job.client;
+    if (jobNumber       !== (job.job_number ?? ''))      patch.job_number        = jobNumber.trim() || null;
+    if (description     !== (job.description ?? ''))     patch.description       = description.trim() || null;
+    if (startDate       !== (job.start_date ?? ''))      patch.start_date        = startDate || null;
+    if (targetCompletion !== (job.target_completion ?? '')) patch.target_completion = targetCompletion || null;
+    if (onHoldSince     !== (job.on_hold_since ?? ''))   patch.on_hold_since     = onHoldSince || null;
+
     if (Object.keys(patch).length === 0) return;
     patchJob(patch);
   };
@@ -390,7 +584,6 @@ function JobCard({
           prev ? prev.map((l) => l.line_id === editLineId ? { ...l, ...data.line } : l) : prev,
         );
         setEditLineId(null);
-        // Refresh events
         fetchDetail(true);
       }
     } finally {
@@ -399,8 +592,7 @@ function JobCard({
   };
 
   const invoiceNeeded = job.total_value > 0 && !job.invoice_raised && (job.post_dock_done || job.status === 'complete');
-
-  const staffListId = 'comms-staff-list';
+  const staffListId   = 'comms-staff-list';
 
   return (
     <div className={`comms-job-card comms-job-card--${job.status}`}>
@@ -420,6 +612,7 @@ function JobCard({
           <div className="comms-job-card__desc">{job.description ?? '—'}</div>
           <div className="comms-job-card__meta">
             <span>{STATUS_LABELS[job.status]}</span>
+            {job.client !== 'Microsoft' && <span className="comms-client-tag">{job.client}</span>}
             {job.total_hours > 0 && <span>{Math.round(job.total_hours)}h</span>}
             {job.line_count > 1 && <span>{job.line_count} PO lines</span>}
             {job.target_completion && <span>Target: {job.target_completion}</span>}
@@ -450,14 +643,12 @@ function JobCard({
         )}
       </div>
 
-      {saveError && (
-        <div className="comms-save-error" role="alert">{saveError}</div>
-      )}
+      {saveError && <div className="comms-save-error" role="alert">{saveError}</div>}
 
       {/* ── Expanded detail ── */}
       {open && (
         <div id={cardDetailId}>
-          {/* Sub-tabs: lines / history */}
+          {/* Sub-tabs */}
           <div className="comms-detail-tabs" role="tablist" aria-label="Job details">
             {(['lines', 'history'] as const).map((t) => (
               <button
@@ -486,10 +677,13 @@ function JobCard({
                       <thead>
                         <tr>
                           <th>PO #</th>
+                          <th>FID #</th>
                           <th>Description</th>
                           <th>Quote</th>
                           <th>Requestor</th>
+                          <th>Approved</th>
                           <th className="num">Hours</th>
+                          <th className="num">Materials</th>
                           <th className="num">Value</th>
                           <th className="num">Invoice #</th>
                           <th className="num">Invoiced</th>
@@ -501,7 +695,7 @@ function JobCard({
                           <tr key={l.line_id}>
                             {editLineId === l.line_id ? (
                               <>
-                                <td colSpan={6}>{l.po_number ?? '—'} · {l.description}</td>
+                                <td colSpan={9}>{l.po_number ?? '—'} · {l.description}</td>
                                 <td className="num">
                                   <input
                                     className="comms-line-edit-input"
@@ -538,10 +732,13 @@ function JobCard({
                             ) : (
                               <>
                                 <td>{l.po_number ?? '—'}</td>
+                                <td>{l.fid_number ?? '—'}</td>
                                 <td>{l.description}</td>
                                 <td>{l.quote_number ?? '—'}</td>
                                 <td>{l.requestor ?? '—'}</td>
+                                <td>{l.date_approval ? l.date_approval.slice(0, 10) : '—'}</td>
                                 <td className="num">{l.hours ?? '—'}</td>
+                                <td className="num">{fmtMoney(l.materials_cost)}</td>
                                 <td className="num">{fmtMoney(l.price_ex_gst)}</td>
                                 <td className="num">{l.invoice_number ?? '—'}</td>
                                 <td className="num">{l.invoiced_amount != null ? fmtMoney(l.invoiced_amount) : '—'}</td>
@@ -569,13 +766,8 @@ function JobCard({
                   <div style={{ color: 'var(--eq-ink-40)', fontSize: '0.8rem' }}>No PO lines recorded.</div>
                 )}
 
-                {/* Add line form / button */}
                 {canEdit && !showAddLine && (
-                  <button
-                    type="button"
-                    className="comms-add-line-btn"
-                    onClick={() => setShowAddLine(true)}
-                  >
+                  <button type="button" className="comms-add-line-btn" onClick={() => setShowAddLine(true)}>
                     <Plus size={13} /> Add PO line
                   </button>
                 )}
@@ -612,47 +804,134 @@ function JobCard({
           {/* ── Edit bar ── */}
           {canEdit && (
             <div className="comms-edit-bar">
-              <div className="comms-edit-field">
-                <label htmlFor={`${cardId}-status`}>Status</label>
-                <select
-                  id={`${cardId}-status`}
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as JobStatus)}
+              {/* Row 1: operational */}
+              <div className="comms-edit-bar__row">
+                <div className="comms-edit-field">
+                  <label htmlFor={`${cardId}-status`}>Status</label>
+                  <select
+                    id={`${cardId}-status`}
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as JobStatus)}
+                  >
+                    {ALL_STATUSES.map((s) => (
+                      <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="comms-edit-field comms-edit-field--grow">
+                  <label htmlFor={`${cardId}-assigned`}>Assigned to</label>
+                  <input
+                    id={`${cardId}-assigned`}
+                    type="text"
+                    list={staffListId}
+                    value={assignedTo}
+                    onChange={(e) => setAssignedTo(e.target.value)}
+                    placeholder="Tech name"
+                  />
+                </div>
+                <div className="comms-edit-field comms-edit-field--grow2">
+                  <label htmlFor={`${cardId}-notes`}>Notes</label>
+                  <input
+                    id={`${cardId}-notes`}
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="e.g. 3 racks damaged, awaiting replacements"
+                  />
+                </div>
+                {status === 'on_hold' && (
+                  <div className="comms-edit-field">
+                    <label htmlFor={`${cardId}-hold-since`}>On hold since</label>
+                    <input
+                      id={`${cardId}-hold-since`}
+                      type="date"
+                      value={onHoldSince}
+                      onChange={(e) => setOnHoldSince(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+              {/* Row 2: header fields */}
+              <div className="comms-edit-bar__row comms-edit-bar__row--header">
+                <div className="comms-edit-field">
+                  <label htmlFor={`${cardId}-site-code`}>Site code</label>
+                  <input
+                    id={`${cardId}-site-code`}
+                    type="text"
+                    value={siteCode}
+                    onChange={(e) => setSiteCode(e.target.value)}
+                    placeholder="SYD27"
+                  />
+                </div>
+                <div className="comms-edit-field comms-edit-field--grow">
+                  <label htmlFor={`${cardId}-site-name`}>Site name</label>
+                  <input
+                    id={`${cardId}-site-name`}
+                    type="text"
+                    value={siteName}
+                    onChange={(e) => setSiteName(e.target.value)}
+                    placeholder="Equinix SY9"
+                  />
+                </div>
+                <div className="comms-edit-field">
+                  <label htmlFor={`${cardId}-client`}>Client</label>
+                  <input
+                    id={`${cardId}-client`}
+                    type="text"
+                    value={client}
+                    onChange={(e) => setClient(e.target.value)}
+                    placeholder="Microsoft"
+                  />
+                </div>
+                <div className="comms-edit-field">
+                  <label htmlFor={`${cardId}-job-number`}>Job #</label>
+                  <input
+                    id={`${cardId}-job-number`}
+                    type="text"
+                    value={jobNumber}
+                    onChange={(e) => setJobNumber(e.target.value)}
+                    placeholder="SKS-1234"
+                  />
+                </div>
+                <div className="comms-edit-field comms-edit-field--grow2">
+                  <label htmlFor={`${cardId}-desc`}>Description</label>
+                  <input
+                    id={`${cardId}-desc`}
+                    type="text"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Job description"
+                  />
+                </div>
+                <div className="comms-edit-field">
+                  <label htmlFor={`${cardId}-start`}>Start date</label>
+                  <input
+                    id={`${cardId}-start`}
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </div>
+                <div className="comms-edit-field">
+                  <label htmlFor={`${cardId}-target`}>Target completion</label>
+                  <input
+                    id={`${cardId}-target`}
+                    type="date"
+                    value={targetCompletion}
+                    onChange={(e) => setTargetCompletion(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="comms-edit-bar__row comms-edit-bar__row--actions">
+                <button
+                  type="button"
+                  className="comms-save-btn"
+                  onClick={saveEdits}
+                  disabled={saving}
                 >
-                  {ALL_STATUSES.map((s) => (
-                    <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                  ))}
-                </select>
+                  {saving ? 'Saving…' : 'Save changes'}
+                </button>
               </div>
-              <div className="comms-edit-field comms-edit-field--grow">
-                <label htmlFor={`${cardId}-assigned`}>Assigned to</label>
-                <input
-                  id={`${cardId}-assigned`}
-                  type="text"
-                  list={staffListId}
-                  value={assignedTo}
-                  onChange={(e) => setAssignedTo(e.target.value)}
-                  placeholder="Tech name"
-                />
-              </div>
-              <div className="comms-edit-field comms-edit-field--grow2">
-                <label htmlFor={`${cardId}-notes`}>Notes</label>
-                <input
-                  id={`${cardId}-notes`}
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="e.g. 3 racks damaged, awaiting replacements"
-                />
-              </div>
-              <button
-                type="button"
-                className="comms-save-btn"
-                onClick={saveEdits}
-                disabled={saving}
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </button>
             </div>
           )}
         </div>
@@ -667,11 +946,13 @@ export default function CommsModule() {
   const session = useSession();
   const canEdit = useCan(COMMS_UPDATE_PERM);
 
-  const [jobs, setJobs]     = useState<CommsJob[]>([]);
-  const [staff, setStaff]   = useState<StaffMember[]>([]);
-  const [tab, setTab]       = useState<TabKey>('active');
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
+  const [jobs, setJobs]       = useState<CommsJob[]>([]);
+  const [staff, setStaff]     = useState<StaffMember[]>([]);
+  const [tab, setTab]         = useState<TabKey>('active');
+  const [search, setSearch]   = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -681,27 +962,38 @@ export default function CommsModule() {
     ])
       .then(([jobsData, staffData]) => {
         if (jobsData.ok) setJobs(jobsData.jobs);
-        else setError(jobsData.error === 'not_found' ? 'This module is not available for your account.' : (jobsData.error ?? 'Failed to load jobs'));
+        else setError(
+          jobsData.error === 'not_found'
+            ? 'This module is not available for your account.'
+            : (jobsData.error ?? 'Failed to load jobs'),
+        );
         if (staffData.ok) setStaff(staffData.staff ?? []);
       })
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
   }, []);
 
-  const handleJobUpdated = useCallback((updated: CommsJob) => {
+  const handleJobUpdated = useCallback((updated: Partial<CommsJob> & { job_id: string }) => {
     setJobs((prev) => prev.map((j) => (j.job_id === updated.job_id ? { ...j, ...updated } : j)));
   }, []);
 
-  const filtered = tab === 'all' ? jobs : jobs.filter((j) => j.status === tab);
+  const handleJobCreated = useCallback((job: CommsJob) => {
+    setJobs((prev) => [job, ...prev]);
+    setShowCreate(false);
+    setTab('all');
+  }, []);
+
+  const tabFiltered  = tab === 'all' ? jobs : jobs.filter((j) => j.status === tab);
+  const filtered     = search ? tabFiltered.filter((j) => matchesSearch(j, search)) : tabFiltered;
 
   const counts: Partial<Record<TabKey, number>> = { all: jobs.length };
   for (const j of jobs) counts[j.status] = (counts[j.status] ?? 0) + 1;
 
-  const activeJobs     = jobs.filter((j) => j.status === 'active');
-  const totalActive    = activeJobs.reduce((s, j) => s + j.total_value, 0);
-  const totalInvoiced  = activeJobs.reduce((s, j) => s + j.total_invoiced, 0);
-  const uninvoiced     = activeJobs.filter((j) => j.post_dock_done && !j.invoice_raised).length;
-  const unassigned     = activeJobs.filter((j) => !j.assigned_to).length;
+  const activeJobs    = jobs.filter((j) => j.status === 'active');
+  const totalActive   = activeJobs.reduce((s, j) => s + j.total_value, 0);
+  const totalInvoiced = activeJobs.reduce((s, j) => s + j.total_invoiced, 0);
+  const uninvoiced    = activeJobs.filter((j) => j.post_dock_done && !j.invoice_raised).length;
+  const unassigned    = activeJobs.filter((j) => !j.assigned_to).length;
 
   if (!session) return null;
 
@@ -718,7 +1010,47 @@ export default function CommsModule() {
           <h1 className="comms-header__title">NSW Comms — Job Pipeline</h1>
           <div className="comms-header__sub">Microsoft / Equinix NSW jobs · SKS Technologies</div>
         </div>
+        <div className="comms-header__actions">
+          <div className="comms-search">
+            <Search size={14} className="comms-search__icon" aria-hidden="true" />
+            <input
+              type="search"
+              className="comms-search__input"
+              placeholder="Search site, job #, client…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search jobs"
+            />
+          </div>
+          <button
+            type="button"
+            className="comms-icon-btn"
+            onClick={() => exportCSV(filtered)}
+            title="Export current view to CSV"
+            aria-label="Export to CSV"
+          >
+            <Download size={15} />
+          </button>
+          {canEdit && (
+            <button
+              type="button"
+              className="comms-save-btn"
+              onClick={() => setShowCreate((v) => !v)}
+            >
+              <Plus size={14} /> New job
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* ── Create job form ── */}
+      {showCreate && canEdit && (
+        <CreateJobForm
+          onCreated={handleJobCreated}
+          onCancel={() => setShowCreate(false)}
+          staffListId="comms-staff-list"
+        />
+      )}
 
       {/* ── KPI bar ── */}
       <div className="comms-kpi-bar">
@@ -772,7 +1104,11 @@ export default function CommsModule() {
       {!loading && !error && (
         <div className="comms-job-list">
           {filtered.length === 0 && (
-            <div className="comms-empty">No {tab === 'all' ? '' : STATUS_LABELS[tab as JobStatus] + ' '}jobs found.</div>
+            <div className="comms-empty">
+              {search
+                ? `No jobs matching "${search}".`
+                : `No ${tab === 'all' ? '' : STATUS_LABELS[tab as JobStatus] + ' '}jobs found.`}
+            </div>
           )}
           {filtered.map((job) => (
             <JobCard
