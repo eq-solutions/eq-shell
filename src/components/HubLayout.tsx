@@ -31,6 +31,7 @@ const HUB_APPS = [
   { key: 'service', label: 'EQ Service', to: 'service', isBeta: true  },
   { key: 'quotes',  label: 'EQ Quotes',  to: 'quotes',  isBeta: false },
   { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: true  },
+  { key: 'comms',   label: 'NSW Comms',  to: 'comms',   isBeta: true  },
 ];
 
 interface DashboardCounts {
