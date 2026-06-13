@@ -23,7 +23,7 @@ const SIDEBAR_RECORDS = defaultSidebarRecords();
 // shell session cookie). TOKEN MODE works on all domains including deploy previews.
 
 const SERVICE_URL = (import.meta.env.VITE_SERVICE_URL as string | undefined)
-  ?? 'https://eq-solves-service.netlify.app';
+  ?? 'https://service.eq.solutions';
 
 // TOKEN MODE is always used. COOKIE_AUTH kept as a constant for the conditional
 // blocks below (all branches evaluate to the TOKEN path at compile time).

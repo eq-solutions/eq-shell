@@ -339,6 +339,14 @@ const KNOWN_LEGACY_ANON = {
     'public.team_members', 'public.teams', 'public.tender_enrichment',
     'public.tender_import_runs', 'public.tender_phases', 'public.tender_review_decisions',
     'public.tenders',
+    // Legacy nspbmir Field tables — same set as zaap; authenticated access required
+    // while the nspbmir→ehow Field unification arc is in-flight. Lock down via 0067
+    // once SKS Field migration is complete.
+    'public.job_numbers', 'public.leave_requests', 'public.managers',
+    'public.people', 'public.prestarts', 'public.project_targets',
+    'public.projects', 'public.regions', 'public.roster_presence',
+    'public.schedule', 'public.site_diaries', 'public.sites',
+    'public.timesheet_locks', 'public.timesheets', 'public.toolbox_talks',
   ]),
 };
 
