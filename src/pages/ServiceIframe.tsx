@@ -97,6 +97,7 @@ export default function ServiceIframe() {
       if (ev.origin !== SERVICE_URL) return;
       if (!ev.data || typeof ev.data !== 'object') return;
       if (ev.data.type === 'EQ_SERVICE_READY') {
+        Sentry.addBreadcrumb({ category: 'service-iframe', message: 'EQ_SERVICE_READY received', level: 'info' });
         setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
       } else if (ev.data.type === 'EQ_SERVICE_ERROR') {
         const code = (ev.data as Record<string, unknown>).code;
@@ -168,11 +169,21 @@ export default function ServiceIframe() {
     } else {
       // Token mode: first onLoad is /shell (processing token + redirect).
       // Next.js router.replace('/') is a soft nav — no second onLoad.
-      // Fall back to revealing after 12s to cover the OTP round-trip.
+      // EQ_SERVICE_READY is the primary reveal signal (fires when ShellReadySignal
+      // mounts in the dashboard layout). Fall back to 4s — TOKEN MODE has no OTP
+      // round-trip so the shell-auth → dashboard path completes in ~2-3s.
       if (loadCount.current === 1) {
         setTimeout(() => {
-          setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
-        }, 12_000);
+          setState((prev) => {
+            if (prev.phase !== 'loading') return prev;
+            Sentry.addBreadcrumb({
+              category: 'service-iframe',
+              message: 'fallback reveal fired — EQ_SERVICE_READY not received in time',
+              level: 'warning',
+            });
+            return { ...prev, phase: 'ready' };
+          });
+        }, 4_000);
       }
     }
   }
