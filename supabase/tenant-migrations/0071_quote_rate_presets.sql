@@ -85,13 +85,14 @@ BEGIN
     INSERT INTO app_data.quote_rate_presets
       (tenant_id, category, description, unit, unit_rate_cents, qty_thousandths, sort_order)
     VALUES
-      -- Labour — rates drawn from actual SKS line items
-      (v_tenant_id, 'Labour',    'Equinix — Normal Hours',          'hrs', 12500, 1000, 10),
-      (v_tenant_id, 'Labour',    'Equinix — After Hours',           'hrs', 19000, 1000, 20),
-      (v_tenant_id, 'Labour',    'Electrician — Normal Hours',      'hrs', 13500, 1000, 30),
-      (v_tenant_id, 'Labour',    'SE Field Services — Normal Hours','hrs', 13500, 1000, 40),
-      -- Materials — common placeholder lines
-      (v_tenant_id, 'Materials', 'Materials / Consumables / Sundries', 'ea', 0, 1000, 10);
+      -- Labour — exact descriptions and rates from existing quote_line_item rows
+      (v_tenant_id, 'labour',   'Equinix - Normal Hours',          'hrs', 12500, 1000, 10),
+      (v_tenant_id, 'labour',   'Equinix - After Hours',           'hrs', 19000, 1000, 20),
+      (v_tenant_id, 'labour',   'Electrician - Normal hours',      'hrs', 13500, 1000, 30),
+      (v_tenant_id, 'labour',   'SE Field services - Normal hours','hrs', 13500, 1000, 40),
+      -- Material — common placeholder lines from existing quotes
+      (v_tenant_id, 'material', 'Materials / consumables / sundries', 'ea', 0, 1000, 10),
+      (v_tenant_id, 'material', 'Consumables',                     'ea', 0, 1000, 20);
   END IF;
 END;
 $$;
