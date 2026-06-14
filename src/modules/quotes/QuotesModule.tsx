@@ -3645,9 +3645,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     q.po_number ?? "",
                     (q.total_cents / 100).toFixed(2),
                     q.margin_pct !== null ? Number(q.margin_pct).toFixed(1) : "",
-                    q.sent_at ? q.sent_at.slice(0, 10) : "",
-                    q.expires_at ? q.expires_at.slice(0, 10) : "",
-                    q.created_at.slice(0, 10),
+                    fmtDate(q.sent_at),
+                    fmtDate(q.expires_at),
+                    fmtDate(q.created_at),
                   ])], `eq-pipeline-${today}.csv`);
                 }}
               >
