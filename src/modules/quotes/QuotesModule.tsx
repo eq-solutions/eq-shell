@@ -59,6 +59,17 @@ interface QuoteAuditEntry {
   created_at: string;
 }
 
+interface TrashedQuote {
+  quote_id: string;
+  quote_number: string;
+  status: string;
+  project_name: string | null;
+  estimator_initials: string | null;
+  total_cents: number;
+  deleted_at: string;
+  customer_name: string | null;
+}
+
 interface QuoteDetail {
   quote_id: string;
   customer_id: string;
@@ -254,6 +265,7 @@ function summariseAudit(a: QuoteAuditEntry): string {
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
   submitted: "Submitted",
+  "client-reviewing": "Client Reviewing",
   "verbal-win": "Verbal Win",
   "won-awaiting-job-no": "Won — Awaiting Job No.",
   "won-job-created": "Won — Job Created",
@@ -261,6 +273,7 @@ const STATUS_LABELS: Record<string, string> = {
   active: "Active",
   complete: "Complete",
   "ready-to-invoice": "Ready to Invoice",
+  "on-hold": "On Hold",
   lost: "Lost",
   cancelled: "Cancelled",
   expired: "Expired",
@@ -276,6 +289,8 @@ const STATUS_FILTERS = [
   { key: "all", label: "All" },
   { key: "draft", label: "Draft" },
   { key: "submitted", label: "Submitted" },
+  { key: "client-reviewing", label: "Client Reviewing" },
+  { key: "on-hold", label: "On Hold" },
   { key: "verbal-win", label: "Verbal Win" },
   { key: "won-awaiting-job-no", label: "Won — No Job No." },
   { key: "won-job-created", label: "Won — Job Created" },
@@ -287,7 +302,8 @@ const STATUS_FILTERS = [
 
 const NEXT_STATUSES: Record<string, string[]> = {
   draft: ["submitted", "cancelled"],
-  submitted: ["verbal-win", "lost", "cancelled"],
+  submitted: ["client-reviewing", "verbal-win", "on-hold", "lost", "cancelled"],
+  "client-reviewing": ["verbal-win", "on-hold", "lost", "cancelled"],
   "verbal-win": ["won-awaiting-job-no", "lost"],
   "won-awaiting-job-no": ["won-job-created", "lost"],
   "won-job-created": ["po-matched", "active"],
@@ -295,6 +311,7 @@ const NEXT_STATUSES: Record<string, string[]> = {
   active: ["complete"],
   complete: ["ready-to-invoice"],
   "ready-to-invoice": [],
+  "on-hold": ["submitted", "verbal-win", "lost", "cancelled"],
 };
 
 // ---------------------------------------------------------------------------
@@ -337,8 +354,10 @@ function statusClass(status: string): string {
     return "eq-quotes__badge eq-quotes__badge--green";
   if (["verbal-win", "won-awaiting-job-no"].includes(status))
     return "eq-quotes__badge eq-quotes__badge--amber";
-  if (["submitted"].includes(status))
+  if (["submitted", "client-reviewing"].includes(status))
     return "eq-quotes__badge eq-quotes__badge--blue";
+  if (status === "on-hold")
+    return "eq-quotes__badge eq-quotes__badge--amber";
   if (["complete", "ready-to-invoice"].includes(status))
     return "eq-quotes__badge eq-quotes__badge--teal";
   if (["lost", "expired"].includes(status))
@@ -366,7 +385,7 @@ function parseCSV(text: string): CoupaRow[] {
 // ---------------------------------------------------------------------------
 
 export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element {
-  type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit" | "setup";
+  type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit" | "setup" | "trash";
 
   // ── Main navigation ──────────────────────────────────────────────────────
   const [view, setView] = useState<ModuleView>("pipeline");
@@ -456,6 +475,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [duplicating, setDuplicating] = useState(false);
   const [audit, setAudit] = useState<QuoteAuditEntry[]>([]);
+  const [trashed, setTrashed] = useState<TrashedQuote[]>([]);
+  const [trashedLoading, setTrashedLoading] = useState(false);
+  const [trashing, setTrashing] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   // ── Import state ──────────────────────────────────────────────────────────
   const [csvText, setCsvText] = useState("");
@@ -550,9 +575,24 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setAccordionQuotes((q.data as Quote[]) ?? []);
   }, [supabase]);
 
+  const loadTrashed = useCallback(async () => {
+    if (!supabase) return;
+    setTrashedLoading(true);
+    const { data, error } = await supabase.rpc("eq_list_trashed_quotes");
+    setTrashedLoading(false);
+    if (!error) setTrashed((data as TrashedQuote[]) ?? []);
+  }, [supabase]);
+
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (view === "accordion") void loadAccordion();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (view === "trash") void loadTrashed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -901,6 +941,40 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void openDetail(row.quote_id);
   };
 
+  const handleTrash = async (quoteId: string) => {
+    if (!supabase) return;
+    setTrashing(true);
+    const { error } = await supabase.rpc("eq_trash_quote", { p_quote_id: quoteId });
+    setTrashing(false);
+    if (error) { captureRpcError("eq_trash_quote", error, { quote_id: quoteId }); setDetailError(error.message); return; }
+    setDetailId(null);
+    setDetail(null);
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleRestore = async (quoteId: string) => {
+    if (!supabase) return;
+    const { error } = await supabase.rpc("eq_restore_quote", { p_quote_id: quoteId });
+    if (error) { captureRpcError("eq_restore_quote", error, { quote_id: quoteId }); return; }
+    void loadTrashed();
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleBulkStatus = async () => {
+    if (!supabase || !bulkStatus || selectedIds.size === 0) return;
+    setBulkBusy(true);
+    const { error } = await supabase.rpc("eq_bulk_update_quote_status", {
+      p_quote_ids: Array.from(selectedIds),
+      p_new_status: bulkStatus,
+      p_initials: initials.trim() || null,
+    });
+    setBulkBusy(false);
+    if (error) { captureRpcError("eq_bulk_update_quote_status", error, { count: selectedIds.size }); setPipelineError(error.message); return; }
+    setSelectedIds(new Set());
+    setBulkStatus("");
+    void loadQuotes(statusFilter, search);
+  };
+
   // ── Pipeline actions ──────────────────────────────────────────────────────
 
   const handleSearch = (q: string) => {
@@ -1185,6 +1259,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 onClick={() => void generateJobExcel(detail)}
               >
                 Create Job
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                disabled={trashing}
+                onClick={() => void handleTrash(detail.quote_id)}
+                title="Move this quote to Trash"
+                style={{ color: "var(--eq-err, #c0392b)" }}
+              >
+                {trashing ? "…" : "Trash"}
               </button>
             </div>
           )}
@@ -2183,14 +2267,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             + New Quote
           </button>
           <div className="eq-quotes__view-tabs">
-            {(["pipeline", "accordion", "import", "setup"] as ModuleView[]).map((v) => (
+            {(["pipeline", "accordion", "import", "setup", "trash"] as ModuleView[]).map((v) => (
               <button
                 key={v}
                 type="button"
                 className={`eq-quotes__view-tab${view === v ? " eq-quotes__view-tab--active" : ""}`}
                 onClick={() => setView(v)}
               >
-                {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : v === "import" ? "Import Coupa" : "Setup"}
+                {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : v === "import" ? "Import Coupa" : v === "setup" ? "Setup" : "Trash"}
               </button>
             ))}
           </div>
@@ -2198,6 +2282,52 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       </div>
 
       {view === "setup" && <QuotesSetup supabase={supabase} />}
+
+      {/* Trash view */}
+      {view === "trash" && (
+        <div className="eq-quotes__pipeline">
+          {trashedLoading ? (
+            <div className="eq-quotes__loading">Loading…</div>
+          ) : trashed.length === 0 ? (
+            <div className="eq-quotes__empty">Trash is empty.</div>
+          ) : (
+            <div className="eq-quotes__table-wrap">
+              <table className="eq-quotes__table">
+                <thead>
+                  <tr>
+                    <th>Quote #</th>
+                    <th>Customer</th>
+                    <th>Project</th>
+                    <th className="eq-quotes__th--right">Total</th>
+                    <th>Deleted</th>
+                    <th style={{ width: 90 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trashed.map((q) => (
+                    <tr key={q.quote_id} className="eq-quotes__row">
+                      <td className="eq-quotes__td--mono">{q.quote_number}</td>
+                      <td>{q.customer_name ?? "—"}</td>
+                      <td>{q.project_name ?? <span className="eq-quotes__muted">—</span>}</td>
+                      <td className="eq-quotes__td--right">{aud(q.total_cents)}</td>
+                      <td>{fmtDate(q.deleted_at)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="eq-quotes__btn eq-quotes__btn--outline"
+                          onClick={() => void handleRestore(q.quote_id)}
+                        >
+                          Restore
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Pipeline view */}
       {view === "pipeline" && (
@@ -2250,7 +2380,44 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             )}
           </div>
 
-          {/* Table — canonical eq-ui Table (sortable + per-column filters) */}
+          {/* Bulk actions — appear when rows are ticked */}
+          {selectedIds.size > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "8px 0", padding: "8px 12px", background: "var(--eq-ice, #EAF5FB)", borderRadius: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{selectedIds.size} selected</span>
+              <select
+                className="eq-quotes__select"
+                style={{ fontSize: 13, padding: "4px 6px" }}
+                value={bulkStatus}
+                onChange={(e) => setBulkStatus(e.target.value)}
+              >
+                <option value="">Set status…</option>
+                {Object.entries(STATUS_LABELS).map(([k, label]) => (
+                  <option key={k} value={k}>{label}</option>
+                ))}
+              </select>
+              <input
+                className="eq-quotes__input eq-quotes__input--sm"
+                style={{ width: 70 }}
+                placeholder="Initials"
+                value={initials}
+                onChange={(e) => setInitials(e.target.value.toUpperCase())}
+                maxLength={4}
+              />
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--primary"
+                disabled={!bulkStatus || bulkBusy}
+                onClick={() => void handleBulkStatus()}
+              >
+                {bulkBusy ? "Applying…" : "Apply"}
+              </button>
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => setSelectedIds(new Set())}>
+                Clear
+              </button>
+            </div>
+          )}
+
+          {/* Table — canonical eq-ui Table (sortable + per-column filters + select) */}
           {pipelineError ? (
             <div className="eq-quotes__error-banner">{pipelineError}</div>
           ) : (
@@ -2261,6 +2428,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               getRowId={(q) => q.quote_id}
               onRowClick={(q) => void openDetail(q.quote_id)}
               loading={pipelineLoading}
+              selectable
+              selectedIds={selectedIds}
+              onSelectionChange={setSelectedIds}
               emptyMessage={search ? `No quotes match "${search}".` : "No quotes in this filter."}
             />
           )}
