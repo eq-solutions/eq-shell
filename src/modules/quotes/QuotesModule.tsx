@@ -1328,8 +1328,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_workbench_job_no: jobNoInput.trim(),
       p_initials: initials.trim() || null,
     });
+    if (error) { captureRpcError("eq_set_workbench_job_no", error, { quote_id: detail.quote_id }); setJobNoErr(error.message); setSavingJobNo(false); return; }
+    // Auto-advance "won-awaiting-job-no" → "won-job-created" when a job number is saved
+    if (detail.status === "won-awaiting-job-no") {
+      await supabase.rpc("eq_update_quote_status", {
+        p_quote_id: detail.quote_id,
+        p_new_status: "won-job-created",
+        p_note: null,
+        p_initials: initials.trim() || null,
+      });
+    }
     setSavingJobNo(false);
-    if (error) { captureRpcError("eq_set_workbench_job_no", error, { quote_id: detail.quote_id }); setJobNoErr(error.message); return; }
     await openDetail(detail.quote_id);
     void loadQuotes(statusFilter, search);
   };
@@ -1458,9 +1467,19 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_po_number: poInput.trim(),
       p_initials: initials.trim() || null,
     });
+    if (error) { captureRpcError("eq_set_po_number", error, { quote_id: detail.quote_id }); setPoErr(error.message); setSavingPo(false); return; }
+    // Auto-advance "won-job-created" → "po-matched" when a PO number is saved
+    if (detail.status === "won-job-created") {
+      await supabase.rpc("eq_update_quote_status", {
+        p_quote_id: detail.quote_id,
+        p_new_status: "po-matched",
+        p_note: null,
+        p_initials: initials.trim() || null,
+      });
+    }
     setSavingPo(false);
-    if (error) { captureRpcError("eq_set_po_number", error, { quote_id: detail.quote_id }); setPoErr(error.message); return; }
     await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
   };
 
   const handleGenerateDoc = async () => {
