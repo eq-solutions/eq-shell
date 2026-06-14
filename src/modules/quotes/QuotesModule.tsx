@@ -479,7 +479,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [addingNote, setAddingNote] = useState(false);
   const [noteMutErr, setNoteMutErr] = useState<string | null>(null);
 
-  // Email PDF
+  // PDF download + email
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const [emailToName, setEmailToName] = useState("");
@@ -1168,6 +1169,31 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     await openDetail(detail.quote_id);
   };
 
+  const handleDownloadPdf = async () => {
+    if (!detail) return;
+    setDownloadingPdf(true);
+    try {
+      const res = await fetch("/.netlify/functions/quote-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quote_id: detail.quote_id }),
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SKS-${detail.quote_number.replace(/[^A-Z0-9-]/gi, "-")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   const handleEmailPdf = async () => {
     if (!supabase || !detail || !emailTo.trim()) return;
     setEmailingPdf(true);
@@ -1443,6 +1469,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 onClick={() => void handleGenerateDoc()}
               >
                 Download Quote
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                disabled={downloadingPdf}
+                onClick={() => void handleDownloadPdf()}
+                title="Download PDF"
+              >
+                {downloadingPdf ? "…" : "Download PDF"}
               </button>
               <button
                 type="button"
