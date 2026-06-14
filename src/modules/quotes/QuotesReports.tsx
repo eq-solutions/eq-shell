@@ -109,7 +109,7 @@ export function QuotesReports({ supabase }: Props) {
   const [quotes, setQuotes]   = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
-  const [tab, setTab]         = useState<"pipeline" | "aging" | "register" | "estimators" | "trend" | "winloss">("pipeline");
+  const [tab, setTab]         = useState<"pipeline" | "aging" | "register" | "estimators" | "trend" | "winloss" | "customers">("pipeline");
   const [lossRows, setLossRows]   = useState<{
     quote_id: string; quote_number: string; status: string;
     project_name: string | null; estimator_initials: string | null;
@@ -272,6 +272,34 @@ export function QuotesReports({ supabase }: Props) {
     });
   }, [quotes]);
 
+  // ── By Customer ──────────────────────────────────────────────────────────
+
+  const customerRows = React.useMemo(() => {
+    const map = new Map<string, { won: number; lost: number; pipeline: number; total: number; lastActivity: string }>();
+    for (const q of quotes) {
+      const key = q.customer_name ?? "(unassigned)";
+      const cur = map.get(key) ?? { won: 0, lost: 0, pipeline: 0, total: 0, lastActivity: q.created_at };
+      if (WON_STATUSES.has(q.status))       cur.won++;
+      else if (LOST_STATUSES.has(q.status)) cur.lost++;
+      else                                   cur.pipeline++;
+      cur.total += q.total_cents;
+      if (q.created_at > cur.lastActivity) cur.lastActivity = q.created_at;
+      map.set(key, cur);
+    }
+    return [...map.entries()]
+      .map(([name, d]) => ({
+        name,
+        won: d.won,
+        lost: d.lost,
+        pipeline: d.pipeline,
+        total: d.total,
+        decided: d.won + d.lost,
+        winRate: d.won + d.lost > 0 ? Math.round((d.won / (d.won + d.lost)) * 100) : null,
+        lastActivity: d.lastActivity,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [quotes]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (loading) return <div className="eq-quotes__empty">Loading reports…</div>;
@@ -281,14 +309,14 @@ export function QuotesReports({ supabase }: Props) {
     <div className="eq-quotes__reports">
       {/* Sub-tabs */}
       <div className="eq-quotes__reports-tabs">
-        {(["pipeline", "aging", "estimators", "trend", "winloss", "register"] as const).map((t) => (
+        {(["pipeline", "aging", "estimators", "customers", "trend", "winloss", "register"] as const).map((t) => (
           <button
             key={t}
             type="button"
             className={`eq-quotes__view-tab${tab === t ? " eq-quotes__view-tab--active" : ""}`}
             onClick={() => setTab(t)}
           >
-            {t === "pipeline" ? "Pipeline" : t === "aging" ? "Aging" : t === "estimators" ? "By Estimator" : t === "trend" ? "Monthly" : t === "winloss" ? "Win / Loss" : "Register / Export"}
+            {t === "pipeline" ? "Pipeline" : t === "aging" ? "Aging" : t === "estimators" ? "By Estimator" : t === "customers" ? "By Customer" : t === "trend" ? "Monthly" : t === "winloss" ? "Win / Loss" : "Register / Export"}
           </button>
         ))}
       </div>
@@ -587,6 +615,40 @@ export function QuotesReports({ supabase }: Props) {
               </table>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── By Customer ── */}
+      {tab === "customers" && (
+        <div className="eq-quotes__reports-section">
+          <table className="eq-quotes__reports-table">
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th style={{ textAlign: "right" }}>Pipeline</th>
+                <th style={{ textAlign: "right" }}>Won</th>
+                <th style={{ textAlign: "right" }}>Lost</th>
+                <th style={{ textAlign: "right" }}>Win Rate</th>
+                <th style={{ textAlign: "right" }}>Total Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customerRows.map((r) => (
+                <tr key={r.name}>
+                  <td style={{ fontWeight: 600 }}>{r.name}</td>
+                  <td style={{ textAlign: "right" }}>{r.pipeline > 0 ? r.pipeline : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}</td>
+                  <td style={{ textAlign: "right", color: r.won > 0 ? "var(--eq-green,#27ae60)" : undefined, fontWeight: r.won > 0 ? 600 : undefined }}>{r.won > 0 ? r.won : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}</td>
+                  <td style={{ textAlign: "right", color: r.lost > 0 ? "var(--eq-err,#c0392b)" : undefined }}>{r.lost > 0 ? r.lost : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {r.winRate !== null
+                      ? <span style={{ fontWeight: 600, color: r.winRate >= 50 ? "var(--eq-green,#27ae60)" : "var(--eq-amber,#d4820a)" }}>{r.winRate}%</span>
+                      : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}
+                  </td>
+                  <td style={{ textAlign: "right", fontWeight: 600 }}>{fmtMoney(r.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
