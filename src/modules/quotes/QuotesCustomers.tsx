@@ -74,6 +74,7 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const [custQuotes, setCustQuotes] = useState<CustomerQuote[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
+  const [editingContact, setEditingContact] = useState<ContactRow | null>(null);
   const [addForm, setAddForm] = useState({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
   const [addSaving, setAddSaving] = useState(false);
 
@@ -98,39 +99,59 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     })));
   }, [supabase]);
 
+  const reloadContacts = useCallback(async (customerId: string) => {
+    if (!supabase) return;
+    const { data } = await supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: customerId });
+    if (data) {
+      setContacts((data as Record<string, unknown>[]).map((r) => ({
+        contact_id:               String(r.contact_id),
+        first_name:               r.first_name ? String(r.first_name) : null,
+        last_name:                r.last_name ? String(r.last_name) : null,
+        email:                    r.email ? String(r.email) : null,
+        work_phone:               r.work_phone ? String(r.work_phone) : null,
+        mobile_phone:             r.mobile_phone ? String(r.mobile_phone) : null,
+        contact_position:         r.contact_position ? String(r.contact_position) : null,
+        is_default_quote_contact: Boolean(r.is_default_quote_contact),
+      })));
+    }
+  }, [supabase]);
+
   const saveContact = useCallback(async () => {
     if (!supabase || !selected) return;
     setAddSaving(true);
-    const extId = `EQ-${crypto.randomUUID()}`;
-    const { error } = await supabase.rpc("eq_upsert_contact", {
-      p_external_id:  extId,
-      p_customer_id:  selected.customer_id,
-      p_first_name:   addForm.first_name || null,
-      p_last_name:    addForm.last_name  || null,
-      p_email:        addForm.email      || null,
-      p_mobile_phone: addForm.mobile_phone || null,
-      p_position:     addForm.position   || null,
-    });
-    setAddSaving(false);
-    if (!error) {
-      setShowAddContact(false);
-      setAddForm({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
-      // Reload contacts for this customer
-      const { data } = await supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: selected.customer_id });
-      if (data) {
-        setContacts(((data as Record<string, unknown>[]).map((r) => ({
-          contact_id:               String(r.contact_id),
-          first_name:               r.first_name ? String(r.first_name) : null,
-          last_name:                r.last_name ? String(r.last_name) : null,
-          email:                    r.email ? String(r.email) : null,
-          work_phone:               r.work_phone ? String(r.work_phone) : null,
-          mobile_phone:             r.mobile_phone ? String(r.mobile_phone) : null,
-          contact_position:         r.contact_position ? String(r.contact_position) : null,
-          is_default_quote_contact: Boolean(r.is_default_quote_contact),
-        }))));
-      }
+    if (editingContact) {
+      await supabase.rpc("eq_update_contact", {
+        p_contact_id:   editingContact.contact_id,
+        p_first_name:   addForm.first_name || null,
+        p_last_name:    addForm.last_name  || null,
+        p_email:        addForm.email      || null,
+        p_mobile_phone: addForm.mobile_phone || null,
+        p_position:     addForm.position   || null,
+      });
+    } else {
+      const extId = `EQ-${crypto.randomUUID()}`;
+      await supabase.rpc("eq_upsert_contact", {
+        p_external_id:  extId,
+        p_customer_id:  selected.customer_id,
+        p_first_name:   addForm.first_name || null,
+        p_last_name:    addForm.last_name  || null,
+        p_email:        addForm.email      || null,
+        p_mobile_phone: addForm.mobile_phone || null,
+        p_position:     addForm.position   || null,
+      });
     }
-  }, [supabase, selected, addForm]);
+    setAddSaving(false);
+    setShowAddContact(false);
+    setEditingContact(null);
+    setAddForm({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
+    await reloadContacts(selected.customer_id);
+  }, [supabase, selected, addForm, editingContact, reloadContacts]);
+
+  const archiveContact = useCallback(async (ct: ContactRow) => {
+    if (!supabase || !selected) return;
+    await supabase.rpc("eq_archive_contact", { p_contact_id: ct.contact_id });
+    await reloadContacts(selected.customer_id);
+  }, [supabase, selected, reloadContacts]);
 
   const loadDetail = useCallback(async (c: CustomerRow) => {
     if (!supabase) return;
@@ -138,6 +159,7 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     setContacts([]);
     setCustQuotes([]);
     setShowAddContact(false);
+    setEditingContact(null);
     setAddForm({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
     setDetailLoading(true);
     const [ctRes, qRes] = await Promise.all([
@@ -258,15 +280,24 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                   <span className="eq-quotes__section-title">Contacts ({contacts.length})</span>
                   <button
                     className="eq-quotes__btn eq-quotes__btn--sm"
-                    onClick={() => setShowAddContact((v) => !v)}
+                    onClick={() => {
+                      setEditingContact(null);
+                      setAddForm({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
+                      setShowAddContact((v) => !v);
+                    }}
                     style={{ fontSize: "0.78rem", padding: "3px 10px" }}
                   >
-                    {showAddContact ? "Cancel" : "+ Add"}
+                    {showAddContact && !editingContact ? "Cancel" : showAddContact ? "New" : "+ Add"}
                   </button>
                 </div>
 
                 {showAddContact && (
                   <div style={{ background: "var(--eq-ice,#EAF5FB)", border: "1px solid var(--eq-border,#e5e7eb)", borderRadius: "6px", padding: "0.75rem", marginBottom: "1rem" }}>
+                    {editingContact && (
+                      <p style={{ fontSize: "0.78rem", color: "var(--eq-muted,#6b7280)", marginBottom: "0.5rem" }}>
+                        Editing {[editingContact.first_name, editingContact.last_name].filter(Boolean).join(" ") || "contact"}
+                      </p>
+                    )}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "0.5rem" }}>
                       {(["first_name","last_name"] as const).map((k) => (
                         <input
@@ -307,8 +338,21 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                         onClick={() => { void saveContact(); }}
                         style={{ whiteSpace: "nowrap", fontSize: "0.82rem" }}
                       >
-                        {addSaving ? "Saving…" : "Save contact"}
+                        {addSaving ? "Saving…" : editingContact ? "Update" : "Save contact"}
                       </button>
+                      {editingContact && (
+                        <button
+                          className="eq-quotes__btn eq-quotes__btn--sm"
+                          onClick={() => {
+                            setEditingContact(null);
+                            setAddForm({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
+                            setShowAddContact(false);
+                          }}
+                          style={{ fontSize: "0.82rem" }}
+                        >
+                          Cancel
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -324,6 +368,7 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                         <th>Role</th>
                         <th>Email</th>
                         <th>Phone</th>
+                        <th></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -340,6 +385,28 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                           <td>{ct.contact_position ?? "—"}</td>
                           <td>{ct.email ?? "—"}</td>
                           <td>{ct.mobile_phone ?? ct.work_phone ?? "—"}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <button
+                              className="eq-quotes__btn eq-quotes__btn--sm"
+                              style={{ fontSize: "0.72rem", padding: "2px 7px", marginRight: "4px" }}
+                              onClick={() => {
+                                setEditingContact(ct);
+                                setAddForm({
+                                  first_name:   ct.first_name   ?? "",
+                                  last_name:    ct.last_name    ?? "",
+                                  email:        ct.email        ?? "",
+                                  mobile_phone: ct.mobile_phone ?? "",
+                                  position:     ct.contact_position ?? "",
+                                });
+                                setShowAddContact(true);
+                              }}
+                            >Edit</button>
+                            <button
+                              className="eq-quotes__btn eq-quotes__btn--sm"
+                              style={{ fontSize: "0.72rem", padding: "2px 7px", color: "var(--eq-muted,#6b7280)" }}
+                              onClick={() => { void archiveContact(ct); }}
+                            >Archive</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
