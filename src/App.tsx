@@ -50,6 +50,7 @@ const EqOpsPage = lazy(() => import('./pages/EqOps'));
 import StorageBrowser from './pages/StorageBrowser';
 import LicenceOcrPage from './pages/ocr/LicenceOcrPage';
 import NotFound from './pages/NotFound';
+import QuotePortal from './portal/QuotePortal';
 import { RouteProgressBar } from './components/RouteProgressBar';
 import { Skeleton } from './components/Skeleton';
 import './App.css';
@@ -626,6 +627,9 @@ function App() {
           <Route path="/select-tenant" element={<TenantPicker />} />
           {/* Phase 1.G: TOTP challenge shown after PIN login when 2FA is enrolled */}
           <Route path="/totp-challenge" element={<TotpChallenge />} />
+          {/* Public client portal — registered before /:tenantSlug/* so 'portal'
+              is never parsed as a tenant slug. No session required. */}
+          <Route path="/portal/quote/:tenantSlug/:token" element={<QuotePortal />} />
           {/* Platform-operator console — top-level, tenant-less, operator-gated.
               Registered before /:tenantSlug/* so '_platform' is never parsed as
               a tenant slug. */}

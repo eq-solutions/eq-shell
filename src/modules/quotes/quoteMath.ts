@@ -38,6 +38,24 @@ export function lineTotalCents(qtyThousandths: number, unitRateCents: number): n
 }
 
 /**
+ * Line total in cents directly from raw form inputs — quantity as typed (plain
+ * units) and rate as typed (dollars). Converts to the DB's storage units exactly
+ * as the persistence path does (Math.round each, clamped at zero — see
+ * eq_replace_line_items / handleCreateQuote) and then applies the same truncating
+ * division as the DB. This is the ONLY function the create/edit preview may use
+ * for a line total, so the on-screen figure provably equals the stored value.
+ *
+ * NOTE: a naive Math.round(qty × rate × 100) diverges by a cent on half-cent
+ * boundaries (e.g. 1.5 × $10.99 → 1649 vs the stored 1648). That bug is why this
+ * helper exists; quoteMath.test.ts locks it.
+ */
+export function lineTotalCentsFromInput(qty: number, rateDollars: number): number {
+  const qtyThousandths = Math.round(Math.max(0, qty) * 1000);
+  const rateCents = Math.round(Math.max(0, rateDollars) * 100);
+  return lineTotalCents(qtyThousandths, rateCents);
+}
+
+/**
  * Quote margin percentage from sell vs cost totals (cents), rounded to 2dp.
  *   margin = (sell − cost) / sell × 100
  * Returns null when there is nothing to sell (sell <= 0), matching the DB which

@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  STATUS_LABELS,
+  WON_EVER_STATUSES as WON_STATUSES,
+  CLOSED_LOST_STATUSES as LOST_STATUSES,
+  OPEN_PIPELINE_STATUSES as PIPELINE_STATUSES,
+} from "./taxonomy";
 
 interface Quote {
   quote_id: string;
@@ -18,38 +24,16 @@ interface Quote {
   site_name: string | null;
   site_code: string | null;
   workbench_job_no: string | null;
+  po_number: string | null;
 }
 
 // ---------------------------------------------------------------------------
 // Status grouping
 // ---------------------------------------------------------------------------
 
-const WON_STATUSES = new Set([
-  "verbal-win", "won-awaiting-job-no", "won-job-created",
-  "po-matched", "active", "complete", "ready-to-invoice",
-]);
-const LOST_STATUSES = new Set(["lost", "cancelled", "expired", "superseded"]);
-const PIPELINE_STATUSES = new Set([
-  "draft", "submitted", "client-reviewing", "on-hold",
-]);
-
-const STATUS_LABELS: Record<string, string> = {
-  "draft":                "Draft",
-  "submitted":            "Submitted",
-  "client-reviewing":     "Client Reviewing",
-  "on-hold":              "On Hold",
-  "verbal-win":           "Verbal Win",
-  "won-awaiting-job-no":  "Won – Awaiting Job No.",
-  "won-job-created":      "Won – Job Created",
-  "po-matched":           "PO Matched",
-  "active":               "Active",
-  "complete":             "Complete",
-  "ready-to-invoice":     "Ready to Invoice",
-  "lost":                 "Lost",
-  "cancelled":            "Cancelled",
-  "expired":              "Expired",
-  "superseded":           "Superseded",
-};
+// WON_STATUSES (= WON_EVER), LOST_STATUSES (= CLOSED_LOST), PIPELINE_STATUSES
+// (= OPEN_PIPELINE) and STATUS_LABELS are imported from ./taxonomy — the single
+// source of truth, locked by taxonomy.test.ts.
 
 const PIPELINE_ORDER = [
   "draft", "submitted", "client-reviewing", "on-hold",
@@ -108,7 +92,14 @@ export function QuotesReports({ supabase }: Props) {
   const [quotes, setQuotes]   = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
-  const [tab, setTab]         = useState<"pipeline" | "aging" | "register">("pipeline");
+  const [tab, setTab]         = useState<"pipeline" | "aging" | "register" | "estimators" | "trend" | "winloss" | "customers">("pipeline");
+  const [lossRows, setLossRows]   = useState<{
+    quote_id: string; quote_number: string; status: string;
+    project_name: string | null; estimator_initials: string | null;
+    loss_reason: string | null; total_cents: number; customer_name: string | null;
+    created_at: string;
+  }[]>([]);
+  const [lossLoading, setLossLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -121,6 +112,29 @@ export function QuotesReports({ supabase }: Props) {
   }, [supabase]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const loadLossReasons = useCallback(async () => {
+    if (!supabase) return;
+    setLossLoading(true);
+    const { data, error: err } = await supabase.rpc("eq_list_loss_reasons");
+    setLossLoading(false);
+    if (err) { console.error("[QuotesReports] eq_list_loss_reasons:", err.message); return; }
+    setLossRows(((data ?? []) as Record<string, unknown>[]).map((r) => ({
+      quote_id:          String(r.quote_id),
+      quote_number:      String(r.quote_number ?? ""),
+      status:            String(r.status ?? ""),
+      project_name:      r.project_name ? String(r.project_name) : null,
+      estimator_initials: r.estimator_initials ? String(r.estimator_initials) : null,
+      loss_reason:       r.loss_reason ? String(r.loss_reason) : null,
+      total_cents:       Number(r.total_cents ?? 0),
+      customer_name:     r.customer_name ? String(r.customer_name) : null,
+      created_at:        String(r.created_at),
+    })));
+  }, [supabase]);
+
+  useEffect(() => {
+    if (tab === "winloss") void loadLossReasons();
+  }, [tab, loadLossReasons]);
 
   // ── Pipeline summary ──────────────────────────────────────────────────────
 
@@ -174,7 +188,7 @@ export function QuotesReports({ supabase }: Props) {
 
   const handleExportCsv = useCallback(() => {
     const header = ["Quote No.", "Status", "Project", "Customer", "Site", "Estimator",
-                    "Total (ex GST)", "Total (inc GST)", "Margin %", "Sent", "Created", "WB Job No."];
+                    "Total (ex GST)", "Total (inc GST)", "Margin %", "Sent", "Created", "WB Job No.", "PO Number"];
     const rows = quotes.map((q) => [
       q.quote_number,
       STATUS_LABELS[q.status] ?? q.status,
@@ -184,13 +198,96 @@ export function QuotesReports({ supabase }: Props) {
       q.estimator_name,
       q.subtotal_cents / 100,
       q.total_cents / 100,
-      q.margin_pct !== null ? (q.margin_pct / 100).toFixed(1) + "%" : "",
+      q.margin_pct !== null ? Number(q.margin_pct).toFixed(1) + "%" : "",
       q.sent_at ? new Date(q.sent_at).toLocaleDateString("en-AU") : "",
       new Date(q.created_at).toLocaleDateString("en-AU"),
       q.workbench_job_no,
+      q.po_number,
     ]);
     const today = new Date().toISOString().slice(0, 10);
     downloadCsv([header, ...rows], `sks-quotes-register-${today}.csv`);
+  }, [quotes]);
+
+  // ── Estimator breakdown ───────────────────────────────────────────────────
+
+  const estimatorRows = React.useMemo(() => {
+    const map = new Map<string, { name: string | null; won: number; lost: number; pipeline: number; total: number; marginSum: number; marginCount: number }>();
+    for (const q of quotes) {
+      const key = q.estimator_initials ?? "(unassigned)";
+      const cur = map.get(key) ?? { name: q.estimator_name, won: 0, lost: 0, pipeline: 0, total: 0, marginSum: 0, marginCount: 0 };
+      if (WON_STATUSES.has(q.status))      cur.won++;
+      else if (LOST_STATUSES.has(q.status)) cur.lost++;
+      else                                   cur.pipeline++;
+      cur.total += q.total_cents;
+      if (q.margin_pct !== null) { cur.marginSum += Number(q.margin_pct); cur.marginCount++; }
+      map.set(key, cur);
+    }
+    return [...map.entries()]
+      .map(([initials, d]) => ({
+        initials,
+        name: d.name,
+        won: d.won,
+        lost: d.lost,
+        pipeline: d.pipeline,
+        total: d.total,
+        decided: d.won + d.lost,
+        winRate: d.won + d.lost > 0 ? Math.round((d.won / (d.won + d.lost)) * 100) : null,
+        avgMargin: d.marginCount > 0 ? Math.round(d.marginSum / d.marginCount) : null,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [quotes]);
+
+  // ── Monthly trend ─────────────────────────────────────────────────────────
+
+  const monthlyRows = React.useMemo(() => {
+    const map = new Map<string, { count: number; total: number; wonCount: number; wonTotal: number }>();
+    for (const q of quotes) {
+      if (!q.sent_at) continue;
+      const d = new Date(q.sent_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const cur = map.get(key) ?? { count: 0, total: 0, wonCount: 0, wonTotal: 0 };
+      cur.count++;
+      cur.total += q.total_cents;
+      if (WON_STATUSES.has(q.status)) { cur.wonCount++; cur.wonTotal += q.total_cents; }
+      map.set(key, cur);
+    }
+    const months = [...map.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 18);
+    return months.map(([key, d]) => {
+      const [yr, mo] = key.split("-");
+      const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleDateString("en-AU", { month: "short", year: "numeric" });
+      const winRate = d.count > 0 ? Math.round((d.wonCount / d.count) * 100) : null;
+      return { key, label, count: d.count, total: d.total, wonCount: d.wonCount, wonTotal: d.wonTotal, winRate };
+    });
+  }, [quotes]);
+
+  // ── By Customer ──────────────────────────────────────────────────────────
+
+  const customerRows = React.useMemo(() => {
+    const map = new Map<string, { won: number; lost: number; pipeline: number; total: number; lastActivity: string; marginSum: number; marginCount: number }>();
+    for (const q of quotes) {
+      const key = q.customer_name ?? "(unassigned)";
+      const cur = map.get(key) ?? { won: 0, lost: 0, pipeline: 0, total: 0, lastActivity: q.created_at, marginSum: 0, marginCount: 0 };
+      if (WON_STATUSES.has(q.status))       cur.won++;
+      else if (LOST_STATUSES.has(q.status)) cur.lost++;
+      else                                   cur.pipeline++;
+      cur.total += q.total_cents;
+      if (q.created_at > cur.lastActivity) cur.lastActivity = q.created_at;
+      if (q.margin_pct !== null) { cur.marginSum += Number(q.margin_pct); cur.marginCount++; }
+      map.set(key, cur);
+    }
+    return [...map.entries()]
+      .map(([name, d]) => ({
+        name,
+        won: d.won,
+        lost: d.lost,
+        pipeline: d.pipeline,
+        total: d.total,
+        decided: d.won + d.lost,
+        winRate: d.won + d.lost > 0 ? Math.round((d.won / (d.won + d.lost)) * 100) : null,
+        avgMargin: d.marginCount > 0 ? Math.round(d.marginSum / d.marginCount) : null,
+        lastActivity: d.lastActivity,
+      }))
+      .sort((a, b) => b.total - a.total);
   }, [quotes]);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -202,14 +299,14 @@ export function QuotesReports({ supabase }: Props) {
     <div className="eq-quotes__reports">
       {/* Sub-tabs */}
       <div className="eq-quotes__reports-tabs">
-        {(["pipeline", "aging", "register"] as const).map((t) => (
+        {(["pipeline", "aging", "estimators", "customers", "trend", "winloss", "register"] as const).map((t) => (
           <button
             key={t}
             type="button"
             className={`eq-quotes__view-tab${tab === t ? " eq-quotes__view-tab--active" : ""}`}
             onClick={() => setTab(t)}
           >
-            {t === "pipeline" ? "Pipeline Summary" : t === "aging" ? "Aging" : "Register / Export"}
+            {t === "pipeline" ? "Pipeline" : t === "aging" ? "Aging" : t === "estimators" ? "By Estimator" : t === "customers" ? "By Customer" : t === "trend" ? "Monthly" : t === "winloss" ? "Win / Loss" : "Register / Export"}
           </button>
         ))}
       </div>
@@ -269,9 +366,17 @@ export function QuotesReports({ supabase }: Props) {
       {/* ── Aging ── */}
       {tab === "aging" && (
         <div className="eq-quotes__reports-section">
-          <p className="eq-quotes__reports-hint">
-            Active pipeline only (Draft, Submitted, Client Reviewing, On Hold). Age from creation date.
-          </p>
+          <div className="eq-quotes__reports-export-bar">
+            <span className="eq-quotes__reports-hint">Active pipeline only — age from creation date.</span>
+            {agingRows.length > 0 && (
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => downloadCsv(
+                  [["Age bucket", "Quotes", "Value inc GST", "% of pipeline"],
+                   ...agingRows.map((r) => [r.bucket, r.count, (r.total / 100).toFixed(2), r.pct])],
+                  "sks-quotes-aging.csv"
+                )}>Download CSV</button>
+            )}
+          </div>
           {agingRows.length === 0 ? (
             <div className="eq-quotes__empty">No active pipeline quotes.</div>
           ) : (
@@ -327,6 +432,232 @@ export function QuotesReports({ supabase }: Props) {
         </div>
       )}
 
+      {/* ── By Estimator ── */}
+      {tab === "estimators" && (
+        <div className="eq-quotes__reports-section">
+          <div className="eq-quotes__reports-export-bar">
+            <span className="eq-quotes__reports-hint">Win rate and pipeline per estimator — all statuses.</span>
+            {estimatorRows.length > 0 && (
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => downloadCsv(
+                  [["Estimator", "Won", "Lost", "Pipeline", "Win rate %", "Avg margin %", "Total value"],
+                   ...estimatorRows.map((r) => [r.name ?? r.initials, r.won, r.lost, r.pipeline, r.winRate !== null ? r.winRate : "", r.avgMargin !== null ? r.avgMargin : "", (r.total / 100).toFixed(2)])],
+                  "sks-quotes-by-estimator.csv"
+                )}>Download CSV</button>
+            )}
+          </div>
+          <table className="eq-quotes__reports-table">
+            <thead>
+              <tr>
+                <th>Estimator</th>
+                <th style={{ textAlign: "right" }}>Won</th>
+                <th style={{ textAlign: "right" }}>Lost</th>
+                <th style={{ textAlign: "right" }}>Pipeline</th>
+                <th style={{ textAlign: "right" }}>Win rate</th>
+                <th style={{ textAlign: "right" }}>Avg margin</th>
+                <th style={{ textAlign: "right" }}>Total value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {estimatorRows.map((r) => (
+                <tr key={r.initials}>
+                  <td>
+                    {r.initials !== "(unassigned)" && (
+                      <span className="eq-quotes__initials-badge" style={{ marginRight: "0.5rem" }}>{r.initials}</span>
+                    )}
+                    {r.name ?? r.initials}
+                  </td>
+                  <td style={{ textAlign: "right" }}>{r.won}</td>
+                  <td style={{ textAlign: "right" }}>{r.lost}</td>
+                  <td style={{ textAlign: "right" }}>{r.pipeline}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {r.winRate !== null ? `${r.winRate}%` : "—"}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {r.avgMargin !== null ? `${r.avgMargin}%` : "—"}
+                  </td>
+                  <td style={{ textAlign: "right" }}>{fmtMoney(r.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            {estimatorRows.length === 0 && (
+              <tbody><tr><td colSpan={7} style={{ textAlign: "center", color: "var(--eq-muted,#6b7280)" }}>No data.</td></tr></tbody>
+            )}
+          </table>
+        </div>
+      )}
+
+      {/* ── Monthly Trend ── */}
+      {tab === "trend" && (
+        <div className="eq-quotes__reports-section">
+          <div className="eq-quotes__reports-export-bar">
+            <span className="eq-quotes__reports-hint">Quotes sent per month (by sent date) — last 18 months. Win rate = won quotes / quotes sent that month.</span>
+            {monthlyRows.length > 0 && (
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => downloadCsv(
+                  [["Month", "Sent", "Won", "Win rate %", "Total value inc GST", "Won value inc GST"],
+                   ...monthlyRows.map((r) => [r.label, r.count, r.wonCount, r.winRate ?? "", (r.total / 100).toFixed(2), (r.wonTotal / 100).toFixed(2)])],
+                  "sks-quotes-monthly-trend.csv"
+                )}>Download CSV</button>
+            )}
+          </div>
+          <table className="eq-quotes__reports-table">
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th style={{ textAlign: "right" }}>Sent</th>
+                <th style={{ textAlign: "right" }}>Won</th>
+                <th style={{ textAlign: "right" }}>Win rate</th>
+                <th style={{ textAlign: "right" }}>Total value (inc GST)</th>
+                <th style={{ textAlign: "right" }}>Won value (inc GST)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlyRows.map((r) => (
+                <tr key={r.key}>
+                  <td>{r.label}</td>
+                  <td style={{ textAlign: "right" }}>{r.count}</td>
+                  <td style={{ textAlign: "right" }}>{r.wonCount || "—"}</td>
+                  <td style={{ textAlign: "right", fontWeight: 600, color: r.winRate !== null ? (r.winRate >= 50 ? "var(--eq-green,#27ae60)" : r.winRate >= 30 ? "var(--eq-amber,#d4820a)" : "var(--eq-err,#c0392b)") : undefined }}>
+                    {r.winRate !== null ? `${r.winRate}%` : "—"}
+                  </td>
+                  <td style={{ textAlign: "right" }}>{fmtMoney(r.total)}</td>
+                  <td style={{ textAlign: "right" }}>{r.wonTotal > 0 ? fmtMoney(r.wonTotal) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+            {monthlyRows.length === 0 && (
+              <tbody><tr><td colSpan={6} style={{ textAlign: "center", color: "var(--eq-muted,#6b7280)" }}>No sent quotes yet.</td></tr></tbody>
+            )}
+          </table>
+        </div>
+      )}
+
+      {/* ── Win / Loss Reasons ── */}
+      {tab === "winloss" && (
+        <div className="eq-quotes__reports-section">
+          {lossLoading && <p className="eq-quotes__reports-hint">Loading…</p>}
+          {!lossLoading && lossRows.length === 0 && (
+            <p className="eq-quotes__reports-hint">No lost, cancelled, or expired quotes.</p>
+          )}
+          {!lossLoading && lossRows.length > 0 && (
+            <>
+              <p className="eq-quotes__reports-hint">
+                {lossRows.length} closed-out quote{lossRows.length !== 1 ? "s" : ""} — lost, cancelled, expired, or superseded.
+              </p>
+              {/* Reason breakdown */}
+              {(() => {
+                const reasons = new Map<string, { count: number; total: number }>();
+                for (const r of lossRows) {
+                  const key = r.loss_reason ?? "(no reason given)";
+                  const cur = reasons.get(key) ?? { count: 0, total: 0 };
+                  reasons.set(key, { count: cur.count + 1, total: cur.total + r.total_cents });
+                }
+                const sorted = [...reasons.entries()].sort((a, b) => b[1].count - a[1].count);
+                return (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
+                    {sorted.map(([reason, d]) => (
+                      <span key={reason} style={{
+                        background: "var(--eq-ice,#EAF5FB)",
+                        border: "1px solid var(--eq-border,#e5e7eb)",
+                        borderRadius: "4px",
+                        padding: "4px 10px",
+                        fontSize: "0.82rem",
+                      }}>
+                        {reason} <strong>{d.count}</strong>
+                        <span style={{ marginLeft: "0.4rem", color: "var(--eq-muted,#6b7280)" }}>{fmtMoney(d.total)}</span>
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+              <div className="eq-quotes__reports-export-bar" style={{ marginBottom: "0.5rem" }}>
+                <span />
+                <button type="button" className="eq-quotes__btn eq-quotes__btn--outline"
+                  onClick={() => downloadCsv(
+                    [["Quote No.", "Status", "Customer", "Project", "Loss reason", "Value inc GST", "Estimator", "Date"],
+                     ...lossRows.map((r) => [r.quote_number, r.status, r.customer_name ?? "", r.project_name ?? "", r.loss_reason ?? "", (r.total_cents / 100).toFixed(2), r.estimator_initials ?? "", new Date(r.created_at).toLocaleDateString("en-AU")])],
+                    "sks-quotes-win-loss.csv"
+                  )}>Download CSV</button>
+              </div>
+              <table className="eq-quotes__reports-table">
+                <thead>
+                  <tr>
+                    <th>Quote No.</th>
+                    <th>Status</th>
+                    <th>Customer</th>
+                    <th>Project</th>
+                    <th>Reason</th>
+                    <th style={{ textAlign: "right" }}>Value</th>
+                    <th>Est.</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lossRows.map((r) => (
+                    <tr key={r.quote_id}>
+                      <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>{r.quote_number}</td>
+                      <td>{STATUS_LABELS[r.status] ?? r.status}</td>
+                      <td>{r.customer_name ?? "—"}</td>
+                      <td>{r.project_name ?? "—"}</td>
+                      <td style={{ color: r.loss_reason ? undefined : "var(--eq-muted,#6b7280)" }}>
+                        {r.loss_reason ?? "—"}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{fmtMoney(r.total_cents)}</td>
+                      <td>
+                        {r.estimator_initials
+                          ? <span className="eq-quotes__initials-badge">{r.estimator_initials}</span>
+                          : "—"
+                        }
+                      </td>
+                      <td>{new Date(r.created_at).toLocaleDateString("en-AU")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── By Customer ── */}
+      {tab === "customers" && (
+        <div className="eq-quotes__reports-section">
+          <table className="eq-quotes__reports-table">
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th style={{ textAlign: "right" }}>Pipeline</th>
+                <th style={{ textAlign: "right" }}>Won</th>
+                <th style={{ textAlign: "right" }}>Lost</th>
+                <th style={{ textAlign: "right" }}>Win Rate</th>
+                <th style={{ textAlign: "right" }}>Avg Margin</th>
+                <th style={{ textAlign: "right" }}>Total Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customerRows.map((r) => (
+                <tr key={r.name}>
+                  <td style={{ fontWeight: 600 }}>{r.name}</td>
+                  <td style={{ textAlign: "right" }}>{r.pipeline > 0 ? r.pipeline : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}</td>
+                  <td style={{ textAlign: "right", color: r.won > 0 ? "var(--eq-green,#27ae60)" : undefined, fontWeight: r.won > 0 ? 600 : undefined }}>{r.won > 0 ? r.won : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}</td>
+                  <td style={{ textAlign: "right", color: r.lost > 0 ? "var(--eq-err,#c0392b)" : undefined }}>{r.lost > 0 ? r.lost : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {r.winRate !== null
+                      ? <span style={{ fontWeight: 600, color: r.winRate >= 50 ? "var(--eq-green,#27ae60)" : "var(--eq-amber,#d4820a)" }}>{r.winRate}%</span>
+                      : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {r.avgMargin !== null ? `${r.avgMargin}%` : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}
+                  </td>
+                  <td style={{ textAlign: "right", fontWeight: 600 }}>{fmtMoney(r.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* ── Register / Export ── */}
       {tab === "register" && (
         <div className="eq-quotes__reports-section">
@@ -362,7 +693,7 @@ export function QuotesReports({ supabase }: Props) {
                   <td>{q.customer_name ?? "—"}</td>
                   <td style={{ textAlign: "right" }}>{fmtMoney(q.total_cents)}</td>
                   <td style={{ textAlign: "right" }}>
-                    {q.margin_pct !== null ? (q.margin_pct / 100).toFixed(1) + "%" : "—"}
+                    {q.margin_pct !== null ? Number(q.margin_pct).toFixed(1) + "%" : "—"}
                   </td>
                   <td>{q.estimator_initials ?? "—"}</td>
                   <td>{new Date(q.created_at).toLocaleDateString("en-AU")}</td>

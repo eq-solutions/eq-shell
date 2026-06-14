@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
-import { computeSellRate, computeMarkupPct } from "./quoteMath";
+import { computeSellRate, computeMarkupPct, lineTotalCentsFromInput } from "./quoteMath";
+import {
+  STATUS_LABELS,
+  ACTIVE_JOB_STATUSES,
+  CLOSED_LOST_STATUSES as CLOSED_STATUSES,
+} from "./taxonomy";
 import { QuotesSetup } from "./QuotesSetup";
 import { QuotesReports } from "./QuotesReports";
+import { QuotesCustomers } from "./QuotesCustomers";
 import { captureRpcError } from "./quoteTelemetry";
 import { Table, type TableColumn } from "@eq-solutions/ui";
 
@@ -24,6 +30,7 @@ interface Quote {
   margin_pct: number | null;
   sent_at: string | null;
   expires_at: string | null;
+  follow_up_at: string | null;
   workbench_job_no: string | null;
   po_number: string | null;
   created_at: string;
@@ -86,6 +93,7 @@ interface QuoteDetail {
   margin_pct: number | null;
   sent_at: string | null;
   expires_at: string | null;
+  follow_up_at: string | null;
   workbench_job_no: string | null;
   po_number: string | null;
   coupa_entity: string | null;
@@ -106,8 +114,21 @@ interface QuoteDetail {
   customer_name: string | null;
   site_name: string | null;
   site_code: string | null;
+  contact_id: string | null;
+  contact_email: string | null;
   line_items: LineItem[];
   notes: QuoteNote[];
+}
+
+interface ContactRow {
+  contact_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  mobile_phone: string | null;
+  work_phone: string | null;
+  contact_position: string | null;
+  is_default_quote_contact: boolean;
 }
 
 interface ClientGroup {
@@ -239,6 +260,14 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   header: "edited details",
   pricing: "changed pricing",
   duplicate: "duplicated",
+  scope: "updated scope",
+  expires_at: "changed expiry",
+  sent_at: "changed sent date",
+  contact_linked: "linked contact",
+  expired: "auto-expired",
+  project: "updated project",
+  payment_terms: "updated payment terms",
+  recipient: "updated recipient",
 };
 function auditActionLabel(action: string): string {
   return AUDIT_ACTION_LABELS[action] ?? action;
@@ -260,30 +289,67 @@ function summariseAudit(a: QuoteAuditEntry): string {
     }
     return "Line items changed";
   }
+  if (a.action === "expires_at" || a.action === "sent_at") {
+    const oldVal = c["old"] as string | null | undefined;
+    const newVal = c["new"] as string | null | undefined;
+    if (newVal) return `${fmtDate(oldVal ?? null)} → ${fmtDate(newVal)}`;
+    return oldVal ? `Cleared (was ${fmtDate(oldVal)})` : "Cleared";
+  }
+  if (a.action === "contact_linked") {
+    const newCid = c["new_contact_id"];
+    return newCid ? "Contact linked" : "Contact unlinked";
+  }
+  if (a.action === "scope") {
+    return "Scope of works updated";
+  }
+  if (a.action === "expired") {
+    return "Auto-expired by scheduler";
+  }
+  if (a.action === "project") {
+    const parts: string[] = [];
+    if (c["project_name"]) parts.push(`Project: ${String(c["project_name"])}`);
+    if (c["estimator_name"]) parts.push(`Estimator: ${String(c["estimator_name"])}`);
+    return parts.length > 0 ? parts.join(" · ") : "Project details updated";
+  }
+  if (a.action === "payment_terms") {
+    const parts: string[] = [];
+    if (c["payment_terms"]) parts.push(String(c["payment_terms"]));
+    if (c["validity_days"] != null) parts.push(`${String(c["validity_days"])}d validity`);
+    return parts.length > 0 ? parts.join(" · ") : "Payment terms updated";
+  }
+  if (a.action === "header") {
+    const FIELD_LABELS: Record<string, string> = {
+      project_name: "Project", quote_number: "Quote #", customer_id: "Customer",
+      site_id: "Site", estimator_name: "Estimator", po_number: "PO",
+    };
+    const changed = Object.entries(c)
+      .filter(([, v]) => v && typeof v === "object" && ("old" in (v as object) || "new" in (v as object)))
+      .map(([k, v]) => {
+        const label = FIELD_LABELS[k] ?? k.replace(/_/g, " ");
+        const diff = v as { old?: unknown; new?: unknown };
+        if (diff.old && diff.new) return `${label}: ${String(diff.old)} → ${String(diff.new)}`;
+        if (diff.new) return `${label}: set to ${String(diff.new)}`;
+        if (diff.old) return `${label}: cleared`;
+        return label;
+      });
+    return changed.length > 0 ? changed.join(", ") : "Details edited";
+  }
+  if (a.action === "recipient") {
+    const parts: string[] = [];
+    const first = c["attn_first_name"];
+    const last = c["attn_name"];
+    if (first || last) parts.push([first, last].filter(Boolean).map(String).join(" "));
+    if (c["attn_phone"]) parts.push(`Ph: ${String(c["attn_phone"])}`);
+    if (c["address"]) parts.push("Address updated");
+    return parts.length > 0 ? parts.join(" · ") : "Recipient updated";
+  }
   return "Changed " + Object.keys(c).map((f) => f.replace(/_/g, " ")).join(", ");
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Draft",
-  submitted: "Submitted",
-  "client-reviewing": "Client Reviewing",
-  "verbal-win": "Verbal Win",
-  "won-awaiting-job-no": "Won — Awaiting Job No.",
-  "won-job-created": "Won — Job Created",
-  "po-matched": "PO Matched",
-  active: "Active",
-  complete: "Complete",
-  "ready-to-invoice": "Ready to Invoice",
-  "on-hold": "On Hold",
-  lost: "Lost",
-  cancelled: "Cancelled",
-  expired: "Expired",
-  superseded: "Superseded",
-};
+// STATUS_LABELS, ACTIVE_JOB_STATUSES and CLOSED_STATUSES are imported from
+// ./taxonomy (the single source of truth, locked by taxonomy.test.ts).
 
-const ACTIVE_JOB_STATUSES = new Set([
-  "verbal-win", "won-awaiting-job-no", "won-job-created", "po-matched", "active",
-]);
+const ACCORDION_ACTIVE = new Set([...ACTIVE_JOB_STATUSES, "sent"]);
 
 const STATUS_FILTERS = [
   { key: "active-jobs", label: "Active Jobs" },
@@ -299,6 +365,7 @@ const STATUS_FILTERS = [
   { key: "active", label: "Active" },
   { key: "complete", label: "Complete" },
   { key: "lost", label: "Lost" },
+  { key: "closed", label: "Closed" },
 ];
 
 const NEXT_STATUSES: Record<string, string[]> = {
@@ -320,9 +387,9 @@ const NEXT_STATUSES: Record<string, string[]> = {
 // ---------------------------------------------------------------------------
 
 function calcLineTotal(li: CreateLineItem): number {
-  const q = parseFloat(li.qty) || 0;
-  const r = parseFloat(li.rate) || 0;
-  return Math.round(q * r * 100);
+  // Mirror the persistence defaults (qty blank/0 → 1, rate blank → 0) and the DB's
+  // truncating cents math, so the preview total equals the value the server stores.
+  return lineTotalCentsFromInput(parseFloat(li.qty) || 1, parseFloat(li.rate) || 0);
 }
 
 function aud(cents: number): string {
@@ -341,6 +408,28 @@ function fmtDate(iso: string | null): string {
     month: "short",
     year: "numeric",
   });
+}
+function fmtExpiry(iso: string | null): { text: string; urgent: boolean; overdue: boolean } {
+  if (!iso) return { text: "—", urgent: false, overdue: false };
+  const days = Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
+  if (days < 0) return { text: `${Math.abs(days)}d ago`, urgent: false, overdue: true };
+  if (days === 0) return { text: "Today", urgent: true, overdue: false };
+  if (days <= 7) return { text: `${days}d`, urgent: true, overdue: false };
+  return { text: fmtDate(iso), urgent: false, overdue: false };
+}
+
+function csvEscape(v: string | number | null): string {
+  const s = v == null ? "" : String(v);
+  if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+function downloadCsv(rows: (string | number | null)[][], filename: string): void {
+  const csv = rows.map((r) => r.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function qty(thousandths: number): string {
@@ -386,7 +475,7 @@ function parseCSV(text: string): CoupaRow[] {
 // ---------------------------------------------------------------------------
 
 export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element {
-  type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit" | "setup" | "trash" | "reports";
+  type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit" | "setup" | "trash" | "reports" | "customers";
 
   // ── Main navigation ──────────────────────────────────────────────────────
   const [view, setView] = useState<ModuleView>("pipeline");
@@ -394,11 +483,32 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // ── Pipeline state ────────────────────────────────────────────────────────
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [statusFilter, setStatusFilter] = useState("active-jobs");
+  const [statusFilter, setStatusFilter] = useState(() =>
+    (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-tab") : null) ?? "active-jobs"
+  );
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [estFilter, setEstFilter] = useState("");
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [siteFilter, setSiteFilter] = useState("");
+  const [expiringOnly, setExpiringOnly] = useState(false);
+  const [unsentOnly, setUnsentOnly] = useState(false);
+  const [needsJobNoOnly, setNeedsJobNoOnly] = useState(false);
+  const [overdueFupOnly, setOverdueFupOnly] = useState(false);
+  const [staleOnly, setStaleOnly] = useState(false);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [copiedQuoteId, setCopiedQuoteId] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const detailIdRef = useRef<string | null>(null);
+  const displayedQuotesRef = useRef<Quote[]>([]);
+  const detailRef = useRef<QuoteDetail | null>(null);
+  // Action refs so the keydown handler calls the current functions without listing
+  // them (declared later) in its dependency array. Assigned in the render body below.
+  const openEditFormRef = useRef<((d: QuoteDetail) => void) | null>(null);
+  const handleDuplicateRef = useRef<((quoteId: string) => Promise<void>) | null>(null);
 
   // ── Detail state ──────────────────────────────────────────────────────────
   const [detail, setDetail] = useState<QuoteDetail | null>(null);
@@ -408,7 +518,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // Status update
   const [advanceStatus, setAdvanceStatus] = useState("");
   const [statusNote, setStatusNote] = useState("");
-  const [initials, setInitials] = useState("");
+  const [initials, setInitials] = useState(() =>
+    (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? ""
+  );
+  const updateInitials = (v: string) => {
+    const upper = v.toUpperCase();
+    setInitials(upper);
+    try { localStorage.setItem("eq-quotes-initials", upper); } catch { /* ignore */ }
+  };
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusMutErr, setStatusMutErr] = useState<string | null>(null);
 
@@ -422,16 +539,87 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [savingPo, setSavingPo] = useState(false);
   const [poErr, setPoErr] = useState<string | null>(null);
 
+  // Sent date inline edit
+  const [sentAtInput, setSentAtInput] = useState("");
+  const [savingSentAt, setSavingSentAt] = useState(false);
+  const [sentAtErr, setSentAtErr] = useState<string | null>(null);
+
+  // Expiry date inline edit
+  const [expiresInput, setExpiresInput] = useState("");
+  const [savingExpires, setSavingExpires] = useState(false);
+  const [expiresErr, setExpiresErr] = useState<string | null>(null);
+
+  // Follow-up date inline edit (detail panel)
+  const [followUpInput, setFollowUpInput] = useState("");
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [followUpErr, setFollowUpErr] = useState<string | null>(null);
+
+  // Inline follow-up edit from pipeline table
+  const [pipelineFupEdit, setPipelineFupEdit] = useState<{ quoteId: string; value: string } | null>(null);
+
+  // Payment terms / validity days inline edit
+  const [termsEditing, setTermsEditing] = useState(false);
+  const [termsInput, setTermsInput] = useState("");
+  const [validityInput, setValidityInput] = useState("");
+  const [savingTerms, setSavingTerms] = useState(false);
+  const [termsErr, setTermsErr] = useState<string | null>(null);
+
+  // Project name / estimator inline edit
+  const [projectEditing, setProjectEditing] = useState(false);
+  const [projectInput, setProjectInput] = useState("");
+  const [estimatorInput, setEstimatorInput] = useState("");
+  const [estInitialsInput, setEstInitialsInput] = useState("");
+  const [savingProject, setSavingProject] = useState(false);
+  const [projectErr, setProjectErr] = useState<string | null>(null);
+
+  // Recipient (attention block + address) inline edit
+  const [recipientEditing, setRecipientEditing] = useState(false);
+  const [attnFirstInput, setAttnFirstInput] = useState("");
+  const [attnLastInput, setAttnLastInput] = useState("");
+  const [attnPhoneInput, setAttnPhoneInput] = useState("");
+  const [addressInput, setAddressInput] = useState("");
+  const [savingRecipient, setSavingRecipient] = useState(false);
+  const [recipientErr, setRecipientErr] = useState<string | null>(null);
+
+  // Scope / clarifications / notes inline edit
+  const [scopeEditing, setScopeEditing] = useState(false);
+  const [scopeInput, setScopeInput] = useState("");
+  const [clarInput, setClarInput] = useState("");
+  const [quoteNotesInput, setQuoteNotesInput] = useState("");
+  const [savingScope, setSavingScope] = useState(false);
+  const [scopeErr, setScopeErr] = useState<string | null>(null);
+
+  // Contact picker
+  const [detailContacts, setDetailContacts] = useState<ContactRow[]>([]);
+  const [contactPickerVal, setContactPickerVal] = useState("");
+  const [linkingContact, setLinkingContact] = useState(false);
+  const [linkContactErr, setLinkContactErr] = useState<string | null>(null);
+
   // Note
   const [noteBody, setNoteBody] = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const [noteMutErr, setNoteMutErr] = useState<string | null>(null);
+
+  // PDF download + email
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailToName, setEmailToName] = useState("");
+  const [emailingPdf, setEmailingPdf] = useState(false);
+  const [emailMsg, setEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Share link
+  const [sharingLink, setSharingLink] = useState(false);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const [docMode, setDocMode] = useState<"detailed" | "summary" | "lump_sum">("detailed");
 
   // ── Accordion state ───────────────────────────────────────────────────────
   const [clientGroups, setClientGroups] = useState<ClientGroup[]>([]);
   const [accordionQuotes, setAccordionQuotes] = useState<Quote[]>([]);
   const [accordionLoading, setAccordionLoading] = useState(false);
   const [accordionError, setAccordionError] = useState<string | null>(null);
+  const [accordionActiveOnly, setAccordionActiveOnly] = useState(true);
+  const [accordionSearch, setAccordionSearch] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["equinix"]));
 
   // ── Customers + sites + presets + create form state ─────────────────────
@@ -443,10 +631,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [presetsLoading, setPresetsLoading] = useState(false);
   const [createCustomerId, setCreateCustomerId] = useState("");
   const [createSiteId, setCreateSiteId] = useState("");
+  const [createContacts, setCreateContacts] = useState<ContactRow[]>([]);
   const [createProjectName, setCreateProjectName] = useState("");
   const [createEstimatorName, setCreateEstimatorName] = useState("");
   const [createEstimatorInitials, setCreateEstimatorInitials] = useState("");
   const [createScope, setCreateScope] = useState("");
+  const [draftingScope, setDraftingScope] = useState(false);
+  const [scopeAiErr, setScopeAiErr] = useState<string | null>(null);
   const [createNotes, setCreateNotes] = useState("");
   const [createAttnName, setCreateAttnName] = useState("");
   const [createAttnFirstName, setCreateAttnFirstName] = useState("");
@@ -479,9 +670,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [trashed, setTrashed] = useState<TrashedQuote[]>([]);
   const [trashedLoading, setTrashedLoading] = useState(false);
   const [trashing, setTrashing] = useState(false);
+  const [markingSent, setMarkingSent] = useState(false);
+  const [quickWinBusy, setQuickWinBusy] = useState(false);
+  const [quickLoseBusy, setQuickLoseBusy] = useState(false);
+  const [losePromptOpen, setLosePromptOpen] = useState(false);
+  const [loseReason, setLoseReason] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkFupDate, setBulkFupDate] = useState("");
+  const [bulkFupBusy, setBulkFupBusy] = useState(false);
 
   // ── Import state ──────────────────────────────────────────────────────────
   const [csvText, setCsvText] = useState("");
@@ -503,7 +701,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       setPipelineLoading(true);
       setPipelineError(null);
       const { data, error } = await supabase.rpc("eq_list_quotes", {
-        p_status: status === "all" || status === "active-jobs" ? null : status,
+        p_status: status === "all" || status === "active-jobs" || status === "closed" ? null : status,
         p_search: q.trim() || null,
       });
       setPipelineLoading(false);
@@ -517,6 +715,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // cascading-render case react-hooks/set-state-in-effect targets doesn't apply.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    try { localStorage.setItem("eq-quotes-tab", statusFilter); } catch { /* ignore */ }
     void loadQuotes(statusFilter, search);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
@@ -553,6 +752,41 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         if (nexts.length > 0) setAdvanceStatus(nexts[0]);
         setJobNoInput(row.workbench_job_no ?? "");
         setPoInput(row.po_number ?? "");
+        setSentAtInput(row.sent_at ? row.sent_at.slice(0, 10) : "");
+        setExpiresInput(row.expires_at ? row.expires_at.slice(0, 10) : "");
+        setExpiresErr(null);
+        setFollowUpInput(row.follow_up_at ? row.follow_up_at.slice(0, 10) : "");
+        setFollowUpErr(null);
+        setTermsEditing(false);
+        setTermsInput(row.payment_terms ?? "");
+        setValidityInput(row.validity_days != null ? String(row.validity_days) : "");
+        setTermsErr(null);
+        setProjectEditing(false);
+        setProjectInput(row.project_name ?? "");
+        setEstimatorInput(row.estimator_name ?? "");
+        setEstInitialsInput(row.estimator_initials ?? "");
+        setProjectErr(null);
+        setRecipientEditing(false);
+        setAttnFirstInput(row.attn_first_name ?? "");
+        setAttnLastInput(row.attn_name ?? "");
+        setAttnPhoneInput(row.attn_phone ?? "");
+        setAddressInput(row.address ?? "");
+        setRecipientErr(null);
+        setScopeEditing(false);
+        setScopeInput(row.scope_of_works ?? "");
+        setClarInput(row.clarifications ?? "");
+        setQuoteNotesInput(row.quote_notes ?? "");
+        setScopeErr(null);
+        setContactPickerVal(row.contact_id ?? "");
+        setLinkContactErr(null);
+        if (row.customer_id) {
+          const { data: contactsData } = await supabase.rpc("eq_list_contacts_for_customer", {
+            p_customer_id: row.customer_id,
+          });
+          setDetailContacts((contactsData as ContactRow[]) ?? []);
+        } else {
+          setDetailContacts([]);
+        }
       }
       // Change history (best-effort; never blocks the detail view).
       const { data: auditData } = await supabase.rpc("eq_list_quote_audit", { p_quote_id: quoteId });
@@ -698,27 +932,83 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   }, [view]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // Keyboard shortcuts: / = focus search, N = new quote, Escape/E/D in detail
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+      if (e.key === "n" && detailIdRef.current === null && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setView("create");
+        return;
+      }
+      if (detailIdRef.current === null) return;
+      if (e.key === "Escape") {
+        setDetailId(null);
+        setDetail(null);
+        return;
+      }
+      if (e.key === "e" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const d = detailRef.current;
+        if (d) openEditFormRef.current?.(d);
+        return;
+      }
+      if (e.key === "d" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const id = detailIdRef.current;
+        if (id) void handleDuplicateRef.current?.(id);
+        return;
+      }
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        const dq = displayedQuotesRef.current;
+        const idx = dq.findIndex((q) => q.quote_id === detailIdRef.current);
+        if (idx < 0) return;
+        const target = e.key === "ArrowLeft" ? dq[idx - 1] : dq[idx + 1];
+        if (target) void openDetail(target.quote_id);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [openDetail]);
+
+  // Update browser tab title when viewing a quote
+  useEffect(() => {
+    const prev = document.title;
+    if (detail) { document.title = `${detail.quote_number} — EQ Quotes`; }
+    else        { document.title = "EQ Quotes"; }
+    return () => { document.title = prev; };
+  }, [detail]);
+
   // ── Create form helpers ───────────────────────────────────────────────────
 
   const resetCreateForm = () => {
     setCreateCustomerId("");
     setCreateSiteId("");
     setSites([]);
+    setCreateContacts([]);
     setCreateProjectName("");
-    setCreateEstimatorName("");
-    setCreateEstimatorInitials("");
+    const savedEstName = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-estimator-name") : null) ?? "";
+    const savedEstInitials = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? "";
+    setCreateEstimatorName(savedEstName);
+    setCreateEstimatorInitials(savedEstInitials);
+    const savedTerms = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-payment-terms") : null) ?? "";
+    setCreatePaymentTerms(savedTerms);
     setCreateScope("");
     setCreateNotes("");
     setCreateAttnName("");
     setCreateAttnFirstName("");
     setCreateAttnPhone("");
     setCreateAddress("");
-    setCreatePaymentTerms("");
     setCreateValidityDays("30");
     setCreateQuoteNumber("");
     setCreateClarifications("");
     setCreateLineItems([{ description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "labour" }]);
     setCreateError(null);
+    setScopeAiErr(null);
+    setDraftingScope(false);
     setEditingQuoteId(null);
   };
 
@@ -763,8 +1053,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     );
     setCreateError(null);
     void loadSites(d.customer_id);
+    if (supabase && d.customer_id) {
+      void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: d.customer_id }).then(({ data }) => {
+        setCreateContacts((data as ContactRow[]) ?? []);
+      });
+    } else {
+      setCreateContacts([]);
+    }
     setView("edit");
-  }, [loadSites]);
+  }, [loadSites, supabase]);
 
   const updateLineItem = (i: number, field: keyof CreateLineItem, value: string) => {
     setCreateLineItems((prev) => {
@@ -805,6 +1102,43 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   const removeLineItem = (i: number) => {
     setCreateLineItems((prev) => prev.filter((_, j) => j !== i));
+  };
+
+  const handleDraftScope = async () => {
+    setDraftingScope(true);
+    setScopeAiErr(null);
+    try {
+      const customer = customers.find((c) => c.customer_id === createCustomerId);
+      const site = sites.find((s) => s.site_id === createSiteId);
+      const lineDescriptions = createLineItems.map((li) => li.description).filter((d) => d.trim());
+      const res = await fetch("/.netlify/functions/quote-suggest-scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          customer_name: customer?.company_name || undefined,
+          project_name: createProjectName.trim() || undefined,
+          site: site ? (site.code ?? site.name) : undefined,
+          brief: createScope.trim() || undefined,
+          line_items: lineDescriptions,
+        }),
+      });
+      const j = await res.json() as { ok: boolean; scope?: string; clarifications?: string; error?: string };
+      if (!res.ok || !j.ok) {
+        setScopeAiErr(
+          j.error === "ai_not_configured" ? "AI isn't configured on the server."
+          : j.error === "need_brief" ? "Add a project name, a few words of scope, or some line items first."
+          : "Couldn't draft the scope — try again.",
+        );
+        return;
+      }
+      if (j.scope) setCreateScope(j.scope);
+      if (j.clarifications && !createClarifications.trim()) setCreateClarifications(j.clarifications);
+    } catch {
+      setScopeAiErr("Couldn't reach the AI service.");
+    } finally {
+      setDraftingScope(false);
+    }
   };
 
   const handleCreateQuote = async () => {
@@ -942,6 +1276,26 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void openDetail(row.quote_id);
   };
 
+  const handleRevise = async () => {
+    if (!supabase || !detail) return;
+    setDuplicating(true);
+    // 1. Supersede the original
+    await supabase.rpc("eq_update_quote_status", {
+      p_quote_id: detail.quote_id,
+      p_new_status: "superseded",
+      p_note: null,
+      p_initials: initials.trim() || null,
+    });
+    // 2. Duplicate to a new draft
+    const { data, error } = await supabase.rpc("eq_duplicate_quote", { p_source_quote_id: detail.quote_id });
+    setDuplicating(false);
+    if (error) { captureRpcError("eq_duplicate_quote", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    const row = (data as Array<{ quote_id: string; quote_number: string }>)[0];
+    if (!row) { setDetailError("Revise failed: no quote returned."); return; }
+    void loadQuotes(statusFilter, search);
+    void openDetail(row.quote_id);
+  };
+
   const handleTrash = async (quoteId: string) => {
     if (!supabase) return;
     setTrashing(true);
@@ -961,6 +1315,74 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  const handleMarkAsSent = async () => {
+    if (!supabase || !detail) return;
+    setMarkingSent(true);
+    if (detail.status === "draft") {
+      const { error: se } = await supabase.rpc("eq_update_quote_status", {
+        p_quote_id: detail.quote_id,
+        p_new_status: "submitted",
+        p_note: null,
+        p_initials: initials.trim() || null,
+      });
+      if (se) { captureRpcError("eq_update_quote_status", se, { quote_id: detail.quote_id }); setMarkingSent(false); return; }
+    }
+    const today = new Date().toISOString();
+    const { error } = await supabase.rpc("eq_set_sent_at", {
+      p_quote_id: detail.quote_id,
+      p_sent_at: today,
+      p_initials: initials.trim() || null,
+    });
+    setMarkingSent(false);
+    if (error) { captureRpcError("eq_set_sent_at", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    // Auto-set follow-up to 7 days out if not already set
+    if (!detail.follow_up_at) {
+      const fupDate = new Date();
+      fupDate.setDate(fupDate.getDate() + 7);
+      const fupStr = fupDate.toISOString().slice(0, 10);
+      await supabase.rpc("eq_set_follow_up_date", {
+        p_quote_id: detail.quote_id,
+        p_follow_up_at: fupStr,
+        p_initials: initials.trim() || null,
+      });
+      setFollowUpInput(fupStr);
+    }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleQuickWin = async () => {
+    if (!supabase || !detail) return;
+    setQuickWinBusy(true);
+    const { error } = await supabase.rpc("eq_update_quote_status", {
+      p_quote_id: detail.quote_id,
+      p_new_status: "verbal-win",
+      p_note: null,
+      p_initials: initials.trim() || null,
+    });
+    setQuickWinBusy(false);
+    if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleQuickLose = async (reason?: string) => {
+    if (!supabase || !detail) return;
+    setQuickLoseBusy(true);
+    const { error } = await supabase.rpc("eq_update_quote_status", {
+      p_quote_id: detail.quote_id,
+      p_new_status: "lost",
+      p_note: reason?.trim() || null,
+      p_initials: initials.trim() || null,
+    });
+    setQuickLoseBusy(false);
+    setLosePromptOpen(false);
+    setLoseReason("");
+    if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
   const handleBulkStatus = async () => {
     if (!supabase || !bulkStatus || selectedIds.size === 0) return;
     setBulkBusy(true);
@@ -973,6 +1395,18 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (error) { captureRpcError("eq_bulk_update_quote_status", error, { count: selectedIds.size }); setPipelineError(error.message); return; }
     setSelectedIds(new Set());
     setBulkStatus("");
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleBulkFollowUp = async () => {
+    if (!supabase || !bulkFupDate || selectedIds.size === 0) return;
+    setBulkFupBusy(true);
+    await Promise.all(Array.from(selectedIds).map((id) =>
+      supabase!.rpc("eq_set_follow_up_date", { p_quote_id: id, p_follow_up_at: bulkFupDate, p_initials: initials.trim() || null })
+    ));
+    setBulkFupBusy(false);
+    setBulkFupDate("");
+    setSelectedIds(new Set());
     void loadQuotes(statusFilter, search);
   };
 
@@ -1028,10 +1462,160 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_workbench_job_no: jobNoInput.trim(),
       p_initials: initials.trim() || null,
     });
+    if (error) { captureRpcError("eq_set_workbench_job_no", error, { quote_id: detail.quote_id }); setJobNoErr(error.message); setSavingJobNo(false); return; }
+    // Auto-advance "won-awaiting-job-no" → "won-job-created" when a job number is saved
+    if (detail.status === "won-awaiting-job-no") {
+      await supabase.rpc("eq_update_quote_status", {
+        p_quote_id: detail.quote_id,
+        p_new_status: "won-job-created",
+        p_note: null,
+        p_initials: initials.trim() || null,
+      });
+    }
     setSavingJobNo(false);
-    if (error) { captureRpcError("eq_set_workbench_job_no", error, { quote_id: detail.quote_id }); setJobNoErr(error.message); return; }
     await openDetail(detail.quote_id);
     void loadQuotes(statusFilter, search);
+  };
+
+  const handleSaveSentAt = async () => {
+    if (!supabase || !detail) return;
+    setSavingSentAt(true);
+    setSentAtErr(null);
+    const sentAtValue = sentAtInput ? new Date(sentAtInput + "T00:00:00").toISOString() : null;
+    const { error } = await supabase.rpc("eq_set_sent_at", {
+      p_quote_id: detail.quote_id,
+      p_sent_at: sentAtValue,
+      p_initials: initials.trim() || null,
+    });
+    setSavingSentAt(false);
+    if (error) { captureRpcError("eq_set_sent_at", error, { quote_id: detail.quote_id }); setSentAtErr(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleSaveExpires = async () => {
+    if (!supabase || !detail || !expiresInput) return;
+    setSavingExpires(true);
+    setExpiresErr(null);
+    const { error } = await supabase.rpc("eq_set_expires_at", {
+      p_quote_id: detail.quote_id,
+      p_expires_at: new Date(expiresInput + "T00:00:00").toISOString(),
+      p_initials: initials.trim() || null,
+    });
+    setSavingExpires(false);
+    if (error) { captureRpcError("eq_set_expires_at", error, { quote_id: detail.quote_id }); setExpiresErr(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleSaveFollowUp = async () => {
+    if (!supabase || !detail) return;
+    setSavingFollowUp(true);
+    setFollowUpErr(null);
+    const { error } = await supabase.rpc("eq_set_follow_up_date", {
+      p_quote_id: detail.quote_id,
+      p_follow_up_at: followUpInput || null,
+      p_initials: initials.trim() || null,
+    });
+    setSavingFollowUp(false);
+    if (error) { captureRpcError("eq_set_follow_up_date", error, { quote_id: detail.quote_id }); setFollowUpErr(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
+  const savePipelineFup = async (quoteId: string, dateStr: string) => {
+    setPipelineFupEdit(null);
+    if (!supabase) return;
+    await supabase.rpc("eq_set_follow_up_date", {
+      p_quote_id: quoteId,
+      p_follow_up_at: dateStr || null,
+      p_initials: initials.trim() || null,
+    });
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleSaveProject = async () => {
+    if (!supabase || !detail) return;
+    setSavingProject(true);
+    setProjectErr(null);
+    const { error } = await supabase.rpc("eq_set_quote_project", {
+      p_quote_id:           detail.quote_id,
+      p_project_name:       projectInput.trim() || null,
+      p_estimator_name:     estimatorInput.trim() || null,
+      p_estimator_initials: estInitialsInput.trim() || null,
+      p_initials:           initials.trim() || null,
+    });
+    setSavingProject(false);
+    if (error) { captureRpcError("eq_set_quote_project", error, { quote_id: detail.quote_id }); setProjectErr(error.message); return; }
+    setProjectEditing(false);
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleSaveTerms = async () => {
+    if (!supabase || !detail) return;
+    setSavingTerms(true);
+    setTermsErr(null);
+    const validityDays = validityInput.trim() ? parseInt(validityInput, 10) : null;
+    const { error } = await supabase.rpc("eq_set_payment_terms", {
+      p_quote_id:      detail.quote_id,
+      p_payment_terms: termsInput.trim() || null,
+      p_validity_days: validityDays && !isNaN(validityDays) ? validityDays : null,
+      p_initials:      initials.trim() || null,
+    });
+    setSavingTerms(false);
+    if (error) { captureRpcError("eq_set_payment_terms", error, { quote_id: detail.quote_id }); setTermsErr(error.message); return; }
+    setTermsEditing(false);
+    await openDetail(detail.quote_id);
+  };
+
+  const handleSaveRecipient = async () => {
+    if (!supabase || !detail) return;
+    setSavingRecipient(true);
+    setRecipientErr(null);
+    const { error } = await supabase.rpc("eq_set_quote_recipient", {
+      p_quote_id:        detail.quote_id,
+      p_attn_first_name: attnFirstInput.trim() || null,
+      p_attn_name:       attnLastInput.trim() || null,
+      p_attn_phone:      attnPhoneInput.trim() || null,
+      p_address:         addressInput.trim() || null,
+      p_initials:        initials.trim() || null,
+    });
+    setSavingRecipient(false);
+    if (error) { captureRpcError("eq_set_quote_recipient", error, { quote_id: detail.quote_id }); setRecipientErr(error.message); return; }
+    setRecipientEditing(false);
+    await openDetail(detail.quote_id);
+  };
+
+  const handleSaveScope = async () => {
+    if (!supabase || !detail) return;
+    setSavingScope(true);
+    setScopeErr(null);
+    const { error } = await supabase.rpc("eq_set_quote_scope", {
+      p_quote_id:       detail.quote_id,
+      p_scope_of_works: scopeInput.trim() || null,
+      p_clarifications: clarInput.trim() || null,
+      p_quote_notes:    quoteNotesInput.trim() || null,
+      p_initials:       initials.trim() || null,
+    });
+    setSavingScope(false);
+    if (error) { captureRpcError("eq_set_quote_scope", error, { quote_id: detail.quote_id }); setScopeErr(error.message); return; }
+    setScopeEditing(false);
+    await openDetail(detail.quote_id);
+  };
+
+  const handleLinkContact = async () => {
+    if (!supabase || !detail) return;
+    setLinkingContact(true);
+    setLinkContactErr(null);
+    const { error } = await supabase.rpc("eq_link_quote_contact", {
+      p_quote_id: detail.quote_id,
+      p_contact_id: contactPickerVal || null,
+      p_initials: initials.trim() || null,
+    });
+    setLinkingContact(false);
+    if (error) { captureRpcError("eq_link_quote_contact", error, { quote_id: detail.quote_id }); setLinkContactErr(error.message); return; }
+    await openDetail(detail.quote_id);
   };
 
   const handleSavePoNumber = async () => {
@@ -1043,14 +1627,24 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_po_number: poInput.trim(),
       p_initials: initials.trim() || null,
     });
+    if (error) { captureRpcError("eq_set_po_number", error, { quote_id: detail.quote_id }); setPoErr(error.message); setSavingPo(false); return; }
+    // Auto-advance "won-job-created" → "po-matched" when a PO number is saved
+    if (detail.status === "won-job-created") {
+      await supabase.rpc("eq_update_quote_status", {
+        p_quote_id: detail.quote_id,
+        p_new_status: "po-matched",
+        p_note: null,
+        p_initials: initials.trim() || null,
+      });
+    }
     setSavingPo(false);
-    if (error) { captureRpcError("eq_set_po_number", error, { quote_id: detail.quote_id }); setPoErr(error.message); return; }
     await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
   };
 
   const handleGenerateDoc = async () => {
     if (!supabase || !detail) return;
-    await generateQuoteDoc(detail);
+    await generateQuoteDoc(detail, docMode);
     // Audit: record the document generation on the quote timeline.
     await supabase.rpc("eq_add_quote_note", {
       p_quote_id: detail.quote_id,
@@ -1059,6 +1653,81 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_initials: initials.trim() || null,
     });
     await openDetail(detail.quote_id);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!detail) return;
+    setDownloadingPdf(true);
+    try {
+      const res = await fetch("/.netlify/functions/quote-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quote_id: detail.quote_id }),
+        credentials: "include",
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SKS-${detail.quote_number.replace(/[^A-Z0-9-]/gi, "-")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const handleEmailPdf = async () => {
+    if (!supabase || !detail || !emailTo.trim()) return;
+    setEmailingPdf(true);
+    setEmailMsg(null);
+    try {
+      const res = await fetch("/.netlify/functions/quote-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quote_id: detail.quote_id, to_email: emailTo.trim(), to_name: emailToName.trim() || undefined }),
+        credentials: "include",
+      });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (json.ok) {
+        setEmailMsg({ ok: true, text: `Sent to ${emailTo.trim()}.` });
+        setEmailTo("");
+        setEmailToName("");
+        setShowEmailForm(false);
+        await openDetail(detail.quote_id);
+      } else {
+        setEmailMsg({ ok: false, text: json.error === "email_not_configured" ? "Email not configured on this deployment." : `Send failed: ${json.error ?? "unknown error"}` });
+      }
+    } catch {
+      setEmailMsg({ ok: false, text: "Network error." });
+    }
+    setEmailingPdf(false);
+  };
+
+  const handleShareLink = async () => {
+    if (!supabase || !detail || sharingLink) return;
+    setSharingLink(true);
+    setShareMsg(null);
+    const { data, error } = await supabase.rpc("eq_create_share_link", { p_quote_id: detail.quote_id });
+    if (error || !data) {
+      setSharingLink(false);
+      setShareMsg("Could not create share link.");
+      return;
+    }
+    const token = (data as { token: string }).token;
+    const tenantSlug = window.location.pathname.split("/").filter(Boolean)[0] ?? "sks";
+    const url = `${window.location.origin}/portal/quote/${tenantSlug}/${token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareMsg("Link copied to clipboard.");
+    } catch {
+      setShareMsg(`Link: ${url}`);
+    }
+    setSharingLink(false);
+    setTimeout(() => setShareMsg(null), 5000);
   };
 
   // ── Import actions ────────────────────────────────────────────────────────
@@ -1135,8 +1804,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     {},
   );
 
-  // Build: customer_name → Quote[]
-  const quotesByCustomer = accordionQuotes.reduce<Record<string, Quote[]>>((acc, q) => {
+  // Build: customer_name → Quote[] (respects active-only toggle)
+  const effectiveAccordionQuotes = accordionActiveOnly
+    ? accordionQuotes.filter((q) => ACCORDION_ACTIVE.has(q.status))
+    : accordionQuotes;
+  const quotesByCustomer = effectiveAccordionQuotes.reduce<Record<string, Quote[]>>((acc, q) => {
     const k = q.customer_name ?? "Unknown";
     (acc[k] ??= []).push(q);
     return acc;
@@ -1144,13 +1816,73 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // ── Computed totals ───────────────────────────────────────────────────────
 
-  const displayedQuotes = statusFilter === "active-jobs"
+  let displayedQuotes = statusFilter === "active-jobs"
     ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
+    : statusFilter === "closed"
+    ? quotes.filter((q) => CLOSED_STATUSES.has(q.status))
     : quotes;
+  if (dateFrom) displayedQuotes = displayedQuotes.filter((q) => q.created_at >= dateFrom);
+  if (dateTo)   displayedQuotes = displayedQuotes.filter((q) => q.created_at.slice(0, 10) <= dateTo);
+  if (estFilter) displayedQuotes = displayedQuotes.filter((q) => q.estimator_initials === estFilter);
+  if (customerFilter) displayedQuotes = displayedQuotes.filter((q) => q.customer_name === customerFilter);
+  if (siteFilter) displayedQuotes = displayedQuotes.filter((q) => q.site_code === siteFilter);
+  if (expiringOnly) {
+    const soon = new Date(Date.now() + 14 * 86_400_000).toISOString();
+    displayedQuotes = displayedQuotes.filter(
+      (q) => q.expires_at && q.expires_at <= soon && ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status)
+    );
+  }
+  if (unsentOnly) {
+    displayedQuotes = displayedQuotes.filter(
+      (q) => !q.sent_at && ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status)
+    );
+  }
+  if (needsJobNoOnly) {
+    displayedQuotes = displayedQuotes.filter(
+      (q) => !q.workbench_job_no && ACTIVE_JOB_STATUSES.has(q.status)
+    );
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  if (overdueFupOnly) {
+    displayedQuotes = displayedQuotes.filter(
+      (q) => q.follow_up_at !== null && q.follow_up_at <= today
+    );
+  }
+  if (staleOnly) {
+    const staleThreshold = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    displayedQuotes = displayedQuotes.filter(
+      (q) => !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status) &&
+             !q.follow_up_at && q.created_at.slice(0, 10) < staleThreshold
+    );
+  }
+  const estimatorOptions = Array.from(
+    new Set(quotes.map((q) => q.estimator_initials).filter((i): i is string => i !== null && i !== ""))
+  ).sort();
+  const customerOptions = Array.from(
+    new Set(quotes.map((q) => q.customer_name).filter((n): n is string => n !== null && n !== ""))
+  ).sort();
+  const siteOptions = Array.from(
+    new Set(quotes.map((q) => q.site_code).filter((s): s is string => s !== null && s !== ""))
+  ).sort();
   const visibleTotal = displayedQuotes.reduce((s, q) => s + q.total_cents, 0);
+  // Keep refs fresh for keyboard handler
+  detailIdRef.current = detailId;
+  displayedQuotesRef.current = displayedQuotes;
+  detailRef.current = detail;
+  openEditFormRef.current = openEditForm;
+  handleDuplicateRef.current = handleDuplicate;
   const wonTotal = displayedQuotes
     .filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
     .reduce((s, q) => s + q.total_cents, 0);
+  const atRiskTotal = displayedQuotes
+    .filter((q) => ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status))
+    .reduce((s, q) => s + q.total_cents, 0);
+  const winRateDisplayed = (() => {
+    const won  = displayedQuotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status)).length;
+    const lost = displayedQuotes.filter((q) => CLOSED_STATUSES.has(q.status)).length;
+    const decided = won + lost;
+    return decided >= 3 ? Math.round((won / decided) * 100) : null;
+  })();
 
   // Canonical eq-ui table: sortable columns + per-column text/select filters.
   const pipelineColumns: TableColumn<Quote>[] = [
@@ -1158,27 +1890,76 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       key: "quote_number", header: "Quote #",
       sortAccessor: (q) => q.quote_number,
       className: "eq-quotes__td--mono eq-quotes__td--bold",
+      render: (q) => (
+        <span
+          className="eq-quotes__filter-link"
+          title="Click to copy quote number"
+          style={{ fontFamily: "ui-monospace, 'Cascadia Code', monospace", fontWeight: 600 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            void navigator.clipboard.writeText(q.quote_number).then(() => {
+              setCopiedQuoteId(q.quote_id);
+              setTimeout(() => setCopiedQuoteId(null), 1500);
+            });
+          }}
+        >
+          {copiedQuoteId === q.quote_id ? <span style={{ color: "var(--eq-green,#27ae60)", fontSize: 11 }}>Copied!</span> : q.quote_number}
+        </span>
+      ),
     },
     {
       key: "customer_name", header: "Customer / Site", filterable: "text",
       sortAccessor: (q) => q.customer_name ?? "",
       render: (q) => (
         <div className="eq-quotes__customer-cell">
-          <span>{q.customer_name ?? "—"}</span>
-          {q.site_code && <span className="eq-quotes__site-code">{q.site_code}</span>}
+          {q.customer_name ? (
+            <span
+              className="eq-quotes__filter-link"
+              title={`Filter by ${q.customer_name}`}
+              onClick={(e) => { e.stopPropagation(); setCustomerFilter(q.customer_name ?? ""); }}
+            >
+              {q.customer_name}
+            </span>
+          ) : <span className="eq-quotes__muted">—</span>}
+          {q.site_code && (
+            <span
+              className="eq-quotes__site-code eq-quotes__filter-link"
+              title={`Filter by site ${q.site_code}`}
+              onClick={(e) => { e.stopPropagation(); setSiteFilter(q.site_code ?? ""); }}
+            >
+              {q.site_code}
+            </span>
+          )}
         </div>
       ),
     },
     {
       key: "project_name", header: "Project", filterable: "text",
       sortAccessor: (q) => q.project_name ?? "",
-      render: (q) => q.project_name ?? <span className="eq-quotes__muted">—</span>,
+      render: (q) => (
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span>{q.project_name ?? <span className="eq-quotes__muted">—</span>}</span>
+          {q.line_item_count === 0 && (
+            <span className="eq-quotes__badge eq-quotes__badge--xs" style={{ background: "#fef2f2", color: "#c0392b", fontSize: 10, flexShrink: 0 }} title="No line items — add items before sending">
+              no items
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: "estimator_initials", header: "Est.",
       sortAccessor: (q) => q.estimator_initials ?? "",
       render: (q) => q.estimator_initials
-        ? <span className="eq-quotes__initials-badge">{q.estimator_initials}</span>
+        ? (
+          <span
+            className="eq-quotes__initials-badge eq-quotes__filter-link"
+            title={`Filter by ${q.estimator_initials}`}
+            onClick={(e) => { e.stopPropagation(); setEstFilter(q.estimator_initials ?? ""); }}
+          >
+            {q.estimator_initials}
+          </span>
+        )
         : <span className="eq-quotes__muted">—</span>,
     },
     {
@@ -1204,9 +1985,94 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           : <span className="eq-quotes__muted">—</span>,
     },
     {
+      key: "margin_pct", header: "Margin", align: "right" as const,
+      sortAccessor: (q) => q.margin_pct ?? -1,
+      render: (q) => q.margin_pct !== null
+        ? <span style={{ fontSize: 12 }}>{Number(q.margin_pct).toFixed(1)}%</span>
+        : <span className="eq-quotes__muted">—</span>,
+    },
+    {
+      key: "created_at", header: "Age",
+      sortAccessor: (q) => q.created_at,
+      render: (q) => {
+        const days = Math.floor((Date.now() - new Date(q.created_at).getTime()) / 86_400_000);
+        const label = days === 0 ? "Today" : days === 1 ? "1d" : `${days}d`;
+        const color = days > 90 ? "var(--eq-err, #c0392b)" : days > 30 ? "var(--eq-amber, #d4820a)" : undefined;
+        return <span title={fmtDate(q.created_at)} style={{ fontSize: 12, color, fontWeight: days > 30 ? 600 : undefined }}>{label}</span>;
+      },
+    },
+    {
       key: "sent_at", header: "Sent",
       sortAccessor: (q) => q.sent_at ?? "",
       render: (q) => fmtDate(q.sent_at),
+    },
+    {
+      key: "expires_at", header: "Expires",
+      sortAccessor: (q) => q.expires_at ?? "",
+      render: (q) => {
+        if (!q.expires_at) return <span className="eq-quotes__muted">—</span>;
+        const { text, urgent, overdue } = fmtExpiry(q.expires_at);
+        return (
+          <span style={{
+            fontSize: 12,
+            fontWeight: urgent || overdue ? 600 : undefined,
+            color: overdue ? "var(--eq-err, #c0392b)" : urgent ? "var(--eq-amber, #d4820a)" : undefined,
+          }}>
+            {text}
+          </span>
+        );
+      },
+    },
+    {
+      key: "follow_up_at", header: "Follow-up",
+      sortAccessor: (q) => q.follow_up_at ?? "",
+      render: (q) => {
+        if (pipelineFupEdit?.quoteId === q.quote_id) {
+          return (
+            <input
+              type="date"
+              autoFocus
+              value={pipelineFupEdit.value}
+              style={{ fontSize: 12, padding: "2px 4px", border: "1px solid var(--eq-primary, #3DA8D8)", borderRadius: 4, width: 120 }}
+              onChange={(e) => setPipelineFupEdit({ quoteId: q.quote_id, value: e.target.value })}
+              onBlur={(e) => { void savePipelineFup(q.quote_id, e.target.value); }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { e.stopPropagation(); setPipelineFupEdit(null); }
+                if (e.key === "Enter") { void savePipelineFup(q.quote_id, pipelineFupEdit.value); }
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          );
+        }
+        const todayStr = new Date().toISOString().slice(0, 10);
+        if (!q.follow_up_at) {
+          return (
+            <span
+              className="eq-quotes__muted eq-quotes__filter-link"
+              title="Click to set follow-up date"
+              onClick={(e) => { e.stopPropagation(); setPipelineFupEdit({ quoteId: q.quote_id, value: "" }); }}
+            >
+              Set date
+            </span>
+          );
+        }
+        const overdue = q.follow_up_at < todayStr;
+        const isToday = q.follow_up_at === todayStr;
+        return (
+          <span
+            className="eq-quotes__filter-link"
+            title="Click to change follow-up date"
+            onClick={(e) => { e.stopPropagation(); setPipelineFupEdit({ quoteId: q.quote_id, value: q.follow_up_at ?? "" }); }}
+            style={{
+              fontSize: 12,
+              fontWeight: overdue || isToday ? 600 : undefined,
+              color: overdue ? "var(--eq-err, #c0392b)" : isToday ? "var(--eq-amber, #d4820a)" : undefined,
+            }}
+          >
+            {fmtDate(q.follow_up_at)}
+          </span>
+        );
+      },
     },
   ];
 
@@ -1226,9 +2092,52 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           </button>
           {detail && (
             <div className="eq-quotes__detail-title-row">
-              <h2 className="eq-quotes__detail-num">{detail.quote_number}</h2>
+              {(() => {
+                const idx = displayedQuotes.findIndex((q) => q.quote_id === detail.quote_id);
+                if (idx < 0 || displayedQuotes.length <= 1) return null;
+                const prev = idx > 0 ? displayedQuotes[idx - 1] : null;
+                const next = idx < displayedQuotes.length - 1 ? displayedQuotes[idx + 1] : null;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--outline"
+                      style={{ padding: "2px 8px", fontSize: 14, lineHeight: 1 }}
+                      disabled={!prev}
+                      onClick={() => prev && void openDetail(prev.quote_id)}
+                      title={prev ? `Previous: ${prev.quote_number}` : undefined}
+                    >
+                      ←
+                    </button>
+                    <span style={{ fontSize: 12, color: "var(--eq-muted, #888)", minWidth: 40, textAlign: "center" }}>
+                      {idx + 1}/{displayedQuotes.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--outline"
+                      style={{ padding: "2px 8px", fontSize: 14, lineHeight: 1 }}
+                      disabled={!next}
+                      onClick={() => next && void openDetail(next.quote_id)}
+                      title={next ? `Next: ${next.quote_number}` : undefined}
+                    >
+                      →
+                    </button>
+                  </div>
+                );
+              })()}
+              <h2
+                className="eq-quotes__detail-num"
+                style={{ cursor: "pointer" }}
+                title="Click to copy quote number"
+                onClick={() => void navigator.clipboard.writeText(detail.quote_number)}
+              >
+                {detail.quote_number}
+              </h2>
               <span className={statusClass(detail.status)}>
                 {STATUS_LABELS[detail.status] ?? detail.status}
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--eq-ink, #1A1A2E)", marginLeft: 4 }}>
+                {aud(detail.total_cents)}
               </span>
               <button
                 type="button"
@@ -1247,6 +2156,28 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               >
                 {duplicating ? "Duplicating…" : "Duplicate"}
               </button>
+              {["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  disabled={duplicating}
+                  onClick={() => void handleRevise()}
+                  title="Supersede this quote and open a new draft revision"
+                >
+                  {duplicating ? "…" : "Revise"}
+                </button>
+              )}
+              <select
+                className="eq-quotes__select"
+                style={{ fontSize: 12, padding: "3px 6px" }}
+                value={docMode}
+                onChange={(e) => setDocMode(e.target.value as "detailed" | "summary" | "lump_sum")}
+                title="Line items table mode"
+              >
+                <option value="detailed">Detailed</option>
+                <option value="summary">Summary</option>
+                <option value="lump_sum">Lump Sum</option>
+              </select>
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
@@ -1257,10 +2188,84 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
+                disabled={downloadingPdf}
+                onClick={() => void handleDownloadPdf()}
+                title="Download PDF"
+              >
+                {downloadingPdf ? "…" : "Download PDF"}
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => {
+                  setShowEmailForm((v) => {
+                    if (!v && detail) {
+                      if (!emailToName.trim()) {
+                        const name = [detail.attn_first_name, detail.attn_name].filter(Boolean).join(" ");
+                        if (name) setEmailToName(name);
+                      }
+                      if (!emailTo.trim() && detail.contact_email) {
+                        setEmailTo(detail.contact_email);
+                      }
+                    }
+                    return !v;
+                  });
+                  setEmailMsg(null);
+                }}
+              >
+                Email PDF
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                disabled={sharingLink}
+                onClick={() => void handleShareLink()}
+                title="Create a shareable portal link for this quote"
+              >
+                {sharingLink ? "…" : "Share"}
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
                 onClick={() => void generateJobExcel(detail.quote_id)}
               >
                 Create Job
               </button>
+              {["draft", "submitted", "client-reviewing", "on-hold"].includes(detail.status) && (
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  disabled={quickWinBusy}
+                  onClick={() => void handleQuickWin()}
+                  title="Mark as Verbal Win"
+                  style={{ color: "var(--eq-sky, #2986B4)" }}
+                >
+                  {quickWinBusy ? "…" : "Win"}
+                </button>
+              )}
+              {["draft", "submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  disabled={quickLoseBusy}
+                  onClick={() => setLosePromptOpen((o) => !o)}
+                  title="Mark as Lost"
+                  style={{ color: "var(--eq-err, #c0392b)" }}
+                >
+                  {quickLoseBusy ? "…" : losePromptOpen ? "Cancel" : "Lose"}
+                </button>
+              )}
+              {!detail.sent_at && ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  disabled={markingSent}
+                  onClick={() => void handleMarkAsSent()}
+                  title={detail.status === "draft" ? "Submit and mark as sent today" : "Mark as sent today"}
+                >
+                  {markingSent ? "…" : detail.status === "draft" ? "Submit & Mark Sent" : "Mark as Sent"}
+                </button>
+              )}
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
@@ -1273,6 +2278,74 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               </button>
             </div>
           )}
+          {/* Email PDF inline form */}
+          {showEmailForm && detail && (
+            <div className="eq-quotes__detail-card" style={{ marginTop: 8, padding: "12px 16px" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div>
+                  <label className="eq-quotes__info-label">To name</label>
+                  <input className="eq-quotes__input" style={{ width: 160 }} value={emailToName} onChange={(e) => setEmailToName(e.target.value)} placeholder="Contact name" />
+                </div>
+                <div>
+                  <label className="eq-quotes__info-label">Email address</label>
+                  <input className="eq-quotes__input" style={{ width: 220 }} type="email" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="client@example.com" />
+                </div>
+                <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" disabled={emailingPdf || !emailTo.trim()} onClick={() => void handleEmailPdf()}>
+                  {emailingPdf ? "Sending…" : "Send"}
+                </button>
+                <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => { setShowEmailForm(false); setEmailMsg(null); }}>Cancel</button>
+              </div>
+              {emailMsg && (
+                <div style={{ marginTop: 6, fontSize: 12, color: emailMsg.ok ? "var(--eq-sky, #2986B4)" : "var(--eq-err, #c0392b)" }}>{emailMsg.text}</div>
+              )}
+            </div>
+          )}
+          {/* Share link feedback */}
+          {shareMsg && (
+            <div style={{ marginTop: 4, fontSize: 12, color: "var(--eq-sky, #2986B4)" }}>{shareMsg}</div>
+          )}
+          {/* Lose reason prompt */}
+          {losePromptOpen && detail && (
+            <div className="eq-quotes__detail-card" style={{ marginTop: 8, padding: "12px 16px" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <label className="eq-quotes__info-label">Loss reason (optional)</label>
+                  <datalist id="eq-loss-reasons">
+                    <option value="Price" />
+                    <option value="Timeline" />
+                    <option value="No response" />
+                    <option value="Competitor" />
+                    <option value="Scope change" />
+                    <option value="Budget cut" />
+                    <option value="Deferred" />
+                    <option value="Internal — not proceeding" />
+                  </datalist>
+                  <input
+                    className="eq-quotes__input"
+                    style={{ width: "100%" }}
+                    list="eq-loss-reasons"
+                    placeholder="e.g. Price, Timeline, No response…"
+                    value={loseReason}
+                    onChange={(e) => setLoseReason(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") void handleQuickLose(loseReason); }}
+                    autoFocus
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  disabled={quickLoseBusy}
+                  onClick={() => void handleQuickLose(loseReason)}
+                  style={{ color: "var(--eq-err, #c0392b)" }}
+                >
+                  {quickLoseBusy ? "…" : "Confirm Loss"}
+                </button>
+                <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => { setLosePromptOpen(false); setLoseReason(""); }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {detailLoading && <div className="eq-quotes__loading">Loading…</div>}
@@ -1280,12 +2353,61 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
         {detail && (
           <div className="eq-quotes__detail-body">
+            {/* Expiry warning banner */}
+            {detail.expires_at && ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (() => {
+              const { text, urgent, overdue } = fmtExpiry(detail.expires_at);
+              if (!urgent && !overdue) return null;
+              return (
+                <div style={{
+                  padding: "8px 14px", borderRadius: 6, marginBottom: 8, fontSize: 13, fontWeight: 600,
+                  background: overdue ? "var(--eq-err-bg, #fdf1f1)" : "var(--eq-amber-bg, #fef9ee)",
+                  color: overdue ? "var(--eq-err, #c0392b)" : "var(--eq-amber, #d4820a)",
+                  border: `1px solid ${overdue ? "var(--eq-err, #c0392b)" : "var(--eq-amber, #d4820a)"}22`,
+                }}>
+                  {overdue ? `Quote expired ${text} — update the expiry date or close this quote` : `Quote expires in ${text} — follow up or extend`}
+                </div>
+              );
+            })()}
+            {/* Follow-up overdue banner */}
+            {detail.follow_up_at && (() => {
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const overdueFup = detail.follow_up_at < todayStr;
+              const todayFup = detail.follow_up_at === todayStr;
+              if (!overdueFup && !todayFup) return null;
+              return (
+                <div style={{
+                  padding: "8px 14px", borderRadius: 6, marginBottom: 8, fontSize: 13, fontWeight: 600,
+                  background: overdueFup ? "var(--eq-err-bg, #fdf1f1)" : "var(--eq-amber-bg, #fef9ee)",
+                  color: overdueFup ? "var(--eq-err, #c0392b)" : "var(--eq-amber, #d4820a)",
+                  border: `1px solid ${overdueFup ? "var(--eq-err, #c0392b)" : "var(--eq-amber, #d4820a)"}22`,
+                }}>
+                  {overdueFup
+                    ? `Follow-up was due ${fmtDate(detail.follow_up_at)} — chase the client or update the date`
+                    : `Follow-up due today — contact the client`}
+                </div>
+              );
+            })()}
             {/* Info grid */}
             <div className="eq-quotes__detail-card">
               <div className="eq-quotes__info-grid">
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">Customer</span>
-                  <span className="eq-quotes__info-val">{detail.customer_name ?? "—"}</span>
+                  <span className="eq-quotes__info-val" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {detail.customer_name ?? "—"}
+                    {detail.customer_name && (() => {
+                      const others = quotes.filter((q) => q.customer_name === detail.customer_name && q.quote_id !== detail.quote_id);
+                      if (others.length === 0) return null;
+                      return (
+                        <button
+                          type="button"
+                          style={{ background: "none", border: "none", color: "var(--eq-sky, #2986B4)", cursor: "pointer", fontSize: 11, padding: 0 }}
+                          onClick={() => { setCustomerFilter(detail.customer_name!); setStatusFilter("all"); void loadQuotes("all", search); }}
+                        >
+                          +{others.length} other{others.length !== 1 ? "s" : ""}
+                        </button>
+                      );
+                    })()}
+                  </span>
                 </div>
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">Site</span>
@@ -1296,38 +2418,304 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     )}
                   </span>
                 </div>
-                {detail.attn_name && (
-                  <div className="eq-quotes__info-item">
-                    <span className="eq-quotes__info-label">Attention</span>
-                    <span className="eq-quotes__info-val">{detail.attn_name}</span>
-                  </div>
-                )}
-                {detail.attn_phone && (
-                  <div className="eq-quotes__info-item">
-                    <span className="eq-quotes__info-label">Phone</span>
-                    <span className="eq-quotes__info-val">{detail.attn_phone}</span>
-                  </div>
-                )}
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">Project</span>
-                  <span className="eq-quotes__info-val">{detail.project_name ?? "—"}</span>
-                </div>
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">Estimator</span>
-                  <span className="eq-quotes__info-val">
-                    {detail.estimator_name ?? "—"}
-                    {detail.estimator_initials && (
-                      <span className="eq-quotes__initials-badge">{detail.estimator_initials}</span>
+                {!recipientEditing ? (
+                  <>
+                    <div className="eq-quotes__info-item">
+                      <span className="eq-quotes__info-label">Attention</span>
+                      <span className="eq-quotes__info-val">
+                        {[detail.attn_first_name, detail.attn_name].filter(Boolean).join(" ") || <span className="eq-quotes__muted">—</span>}
+                        <button
+                          type="button"
+                          className="eq-quotes__btn eq-quotes__btn--outline"
+                          style={{ marginLeft: 8, fontSize: 12, padding: "2px 8px" }}
+                          onClick={() => { setRecipientEditing(true); setRecipientErr(null); }}
+                        >
+                          Edit
+                        </button>
+                      </span>
+                    </div>
+                    {detail.attn_phone && (
+                      <div className="eq-quotes__info-item">
+                        <span className="eq-quotes__info-label">Phone</span>
+                        <span className="eq-quotes__info-val">
+                          <a href={`tel:${detail.attn_phone}`} style={{ textDecoration: "none", color: "inherit" }}>{detail.attn_phone}</a>
+                        </span>
+                      </div>
                     )}
-                  </span>
-                </div>
-                <div className="eq-quotes__info-item">
+                    {detail.contact_email && (
+                      <div className="eq-quotes__info-item">
+                        <span className="eq-quotes__info-label">Email</span>
+                        <span className="eq-quotes__info-val">
+                          <a href={`mailto:${detail.contact_email}`} style={{ color: "var(--eq-sky, #2986B4)" }}>{detail.contact_email}</a>
+                        </span>
+                      </div>
+                    )}
+                    {detail.address && (
+                      <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                        <span className="eq-quotes__info-label">Address</span>
+                        <span className="eq-quotes__info-val">{detail.address}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label">Recipient</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                      {detail.contact_id && (() => {
+                        const linked = detailContacts.find((c) => c.contact_id === detail.contact_id);
+                        if (!linked) return null;
+                        return (
+                          <button
+                            type="button"
+                            className="eq-quotes__btn eq-quotes__btn--outline"
+                            style={{ alignSelf: "flex-start", fontSize: 12 }}
+                            onClick={() => {
+                              setAttnFirstInput(linked.first_name ?? "");
+                              setAttnLastInput(linked.last_name ?? "");
+                              setAttnPhoneInput(linked.mobile_phone ?? linked.work_phone ?? "");
+                            }}
+                          >
+                            Use linked contact: {[linked.first_name, linked.last_name].filter(Boolean).join(" ")}
+                          </button>
+                        );
+                      })()}
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                          className="eq-quotes__input"
+                          placeholder="First name"
+                          value={attnFirstInput}
+                          onChange={(e) => setAttnFirstInput(e.target.value)}
+                        />
+                        <input
+                          className="eq-quotes__input"
+                          placeholder="Last name"
+                          value={attnLastInput}
+                          onChange={(e) => setAttnLastInput(e.target.value)}
+                        />
+                      </div>
+                      <input
+                        className="eq-quotes__input"
+                        placeholder="Phone"
+                        value={attnPhoneInput}
+                        onChange={(e) => setAttnPhoneInput(e.target.value)}
+                      />
+                      <textarea
+                        className="eq-quotes__input"
+                        placeholder="Delivery address"
+                        rows={3}
+                        value={addressInput}
+                        onChange={(e) => setAddressInput(e.target.value)}
+                        style={{ resize: "vertical" }}
+                      />
+                      <div className="eq-quotes__job-no-row">
+                        <button
+                          type="button"
+                          className="eq-quotes__btn eq-quotes__btn--primary"
+                          disabled={savingRecipient}
+                          onClick={() => void handleSaveRecipient()}
+                        >
+                          {savingRecipient ? "…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          className="eq-quotes__btn eq-quotes__btn--outline"
+                          disabled={savingRecipient}
+                          onClick={() => { setRecipientEditing(false); setRecipientErr(null); }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {recipientErr && <span className="eq-quotes__err">{recipientErr}</span>}
+                    </div>
+                  </div>
+                )}
+                {detailContacts.length > 0 && (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label">Linked contact</span>
+                    <div className="eq-quotes__job-no-row">
+                      <select
+                        className="eq-quotes__input"
+                        style={{ maxWidth: 280 }}
+                        value={contactPickerVal}
+                        onChange={(e) => setContactPickerVal(e.target.value)}
+                      >
+                        <option value="">— no contact —</option>
+                        {detailContacts.map((c) => (
+                          <option key={c.contact_id} value={c.contact_id}>
+                            {[c.first_name, c.last_name].filter(Boolean).join(" ")}
+                            {c.email ? ` · ${c.email}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--primary"
+                        disabled={linkingContact || contactPickerVal === (detail.contact_id ?? "")}
+                        onClick={() => void handleLinkContact()}
+                      >
+                        {linkingContact ? "…" : "Save"}
+                      </button>
+                    </div>
+                    {linkContactErr && <span className="eq-quotes__err">{linkContactErr}</span>}
+                  </div>
+                )}
+                {!projectEditing ? (
+                  <>
+                    <div className="eq-quotes__info-item">
+                      <span className="eq-quotes__info-label">Project</span>
+                      <span className="eq-quotes__info-val">
+                        {detail.project_name ?? <span className="eq-quotes__muted">—</span>}
+                        <button
+                          type="button"
+                          className="eq-quotes__btn eq-quotes__btn--outline"
+                          style={{ marginLeft: 8, fontSize: 12, padding: "2px 8px" }}
+                          onClick={() => { setProjectEditing(true); setProjectErr(null); }}
+                        >
+                          Edit
+                        </button>
+                      </span>
+                    </div>
+                    <div className="eq-quotes__info-item">
+                      <span className="eq-quotes__info-label">Estimator</span>
+                      <span className="eq-quotes__info-val">
+                        {detail.estimator_name ?? <span className="eq-quotes__muted">—</span>}
+                        {detail.estimator_initials && (
+                          <span className="eq-quotes__initials-badge">{detail.estimator_initials}</span>
+                        )}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full" style={{ gap: 8 }}>
+                    <span className="eq-quotes__info-label">Project / Estimator</span>
+                    <input
+                      className="eq-quotes__input"
+                      style={{ maxWidth: 340 }}
+                      value={projectInput}
+                      onChange={(e) => setProjectInput(e.target.value)}
+                      placeholder="Project name"
+                    />
+                    <div className="eq-quotes__job-no-row" style={{ marginTop: 4 }}>
+                      <input
+                        className="eq-quotes__input"
+                        style={{ maxWidth: 220 }}
+                        value={estimatorInput}
+                        onChange={(e) => setEstimatorInput(e.target.value)}
+                        placeholder="Estimator name"
+                      />
+                      <input
+                        className="eq-quotes__input eq-quotes__input--sm"
+                        style={{ maxWidth: 72 }}
+                        value={estInitialsInput}
+                        onChange={(e) => setEstInitialsInput(e.target.value.toUpperCase())}
+                        placeholder="Init"
+                        maxLength={4}
+                      />
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--primary"
+                        disabled={savingProject}
+                        onClick={() => void handleSaveProject()}
+                      >
+                        {savingProject ? "…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        disabled={savingProject}
+                        onClick={() => { setProjectEditing(false); setProjectErr(null); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {projectErr && <span className="eq-quotes__err">{projectErr}</span>}
+                  </div>
+                )}
+                <div className="eq-quotes__info-item eq-quotes__info-item--full">
                   <span className="eq-quotes__info-label">Sent</span>
-                  <span className="eq-quotes__info-val">{fmtDate(detail.sent_at)}</span>
+                  <div className="eq-quotes__job-no-row">
+                    <input
+                      className="eq-quotes__input eq-quotes__input--job-no"
+                      type="date"
+                      value={sentAtInput}
+                      onChange={(e) => setSentAtInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleSaveSentAt(); }}
+                    />
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={savingSentAt || sentAtInput === (detail.sent_at ? detail.sent_at.slice(0, 10) : "")}
+                      onClick={() => void handleSaveSentAt()}
+                    >
+                      {savingSentAt ? "…" : "Save"}
+                    </button>
+                    {sentAtInput && (
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        disabled={savingSentAt}
+                        onClick={() => setSentAtInput("")}
+                        title="Clear sent date"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  {sentAtErr && <span className="eq-quotes__err">{sentAtErr}</span>}
                 </div>
-                <div className="eq-quotes__info-item">
+                <div className="eq-quotes__info-item eq-quotes__info-item--full">
                   <span className="eq-quotes__info-label">Expires</span>
-                  <span className="eq-quotes__info-val">{fmtDate(detail.expires_at)}</span>
+                  <div className="eq-quotes__job-no-row">
+                    <input
+                      className="eq-quotes__input eq-quotes__input--job-no"
+                      type="date"
+                      value={expiresInput}
+                      onChange={(e) => setExpiresInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleSaveExpires(); }}
+                    />
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={savingExpires || expiresInput === (detail.expires_at ? detail.expires_at.slice(0, 10) : "")}
+                      onClick={() => void handleSaveExpires()}
+                    >
+                      {savingExpires ? "…" : "Save"}
+                    </button>
+                  </div>
+                  {expiresErr && <span className="eq-quotes__err">{expiresErr}</span>}
+                </div>
+                <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                  <span className="eq-quotes__info-label">Follow-up date</span>
+                  <div className="eq-quotes__job-no-row">
+                    <input
+                      className="eq-quotes__input eq-quotes__input--job-no"
+                      type="date"
+                      value={followUpInput}
+                      onChange={(e) => setFollowUpInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleSaveFollowUp(); }}
+                      title="Set a reminder to follow up on this quote"
+                    />
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={savingFollowUp || followUpInput === (detail.follow_up_at ? detail.follow_up_at.slice(0, 10) : "")}
+                      onClick={() => void handleSaveFollowUp()}
+                    >
+                      {savingFollowUp ? "…" : "Save"}
+                    </button>
+                    {followUpInput && (
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        disabled={savingFollowUp}
+                        onClick={() => { setFollowUpInput(""); void (async () => { await supabase?.rpc("eq_set_follow_up_date", { p_quote_id: detail.quote_id, p_follow_up_at: null, p_initials: initials.trim() || null }); await openDetail(detail.quote_id); void loadQuotes(statusFilter, search); })(); }}
+                        title="Clear follow-up date"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  {followUpErr && <span className="eq-quotes__err">{followUpErr}</span>}
                 </div>
                 <div className="eq-quotes__info-item eq-quotes__info-item--full">
                   <span className="eq-quotes__info-label">Workbench Job No.</span>
@@ -1377,16 +2765,65 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     <span className="eq-quotes__info-val">{detail.coupa_entity}</span>
                   </div>
                 )}
-                {detail.payment_terms && (
+                {!termsEditing ? (
                   <div className="eq-quotes__info-item">
                     <span className="eq-quotes__info-label">Payment Terms</span>
-                    <span className="eq-quotes__info-val">{detail.payment_terms}</span>
+                    <span className="eq-quotes__info-val">
+                      {detail.payment_terms ?? <span className="eq-quotes__muted">—</span>}
+                      {detail.validity_days != null && (
+                        <span className="eq-quotes__muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                          ({detail.validity_days}d validity)
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        style={{ marginLeft: 8, fontSize: 12, padding: "2px 8px" }}
+                        onClick={() => { setTermsEditing(true); setTermsErr(null); }}
+                      >
+                        Edit
+                      </button>
+                    </span>
                   </div>
-                )}
-                {detail.address && (
-                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
-                    <span className="eq-quotes__info-label">Address</span>
-                    <span className="eq-quotes__info-val">{detail.address}</span>
+                ) : (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full" style={{ gap: 6 }}>
+                    <span className="eq-quotes__info-label">Payment Terms / Validity</span>
+                    <div className="eq-quotes__job-no-row">
+                      <input
+                        className="eq-quotes__input"
+                        style={{ maxWidth: 280 }}
+                        value={termsInput}
+                        onChange={(e) => setTermsInput(e.target.value)}
+                        placeholder="e.g. Net 30 days"
+                      />
+                      <input
+                        className="eq-quotes__input eq-quotes__input--sm"
+                        style={{ maxWidth: 80 }}
+                        type="number"
+                        min={1}
+                        value={validityInput}
+                        onChange={(e) => setValidityInput(e.target.value)}
+                        placeholder="Days"
+                        title="Validity days"
+                      />
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--primary"
+                        disabled={savingTerms}
+                        onClick={() => void handleSaveTerms()}
+                      >
+                        {savingTerms ? "…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        disabled={savingTerms}
+                        onClick={() => { setTermsEditing(false); setTermsErr(null); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {termsErr && <span className="eq-quotes__err">{termsErr}</span>}
                   </div>
                 )}
                 {detail.loss_reason && (
@@ -1397,19 +2834,122 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     </span>
                   </div>
                 )}
+                {detail.client_accepted_at && (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label">Client Accepted</span>
+                    <span className="eq-quotes__info-val" style={{ color: "var(--eq-deep, #2986B4)", fontWeight: 600 }}>
+                      {detail.client_accepted_by ? `${detail.client_accepted_by} · ` : ""}{fmtDate(detail.client_accepted_at)}
+                    </span>
+                  </div>
+                )}
+                {detail.client_declined_at && (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label">Client Declined</span>
+                    <span className="eq-quotes__info-val" style={{ color: "var(--eq-err)" }}>
+                      {fmtDate(detail.client_declined_at)}
+                    </span>
+                  </div>
+                )}
+                <div className="eq-quotes__info-item">
+                  <span className="eq-quotes__info-label">Created</span>
+                  <span className="eq-quotes__info-val">{fmtDate(detail.created_at)}</span>
+                </div>
+                {(() => {
+                  const dupEntry = audit.find((a) => a.action === "duplicate" && a.changes?.source_quote_number);
+                  if (!dupEntry) return null;
+                  return (
+                    <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                      <span className="eq-quotes__info-label">Based on</span>
+                      <span className="eq-quotes__info-val eq-quotes__td--mono" style={{ fontSize: 13 }}>
+                        {String(dupEntry.changes!.source_quote_number)}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
-              {detail.scope_of_works && (
+              {!scopeEditing ? (
+                <>
+                  {detail.scope_of_works && (
+                    <div className="eq-quotes__scope">
+                      <span className="eq-quotes__info-label">Scope of Works</span>
+                      <p className="eq-quotes__scope-text">{detail.scope_of_works}</p>
+                    </div>
+                  )}
+                  {detail.clarifications && (
+                    <div className="eq-quotes__scope">
+                      <span className="eq-quotes__info-label">Clarifications</span>
+                      <p className="eq-quotes__scope-text">{detail.clarifications}</p>
+                    </div>
+                  )}
+                  {detail.quote_notes && (
+                    <div className="eq-quotes__scope">
+                      <span className="eq-quotes__info-label">Terms &amp; Notes</span>
+                      <p className="eq-quotes__scope-text">{detail.quote_notes}</p>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="eq-quotes__btn eq-quotes__btn--outline"
+                    style={{ marginTop: 8, fontSize: 12 }}
+                    onClick={() => {
+                      setScopeInput(detail.scope_of_works ?? "");
+                      setClarInput(detail.clarifications ?? "");
+                      setQuoteNotesInput(detail.quote_notes ?? "");
+                      setScopeEditing(true);
+                    }}
+                  >
+                    Edit scope
+                  </button>
+                </>
+              ) : (
                 <div className="eq-quotes__scope">
-                  <span className="eq-quotes__info-label">Scope of Works</span>
-                  <p className="eq-quotes__scope-text">{detail.scope_of_works}</p>
-                </div>
-              )}
-
-              {detail.clarifications && (
-                <div className="eq-quotes__scope">
-                  <span className="eq-quotes__info-label">Clarifications</span>
-                  <p className="eq-quotes__scope-text">{detail.clarifications}</p>
+                  <div style={{ marginBottom: 10 }}>
+                    <span className="eq-quotes__info-label">Scope of Works</span>
+                    <textarea
+                      className="eq-quotes__input"
+                      style={{ width: "100%", minHeight: 120, resize: "vertical", fontFamily: "inherit", fontSize: 13, marginTop: 4 }}
+                      value={scopeInput}
+                      onChange={(e) => setScopeInput(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <span className="eq-quotes__info-label">Clarifications</span>
+                    <textarea
+                      className="eq-quotes__input"
+                      style={{ width: "100%", minHeight: 60, resize: "vertical", fontFamily: "inherit", fontSize: 13, marginTop: 4 }}
+                      value={clarInput}
+                      onChange={(e) => setClarInput(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <span className="eq-quotes__info-label">Terms &amp; Notes</span>
+                    <textarea
+                      className="eq-quotes__input"
+                      style={{ width: "100%", minHeight: 60, resize: "vertical", fontFamily: "inherit", fontSize: 13, marginTop: 4 }}
+                      value={quoteNotesInput}
+                      onChange={(e) => setQuoteNotesInput(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={savingScope}
+                      onClick={() => void handleSaveScope()}
+                    >
+                      {savingScope ? "…" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--outline"
+                      disabled={savingScope}
+                      onClick={() => { setScopeEditing(false); setScopeErr(null); }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {scopeErr && <span className="eq-quotes__err">{scopeErr}</span>}
                 </div>
               )}
 
@@ -1448,7 +2988,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                         <th>Description</th>
                         <th className="eq-quotes__th--right" style={{ width: 60 }}>Qty</th>
                         <th style={{ width: 48 }}>Unit</th>
-                        <th className="eq-quotes__th--right" style={{ width: 100 }}>Rate</th>
+                        <th className="eq-quotes__th--right" style={{ width: 90 }}>Cost</th>
+                        <th className="eq-quotes__th--right" style={{ width: 90 }}>Rate</th>
+                        <th className="eq-quotes__th--right" style={{ width: 64 }}>Mkup%</th>
                         <th className="eq-quotes__th--right" style={{ width: 110 }}>Total</th>
                       </tr>
                     </thead>
@@ -1462,22 +3004,33 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                         return (
                           <React.Fragment key={cat || "_other"}>
                             <tr className="eq-quotes__row--group-header">
-                              <td colSpan={6} className="eq-quotes__group-label">
+                              <td colSpan={8} className="eq-quotes__group-label">
                                 {CAT_LABELS[cat] ?? cat}
                               </td>
                             </tr>
-                            {items.map((li) => (
+                            {items.map((li) => {
+                              const mkup = li.cost_rate_cents > 0 && li.unit_rate_cents > 0
+                                ? computeMarkupPct(li.cost_rate_cents, li.unit_rate_cents)
+                                : null;
+                              return (
                               <tr key={li.line_number}>
                                 <td className="eq-quotes__td--mono">{li.line_number}</td>
                                 <td>{li.description}</td>
                                 <td className="eq-quotes__td--right">{qty(li.quantity_thousandths)}</td>
                                 <td>{li.unit ?? <span className="eq-quotes__muted">—</span>}</td>
+                                <td className="eq-quotes__td--right eq-quotes__muted">
+                                  {li.cost_rate_cents > 0 ? aud(li.cost_rate_cents) : <span>—</span>}
+                                </td>
                                 <td className="eq-quotes__td--right">{aud(li.unit_rate_cents)}</td>
+                                <td className="eq-quotes__td--right" style={{ fontSize: 12, color: mkup !== null && mkup < 0 ? "var(--eq-err, #c0392b)" : undefined }}>
+                                  {mkup !== null ? `${mkup.toFixed(1)}%` : <span className="eq-quotes__muted">—</span>}
+                                </td>
                                 <td className="eq-quotes__td--right eq-quotes__td--bold">{aud(li.line_total_cents)}</td>
                               </tr>
-                            ))}
+                              );
+                            })}
                             <tr className="eq-quotes__row--cat-subtotal">
-                              <td colSpan={5} className="eq-quotes__td--right">
+                              <td colSpan={7} className="eq-quotes__td--right">
                                 <span className="eq-quotes__muted" style={{ fontSize: 12 }}>
                                   {CAT_LABELS[cat] ?? cat} subtotal
                                 </span>
@@ -1497,13 +3050,28 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             {nexts.length > 0 && (
               <div className="eq-quotes__detail-card">
                 <h3 className="eq-quotes__section-title">Advance Status</h3>
+                {(() => {
+                  const hints: Record<string, string> = {
+                    "draft": "Ready to send? Submit to client.",
+                    "submitted": "Waiting for client response — follow up if no reply.",
+                    "client-reviewing": "Client has the quote — awaiting their decision.",
+                    "on-hold": "On hold — check back in with the client.",
+                    "verbal-win": "Won verbally — enter the Workbench Job No. to advance.",
+                    "won-awaiting-job-no": "Enter the Workbench Job No. to mark the job as created.",
+                    "won-job-created": "Record the PO number when received from client.",
+                  };
+                  const hint = hints[detail.status];
+                  return hint ? (
+                    <p style={{ fontSize: 12, color: "var(--eq-muted, #888)", marginBottom: 8 }}>{hint}</p>
+                  ) : null;
+                })()}
                 <div className="eq-quotes__initials-row">
                   <label className="eq-quotes__label">
                     Your initials
                     <input
                       className="eq-quotes__input eq-quotes__input--sm"
                       value={initials}
-                      onChange={(e) => setInitials(e.target.value.toUpperCase())}
+                      onChange={(e) => updateInitials(e.target.value)}
                       placeholder="RM"
                       maxLength={4}
                     />
@@ -1523,6 +3091,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   </select>
                   <input
                     className="eq-quotes__input eq-quotes__input--note"
+                    list={advanceStatus === "lost" ? "eq-loss-reasons" : undefined}
                     placeholder={advanceStatus === "lost" ? "Loss reason…" : "Optional note…"}
                     value={statusNote}
                     onChange={(e) => setStatusNote(e.target.value)}
@@ -1579,7 +3148,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                           <span className="eq-quotes__initials-badge">{n.initials}</span>
                         )}
                         <span className="eq-quotes__note-type">
-                          {n.note_type === "status-change" ? "status" : n.note_type}
+                          {n.note_type === "status-change" ? "status"
+                            : n.note_type === "manual" ? "note"
+                            : n.note_type === "system" ? "auto"
+                            : n.note_type}
                         </span>
                         <span className="eq-quotes__note-date">{fmtDate(n.created_at)}</span>
                       </div>
@@ -1610,6 +3182,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 </div>
               </div>
             )}
+            <div style={{ padding: "8px 0", textAlign: "center", fontSize: 11, color: "var(--eq-muted, #aaa)" }}>
+              ← → to navigate · Esc to close · N to create new quote
+            </div>
           </div>
         )}
       </div>
@@ -1621,6 +3196,22 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const createSubtotal = createLineItems.reduce((s, li) => s + calcLineTotal(li), 0);
   const createGst = Math.round(createSubtotal / 10);
   const createTotal = createSubtotal + createGst;
+  const createCost = createLineItems.reduce(
+    (s, li) => s + lineTotalCentsFromInput(parseFloat(li.qty) || 1, parseFloat(li.cost) || 0),
+    0,
+  );
+  const createMarginPct = createCost > 0 && createSubtotal > 0
+    ? Math.round(((createSubtotal - createCost) / createSubtotal) * 100)
+    : null;
+  const catSubtotals = (() => {
+    const map = new Map<string, number>();
+    for (const li of createLineItems) {
+      const cat = li.category || "other";
+      const t = calcLineTotal(li);
+      if (t > 0) map.set(cat, (map.get(cat) ?? 0) + t);
+    }
+    return map.size >= 2 ? map : null;
+  })();
 
   // One editable line-item row, rendered inside each section group. Uses the flat
   // index `i` so updateLineItem/removeLineItem keep working unchanged.
@@ -1724,6 +3315,20 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                       setCreateCustomerId(id);
                       setCreateSiteId("");
                       void loadSites(id);
+                      if (id && supabase) {
+                        void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: id }).then(({ data }) => {
+                          const rows = (data as ContactRow[]) ?? [];
+                          setCreateContacts(rows);
+                          const def = rows.find((c) => c.is_default_quote_contact) ?? rows[0];
+                          if (def && !createAttnFirstName && !createAttnName) {
+                            setCreateAttnFirstName(def.first_name ?? "");
+                            setCreateAttnName(def.last_name ?? "");
+                            setCreateAttnPhone(def.mobile_phone ?? def.work_phone ?? "");
+                          }
+                        });
+                      } else {
+                        setCreateContacts([]);
+                      }
                     }}
                   >
                     <option value="">Select a customer…</option>
@@ -1773,7 +3378,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 <input
                   className="eq-quotes__input"
                   value={createEstimatorName}
-                  onChange={(e) => setCreateEstimatorName(e.target.value)}
+                  onChange={(e) => {
+                    setCreateEstimatorName(e.target.value);
+                    try { localStorage.setItem("eq-quotes-estimator-name", e.target.value); } catch { /* ignore */ }
+                  }}
                   placeholder="e.g. Royce Milmlow"
                 />
               </div>
@@ -1782,7 +3390,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 <input
                   className="eq-quotes__input eq-quotes__input--sm"
                   value={createEstimatorInitials}
-                  onChange={(e) => setCreateEstimatorInitials(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    const upper = e.target.value.toUpperCase();
+                    setCreateEstimatorInitials(upper);
+                    updateInitials(upper);
+                  }}
                   placeholder="RM"
                   maxLength={4}
                 />
@@ -1790,6 +3402,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
                   <span className="eq-quotes__info-label" style={{ marginBottom: 0 }}>Scope of Works</span>
+                  <button
+                    type="button"
+                    className="eq-quotes__btn eq-quotes__btn--outline"
+                    style={{ fontSize: 11, padding: "2px 8px", height: 24 }}
+                    disabled={draftingScope}
+                    onClick={() => void handleDraftScope()}
+                    title="Draft a scope from the customer, project, your notes and the line items. You can edit it after."
+                  >
+                    {draftingScope ? "Drafting…" : "✨ Draft with AI"}
+                  </button>
                   {templates.filter((t) => t.template_type === "scope").length > 0 && (
                     <select
                       className="eq-quotes__select"
@@ -1811,10 +3433,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   className="eq-quotes__textarea"
                   style={{ maxWidth: 560, minHeight: 72 }}
                   value={createScope}
-                  onChange={(e) => setCreateScope(e.target.value)}
+                  onChange={(e) => { setCreateScope(e.target.value); if (scopeAiErr) setScopeAiErr(null); }}
                   placeholder="Describe the scope of works…"
                   rows={3}
                 />
+                {scopeAiErr && <span className="eq-quotes__inline-err">{scopeAiErr}</span>}
               </div>
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
@@ -1872,6 +3495,31 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               }}>
                 Contact &amp; Address
               </span>
+              {createContacts.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <span className="eq-quotes__info-label">Fill from contact</span>
+                  <select
+                    className="eq-quotes__select"
+                    style={{ maxWidth: 300 }}
+                    defaultValue=""
+                    onChange={(e) => {
+                      const contact = createContacts.find((c) => c.contact_id === e.target.value);
+                      if (!contact) return;
+                      setCreateAttnFirstName(contact.first_name ?? "");
+                      setCreateAttnName(contact.last_name ?? "");
+                      setCreateAttnPhone(contact.mobile_phone ?? contact.work_phone ?? "");
+                    }}
+                  >
+                    <option value="">Pick a contact…</option>
+                    {createContacts.map((c) => (
+                      <option key={c.contact_id} value={c.contact_id}>
+                        {[c.first_name, c.last_name].filter(Boolean).join(" ") || c.email || c.contact_id}
+                        {c.is_default_quote_contact ? " ★" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="eq-quotes__info-grid">
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">First Name</span>
@@ -1905,7 +3553,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <input
                     className="eq-quotes__input"
                     value={createPaymentTerms}
-                    onChange={(e) => setCreatePaymentTerms(e.target.value)}
+                    onChange={(e) => {
+                      setCreatePaymentTerms(e.target.value);
+                      try { localStorage.setItem("eq-quotes-payment-terms", e.target.value); } catch { /* ignore */ }
+                    }}
                     placeholder="e.g. 30 days net"
                   />
                 </div>
@@ -2209,6 +3860,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
               <div className="eq-quotes__financials" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+                {catSubtotals && (
+                  <>
+                    {[...catSubtotals.entries()].map(([cat, total]) => (
+                      <div key={cat} className="eq-quotes__financial-row" style={{ fontSize: 12 }}>
+                        <span style={{ color: "var(--eq-muted)", textTransform: "capitalize" }}>{cat}</span>
+                        <span style={{ color: "var(--eq-muted)" }}>{aud(total)}</span>
+                      </div>
+                    ))}
+                    <div style={{ height: 1, background: "var(--eq-border)", margin: "4px 0" }} />
+                  </>
+                )}
                 <div className="eq-quotes__financial-row">
                   <span>Subtotal</span>
                   <span>{aud(createSubtotal)}</span>
@@ -2221,6 +3883,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <span>Total</span>
                   <span>{aud(createTotal)}</span>
                 </div>
+                {createMarginPct !== null && (
+                  <div className="eq-quotes__financial-row" style={{ borderTop: "1px solid var(--eq-border)", marginTop: 4, paddingTop: 4 }}>
+                    <span style={{ color: "var(--eq-muted)", fontSize: 12 }}>Est. margin</span>
+                    <span style={{
+                      fontSize: 12, fontWeight: 600,
+                      color: createMarginPct >= 25 ? "var(--eq-green, #27ae60)" : createMarginPct >= 10 ? "var(--eq-amber, #d4820a)" : "var(--eq-err, #c0392b)",
+                    }}>
+                      {createMarginPct}%
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -2268,14 +3941,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             + New Quote
           </button>
           <div className="eq-quotes__view-tabs">
-            {(["pipeline", "accordion", "import", "reports", "setup", "trash"] as ModuleView[]).map((v) => (
+            {(["pipeline", "accordion", "import", "customers", "reports", "setup", "trash"] as ModuleView[]).map((v) => (
               <button
                 key={v}
                 type="button"
                 className={`eq-quotes__view-tab${view === v ? " eq-quotes__view-tab--active" : ""}`}
                 onClick={() => setView(v)}
               >
-                {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : v === "import" ? "Import Coupa" : v === "reports" ? "Reports" : v === "setup" ? "Setup" : "Trash"}
+                {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : v === "import" ? "Import Coupa" : v === "customers" ? "Clients" : v === "reports" ? "Reports" : v === "setup" ? "Setup" : "Trash"}
               </button>
             ))}
           </div>
@@ -2284,6 +3957,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
       {view === "setup" && <QuotesSetup supabase={supabase} />}
       {view === "reports" && <QuotesReports supabase={supabase} />}
+      {view === "customers" && (
+        <QuotesCustomers
+          supabase={supabase}
+          onOpenQuote={(quoteId) => {
+            setView("pipeline");
+            void openDetail(quoteId);
+          }}
+        />
+      )}
 
       {/* Trash view */}
       {view === "trash" && (
@@ -2339,6 +4021,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             {STATUS_FILTERS.map((f) => {
               const count = f.key === "active-jobs"
                 ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status)).length
+                : f.key === "closed" ? quotes.filter((q) => CLOSED_STATUSES.has(q.status)).length
                 : f.key === "all" ? quotes.length
                 : quotes.filter((q) => q.status === f.key).length;
               return (
@@ -2349,7 +4032,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   onClick={() => setStatusFilter(f.key)}
                 >
                   {f.label}
-                  {statusFilter === f.key && (
+                  {count > 0 && (
                     <span className="eq-quotes__status-tab-count">{pipelineLoading ? "…" : count}</span>
                   )}
                 </button>
@@ -2357,25 +4040,218 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             })}
           </div>
 
-          {/* Search + totals */}
+          {/* Action items summary — key attention items across all quotes */}
+          {!pipelineLoading && quotes.length > 0 && (() => {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const in14Days = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
+            const overdueFup = quotes.filter((q) => q.follow_up_at && q.follow_up_at <= todayStr && !CLOSED_STATUSES.has(q.status)).length;
+            const expiringSoon = quotes.filter((q) => q.expires_at && q.expires_at.slice(0, 10) <= in14Days && !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status)).length;
+            const needsJobNo = quotes.filter((q) => !q.workbench_job_no && ACTIVE_JOB_STATUSES.has(q.status)).length;
+            const staleThreshold = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+            const staleCount = quotes.filter((q) => !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status) && !q.follow_up_at && q.created_at.slice(0, 10) < staleThreshold).length;
+            if (overdueFup === 0 && expiringSoon === 0 && needsJobNo === 0 && staleCount === 0) return null;
+            return (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "6px 0 2px" }}>
+                {overdueFup > 0 && (
+                  <button type="button" onClick={() => { setOverdueFupOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
+                    style={{ background: "var(--eq-err-bg, #fdf1f1)", border: "1px solid var(--eq-err, #c0392b)33", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-err, #c0392b)", cursor: "pointer" }}>
+                    {overdueFup} follow-up{overdueFup !== 1 ? "s" : ""} overdue
+                  </button>
+                )}
+                {expiringSoon > 0 && (
+                  <button type="button" onClick={() => { setExpiringOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
+                    style={{ background: "var(--eq-amber-bg, #fef9ee)", border: "1px solid var(--eq-amber, #d4820a)33", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-amber, #d4820a)", cursor: "pointer" }}>
+                    {expiringSoon} expiring within 14 days
+                  </button>
+                )}
+                {needsJobNo > 0 && (
+                  <button type="button" onClick={() => { setNeedsJobNoOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
+                    style={{ background: "var(--eq-ice, #EAF5FB)", border: "1px solid var(--eq-sky, #3DA8D8)33", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-deep, #2986B4)", cursor: "pointer" }}>
+                    {needsJobNo} need{needsJobNo === 1 ? "s" : ""} job no.
+                  </button>
+                )}
+                {staleCount > 0 && (
+                  <button type="button" onClick={() => { setStaleOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
+                    style={{ background: "var(--eq-surface-2, #f5f5f5)", border: "1px solid var(--eq-border, #e0e0e0)", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-muted, #6b7280)", cursor: "pointer" }}>
+                    {staleCount} stale — no follow-up set
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Search + filters + export */}
           <div className="eq-quotes__pipeline-controls">
             <input
+              ref={searchInputRef}
               className="eq-quotes__search"
               type="search"
-              placeholder="Search by quote #, project, or customer…"
+              placeholder="Search by quote #, project, customer, site, job no. or PO…"
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
             />
+            {(() => {
+              const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+              const today = new Date();
+              const presets: Array<{ label: string; from: string; to: string }> = [
+                { label: "This month", from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: isoDate(today) },
+                { label: "3 months", from: isoDate(new Date(today.getFullYear(), today.getMonth() - 3, 1)), to: isoDate(today) },
+                { label: "This year", from: isoDate(new Date(today.getFullYear(), 0, 1)), to: isoDate(today) },
+              ];
+              return presets.map((p) => {
+                const active = dateFrom === p.from && dateTo === p.to;
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    className={`eq-quotes__btn ${active ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+                    style={{ fontSize: 12 }}
+                    onClick={() => { if (active) { setDateFrom(""); setDateTo(""); } else { setDateFrom(p.from); setDateTo(p.to); } }}
+                  >
+                    {p.label}
+                  </button>
+                );
+              });
+            })()}
+            <input
+              className="eq-quotes__input eq-quotes__input--sm"
+              type="date"
+              title="Created from"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+            <span style={{ fontSize: 12, color: "var(--eq-muted, #888)" }}>–</span>
+            <input
+              className="eq-quotes__input eq-quotes__input--sm"
+              type="date"
+              title="Created to"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+            {estimatorOptions.length > 0 && (
+              <select
+                className="eq-quotes__select"
+                style={{ fontSize: 13, padding: "4px 6px" }}
+                value={estFilter}
+                onChange={(e) => setEstFilter(e.target.value)}
+              >
+                <option value="">All estimators</option>
+                {estimatorOptions.map((i) => <option key={i} value={i}>{i}</option>)}
+              </select>
+            )}
+            {customerOptions.length > 1 && (
+              <select
+                className="eq-quotes__select"
+                style={{ fontSize: 13, padding: "4px 6px" }}
+                value={customerFilter}
+                onChange={(e) => setCustomerFilter(e.target.value)}
+              >
+                <option value="">All clients</option>
+                {customerOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            )}
+            {siteOptions.length > 1 && (
+              <select
+                className="eq-quotes__select"
+                style={{ fontSize: 13, padding: "4px 6px" }}
+                value={siteFilter}
+                onChange={(e) => setSiteFilter(e.target.value)}
+              >
+                <option value="">All sites</option>
+                {siteOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            )}
+            <button
+              type="button"
+              className={`eq-quotes__btn ${expiringOnly ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+              onClick={() => setExpiringOnly((v) => !v)}
+              title="Show quotes expiring within 14 days"
+            >
+              Expiring soon
+            </button>
+            <button
+              type="button"
+              className={`eq-quotes__btn ${unsentOnly ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+              onClick={() => setUnsentOnly((v) => !v)}
+              title="Show submitted quotes with no sent date stamped"
+            >
+              Unsent
+            </button>
+            <button
+              type="button"
+              className={`eq-quotes__btn ${needsJobNoOnly ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+              onClick={() => setNeedsJobNoOnly((v) => !v)}
+              title="Show active/won quotes that don't yet have a Workbench job number"
+            >
+              Needs Job No.
+            </button>
+            <button
+              type="button"
+              className={`eq-quotes__btn ${overdueFupOnly ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+              onClick={() => setOverdueFupOnly((v) => !v)}
+              title="Show quotes whose follow-up date has passed"
+            >
+              Follow-up due
+            </button>
+            {(search || dateFrom || dateTo || estFilter || customerFilter || siteFilter || expiringOnly || unsentOnly || needsJobNoOnly || overdueFupOnly || staleOnly) && (
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => {
+                  if (search) handleSearch("");
+                  setDateFrom(""); setDateTo(""); setEstFilter(""); setCustomerFilter(""); setSiteFilter("");
+                  setExpiringOnly(false); setUnsentOnly(false); setNeedsJobNoOnly(false); setOverdueFupOnly(false); setStaleOnly(false);
+                }}
+              >
+                Clear filters
+              </button>
+            )}
+            {!pipelineLoading && displayedQuotes.length > 0 && (
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                title="Export current view to CSV"
+                onClick={() => {
+                  const header = ["Quote #", "Customer", "Site", "Project", "Estimator", "Status", "Job No.", "PO Number", "Total inc GST", "Margin %", "Sent", "Expires", "Follow-up", "Created"];
+                  const today = new Date().toISOString().slice(0, 10);
+                  downloadCsv([header, ...displayedQuotes.map((q) => [
+                    q.quote_number, q.customer_name ?? "", q.site_code ?? "", q.project_name ?? "",
+                    q.estimator_initials ?? "", STATUS_LABELS[q.status] ?? q.status, q.workbench_job_no ?? "",
+                    q.po_number ?? "",
+                    (q.total_cents / 100).toFixed(2),
+                    q.margin_pct !== null ? Number(q.margin_pct).toFixed(1) : "",
+                    fmtDate(q.sent_at),
+                    fmtDate(q.expires_at),
+                    q.follow_up_at ? fmtDate(q.follow_up_at) : "",
+                    fmtDate(q.created_at),
+                  ])], `eq-pipeline-${today}.csv`);
+                }}
+              >
+                Export CSV
+              </button>
+            )}
             {!pipelineLoading && quotes.length > 0 && (
               <div className="eq-quotes__totals">
                 <span className="eq-quotes__total-item">
-                  <span className="eq-quotes__total-label">Showing</span>
+                  <span className="eq-quotes__total-label">{displayedQuotes.length} quote{displayedQuotes.length !== 1 ? "s" : ""}</span>
                   <span className="eq-quotes__total-val">{aud(visibleTotal)}</span>
                 </span>
+                {atRiskTotal > 0 && atRiskTotal !== visibleTotal && (
+                  <span className="eq-quotes__total-item" title="Sum of submitted, reviewing, on-hold and verbal-win quotes">
+                    <span className="eq-quotes__total-label">In play</span>
+                    <span className="eq-quotes__total-val" style={{ color: "var(--eq-amber, #d4820a)" }}>{aud(atRiskTotal)}</span>
+                  </span>
+                )}
                 {wonTotal > 0 && wonTotal !== visibleTotal && (
                   <span className="eq-quotes__total-item">
                     <span className="eq-quotes__total-label">Won</span>
                     <span className="eq-quotes__total-val eq-quotes__total-val--green">{aud(wonTotal)}</span>
+                  </span>
+                )}
+                {winRateDisplayed !== null && (
+                  <span className="eq-quotes__total-item" title="Win rate across decided quotes in this view (min. 3 decided)">
+                    <span className="eq-quotes__total-label">Win rate</span>
+                    <span className="eq-quotes__total-val" style={{ color: winRateDisplayed >= 50 ? "var(--eq-green, #27ae60)" : "var(--eq-amber, #d4820a)" }}>{winRateDisplayed}%</span>
                   </span>
                 )}
               </div>
@@ -2402,7 +4278,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 style={{ width: 70 }}
                 placeholder="Initials"
                 value={initials}
-                onChange={(e) => setInitials(e.target.value.toUpperCase())}
+                onChange={(e) => updateInitials(e.target.value)}
                 maxLength={4}
               />
               <button
@@ -2412,6 +4288,24 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 onClick={() => void handleBulkStatus()}
               >
                 {bulkBusy ? "Applying…" : "Apply"}
+              </button>
+              <span style={{ fontSize: 12, color: "var(--eq-muted, #6b7280)", margin: "0 4px" }}>|</span>
+              <input
+                type="date"
+                className="eq-quotes__input eq-quotes__input--sm"
+                style={{ width: 130, fontSize: 13, padding: "4px 6px" }}
+                value={bulkFupDate}
+                onChange={(e) => setBulkFupDate(e.target.value)}
+                title="Set follow-up date for all selected"
+              />
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                disabled={!bulkFupDate || bulkFupBusy}
+                onClick={() => void handleBulkFollowUp()}
+                title="Apply follow-up date to all selected quotes"
+              >
+                {bulkFupBusy ? "Saving…" : "Set follow-up"}
               </button>
               <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => setSelectedIds(new Set())}>
                 Clear
@@ -2446,12 +4340,34 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           {accordionError && <div className="eq-quotes__error-banner">{accordionError}</div>}
           {!accordionLoading && !accordionError && (
             <>
+              {/* Active-only toggle + search */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className={`eq-quotes__btn${accordionActiveOnly ? " eq-quotes__btn--primary" : " eq-quotes__btn--outline"}`}
+                  onClick={() => setAccordionActiveOnly((v) => !v)}
+                >
+                  {accordionActiveOnly ? "Active + Sent" : "All statuses"}
+                </button>
+                <input
+                  className="eq-quotes__search"
+                  style={{ maxWidth: 260 }}
+                  type="search"
+                  placeholder="Search client or group…"
+                  value={accordionSearch}
+                  onChange={(e) => setAccordionSearch(e.target.value)}
+                />
+              </div>
               {/* Named client groups */}
               {Object.entries(groupMap).map(([groupId, group]) => {
                 const memberNames = new Set(group.members.map((m) => m.customer_name));
-                const groupQuotes = accordionQuotes.filter((q) =>
+                const groupQuotes = effectiveAccordionQuotes.filter((q) =>
                   q.customer_name && memberNames.has(q.customer_name),
                 );
+                if (accordionActiveOnly && groupQuotes.length === 0) return null;
+                const searchLower = accordionSearch.toLowerCase().trim();
+                if (searchLower && !group.name.toLowerCase().includes(searchLower) &&
+                  ![...memberNames].some((n) => n.toLowerCase().includes(searchLower))) return null;
                 const groupTotal = groupQuotes.reduce((s, q) => s + q.total_cents, 0);
                 const isOpen = expandedGroups.has(group.slug);
                 return (
@@ -2493,6 +4409,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                                         <th>Project</th>
                                         <th className="eq-quotes__th--right">Total</th>
                                         <th>Status</th>
+                                        <th>Job No.</th>
                                         <th>PO</th>
                                       </tr>
                                     </thead>
@@ -2510,6 +4427,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                                             <span className={statusClass(q.status)}>
                                               {STATUS_LABELS[q.status] ?? q.status}
                                             </span>
+                                          </td>
+                                          <td className="eq-quotes__td--mono">
+                                            {q.workbench_job_no ?? <span className="eq-quotes__muted">—</span>}
                                           </td>
                                           <td>
                                             {q.po_number ?? <span className="eq-quotes__muted">—</span>}
@@ -2534,8 +4454,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 const groupedNames = new Set(
                   clientGroups.map((g) => g.customer_name),
                 );
+                const searchLower2 = accordionSearch.toLowerCase().trim();
                 const ungrouped = Object.entries(quotesByCustomer).filter(
-                  ([name]) => !groupedNames.has(name),
+                  ([name]) => !groupedNames.has(name) &&
+                    (!searchLower2 || name.toLowerCase().includes(searchLower2)),
                 );
                 if (ungrouped.length === 0) return null;
                 return (
@@ -2568,6 +4490,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                                     <th>Project</th>
                                     <th className="eq-quotes__th--right">Total</th>
                                     <th>Status</th>
+                                    <th>Job No.</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -2584,6 +4507,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                                         <span className={statusClass(q.status)}>
                                           {STATUS_LABELS[q.status] ?? q.status}
                                         </span>
+                                      </td>
+                                      <td className="eq-quotes__td--mono">
+                                        {q.workbench_job_no ?? <span className="eq-quotes__muted">—</span>}
                                       </td>
                                     </tr>
                                   ))}

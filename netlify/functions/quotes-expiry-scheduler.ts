@@ -1,56 +1,69 @@
 // netlify/functions/quotes-expiry-scheduler.ts
 //
 // Scheduled Function — fires daily at 21:00 UTC (07:00 AEST).
-// Calls the eq-quotes Flask app's expired-quote detection endpoint,
-// which scans all sent quotes past their validity window and emits
-// quote.expired canonical events.
+// Calls eq_mark_expired_quotes on each configured tenant's Supabase DB,
+// replacing the deprecated Flask /api/cron/check-expired-quotes endpoint.
 //
 // Env vars required (eq-shell Netlify):
-//   QUOTES_APP_URL    — base URL for the quotes app (https://quotes.eq.solutions)
-//   QUOTES_CRON_SECRET — Bearer token matching $CRON_SECRET on the Fly.io app
+//   SCHEDULER_TENANT_SLUGS — comma-separated list of active tenant slugs
+//                            (defaults to "sks" if not set)
 //
 // Schedule: "0 21 * * *" = 21:00 UTC daily
 
 import type { Config } from '@netlify/functions';
+import {
+  getTenantRpcClient,
+  TenantNotFoundError,
+  TenantNotActiveError,
+} from './_shared/tenant-routing.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
 
 export const config: Config = {
   schedule: '0 21 * * *',
 };
 
+interface ExpiryResult {
+  slug: string;
+  expired: number | null;
+  error?: string;
+}
+
 export default withSentry(async (): Promise<Response> => {
-  const appUrl = process.env.QUOTES_APP_URL?.replace(/\/$/, '');
-  const secret = process.env.QUOTES_CRON_SECRET;
+  const slugsRaw = process.env.SCHEDULER_TENANT_SLUGS ?? 'sks';
+  const slugs = slugsRaw.split(',').map((s) => s.trim()).filter(Boolean);
 
-  if (!appUrl || !secret) {
-    console.error('[quotes-expiry-scheduler] QUOTES_APP_URL or QUOTES_CRON_SECRET not configured');
-    return new Response(JSON.stringify({ ok: false, error: 'not_configured' }), { status: 500 });
-  }
+  const results: ExpiryResult[] = await Promise.all(
+    slugs.map(async (slug): Promise<ExpiryResult> => {
+      try {
+        const supabase = await getTenantRpcClient(slug);
+        const { data, error } = await supabase.rpc('eq_mark_expired_quotes');
+        if (error) {
+          console.error(`[quotes-expiry-scheduler] ${slug} rpc error:`, error.message);
+          return { slug, expired: null, error: error.message };
+        }
+        const row = Array.isArray(data) ? (data as { expired_count: number }[])[0] : null;
+        const expired = row?.expired_count ?? 0;
+        console.log(`[quotes-expiry-scheduler] ${slug}: ${expired} quote(s) expired`);
+        return { slug, expired };
+      } catch (e) {
+        if (e instanceof TenantNotFoundError || e instanceof TenantNotActiveError) {
+          console.warn(`[quotes-expiry-scheduler] ${slug} not found or inactive — skipping`);
+          return { slug, expired: null, error: 'tenant_not_active' };
+        }
+        captureServerError(e, { context: 'quotes-expiry-scheduler', slug });
+        console.error(`[quotes-expiry-scheduler] ${slug} unexpected error:`, e);
+        return { slug, expired: null, error: String(e) };
+      }
+    })
+  );
 
-  const url = `${appUrl}/api/cron/check-expired-quotes`;
-  console.log(`[quotes-expiry-scheduler] POST ${url}`);
+  const totalExpired = results.reduce((n, r) => n + (r.expired ?? 0), 0);
+  const anyError = results.some((r) => r.error && r.error !== 'tenant_not_active');
 
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${secret}`,
-        'Content-Type': 'application/json',
-      },
-      signal: AbortSignal.timeout(30_000),
-    });
+  console.log(`[quotes-expiry-scheduler] done — ${totalExpired} total expired across ${slugs.length} tenant(s)`);
 
-    const body = await res.json() as Record<string, unknown>;
-    console.log(`[quotes-expiry-scheduler] status=${res.status}`, body);
-
-    if (!res.ok) {
-      throw new Error(`quotes app returned ${res.status}: ${JSON.stringify(body)}`);
-    }
-
-    return new Response(JSON.stringify({ ok: true, ...(body as object) }), { status: 200 });
-  } catch (e) {
-    captureServerError(e, { context: 'quotes-expiry-scheduler' });
-    console.error('[quotes-expiry-scheduler] failed:', e);
-    return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });
-  }
+  return new Response(
+    JSON.stringify({ ok: !anyError, results, total_expired: totalExpired }),
+    { status: anyError ? 207 : 200, headers: { 'Content-Type': 'application/json' } }
+  );
 });

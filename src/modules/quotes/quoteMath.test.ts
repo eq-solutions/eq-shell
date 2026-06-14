@@ -4,6 +4,7 @@ import {
   computeSellRate,
   computeMarkupPct,
   lineTotalCents,
+  lineTotalCentsFromInput,
   computeMarginPct,
 } from "./quoteMath";
 
@@ -38,6 +39,35 @@ test("lineTotalCents matches the DB integer math (qty_thousandths × rate / 1000
   assert.equal(lineTotalCents(2000, 11500), 23000);
   assert.equal(lineTotalCents(1000, 50000), 50000);
   assert.equal(lineTotalCents(1500, 10000), 15000);
+});
+
+test("lineTotalCentsFromInput equals the stored value (round to storage units, then truncate)", () => {
+  // Half-cent boundary: 1.5 × $10.99. DB does trunc(1500 × 1099 / 1000) = 1648.
+  // The old preview did Math.round(1.5 × 10.99 × 100) = 1649 — a 1-cent overstatement.
+  assert.equal(lineTotalCentsFromInput(1.5, 10.99), 1648);
+  assert.notEqual(lineTotalCentsFromInput(1.5, 10.99), Math.round(1.5 * 10.99 * 100));
+  // Whole-dollar and exact cases are unaffected by the fix.
+  assert.equal(lineTotalCentsFromInput(2, 115), 23000);
+  assert.equal(lineTotalCentsFromInput(1, 500), 50000);
+  assert.equal(lineTotalCentsFromInput(3, 33.33), 9999);
+});
+
+test("lineTotalCentsFromInput mirrors the persistence path exactly", () => {
+  // Provable parity: the helper must equal what the DB computes from the same
+  // Math.round(...) storage conversion the client sends (eq_replace_line_items).
+  const cases: [number, number][] = [
+    [1.5, 10.99], [0.333, 10], [7, 12.5], [2.25, 99.99], [10, 0], [0, 50],
+  ];
+  for (const [q, r] of cases) {
+    const qThou = Math.round(Math.max(0, q) * 1000);
+    const rCents = Math.round(Math.max(0, r) * 100);
+    assert.equal(lineTotalCentsFromInput(q, r), Math.trunc((qThou * rCents) / 1000));
+  }
+});
+
+test("lineTotalCentsFromInput clamps negatives to zero", () => {
+  assert.equal(lineTotalCentsFromInput(-5, 100), 0);
+  assert.equal(lineTotalCentsFromInput(2.5, -10), 0);
 });
 
 test("computeMarginPct matches the DB rollup (2dp; null when nothing to sell)", () => {

@@ -258,7 +258,7 @@ export async function getTenantDataClient(
  * to avoid the supabase-js v2.106 bug where .schema('X').rpc(fn, args) on a
  * 'Y'-default client sends args as an empty body.
  */
-async function getTenantRpcClient(
+export async function getTenantRpcClient(
   slug: string,
   requireActive: boolean = true,
 ): Promise<SupabaseClient<any, any, any>> {
