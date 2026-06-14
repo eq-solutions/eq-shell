@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
-import { computeSellRate, computeMarkupPct } from "./quoteMath";
+import { computeSellRate, computeMarkupPct, lineTotalCentsFromInput } from "./quoteMath";
 import { QuotesSetup } from "./QuotesSetup";
 import { QuotesReports } from "./QuotesReports";
 import { QuotesCustomers } from "./QuotesCustomers";
@@ -402,9 +402,9 @@ const NEXT_STATUSES: Record<string, string[]> = {
 // ---------------------------------------------------------------------------
 
 function calcLineTotal(li: CreateLineItem): number {
-  const q = parseFloat(li.qty) || 0;
-  const r = parseFloat(li.rate) || 0;
-  return Math.round(q * r * 100);
+  // Mirror the persistence defaults (qty blank/0 → 1, rate blank → 0) and the DB's
+  // truncating cents math, so the preview total equals the value the server stores.
+  return lineTotalCentsFromInput(parseFloat(li.qty) || 1, parseFloat(li.rate) || 0);
 }
 
 function aud(cents: number): string {
@@ -3164,11 +3164,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const createSubtotal = createLineItems.reduce((s, li) => s + calcLineTotal(li), 0);
   const createGst = Math.round(createSubtotal / 10);
   const createTotal = createSubtotal + createGst;
-  const createCost = createLineItems.reduce((s, li) => {
-    const q = parseFloat(li.qty) || 0;
-    const c = parseFloat(li.cost) || 0;
-    return s + Math.round(q * c * 100);
-  }, 0);
+  const createCost = createLineItems.reduce(
+    (s, li) => s + lineTotalCentsFromInput(parseFloat(li.qty) || 1, parseFloat(li.cost) || 0),
+    0,
+  );
   const createMarginPct = createCost > 0 && createSubtotal > 0
     ? Math.round(((createSubtotal - createCost) / createSubtotal) * 100)
     : null;
