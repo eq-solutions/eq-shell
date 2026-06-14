@@ -228,14 +228,15 @@ export function QuotesReports({ supabase }: Props) {
   // ── Estimator breakdown ───────────────────────────────────────────────────
 
   const estimatorRows = React.useMemo(() => {
-    const map = new Map<string, { name: string | null; won: number; lost: number; pipeline: number; total: number }>();
+    const map = new Map<string, { name: string | null; won: number; lost: number; pipeline: number; total: number; marginSum: number; marginCount: number }>();
     for (const q of quotes) {
       const key = q.estimator_initials ?? "(unassigned)";
-      const cur = map.get(key) ?? { name: q.estimator_name, won: 0, lost: 0, pipeline: 0, total: 0 };
+      const cur = map.get(key) ?? { name: q.estimator_name, won: 0, lost: 0, pipeline: 0, total: 0, marginSum: 0, marginCount: 0 };
       if (WON_STATUSES.has(q.status))      cur.won++;
       else if (LOST_STATUSES.has(q.status)) cur.lost++;
       else                                   cur.pipeline++;
       cur.total += q.total_cents;
+      if (q.margin_pct !== null) { cur.marginSum += Number(q.margin_pct); cur.marginCount++; }
       map.set(key, cur);
     }
     return [...map.entries()]
@@ -248,6 +249,7 @@ export function QuotesReports({ supabase }: Props) {
         total: d.total,
         decided: d.won + d.lost,
         winRate: d.won + d.lost > 0 ? Math.round((d.won / (d.won + d.lost)) * 100) : null,
+        avgMargin: d.marginCount > 0 ? Math.round(d.marginSum / d.marginCount) : null,
       }))
       .sort((a, b) => b.total - a.total);
   }, [quotes]);
@@ -275,15 +277,16 @@ export function QuotesReports({ supabase }: Props) {
   // ── By Customer ──────────────────────────────────────────────────────────
 
   const customerRows = React.useMemo(() => {
-    const map = new Map<string, { won: number; lost: number; pipeline: number; total: number; lastActivity: string }>();
+    const map = new Map<string, { won: number; lost: number; pipeline: number; total: number; lastActivity: string; marginSum: number; marginCount: number }>();
     for (const q of quotes) {
       const key = q.customer_name ?? "(unassigned)";
-      const cur = map.get(key) ?? { won: 0, lost: 0, pipeline: 0, total: 0, lastActivity: q.created_at };
+      const cur = map.get(key) ?? { won: 0, lost: 0, pipeline: 0, total: 0, lastActivity: q.created_at, marginSum: 0, marginCount: 0 };
       if (WON_STATUSES.has(q.status))       cur.won++;
       else if (LOST_STATUSES.has(q.status)) cur.lost++;
       else                                   cur.pipeline++;
       cur.total += q.total_cents;
       if (q.created_at > cur.lastActivity) cur.lastActivity = q.created_at;
+      if (q.margin_pct !== null) { cur.marginSum += Number(q.margin_pct); cur.marginCount++; }
       map.set(key, cur);
     }
     return [...map.entries()]
@@ -295,6 +298,7 @@ export function QuotesReports({ supabase }: Props) {
         total: d.total,
         decided: d.won + d.lost,
         winRate: d.won + d.lost > 0 ? Math.round((d.won / (d.won + d.lost)) * 100) : null,
+        avgMargin: d.marginCount > 0 ? Math.round(d.marginSum / d.marginCount) : null,
         lastActivity: d.lastActivity,
       }))
       .sort((a, b) => b.total - a.total);
@@ -450,8 +454,8 @@ export function QuotesReports({ supabase }: Props) {
             {estimatorRows.length > 0 && (
               <button type="button" className="eq-quotes__btn eq-quotes__btn--outline"
                 onClick={() => downloadCsv(
-                  [["Estimator", "Won", "Lost", "Pipeline", "Win rate %", "Total value"],
-                   ...estimatorRows.map((r) => [r.name ?? r.initials, r.won, r.lost, r.pipeline, r.winRate !== null ? r.winRate : "", (r.total / 100).toFixed(2)])],
+                  [["Estimator", "Won", "Lost", "Pipeline", "Win rate %", "Avg margin %", "Total value"],
+                   ...estimatorRows.map((r) => [r.name ?? r.initials, r.won, r.lost, r.pipeline, r.winRate !== null ? r.winRate : "", r.avgMargin !== null ? r.avgMargin : "", (r.total / 100).toFixed(2)])],
                   "sks-quotes-by-estimator.csv"
                 )}>Download CSV</button>
             )}
@@ -464,6 +468,7 @@ export function QuotesReports({ supabase }: Props) {
                 <th style={{ textAlign: "right" }}>Lost</th>
                 <th style={{ textAlign: "right" }}>Pipeline</th>
                 <th style={{ textAlign: "right" }}>Win rate</th>
+                <th style={{ textAlign: "right" }}>Avg margin</th>
                 <th style={{ textAlign: "right" }}>Total value</th>
               </tr>
             </thead>
@@ -482,12 +487,15 @@ export function QuotesReports({ supabase }: Props) {
                   <td style={{ textAlign: "right" }}>
                     {r.winRate !== null ? `${r.winRate}%` : "—"}
                   </td>
+                  <td style={{ textAlign: "right" }}>
+                    {r.avgMargin !== null ? `${r.avgMargin}%` : "—"}
+                  </td>
                   <td style={{ textAlign: "right" }}>{fmtMoney(r.total)}</td>
                 </tr>
               ))}
             </tbody>
             {estimatorRows.length === 0 && (
-              <tbody><tr><td colSpan={6} style={{ textAlign: "center", color: "var(--eq-muted,#6b7280)" }}>No data.</td></tr></tbody>
+              <tbody><tr><td colSpan={7} style={{ textAlign: "center", color: "var(--eq-muted,#6b7280)" }}>No data.</td></tr></tbody>
             )}
           </table>
         </div>
@@ -629,6 +637,7 @@ export function QuotesReports({ supabase }: Props) {
                 <th style={{ textAlign: "right" }}>Won</th>
                 <th style={{ textAlign: "right" }}>Lost</th>
                 <th style={{ textAlign: "right" }}>Win Rate</th>
+                <th style={{ textAlign: "right" }}>Avg Margin</th>
                 <th style={{ textAlign: "right" }}>Total Value</th>
               </tr>
             </thead>
@@ -643,6 +652,9 @@ export function QuotesReports({ supabase }: Props) {
                     {r.winRate !== null
                       ? <span style={{ fontWeight: 600, color: r.winRate >= 50 ? "var(--eq-green,#27ae60)" : "var(--eq-amber,#d4820a)" }}>{r.winRate}%</span>
                       : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {r.avgMargin !== null ? `${r.avgMargin}%` : <span style={{ color: "var(--eq-muted,#888)" }}>—</span>}
                   </td>
                   <td style={{ textAlign: "right", fontWeight: 600 }}>{fmtMoney(r.total)}</td>
                 </tr>
