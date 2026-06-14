@@ -1773,6 +1773,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const atRiskTotal = displayedQuotes
     .filter((q) => ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status))
     .reduce((s, q) => s + q.total_cents, 0);
+  const winRateDisplayed = (() => {
+    const won  = displayedQuotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status)).length;
+    const lost = displayedQuotes.filter((q) => CLOSED_STATUSES.has(q.status)).length;
+    const decided = won + lost;
+    return decided >= 3 ? Math.round((won / decided) * 100) : null;
+  })();
 
   // Canonical eq-ui table: sortable columns + per-column text/select filters.
   const pipelineColumns: TableColumn<Quote>[] = [
@@ -3925,6 +3931,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <span className="eq-quotes__total-item">
                     <span className="eq-quotes__total-label">Won</span>
                     <span className="eq-quotes__total-val eq-quotes__total-val--green">{aud(wonTotal)}</span>
+                  </span>
+                )}
+                {winRateDisplayed !== null && (
+                  <span className="eq-quotes__total-item" title="Win rate across decided quotes in this view (min. 3 decided)">
+                    <span className="eq-quotes__total-label">Win rate</span>
+                    <span className="eq-quotes__total-val" style={{ color: winRateDisplayed >= 50 ? "var(--eq-green, #27ae60)" : "var(--eq-amber, #d4820a)" }}>{winRateDisplayed}%</span>
                   </span>
                 )}
               </div>
