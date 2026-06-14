@@ -253,6 +253,11 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   header: "edited details",
   pricing: "changed pricing",
   duplicate: "duplicated",
+  scope: "updated scope",
+  expires_at: "changed expiry",
+  sent_at: "changed sent date",
+  contact_linked: "linked contact",
+  expired: "auto-expired",
 };
 function auditActionLabel(action: string): string {
   return AUDIT_ACTION_LABELS[action] ?? action;
@@ -273,6 +278,22 @@ function summariseAudit(a: QuoteAuditEntry): string {
       return `Total ${fmtAuditCents(Number(t.old ?? 0))} → ${fmtAuditCents(t.new)}`;
     }
     return "Line items changed";
+  }
+  if (a.action === "expires_at" || a.action === "sent_at") {
+    const oldVal = c["old"] as string | null | undefined;
+    const newVal = c["new"] as string | null | undefined;
+    if (newVal) return `${fmtDate(oldVal ?? null)} → ${fmtDate(newVal)}`;
+    return oldVal ? `Cleared (was ${fmtDate(oldVal)})` : "Cleared";
+  }
+  if (a.action === "contact_linked") {
+    const newCid = c["new_contact_id"];
+    return newCid ? "Contact linked" : "Contact unlinked";
+  }
+  if (a.action === "scope") {
+    return "Scope of works updated";
+  }
+  if (a.action === "expired") {
+    return "Auto-expired by scheduler";
   }
   return "Changed " + Object.keys(c).map((f) => f.replace(/_/g, " ")).join(", ");
 }
