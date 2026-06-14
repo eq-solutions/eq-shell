@@ -360,6 +360,7 @@ const STATUS_LABELS: Record<string, string> = {
 const ACTIVE_JOB_STATUSES = new Set([
   "verbal-win", "won-awaiting-job-no", "won-job-created", "po-matched", "active",
 ]);
+const CLOSED_STATUSES = new Set(["lost", "cancelled", "expired", "superseded"]);
 
 const ACCORDION_ACTIVE = new Set([...ACTIVE_JOB_STATUSES, "sent"]);
 
@@ -377,6 +378,7 @@ const STATUS_FILTERS = [
   { key: "active", label: "Active" },
   { key: "complete", label: "Complete" },
   { key: "lost", label: "Lost" },
+  { key: "closed", label: "Closed" },
 ];
 
 const NEXT_STATUSES: Record<string, string[]> = {
@@ -681,7 +683,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       setPipelineLoading(true);
       setPipelineError(null);
       const { data, error } = await supabase.rpc("eq_list_quotes", {
-        p_status: status === "all" || status === "active-jobs" ? null : status,
+        p_status: status === "all" || status === "active-jobs" || status === "closed" ? null : status,
         p_search: q.trim() || null,
       });
       setPipelineLoading(false);
@@ -1574,6 +1576,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   let displayedQuotes = statusFilter === "active-jobs"
     ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
+    : statusFilter === "closed"
+    ? quotes.filter((q) => CLOSED_STATUSES.has(q.status))
     : quotes;
   if (dateFrom) displayedQuotes = displayedQuotes.filter((q) => q.created_at >= dateFrom);
   if (dateTo)   displayedQuotes = displayedQuotes.filter((q) => q.created_at.slice(0, 10) <= dateTo);
@@ -3333,6 +3337,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             {STATUS_FILTERS.map((f) => {
               const count = f.key === "active-jobs"
                 ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status)).length
+                : f.key === "closed" ? quotes.filter((q) => CLOSED_STATUSES.has(q.status)).length
                 : f.key === "all" ? quotes.length
                 : quotes.filter((q) => q.status === f.key).length;
               return (
