@@ -2224,6 +2224,18 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <span className="eq-quotes__info-label">Created</span>
                   <span className="eq-quotes__info-val">{fmtDate(detail.created_at)}</span>
                 </div>
+                {(() => {
+                  const dupEntry = audit.find((a) => a.action === "duplicate" && a.changes?.source_quote_number);
+                  if (!dupEntry) return null;
+                  return (
+                    <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                      <span className="eq-quotes__info-label">Based on</span>
+                      <span className="eq-quotes__info-val eq-quotes__td--mono" style={{ fontSize: 13 }}>
+                        {String(dupEntry.changes!.source_quote_number)}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {!scopeEditing ? (
