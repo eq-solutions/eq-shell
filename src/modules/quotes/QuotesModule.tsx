@@ -514,6 +514,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [staleOnly, setStaleOnly] = useState(false);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [copiedQuoteId, setCopiedQuoteId] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailIdRef = useRef<string | null>(null);
   const displayedQuotesRef = useRef<Quote[]>([]);
@@ -1825,6 +1826,22 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       key: "quote_number", header: "Quote #",
       sortAccessor: (q) => q.quote_number,
       className: "eq-quotes__td--mono eq-quotes__td--bold",
+      render: (q) => (
+        <span
+          className="eq-quotes__filter-link"
+          title="Click to copy quote number"
+          style={{ fontFamily: "ui-monospace, 'Cascadia Code', monospace", fontWeight: 600 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            void navigator.clipboard.writeText(q.quote_number).then(() => {
+              setCopiedQuoteId(q.quote_id);
+              setTimeout(() => setCopiedQuoteId(null), 1500);
+            });
+          }}
+        >
+          {copiedQuoteId === q.quote_id ? <span style={{ color: "var(--eq-green,#27ae60)", fontSize: 11 }}>Copied!</span> : q.quote_number}
+        </span>
+      ),
     },
     {
       key: "customer_name", header: "Customer / Site", filterable: "text",
