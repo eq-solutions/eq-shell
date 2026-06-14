@@ -506,6 +506,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [customerFilter, setCustomerFilter] = useState("");
   const [expiringOnly, setExpiringOnly] = useState(false);
   const [unsentOnly, setUnsentOnly] = useState(false);
+  const [needsJobNoOnly, setNeedsJobNoOnly] = useState(false);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1685,6 +1686,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   if (unsentOnly) {
     displayedQuotes = displayedQuotes.filter(
       (q) => !q.sent_at && ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status)
+    );
+  }
+  if (needsJobNoOnly) {
+    displayedQuotes = displayedQuotes.filter(
+      (q) => !q.workbench_job_no && ACTIVE_JOB_STATUSES.has(q.status)
     );
   }
   const estimatorOptions = Array.from(
@@ -3669,14 +3675,22 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             >
               Unsent
             </button>
-            {(search || dateFrom || dateTo || estFilter || customerFilter || expiringOnly || unsentOnly) && (
+            <button
+              type="button"
+              className={`eq-quotes__btn ${needsJobNoOnly ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+              onClick={() => setNeedsJobNoOnly((v) => !v)}
+              title="Show active/won quotes that don't yet have a Workbench job number"
+            >
+              Needs Job No.
+            </button>
+            {(search || dateFrom || dateTo || estFilter || customerFilter || expiringOnly || unsentOnly || needsJobNoOnly) && (
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
                 onClick={() => {
                   if (search) handleSearch("");
                   setDateFrom(""); setDateTo(""); setEstFilter(""); setCustomerFilter("");
-                  setExpiringOnly(false); setUnsentOnly(false);
+                  setExpiringOnly(false); setUnsentOnly(false); setNeedsJobNoOnly(false);
                 }}
               >
                 Clear filters
