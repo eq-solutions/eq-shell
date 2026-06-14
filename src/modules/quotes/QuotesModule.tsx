@@ -2,6 +2,11 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
 import { computeSellRate, computeMarkupPct, lineTotalCentsFromInput } from "./quoteMath";
+import {
+  STATUS_LABELS,
+  ACTIVE_JOB_STATUSES,
+  CLOSED_LOST_STATUSES as CLOSED_STATUSES,
+} from "./taxonomy";
 import { QuotesSetup } from "./QuotesSetup";
 import { QuotesReports } from "./QuotesReports";
 import { QuotesCustomers } from "./QuotesCustomers";
@@ -341,28 +346,8 @@ function summariseAudit(a: QuoteAuditEntry): string {
   return "Changed " + Object.keys(c).map((f) => f.replace(/_/g, " ")).join(", ");
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Draft",
-  submitted: "Submitted",
-  "client-reviewing": "Client Reviewing",
-  "verbal-win": "Verbal Win",
-  "won-awaiting-job-no": "Won — Awaiting Job No.",
-  "won-job-created": "Won — Job Created",
-  "po-matched": "PO Matched",
-  active: "Active",
-  complete: "Complete",
-  "ready-to-invoice": "Ready to Invoice",
-  "on-hold": "On Hold",
-  lost: "Lost",
-  cancelled: "Cancelled",
-  expired: "Expired",
-  superseded: "Superseded",
-};
-
-const ACTIVE_JOB_STATUSES = new Set([
-  "verbal-win", "won-awaiting-job-no", "won-job-created", "po-matched", "active",
-]);
-const CLOSED_STATUSES = new Set(["lost", "cancelled", "expired", "superseded"]);
+// STATUS_LABELS, ACTIVE_JOB_STATUSES and CLOSED_STATUSES are imported from
+// ./taxonomy (the single source of truth, locked by taxonomy.test.ts).
 
 const ACCORDION_ACTIVE = new Set([...ACTIVE_JOB_STATUSES, "sent"]);
 

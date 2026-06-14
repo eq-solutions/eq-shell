@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  STATUS_LABELS,
+  WON_EVER_STATUSES as WON_STATUSES,
+  CLOSED_LOST_STATUSES as LOST_STATUSES,
+  OPEN_PIPELINE_STATUSES as PIPELINE_STATUSES,
+} from "./taxonomy";
 
 interface Quote {
   quote_id: string;
@@ -25,32 +31,9 @@ interface Quote {
 // Status grouping
 // ---------------------------------------------------------------------------
 
-const WON_STATUSES = new Set([
-  "verbal-win", "won-awaiting-job-no", "won-job-created",
-  "po-matched", "active", "complete", "ready-to-invoice",
-]);
-const LOST_STATUSES = new Set(["lost", "cancelled", "expired", "superseded"]);
-const PIPELINE_STATUSES = new Set([
-  "draft", "submitted", "client-reviewing", "on-hold",
-]);
-
-const STATUS_LABELS: Record<string, string> = {
-  "draft":                "Draft",
-  "submitted":            "Submitted",
-  "client-reviewing":     "Client Reviewing",
-  "on-hold":              "On Hold",
-  "verbal-win":           "Verbal Win",
-  "won-awaiting-job-no":  "Won – Awaiting Job No.",
-  "won-job-created":      "Won – Job Created",
-  "po-matched":           "PO Matched",
-  "active":               "Active",
-  "complete":             "Complete",
-  "ready-to-invoice":     "Ready to Invoice",
-  "lost":                 "Lost",
-  "cancelled":            "Cancelled",
-  "expired":              "Expired",
-  "superseded":           "Superseded",
-};
+// WON_STATUSES (= WON_EVER), LOST_STATUSES (= CLOSED_LOST), PIPELINE_STATUSES
+// (= OPEN_PIPELINE) and STATUS_LABELS are imported from ./taxonomy — the single
+// source of truth, locked by taxonomy.test.ts.
 
 const PIPELINE_ORDER = [
   "draft", "submitted", "client-reviewing", "on-hold",
