@@ -1,5 +1,5 @@
 import { useParams, useMatch } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, ScrollText } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, ScrollText, Radio } from 'lucide-react';
 import { AppRail, type AppRailItem } from '@eq-solutions/ui';
 import { useSession, type EqTier } from '../session';
 import { EqLogo } from './EqLogo';
@@ -32,6 +32,7 @@ const RAIL_ITEMS: RailItemDef[] = [
   // EQ Ops — the in-shell replacement; platform-admin debug surface for now.
   { key: 'ops',       label: 'EQ Ops',     icon: <FileText size={20} strokeWidth={2} aria-hidden="true" />,    to: 'ops',       hideForTier: TRIAL_TIERS, platformOnly: true },
   { key: 'cards',     label: 'EQ Cards',   icon: <CreditCard size={20} strokeWidth={2} aria-hidden="true" />,  to: 'cards'     },
+  { key: 'comms',     label: 'NSW Comms',  icon: <Radio size={20} strokeWidth={2} aria-hidden="true" />,        to: 'comms'     },
 ];
 
 export function IconRail() {
