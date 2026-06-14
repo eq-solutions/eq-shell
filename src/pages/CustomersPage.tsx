@@ -4,9 +4,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { Table, type TableColumn } from '@eq-solutions/ui';
-import { TableBulkAction } from '../components/TableBulkAction';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
+import { entityActions } from '../lib/entityActions';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
@@ -255,8 +255,9 @@ export function CustomersPage() {
   const [selId,     setSelId]     = useState<string | null>(null);
   const [detail,    setDetail]    = useState<CustomerDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [reload,    setReload]    = useState(0);
 
-  // Fetch all data on mount
+  // Fetch all data on mount and after mutations
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -272,7 +273,9 @@ export function CustomersPage() {
       })
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [reload]);
+
+  const handleMutated = useCallback(() => setReload((n) => n + 1), []);
 
   // Fetch customer detail when selected
   useEffect(() => {
@@ -348,13 +351,14 @@ export function CustomersPage() {
                   loading={loading}
                   selId={selId}
                   onSelect={selectRow}
+                  onMutated={handleMutated}
                 />
               )}
               {tab === 'sites' && (
-                <SitesTab rows={sites} loading={loading} />
+                <SitesTab rows={sites} loading={loading} onMutated={handleMutated} />
               )}
               {tab === 'contacts' && (
-                <ContactsTab rows={contacts} loading={loading} />
+                <ContactsTab rows={contacts} loading={loading} onMutated={handleMutated} />
               )}
             </div>
             {/* Split panel — customers tab only */}
@@ -378,14 +382,13 @@ export function CustomersPage() {
 
 // ─── CUSTOMERS TAB ───────────────────────────────────────────────────────────
 
-function CustomersTab({ rows, loading, selId, onSelect }: {
+function CustomersTab({ rows, loading, selId, onSelect, onMutated }: {
   rows: CustomerItem[];
   loading: boolean;
   selId: string | null;
   onSelect: (id: string) => void;
+  onMutated: () => void;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-
   return (
     <Table
       columns={CUSTOMER_COLS}
@@ -398,12 +401,6 @@ function CustomersTab({ rows, loading, selId, onSelect }: {
       globalSearch={{ placeholder: 'Search customers…' }}
       columnToggle
       exportable={{ filename: 'customers.csv' }}
-      selectable
-      selectedIds={selected}
-      onSelectionChange={setSelected}
-      bulkActions={(_rows, clear) => (
-        <TableBulkAction onClick={clear}>Clear selection</TableBulkAction>
-      )}
       rowIndicator={(c) => c.active ? null : { color: 'var(--eq-gray-400)' }}
       loading={loading}
       emptyMessage="No customers found"
@@ -411,13 +408,18 @@ function CustomersTab({ rows, loading, selId, onSelect }: {
       rowStyle={(c) => c.id === selId ? { background: '#e1f1fb' } : undefined}
       pagination={{ pageSize: 50 }}
       summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
+      onArchive={async (rows) => { await entityActions('customer', rows.map((c) => c.id), 'archive'); onMutated(); }}
+      archiveConfirm={{ description: (n) => `${n} customer${n === 1 ? '' : 's'} will be set to inactive.` }}
+      onDelete={async (rows) => { await entityActions('customer', rows.map((c) => c.id), 'delete'); onMutated(); }}
+      deleteConfirm={{ description: (n) => `${n} customer${n === 1 ? '' : 's'} and all linked contacts will be permanently removed.` }}
+      onActionError={(action, err) => console.error(`[customers] bulk ${action} failed`, err)}
     />
   );
 }
 
 // ─── SITES TAB ───────────────────────────────────────────────────────────────
 
-function SitesTab({ rows, loading }: { rows: SiteItem[]; loading: boolean }) {
+function SitesTab({ rows, loading, onMutated }: { rows: SiteItem[]; loading: boolean; onMutated: () => void }) {
   return (
     <Table
       columns={SITE_COLS}
@@ -428,13 +430,18 @@ function SitesTab({ rows, loading }: { rows: SiteItem[]; loading: boolean }) {
       exportable={{ filename: 'sites.csv' }}
       loading={loading}
       emptyMessage="No sites found"
+      onArchive={async (rows) => { await entityActions('site', rows.map((s) => s.id), 'archive'); onMutated(); }}
+      archiveConfirm={{ description: (n) => `${n} site${n === 1 ? '' : 's'} will be set to inactive.` }}
+      onDelete={async (rows) => { await entityActions('site', rows.map((s) => s.id), 'delete'); onMutated(); }}
+      deleteConfirm={{ description: (n) => `${n} site${n === 1 ? '' : 's'} will be permanently removed.` }}
+      onActionError={(action, err) => console.error(`[sites] bulk ${action} failed`, err)}
     />
   );
 }
 
 // ─── CONTACTS TAB ─────────────────────────────────────────────────────────────
 
-function ContactsTab({ rows, loading }: { rows: ContactItem[]; loading: boolean }) {
+function ContactsTab({ rows, loading, onMutated }: { rows: ContactItem[]; loading: boolean; onMutated: () => void }) {
   return (
     <Table
       columns={CONTACT_COLS}
@@ -445,6 +452,11 @@ function ContactsTab({ rows, loading }: { rows: ContactItem[]; loading: boolean 
       exportable={{ filename: 'contacts.csv' }}
       loading={loading}
       emptyMessage="No contacts found"
+      onArchive={async (rows) => { await entityActions('contact', rows.map((c) => c.id), 'archive'); onMutated(); }}
+      archiveConfirm={{ description: (n) => `${n} contact${n === 1 ? '' : 's'} will be set to inactive.` }}
+      onDelete={async (rows) => { await entityActions('contact', rows.map((c) => c.id), 'delete'); onMutated(); }}
+      deleteConfirm={{ description: (n) => `${n} contact${n === 1 ? '' : 's'} will be permanently removed.` }}
+      onActionError={(action, err) => console.error(`[contacts] bulk ${action} failed`, err)}
     />
   );
 }

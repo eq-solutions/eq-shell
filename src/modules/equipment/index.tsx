@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Button, Table, type TableColumn } from '@eq-solutions/ui';
 import { TableBulkAction } from '../../components/TableBulkAction';
+import { entityActions } from '../../lib/entityActions';
 import { useCan } from '../../permissions';
 import { HubLayout } from '../../components/HubLayout';
 import { defaultSidebarRecords } from '../../lib/sidebarConfig';
@@ -943,6 +944,11 @@ export default function EquipmentModule() {
               <TableBulkAction icon={<Download size={15} />} onClick={clear}>Export</TableBulkAction>
             </>
           )}
+          onArchive={async (assetRows) => { await entityActions('asset', assetRows.map((r) => r.asset_id ?? '').filter(Boolean), 'archive'); void load(); }}
+          archiveConfirm={{ description: (n) => `${n} item${n === 1 ? '' : 's'} will be marked inactive in the equipment register.` }}
+          onDelete={async (assetRows) => { await entityActions('asset', assetRows.map((r) => r.asset_id ?? '').filter(Boolean), 'delete'); void load(); }}
+          deleteConfirm={{ description: (n) => `${n} item${n === 1 ? '' : 's'} will be permanently removed from the register.` }}
+          onActionError={(_action, err) => console.error('[equipment] bulk action failed', err)}
           onRowClick={setDetail}
           loading={loading && !!rows}
           emptyMessage="Nothing matches this filter."
