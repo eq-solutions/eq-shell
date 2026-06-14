@@ -2139,9 +2139,20 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <label className="eq-quotes__info-label">Loss reason (optional)</label>
+                  <datalist id="eq-loss-reasons">
+                    <option value="Price" />
+                    <option value="Timeline" />
+                    <option value="No response" />
+                    <option value="Competitor" />
+                    <option value="Scope change" />
+                    <option value="Budget cut" />
+                    <option value="Deferred" />
+                    <option value="Internal — not proceeding" />
+                  </datalist>
                   <input
                     className="eq-quotes__input"
                     style={{ width: "100%" }}
+                    list="eq-loss-reasons"
                     placeholder="e.g. Price, Timeline, No response…"
                     value={loseReason}
                     onChange={(e) => setLoseReason(e.target.value)}
@@ -2909,6 +2920,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   </select>
                   <input
                     className="eq-quotes__input eq-quotes__input--note"
+                    list={advanceStatus === "lost" ? "eq-loss-reasons" : undefined}
                     placeholder={advanceStatus === "lost" ? "Loss reason…" : "Optional note…"}
                     value={statusNote}
                     onChange={(e) => setStatusNote(e.target.value)}
