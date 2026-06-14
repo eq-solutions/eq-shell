@@ -2568,7 +2568,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                           <span className="eq-quotes__initials-badge">{n.initials}</span>
                         )}
                         <span className="eq-quotes__note-type">
-                          {n.note_type === "status-change" ? "status" : n.note_type}
+                          {n.note_type === "status-change" ? "status"
+                            : n.note_type === "manual" ? "note"
+                            : n.note_type === "system" ? "auto"
+                            : n.note_type}
                         </span>
                         <span className="eq-quotes__note-date">{fmtDate(n.created_at)}</span>
                       </div>
@@ -3418,11 +3421,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             >
               Unsent
             </button>
-            {(dateFrom || dateTo || estFilter || customerFilter || expiringOnly || unsentOnly) && (
+            {(search || dateFrom || dateTo || estFilter || customerFilter || expiringOnly || unsentOnly) && (
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
-                onClick={() => { setDateFrom(""); setDateTo(""); setEstFilter(""); setCustomerFilter(""); setExpiringOnly(false); setUnsentOnly(false); }}
+                onClick={() => {
+                  if (search) handleSearch("");
+                  setDateFrom(""); setDateTo(""); setEstFilter(""); setCustomerFilter("");
+                  setExpiringOnly(false); setUnsentOnly(false);
+                }}
               >
                 Clear filters
               </button>
