@@ -1,4 +1,4 @@
--- Migration: 0086_quote_section_oneoff
+-- Migration: 0089_quote_section_oneoff
 -- Target:    Per-tenant data plane
 -- Purpose:   Add a fourth line-item section — "one-off" — to the allowed
 --            category set, so quotes can separate one-off / once-off items from

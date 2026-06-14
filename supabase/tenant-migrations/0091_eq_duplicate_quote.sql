@@ -1,4 +1,4 @@
--- Migration: 0088_eq_duplicate_quote
+-- Migration: 0091_eq_duplicate_quote
 -- Target:    Per-tenant data plane
 -- Purpose:   Duplicate a quote — clone header + line items into a fresh draft.
 --
