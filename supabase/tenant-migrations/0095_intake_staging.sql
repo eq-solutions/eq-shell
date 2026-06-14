@@ -1,4 +1,4 @@
--- Migration: 0012_intake_staging
+-- Migration: 0095_intake_staging
 -- Target:    Per-tenant data plane
 -- Purpose:   Durable staging + review queue for intake. Sits in front of the
 --            per-module commit RPCs (0005 cards / 0008 service / 0009 quotes /
@@ -101,6 +101,9 @@ CREATE INDEX IF NOT EXISTS eq_intake_staging_table_idx
 -- allow authenticated insert/update/delete.
 ALTER TABLE app_data.eq_intake_staging ENABLE ROW LEVEL SECURITY;
 
+-- Idempotent: the tenant runner may re-apply this file on a data plane where
+-- the table already exists (CREATE POLICY has no IF NOT EXISTS, so guard it).
+DROP POLICY IF EXISTS eq_intake_staging_select ON app_data.eq_intake_staging;
 CREATE POLICY eq_intake_staging_select ON app_data.eq_intake_staging
   FOR SELECT TO authenticated
   USING (tenant_id = (((auth.jwt() -> 'app_metadata'::text) ->> 'tenant_id'::text))::uuid);
@@ -109,5 +112,7 @@ REVOKE ALL ON app_data.eq_intake_staging FROM PUBLIC, anon;
 GRANT SELECT ON app_data.eq_intake_staging TO authenticated;
 GRANT ALL    ON app_data.eq_intake_staging TO service_role;
 
-INSERT INTO app_data._eq_migrations(name, checksum) VALUES ('0012_intake_staging', NULL)
-  ON CONFLICT (name) DO NOTHING;
+-- NB: no INSERT INTO app_data._eq_migrations here. The tenant runner
+-- (scripts/migrate-tenants.mjs) records the ledger row under the full filename
+-- on apply; a self-insert would write a duplicate bare-named twin. See
+-- SCHEMA-GOVERNANCE.md → "Ledger truth: the runner records, the file does not".
