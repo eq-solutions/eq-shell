@@ -24,7 +24,7 @@
 
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { ArrowLeft, Check, X, AlertTriangle, Copy } from 'lucide-react';
-import { Table, type TableColumn } from '@eq-solutions/ui';
+import { Table, TableBulkAction, type TableColumn } from '@eq-solutions/ui';
 import { useSession } from '../../session';
 import { Gate } from '../../permissions/Gate';
 import { HubLayout } from '../../components/HubLayout';
@@ -306,21 +306,6 @@ function BatchDetail({ batch, onClose }: { batch: PendingBatch; onClose: (change
             <button type="button" style={btnStyle({ danger: true, disabled: busy })} disabled={busy} onClick={() => void act('reject', 'all')}>
               <X size={14} /> Reject all
             </button>
-            {selectedIds.size > 0 && (
-              <>
-                <span style={{ marginLeft: 8, color: 'var(--eq-text-subtle,#888)', fontSize: 13 }}>
-                  {selectedIds.size} selected
-                </span>
-                <button type="button" style={btnStyle({ disabled: busy })} disabled={busy}
-                  onClick={() => void act('approve', [...selectedIds])}>
-                  <Check size={14} /> Approve selected
-                </button>
-                <button type="button" style={btnStyle({ danger: true, disabled: busy })} disabled={busy}
-                  onClick={() => void act('reject', [...selectedIds])}>
-                  <X size={14} /> Reject selected
-                </button>
-              </>
-            )}
           </div>
           <Table<StagedRow>
             columns={columns}
@@ -330,6 +315,18 @@ function BatchDetail({ batch, onClose }: { batch: PendingBatch; onClose: (change
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
             emptyMessage="Nothing to review."
+            bulkActions={(selRows, clear) => (
+              <>
+                <TableBulkAction icon={<Check size={14} />} disabled={busy}
+                  onClick={() => { void act('approve', selRows.map((r) => r.staging_id)); clear(); }}>
+                  Approve {selRows.length}
+                </TableBulkAction>
+                <TableBulkAction danger icon={<X size={14} />} disabled={busy}
+                  onClick={() => { void act('reject', selRows.map((r) => r.staging_id)); clear(); }}>
+                  Reject {selRows.length}
+                </TableBulkAction>
+              </>
+            )}
           />
         </>
       )}
