@@ -1678,6 +1678,39 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           </button>
           {detail && (
             <div className="eq-quotes__detail-title-row">
+              {(() => {
+                const idx = displayedQuotes.findIndex((q) => q.quote_id === detail.quote_id);
+                if (idx < 0 || displayedQuotes.length <= 1) return null;
+                const prev = idx > 0 ? displayedQuotes[idx - 1] : null;
+                const next = idx < displayedQuotes.length - 1 ? displayedQuotes[idx + 1] : null;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--outline"
+                      style={{ padding: "2px 8px", fontSize: 14, lineHeight: 1 }}
+                      disabled={!prev}
+                      onClick={() => prev && void openDetail(prev.quote_id)}
+                      title={prev ? `Previous: ${prev.quote_number}` : undefined}
+                    >
+                      ←
+                    </button>
+                    <span style={{ fontSize: 12, color: "var(--eq-muted, #888)", minWidth: 40, textAlign: "center" }}>
+                      {idx + 1}/{displayedQuotes.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--outline"
+                      style={{ padding: "2px 8px", fontSize: 14, lineHeight: 1 }}
+                      disabled={!next}
+                      onClick={() => next && void openDetail(next.quote_id)}
+                      title={next ? `Next: ${next.quote_number}` : undefined}
+                    >
+                      →
+                    </button>
+                  </div>
+                );
+              })()}
               <h2
                 className="eq-quotes__detail-num"
                 style={{ cursor: "pointer" }}
@@ -3281,7 +3314,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   onClick={() => setStatusFilter(f.key)}
                 >
                   {f.label}
-                  {statusFilter === f.key && (
+                  {count > 0 && (
                     <span className="eq-quotes__status-tab-count">{pipelineLoading ? "…" : count}</span>
                   )}
                 </button>
@@ -3385,7 +3418,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             {!pipelineLoading && quotes.length > 0 && (
               <div className="eq-quotes__totals">
                 <span className="eq-quotes__total-item">
-                  <span className="eq-quotes__total-label">Showing</span>
+                  <span className="eq-quotes__total-label">{displayedQuotes.length} quote{displayedQuotes.length !== 1 ? "s" : ""}</span>
                   <span className="eq-quotes__total-val">{aud(visibleTotal)}</span>
                 </span>
                 {wonTotal > 0 && wonTotal !== visibleTotal && (
