@@ -1749,9 +1749,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         : <span className="eq-quotes__muted">—</span>,
     },
     {
-      key: "created_at", header: "Created",
+      key: "created_at", header: "Age",
       sortAccessor: (q) => q.created_at,
-      render: (q) => fmtDate(q.created_at),
+      render: (q) => {
+        const days = Math.floor((Date.now() - new Date(q.created_at).getTime()) / 86_400_000);
+        const label = days === 0 ? "Today" : days === 1 ? "1d" : `${days}d`;
+        const color = days > 90 ? "var(--eq-err, #c0392b)" : days > 30 ? "var(--eq-amber, #d4820a)" : undefined;
+        return <span title={fmtDate(q.created_at)} style={{ fontSize: 12, color, fontWeight: days > 30 ? 600 : undefined }}>{label}</span>;
+      },
     },
     {
       key: "sent_at", header: "Sent",
