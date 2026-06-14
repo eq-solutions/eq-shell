@@ -3739,6 +3739,38 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             })}
           </div>
 
+          {/* Action items summary — key attention items across all quotes */}
+          {!pipelineLoading && quotes.length > 0 && (() => {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const in14Days = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
+            const overdueFup = quotes.filter((q) => q.follow_up_at && q.follow_up_at <= todayStr && !CLOSED_STATUSES.has(q.status)).length;
+            const expiringSoon = quotes.filter((q) => q.expires_at && q.expires_at.slice(0, 10) <= in14Days && !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status)).length;
+            const needsJobNo = quotes.filter((q) => !q.workbench_job_no && ACTIVE_JOB_STATUSES.has(q.status)).length;
+            if (overdueFup === 0 && expiringSoon === 0 && needsJobNo === 0) return null;
+            return (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "6px 0 2px" }}>
+                {overdueFup > 0 && (
+                  <button type="button" onClick={() => { setOverdueFupOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
+                    style={{ background: "var(--eq-err-bg, #fdf1f1)", border: "1px solid var(--eq-err, #c0392b)33", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-err, #c0392b)", cursor: "pointer" }}>
+                    {overdueFup} follow-up{overdueFup !== 1 ? "s" : ""} overdue
+                  </button>
+                )}
+                {expiringSoon > 0 && (
+                  <button type="button" onClick={() => { setExpiringOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
+                    style={{ background: "var(--eq-amber-bg, #fef9ee)", border: "1px solid var(--eq-amber, #d4820a)33", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-amber, #d4820a)", cursor: "pointer" }}>
+                    {expiringSoon} expiring within 14 days
+                  </button>
+                )}
+                {needsJobNo > 0 && (
+                  <button type="button" onClick={() => { setNeedsJobNoOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
+                    style={{ background: "var(--eq-ice, #EAF5FB)", border: "1px solid var(--eq-sky, #3DA8D8)33", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-deep, #2986B4)", cursor: "pointer" }}>
+                    {needsJobNo} need{needsJobNo === 1 ? "s" : ""} job no.
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Search + filters + export */}
           <div className="eq-quotes__pipeline-controls">
             <input
