@@ -157,6 +157,8 @@ export function EntityImportPanel({ entity, entityLabel, onClose }: EntityImport
   // warn before importing a site-scoped entity (e.g. assets) with no sites to
   // link to, so the user fixes the order instead of hitting silent FK failures.
   const [siteCount, setSiteCount] = useState<number | null>(null);
+  // Set after an import completes — drives the "N sent to review" banner.
+  const [stageSummary, setStageSummary] = useState<StageSummary | null>(null);
 
   // Lazy-load the schema only when the panel opens
   useEffect(() => {
@@ -164,6 +166,7 @@ export function EntityImportPanel({ entity, entityLabel, onClose }: EntityImport
     let cancelled = false;
     setSchema(null);
     setLoadErr(null);
+    setStageSummary(null);
     loadEntitySchema(entity)
       .then((s) => {
         if (cancelled) return;
@@ -199,7 +202,7 @@ export function EntityImportPanel({ entity, entityLabel, onClose }: EntityImport
     return {
       schema,
       tenantId: session.tenant.id,
-      commit: makeCommitFn(table, session.tenant.id, entity),
+      commit: makeCommitFn(table, session.tenant.id, entity, setStageSummary),
     };
   }, [session, entity, schema, table]);
 
@@ -256,6 +259,19 @@ export function EntityImportPanel({ entity, entityLabel, onClose }: EntityImport
       <Suspense fallback={<div className="eq-loading">Loading import surface…</div>}>
         <ParserDropZone config={config} canonicalFields={canonicalFields} />
       </Suspense>
+      {stageSummary && stageSummary.staged > 0 && (
+        <div className="eq-hub-alert eq-hub-alert--action" role="status" style={{ marginTop: 12 }}>
+          <span className="eq-hub-alert__icon" aria-hidden="true"><AlertTriangle size={14} /></span>
+          <span className="eq-hub-alert__text">
+            {stageSummary.committed > 0 && `${stageSummary.committed.toLocaleString()} imported. `}
+            <strong>{stageSummary.staged.toLocaleString()}</strong>{' '}
+            {stageSummary.staged === 1 ? 'row needs' : 'rows need'} a closer look
+            {stageSummary.conflict_count > 0 &&
+              ` (${stageSummary.conflict_count} possible duplicate${stageSummary.conflict_count === 1 ? '' : 's'})`}
+            {' '}and {stageSummary.staged === 1 ? 'is' : 'are'} waiting in the review queue.
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -264,15 +280,35 @@ export function EntityImportPanel({ entity, entityLabel, onClose }: EntityImport
 // Matches x-eq-version on the authored JSON schemas.
 const SCHEMA_VERSION = '1.0.0';
 
-interface IntakeCommitResponse {
+interface IntakeStageResponse {
   ok: boolean;
   committed_count?: number;
   committed_ids?: string[];
+  staged_count?: number;
+  health_score?: number;
+  flagged_count?: number;
+  conflict_count?: number;
   error?: string;
   detail?: string;
 }
 
-function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn {
+// Surfaced to the panel after an import so it can show how the batch split:
+// some rows committed immediately (clean), some parked in the review queue
+// (a conflict or an error/warning flag).
+export interface StageSummary {
+  intake_id: string;
+  committed: number;
+  staged: number;
+  health_score: number;
+  conflict_count: number;
+}
+
+function makeCommitFn(
+  table: string,
+  tenantId: string,
+  entity: string,
+  onStage: (s: StageSummary) => void,
+): CommitFn {
   return async (rows: CommittableRow[]) => {
     const sb = await createSupabaseClient();
 
@@ -285,15 +321,15 @@ function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn
       source_subkind: 'shell-dropzone',
       source_filename: sourceSig,
       schema_version: SCHEMA_VERSION,
-      status: 'committing',
-      import_mode: 'insert',
+      status: 'pending',
+      import_mode: 'append',
       source_app: 'shell',
       intake_mode: 'strict',
     };
 
     // Intake events live on the control plane (the DB the browser client
-    // reaches). Create one first to get the intake_id the orchestrator
-    // increments and that every committed row carries.
+    // reaches). Create one first to get the intake_id; intake-stage stamps it
+    // onto every committed/staged row and finalises the event status.
     const { data: intakeRow, error: intakeErr } = await sb
       .schema('shell_control')
       .from('eq_intake_events')
@@ -308,17 +344,18 @@ function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn
     const intakeId = (intakeRow as { intake_id: string }).intake_id;
     const rowsJsonb = rows.map((r) => r.canonical);
 
-    // The tenant data plane is server-only — route the commit through the
-    // intake-commit orchestrator (it resolves the tenant DB and calls the
-    // right per-module RPC). The browser can't reach the tenant DB directly.
-    let result: IntakeCommitResponse;
+    // Route through intake-stage: it scores each row, commits the clean ones
+    // immediately and parks rows with conflicts / errors in the review queue.
+    // The tenant data plane is server-only, so this must go through a function.
+    let result: IntakeStageResponse;
     try {
-      const res = await fetch('/.netlify/functions/intake-commit', {
+      const res = await fetch('/.netlify/functions/intake-stage', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           intake_id: intakeId,
+          entity,
           table,
           rows: rowsJsonb,
           source_sig: sourceSig,
@@ -326,24 +363,32 @@ function makeCommitFn(table: string, tenantId: string, entity: string): CommitFn
           import_mode: 'append',
         }),
       });
-      result = (await res.json()) as IntakeCommitResponse;
+      result = (await res.json()) as IntakeStageResponse;
       if (!res.ok || !result.ok) {
-        throw new Error(result.detail || result.error || `commit failed (${res.status})`);
+        throw new Error(result.detail || result.error || `import failed (${res.status})`);
       }
     } catch (e) {
       const message = (e as Error).message;
       await sb.schema('shell_control').from('eq_intake_events').update({ status: 'failed', error_message: message }).eq('intake_id', intakeId);
-      throw new Error(`Commit failed: ${message}`);
+      throw new Error(`Import failed: ${message}`);
     }
 
     const committed = result.committed_count ?? 0;
-    const failed = rows.length - committed;
+    const staged = result.staged_count ?? 0;
 
-    await sb.schema('shell_control').from('eq_intake_events').update({
-      status: 'complete',
-      completed_at: new Date().toISOString(),
-    }).eq('intake_id', intakeId);
+    // Surface the split to the panel (banner). intake-stage already finalised
+    // the event status, so nothing more to write here.
+    onStage({
+      intake_id: intakeId,
+      committed,
+      staged,
+      health_score: result.health_score ?? 100,
+      conflict_count: result.conflict_count ?? 0,
+    });
 
-    return { committed, failed };
+    // confirm-ui shows `committed` as the headline and treats `failed` as
+    // rejected — staged rows are neither, so they're reported via the banner,
+    // not here. failed=0 keeps confirm-ui's own summary accurate.
+    return { committed, failed: 0 };
   };
 }

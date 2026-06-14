@@ -36,6 +36,10 @@ const ALLOW = new Set([
   // QuotesSetup root container — unstyled wrapper from the ops-quotes work
   // (deferred; quotes domain owns styling it). Children carry their own layout.
   'eq-quotes__setup',
+  // QuotesReports row base class — styling lives entirely in its --won/--lost/
+  // --stale/--warn modifiers (W3 Reports commit aeb4a3d); the base row is an
+  // intentionally-unstyled hook. Allowlisted to unblock deploys off main.
+  'eq-quotes__reports-row',
 ]);
 
 function walk(dir, exts, acc = []) {
