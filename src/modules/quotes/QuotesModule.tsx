@@ -557,10 +557,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [savingExpires, setSavingExpires] = useState(false);
   const [expiresErr, setExpiresErr] = useState<string | null>(null);
 
-  // Follow-up date inline edit
+  // Follow-up date inline edit (detail panel)
   const [followUpInput, setFollowUpInput] = useState("");
   const [savingFollowUp, setSavingFollowUp] = useState(false);
   const [followUpErr, setFollowUpErr] = useState<string | null>(null);
+
+  // Inline follow-up edit from pipeline table
+  const [pipelineFupEdit, setPipelineFupEdit] = useState<{ quoteId: string; value: string } | null>(null);
 
   // Payment terms / validity days inline edit
   const [termsEditing, setTermsEditing] = useState(false);
@@ -1458,6 +1461,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  const savePipelineFup = async (quoteId: string, dateStr: string) => {
+    setPipelineFupEdit(null);
+    if (!supabase) return;
+    await supabase.rpc("eq_set_follow_up_date", {
+      p_quote_id: quoteId,
+      p_follow_up_at: dateStr || null,
+      p_initials: initials.trim() || null,
+    });
+    void loadQuotes(statusFilter, search);
+  };
+
   const handleSaveProject = async () => {
     if (!supabase || !detail) return;
     setSavingProject(true);
@@ -1923,16 +1937,48 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       key: "follow_up_at", header: "Follow-up",
       sortAccessor: (q) => q.follow_up_at ?? "",
       render: (q) => {
-        if (!q.follow_up_at) return <span className="eq-quotes__muted">—</span>;
+        if (pipelineFupEdit?.quoteId === q.quote_id) {
+          return (
+            <input
+              type="date"
+              autoFocus
+              value={pipelineFupEdit.value}
+              style={{ fontSize: 12, padding: "2px 4px", border: "1px solid var(--eq-primary, #3DA8D8)", borderRadius: 4, width: 120 }}
+              onChange={(e) => setPipelineFupEdit({ quoteId: q.quote_id, value: e.target.value })}
+              onBlur={(e) => { void savePipelineFup(q.quote_id, e.target.value); }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { e.stopPropagation(); setPipelineFupEdit(null); }
+                if (e.key === "Enter") { void savePipelineFup(q.quote_id, pipelineFupEdit.value); }
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          );
+        }
         const todayStr = new Date().toISOString().slice(0, 10);
+        if (!q.follow_up_at) {
+          return (
+            <span
+              className="eq-quotes__muted eq-quotes__filter-link"
+              title="Click to set follow-up date"
+              onClick={(e) => { e.stopPropagation(); setPipelineFupEdit({ quoteId: q.quote_id, value: "" }); }}
+            >
+              Set date
+            </span>
+          );
+        }
         const overdue = q.follow_up_at < todayStr;
         const isToday = q.follow_up_at === todayStr;
         return (
-          <span title={q.follow_up_at} style={{
-            fontSize: 12,
-            fontWeight: overdue || isToday ? 600 : undefined,
-            color: overdue ? "var(--eq-err, #c0392b)" : isToday ? "var(--eq-amber, #d4820a)" : undefined,
-          }}>
+          <span
+            className="eq-quotes__filter-link"
+            title="Click to change follow-up date"
+            onClick={(e) => { e.stopPropagation(); setPipelineFupEdit({ quoteId: q.quote_id, value: q.follow_up_at ?? "" }); }}
+            style={{
+              fontSize: 12,
+              fontWeight: overdue || isToday ? 600 : undefined,
+              color: overdue ? "var(--eq-err, #c0392b)" : isToday ? "var(--eq-amber, #d4820a)" : undefined,
+            }}
+          >
             {fmtDate(q.follow_up_at)}
           </span>
         );
