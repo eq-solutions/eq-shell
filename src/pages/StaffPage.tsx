@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { Table, type TableColumn } from '@eq-solutions/ui';
+import { archiveStaff } from '../lib/entityActions';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 
@@ -110,11 +111,12 @@ export function StaffPage() {
   const [error,      setError]      = useState<string | null>(null);
   const [view,       setView]       = useState<View>('list');
   const [selId,      setSelId]      = useState<string | null>(null);
+  const [reload,     setReload]     = useState(0);
   const [tipId,      setTipId]      = useState<string | null>(null);
   const [tipRect,    setTipRect]    = useState<DOMRect | null>(null);
   const tipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Staff fetch — exclude inactive on arrival
+  // Staff fetch — exclude inactive on arrival; re-runs after mutations
   useEffect(() => {
     setLoading(true);
     fetchEntity('staff')
@@ -124,7 +126,7 @@ export function StaffPage() {
       })
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [reload]);
 
   // Licences fetch — best-effort
   useEffect(() => {
@@ -159,6 +161,8 @@ export function StaffPage() {
   const selectRow = useCallback((id: string) => {
     setSelId((prev) => (prev === id ? null : id));
   }, []);
+
+  const handleMutated = useCallback(() => setReload((n) => n + 1), []);
 
   const showTip = useCallback((staffId: string, rect: DOMRect) => {
     if (tipTimer.current) clearTimeout(tipTimer.current);
@@ -220,6 +224,7 @@ export function StaffPage() {
               onSelect={selectRow}
               onShowTip={showTip}
               onHideTip={hideTip}
+              onMutated={handleMutated}
             />
             <SplitPanel
               staff={selStaff}
@@ -255,9 +260,10 @@ interface ListProps {
   onSelect: (id: string) => void;
   onShowTip: (id: string, rect: DOMRect) => void;
   onHideTip: () => void;
+  onMutated: () => void;
 }
 
-function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHideTip }: ListProps) {
+function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHideTip, onMutated }: ListProps) {
   const staffCols = useMemo<TableColumn<StaffRow>[]>(() => [
     {
       key: 'name',
@@ -338,6 +344,9 @@ function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHi
         rowStyle={(row) => row.id === selId ? { background: '#e1f1fb' } : undefined}
         pagination={{ pageSize: 25 }}
         summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
+        onArchive={async (rows) => { await archiveStaff(rows.map((r) => r.id)); onMutated(); }}
+        archiveConfirm={{ description: (n) => `${n} staff member${n === 1 ? '' : 's'} will be set to inactive and removed from the active roster.` }}
+        onActionError={(_action, err) => console.error('[staff] bulk archive failed', err)}
       />
     </div>
   );
