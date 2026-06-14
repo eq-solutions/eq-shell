@@ -113,6 +113,17 @@ interface QuoteDetail {
   notes: QuoteNote[];
 }
 
+interface ContactRow {
+  contact_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  mobile_phone: string | null;
+  work_phone: string | null;
+  contact_position: string | null;
+  is_default_quote_contact: boolean;
+}
+
 interface ClientGroup {
   group_id: string;
   group_name: string;
@@ -457,6 +468,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [savingSentAt, setSavingSentAt] = useState(false);
   const [sentAtErr, setSentAtErr] = useState<string | null>(null);
 
+  // Contact picker
+  const [detailContacts, setDetailContacts] = useState<ContactRow[]>([]);
+  const [contactPickerVal, setContactPickerVal] = useState("");
+  const [linkingContact, setLinkingContact] = useState(false);
+  const [linkContactErr, setLinkContactErr] = useState<string | null>(null);
+
   // Note
   const [noteBody, setNoteBody] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -603,6 +620,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         setJobNoInput(row.workbench_job_no ?? "");
         setPoInput(row.po_number ?? "");
         setSentAtInput(row.sent_at ? row.sent_at.slice(0, 10) : "");
+        setContactPickerVal(row.contact_id ?? "");
+        setLinkContactErr(null);
+        if (row.customer_id) {
+          const { data: contactsData } = await supabase.rpc("eq_list_contacts_for_customer", {
+            p_customer_id: row.customer_id,
+          });
+          setDetailContacts((contactsData as ContactRow[]) ?? []);
+        } else {
+          setDetailContacts([]);
+        }
       }
       // Change history (best-effort; never blocks the detail view).
       const { data: auditData } = await supabase.rpc("eq_list_quote_audit", { p_quote_id: quoteId });
@@ -1100,6 +1127,20 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  const handleLinkContact = async () => {
+    if (!supabase || !detail) return;
+    setLinkingContact(true);
+    setLinkContactErr(null);
+    const { error } = await supabase.rpc("eq_link_quote_contact", {
+      p_quote_id: detail.quote_id,
+      p_contact_id: contactPickerVal || null,
+      p_initials: initials.trim() || null,
+    });
+    setLinkingContact(false);
+    if (error) { captureRpcError("eq_link_quote_contact", error, { quote_id: detail.quote_id }); setLinkContactErr(error.message); return; }
+    await openDetail(detail.quote_id);
+  };
+
   const handleSavePoNumber = async () => {
     if (!supabase || !detail || !poInput.trim()) return;
     setSavingPo(true);
@@ -1511,6 +1552,36 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <div className="eq-quotes__info-item">
                     <span className="eq-quotes__info-label">Phone</span>
                     <span className="eq-quotes__info-val">{detail.attn_phone}</span>
+                  </div>
+                )}
+                {detailContacts.length > 0 && (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label">Linked contact</span>
+                    <div className="eq-quotes__job-no-row">
+                      <select
+                        className="eq-quotes__input"
+                        style={{ maxWidth: 280 }}
+                        value={contactPickerVal}
+                        onChange={(e) => setContactPickerVal(e.target.value)}
+                      >
+                        <option value="">— no contact —</option>
+                        {detailContacts.map((c) => (
+                          <option key={c.contact_id} value={c.contact_id}>
+                            {[c.first_name, c.last_name].filter(Boolean).join(" ")}
+                            {c.email ? ` · ${c.email}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--primary"
+                        disabled={linkingContact || contactPickerVal === (detail.contact_id ?? "")}
+                        onClick={() => void handleLinkContact()}
+                      >
+                        {linkingContact ? "…" : "Save"}
+                      </button>
+                    </div>
+                    {linkContactErr && <span className="eq-quotes__err">{linkContactErr}</span>}
                   </div>
                 )}
                 <div className="eq-quotes__info-item">
