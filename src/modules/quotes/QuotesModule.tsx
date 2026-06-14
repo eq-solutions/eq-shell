@@ -1818,6 +1818,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <span className={statusClass(detail.status)}>
                 {STATUS_LABELS[detail.status] ?? detail.status}
               </span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--eq-ink, #1A1A2E)", marginLeft: 4 }}>
+                {aud(detail.total_cents)}
+              </span>
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
@@ -2746,6 +2749,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 </div>
               </div>
             )}
+            <div style={{ padding: "8px 0", textAlign: "center", fontSize: 11, color: "var(--eq-muted, #aaa)" }}>
+              ← → to navigate · Esc to close
+            </div>
           </div>
         )}
       </div>
