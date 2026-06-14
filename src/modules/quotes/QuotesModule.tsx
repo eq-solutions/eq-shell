@@ -975,8 +975,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setSites([]);
     setCreateContacts([]);
     setCreateProjectName("");
-    setCreateEstimatorName("");
-    setCreateEstimatorInitials("");
+    const savedEstName = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-estimator-name") : null) ?? "";
+    const savedEstInitials = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? "";
+    setCreateEstimatorName(savedEstName);
+    setCreateEstimatorInitials(savedEstInitials);
     setCreateScope("");
     setCreateNotes("");
     setCreateAttnName("");
@@ -3191,7 +3193,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 <input
                   className="eq-quotes__input"
                   value={createEstimatorName}
-                  onChange={(e) => setCreateEstimatorName(e.target.value)}
+                  onChange={(e) => {
+                    setCreateEstimatorName(e.target.value);
+                    try { localStorage.setItem("eq-quotes-estimator-name", e.target.value); } catch { /* ignore */ }
+                  }}
                   placeholder="e.g. Royce Milmlow"
                 />
               </div>
@@ -3200,7 +3205,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 <input
                   className="eq-quotes__input eq-quotes__input--sm"
                   value={createEstimatorInitials}
-                  onChange={(e) => setCreateEstimatorInitials(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    const upper = e.target.value.toUpperCase();
+                    setCreateEstimatorInitials(upper);
+                    updateInitials(upper);
+                  }}
                   placeholder="RM"
                   maxLength={4}
                 />
