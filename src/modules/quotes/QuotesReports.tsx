@@ -18,6 +18,7 @@ interface Quote {
   site_name: string | null;
   site_code: string | null;
   workbench_job_no: string | null;
+  po_number: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +205,7 @@ export function QuotesReports({ supabase }: Props) {
 
   const handleExportCsv = useCallback(() => {
     const header = ["Quote No.", "Status", "Project", "Customer", "Site", "Estimator",
-                    "Total (ex GST)", "Total (inc GST)", "Margin %", "Sent", "Created", "WB Job No."];
+                    "Total (ex GST)", "Total (inc GST)", "Margin %", "Sent", "Created", "WB Job No.", "PO Number"];
     const rows = quotes.map((q) => [
       q.quote_number,
       STATUS_LABELS[q.status] ?? q.status,
@@ -218,6 +219,7 @@ export function QuotesReports({ supabase }: Props) {
       q.sent_at ? new Date(q.sent_at).toLocaleDateString("en-AU") : "",
       new Date(q.created_at).toLocaleDateString("en-AU"),
       q.workbench_job_no,
+      q.po_number,
     ]);
     const today = new Date().toISOString().slice(0, 10);
     downloadCsv([header, ...rows], `sks-quotes-register-${today}.csv`);

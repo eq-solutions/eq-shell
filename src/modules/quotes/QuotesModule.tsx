@@ -3428,11 +3428,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 className="eq-quotes__btn eq-quotes__btn--outline"
                 title="Export current view to CSV"
                 onClick={() => {
-                  const header = ["Quote #", "Customer", "Site", "Project", "Estimator", "Status", "Job No.", "Total inc GST", "Margin %", "Sent", "Expires", "Created"];
+                  const header = ["Quote #", "Customer", "Site", "Project", "Estimator", "Status", "Job No.", "PO Number", "Total inc GST", "Margin %", "Sent", "Expires", "Created"];
                   const today = new Date().toISOString().slice(0, 10);
                   downloadCsv([header, ...displayedQuotes.map((q) => [
                     q.quote_number, q.customer_name ?? "", q.site_code ?? "", q.project_name ?? "",
                     q.estimator_initials ?? "", STATUS_LABELS[q.status] ?? q.status, q.workbench_job_no ?? "",
+                    q.po_number ?? "",
                     (q.total_cents / 100).toFixed(2),
                     q.margin_pct !== null ? Number(q.margin_pct).toFixed(1) : "",
                     q.sent_at ? q.sent_at.slice(0, 10) : "",
