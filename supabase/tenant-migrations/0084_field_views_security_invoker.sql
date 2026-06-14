@@ -15,12 +15,33 @@
 --   the correct place to fix them.
 --
 -- Idempotent (SET (security_invoker = true) is repeatable).
+-- Guarded: on planes where these objects are BASE TABLEs (not views), the ALTER VIEW
+-- is skipped rather than failing with 42809. On planes where they don't exist at all
+-- (e.g. nomination_clashes absent on zaap), the pg_views check skips cleanly.
 
-ALTER VIEW app_data.field_site_diaries   SET (security_invoker = true);
-ALTER VIEW app_data.field_schedule       SET (security_invoker = true);
-ALTER VIEW app_data.field_timesheets     SET (security_invoker = true);
-ALTER VIEW app_data.field_leave_requests SET (security_invoker = true);
-ALTER VIEW app_data.field_audit_log      SET (security_invoker = true);
-ALTER VIEW app_data.field_prestarts      SET (security_invoker = true);
-ALTER VIEW app_data.field_toolbox_talks  SET (security_invoker = true);
-ALTER VIEW public.nomination_clashes     SET (security_invoker = true);
+DO $$
+DECLARE
+  v record;
+BEGIN
+  FOR v IN SELECT * FROM (VALUES
+    ('app_data', 'field_site_diaries'),
+    ('app_data', 'field_schedule'),
+    ('app_data', 'field_timesheets'),
+    ('app_data', 'field_leave_requests'),
+    ('app_data', 'field_audit_log'),
+    ('app_data', 'field_prestarts'),
+    ('app_data', 'field_toolbox_talks'),
+    ('public',   'nomination_clashes')
+  ) AS t(schemaname, viewname)
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM pg_views
+      WHERE schemaname = v.schemaname AND viewname = v.viewname
+    ) THEN
+      EXECUTE format(
+        'ALTER VIEW %I.%I SET (security_invoker = true)',
+        v.schemaname, v.viewname
+      );
+    END IF;
+  END LOOP;
+END $$;
