@@ -1404,7 +1404,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
-                onClick={() => { setShowEmailForm((v) => !v); setEmailMsg(null); }}
+                onClick={() => {
+                  setShowEmailForm((v) => {
+                    if (!v && detail && !emailToName.trim()) {
+                      const name = [detail.attn_first_name, detail.attn_name].filter(Boolean).join(" ");
+                      if (name) setEmailToName(name);
+                    }
+                    return !v;
+                  });
+                  setEmailMsg(null);
+                }}
               >
                 Email PDF
               </button>
