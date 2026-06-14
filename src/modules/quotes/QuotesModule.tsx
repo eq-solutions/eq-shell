@@ -2087,7 +2087,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     {detail.attn_phone && (
                       <div className="eq-quotes__info-item">
                         <span className="eq-quotes__info-label">Phone</span>
-                        <span className="eq-quotes__info-val">{detail.attn_phone}</span>
+                        <span className="eq-quotes__info-val">
+                          <a href={`tel:${detail.attn_phone}`} style={{ textDecoration: "none", color: "inherit" }}>{detail.attn_phone}</a>
+                        </span>
+                      </div>
+                    )}
+                    {detail.contact_email && (
+                      <div className="eq-quotes__info-item">
+                        <span className="eq-quotes__info-label">Email</span>
+                        <span className="eq-quotes__info-val">
+                          <a href={`mailto:${detail.contact_email}`} style={{ color: "var(--eq-sky, #2986B4)" }}>{detail.contact_email}</a>
+                        </span>
                       </div>
                     )}
                     {detail.address && (
