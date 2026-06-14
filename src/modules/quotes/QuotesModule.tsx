@@ -660,6 +660,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [trashedLoading, setTrashedLoading] = useState(false);
   const [trashing, setTrashing] = useState(false);
   const [markingSent, setMarkingSent] = useState(false);
+  const [quickWinBusy, setQuickWinBusy] = useState(false);
+  const [quickLoseBusy, setQuickLoseBusy] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -1220,6 +1222,36 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setMarkingSent(false);
     if (error) { captureRpcError("eq_set_sent_at", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
     await openDetail(detail.quote_id);
+  };
+
+  const handleQuickWin = async () => {
+    if (!supabase || !detail) return;
+    setQuickWinBusy(true);
+    const { error } = await supabase.rpc("eq_update_quote_status", {
+      p_quote_id: detail.quote_id,
+      p_new_status: "verbal-win",
+      p_note: null,
+      p_initials: initials.trim() || null,
+    });
+    setQuickWinBusy(false);
+    if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleQuickLose = async () => {
+    if (!supabase || !detail) return;
+    setQuickLoseBusy(true);
+    const { error } = await supabase.rpc("eq_update_quote_status", {
+      p_quote_id: detail.quote_id,
+      p_new_status: "lost",
+      p_note: null,
+      p_initials: initials.trim() || null,
+    });
+    setQuickLoseBusy(false);
+    if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
   };
 
   const handleBulkStatus = async () => {
@@ -1860,6 +1892,30 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               >
                 Create Job
               </button>
+              {["draft", "submitted", "client-reviewing", "on-hold"].includes(detail.status) && (
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  disabled={quickWinBusy}
+                  onClick={() => void handleQuickWin()}
+                  title="Mark as Verbal Win"
+                  style={{ color: "var(--eq-sky, #2986B4)" }}
+                >
+                  {quickWinBusy ? "…" : "Win"}
+                </button>
+              )}
+              {["draft", "submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  disabled={quickLoseBusy}
+                  onClick={() => void handleQuickLose()}
+                  title="Mark as Lost"
+                  style={{ color: "var(--eq-err, #c0392b)" }}
+                >
+                  {quickLoseBusy ? "…" : "Lose"}
+                </button>
+              )}
               {!detail.sent_at && ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
                 <button
                   type="button"
