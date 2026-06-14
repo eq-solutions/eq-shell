@@ -108,7 +108,7 @@ export function QuotesReports({ supabase }: Props) {
   const [quotes, setQuotes]   = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
-  const [tab, setTab]         = useState<"pipeline" | "aging" | "register">("pipeline");
+  const [tab, setTab]         = useState<"pipeline" | "aging" | "register" | "estimators" | "trend">("pipeline");
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -193,6 +193,53 @@ export function QuotesReports({ supabase }: Props) {
     downloadCsv([header, ...rows], `sks-quotes-register-${today}.csv`);
   }, [quotes]);
 
+  // ── Estimator breakdown ───────────────────────────────────────────────────
+
+  const estimatorRows = React.useMemo(() => {
+    const map = new Map<string, { name: string | null; won: number; lost: number; pipeline: number; total: number }>();
+    for (const q of quotes) {
+      const key = q.estimator_initials ?? "(unassigned)";
+      const cur = map.get(key) ?? { name: q.estimator_name, won: 0, lost: 0, pipeline: 0, total: 0 };
+      if (WON_STATUSES.has(q.status))      cur.won++;
+      else if (LOST_STATUSES.has(q.status)) cur.lost++;
+      else                                   cur.pipeline++;
+      cur.total += q.total_cents;
+      map.set(key, cur);
+    }
+    return [...map.entries()]
+      .map(([initials, d]) => ({
+        initials,
+        name: d.name,
+        won: d.won,
+        lost: d.lost,
+        pipeline: d.pipeline,
+        total: d.total,
+        decided: d.won + d.lost,
+        winRate: d.won + d.lost > 0 ? Math.round((d.won / (d.won + d.lost)) * 100) : null,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [quotes]);
+
+  // ── Monthly trend ─────────────────────────────────────────────────────────
+
+  const monthlyRows = React.useMemo(() => {
+    const map = new Map<string, { count: number; total: number }>();
+    for (const q of quotes) {
+      if (!q.sent_at) continue;
+      const d = new Date(q.sent_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const cur = map.get(key) ?? { count: 0, total: 0 };
+      map.set(key, { count: cur.count + 1, total: cur.total + q.total_cents });
+    }
+    // Last 18 months in descending order, only show months with data
+    const months = [...map.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 18);
+    return months.map(([key, d]) => {
+      const [yr, mo] = key.split("-");
+      const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleDateString("en-AU", { month: "short", year: "numeric" });
+      return { key, label, count: d.count, total: d.total };
+    });
+  }, [quotes]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (loading) return <div className="eq-quotes__empty">Loading reports…</div>;
@@ -202,14 +249,14 @@ export function QuotesReports({ supabase }: Props) {
     <div className="eq-quotes__reports">
       {/* Sub-tabs */}
       <div className="eq-quotes__reports-tabs">
-        {(["pipeline", "aging", "register"] as const).map((t) => (
+        {(["pipeline", "aging", "estimators", "trend", "register"] as const).map((t) => (
           <button
             key={t}
             type="button"
             className={`eq-quotes__view-tab${tab === t ? " eq-quotes__view-tab--active" : ""}`}
             onClick={() => setTab(t)}
           >
-            {t === "pipeline" ? "Pipeline Summary" : t === "aging" ? "Aging" : "Register / Export"}
+            {t === "pipeline" ? "Pipeline" : t === "aging" ? "Aging" : t === "estimators" ? "By Estimator" : t === "trend" ? "Monthly" : "Register / Export"}
           </button>
         ))}
       </div>
@@ -324,6 +371,75 @@ export function QuotesReports({ supabase }: Props) {
               </>
             );
           })()}
+        </div>
+      )}
+
+      {/* ── By Estimator ── */}
+      {tab === "estimators" && (
+        <div className="eq-quotes__reports-section">
+          <p className="eq-quotes__reports-hint">Win rate and pipeline value per estimator across all quote statuses.</p>
+          <table className="eq-quotes__reports-table">
+            <thead>
+              <tr>
+                <th>Estimator</th>
+                <th style={{ textAlign: "right" }}>Won</th>
+                <th style={{ textAlign: "right" }}>Lost</th>
+                <th style={{ textAlign: "right" }}>Pipeline</th>
+                <th style={{ textAlign: "right" }}>Win rate</th>
+                <th style={{ textAlign: "right" }}>Total value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {estimatorRows.map((r) => (
+                <tr key={r.initials}>
+                  <td>
+                    {r.initials !== "(unassigned)" && (
+                      <span className="eq-quotes__initials-badge" style={{ marginRight: "0.5rem" }}>{r.initials}</span>
+                    )}
+                    {r.name ?? r.initials}
+                  </td>
+                  <td style={{ textAlign: "right" }}>{r.won}</td>
+                  <td style={{ textAlign: "right" }}>{r.lost}</td>
+                  <td style={{ textAlign: "right" }}>{r.pipeline}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {r.winRate !== null ? `${r.winRate}%` : "—"}
+                  </td>
+                  <td style={{ textAlign: "right" }}>{fmtMoney(r.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            {estimatorRows.length === 0 && (
+              <tbody><tr><td colSpan={6} style={{ textAlign: "center", color: "var(--eq-muted,#6b7280)" }}>No data.</td></tr></tbody>
+            )}
+          </table>
+        </div>
+      )}
+
+      {/* ── Monthly Trend ── */}
+      {tab === "trend" && (
+        <div className="eq-quotes__reports-section">
+          <p className="eq-quotes__reports-hint">Quotes sent per calendar month (by sent date). Last 18 months with activity.</p>
+          <table className="eq-quotes__reports-table">
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th style={{ textAlign: "right" }}>Quotes sent</th>
+                <th style={{ textAlign: "right" }}>Total value (inc GST)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthlyRows.map((r) => (
+                <tr key={r.key}>
+                  <td>{r.label}</td>
+                  <td style={{ textAlign: "right" }}>{r.count}</td>
+                  <td style={{ textAlign: "right" }}>{fmtMoney(r.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            {monthlyRows.length === 0 && (
+              <tbody><tr><td colSpan={3} style={{ textAlign: "center", color: "var(--eq-muted,#6b7280)" }}>No sent quotes yet.</td></tr></tbody>
+            )}
+          </table>
         </div>
       )}
 
