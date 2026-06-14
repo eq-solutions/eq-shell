@@ -7,7 +7,7 @@
 
 import type { Context } from '@netlify/functions';
 import {
-  getTenantDataClient,
+  getTenantRpcClient,
   TenantNotFoundError,
   TenantNotActiveError,
   TenantRoutingMisconfiguredError,
@@ -31,9 +31,9 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   if (!tenant) return jsonResp(400, { ok: false, error: 'tenant_required' });
   if (!token)  return jsonResp(400, { ok: false, error: 'token_required' });
 
-  let supabase: Awaited<ReturnType<typeof getTenantDataClient>>;
+  let supabase: Awaited<ReturnType<typeof getTenantRpcClient>>;
   try {
-    supabase = await getTenantDataClient(tenant);
+    supabase = await getTenantRpcClient(tenant);
   } catch (e) {
     if (e instanceof TenantNotFoundError)    return jsonResp(404, { ok: false, error: 'tenant_not_found' });
     if (e instanceof TenantNotActiveError)   return jsonResp(403, { ok: false, error: 'tenant_inactive' });

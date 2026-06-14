@@ -237,8 +237,11 @@ export async function loadQuotePdfData(
   const { data, error } = await supabase.rpc('eq_get_quote_detail', { p_quote_id: quoteId });
   if (error || !data) return null;
 
+  // eq_get_quote_detail returns an array — take the first row
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const q = data as any;
+  const rows = data as any[];
+  if (!rows || rows.length === 0) return null;
+  const q = rows[0];
 
   // Build customer from the quote detail fields
   const customer: PortalCustomer = {

@@ -10,7 +10,7 @@ interface QuotesSetupProps {
   supabase: SupabaseClient | null;
 }
 
-type SetupTab = "config" | "materials" | "products" | "bands" | "templates" | "presets";
+type SetupTab = "config" | "materials" | "products" | "bands" | "templates" | "presets" | "history";
 
 const num = (s: string): number => {
   const n = parseFloat(s);
@@ -103,6 +103,19 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
   const [bandsSaving, setBandsSaving] = useState(false);
   const [templates, setTemplates] = useState<TemplateDraft[]>([]);
   const [presets, setPresets] = useState<PresetDraft[]>([]);
+
+  interface AuditEntry {
+    audit_id: string;
+    entity_type: string;
+    entity_id: string | null;
+    action: string;
+    label: string | null;
+    changes: Record<string, unknown> | null;
+    actor_initials: string | null;
+    created_at: string;
+  }
+  const [history, setHistory] = useState<AuditEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const flash = (msg: string) => {
     setSavedMsg(msg);
@@ -210,6 +223,25 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     })));
   }, [supabase]);
 
+  const loadHistory = useCallback(async () => {
+    if (!supabase) return;
+    setHistoryLoading(true);
+    const { data, error: e } = await supabase.rpc("eq_list_config_audit", { p_limit: 100 });
+    setHistoryLoading(false);
+    if (e) { setError(e.message); return; }
+    setError(null);
+    setHistory(((data as Record<string, unknown>[]) ?? []).map((r) => ({
+      audit_id: String(r.audit_id),
+      entity_type: String(r.entity_type ?? ""),
+      entity_id: r.entity_id ? String(r.entity_id) : null,
+      action: String(r.action ?? ""),
+      label: r.label ? String(r.label) : null,
+      changes: (r.changes as Record<string, unknown>) ?? null,
+      actor_initials: r.actor_initials ? String(r.actor_initials) : null,
+      created_at: String(r.created_at),
+    })));
+  }, [supabase]);
+
   // Fetch the active tab's data. The loaders only setState after an await, so the
   // synchronous cascading-render case this rule guards against doesn't apply here.
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -220,7 +252,8 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     else if (tab === "bands") void loadBands();
     else if (tab === "templates") void loadTemplates();
     else if (tab === "presets") void loadPresets();
-  }, [tab, loadConfig, loadMaterials, loadProducts, loadBands, loadTemplates, loadPresets]);
+    else if (tab === "history") void loadHistory();
+  }, [tab, loadConfig, loadMaterials, loadProducts, loadBands, loadTemplates, loadPresets, loadHistory]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── Config ──────────────────────────────────────────────────────────────────
@@ -449,6 +482,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     { key: "bands", label: "Volume bands" },
     { key: "templates", label: "Templates" },
     { key: "presets", label: "Quick-add presets" },
+    { key: "history", label: "History" },
   ];
 
   return (
@@ -758,6 +792,56 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
           {templates.length === 0 && <p className="eq-quotes__muted">No templates yet.</p>}
           <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => addTemplate("scope")}>+ Add scope</button>{" "}
           <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => addTemplate("clarification")}>+ Add clarification</button>
+        </div>
+      )}
+
+      {/* Setup history / config audit */}
+      {tab === "history" && (
+        <div className="eq-quotes__detail-card">
+          <div className="eq-quotes__section-title" style={{ marginBottom: "0.75rem" }}>
+            Setup change history
+            <button
+              type="button"
+              className="eq-quotes__btn eq-quotes__btn--outline"
+              style={{ marginLeft: "auto", display: "inline-flex", fontSize: "0.8rem", padding: "2px 10px" }}
+              onClick={() => void loadHistory()}
+            >
+              Refresh
+            </button>
+          </div>
+          {historyLoading && <p className="eq-quotes__muted">Loading…</p>}
+          {!historyLoading && history.length === 0 && (
+            <p className="eq-quotes__muted">No setup changes recorded yet.</p>
+          )}
+          {!historyLoading && history.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              {history.map((entry) => {
+                const ts = new Date(entry.created_at).toLocaleString("en-AU", {
+                  day: "2-digit", month: "short", year: "numeric",
+                  hour: "2-digit", minute: "2-digit",
+                });
+                const actionLabel = entry.action === "create" ? "Created"
+                  : entry.action === "update" ? "Updated"
+                  : entry.action === "archive" ? "Archived"
+                  : entry.action === "restore" ? "Restored"
+                  : entry.action;
+                return (
+                  <div key={entry.audit_id} style={{
+                    display: "flex", alignItems: "baseline", gap: "0.75rem",
+                    padding: "0.4rem 0", borderBottom: "1px solid var(--eq-border, #e5e7eb)",
+                    fontSize: "0.85rem",
+                  }}>
+                    <span style={{ color: "var(--eq-muted, #6b7280)", whiteSpace: "nowrap", minWidth: "9rem" }}>{ts}</span>
+                    <span style={{ fontWeight: 600, color: "var(--eq-ink, #1A1A2E)", minWidth: "4.5rem" }}>{actionLabel}</span>
+                    <span style={{ flex: 1 }}>{entry.label ?? entry.entity_type}</span>
+                    {entry.actor_initials && (
+                      <span style={{ color: "var(--eq-muted, #6b7280)", minWidth: "2rem", textAlign: "right" }}>{entry.actor_initials}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
