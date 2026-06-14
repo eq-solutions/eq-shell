@@ -3036,6 +3036,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const createSubtotal = createLineItems.reduce((s, li) => s + calcLineTotal(li), 0);
   const createGst = Math.round(createSubtotal / 10);
   const createTotal = createSubtotal + createGst;
+  const createCost = createLineItems.reduce((s, li) => {
+    const q = parseFloat(li.qty) || 0;
+    const c = parseFloat(li.cost) || 0;
+    return s + Math.round(q * c * 100);
+  }, 0);
+  const createMarginPct = createCost > 0 && createSubtotal > 0
+    ? Math.round(((createSubtotal - createCost) / createSubtotal) * 100)
+    : null;
 
   // One editable line-item row, rendered inside each section group. Uses the flat
   // index `i` so updateLineItem/removeLineItem keep working unchanged.
@@ -3685,6 +3693,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <span>Total</span>
                   <span>{aud(createTotal)}</span>
                 </div>
+                {createMarginPct !== null && (
+                  <div className="eq-quotes__financial-row" style={{ borderTop: "1px solid var(--eq-border)", marginTop: 4, paddingTop: 4 }}>
+                    <span style={{ color: "var(--eq-muted)", fontSize: 12 }}>Est. margin</span>
+                    <span style={{
+                      fontSize: 12, fontWeight: 600,
+                      color: createMarginPct >= 25 ? "var(--eq-green, #27ae60)" : createMarginPct >= 10 ? "var(--eq-amber, #d4820a)" : "var(--eq-err, #c0392b)",
+                    }}>
+                      {createMarginPct}%
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
