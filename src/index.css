@@ -215,6 +215,10 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
 .eq-quotes__loading, .eq-quotes__empty { padding: 40px 24px; text-align: center; color: var(--eq-muted); font-size: 14px; }
 .eq-quotes__error-banner { background: #fef2f2; border: 1px solid #fecaca; color: var(--eq-err); border-radius: 6px; padding: 10px 14px; font-size: 13px; }
 .eq-quotes__inline-err { font-size: 12px; color: var(--eq-err); padding: 4px 0; }
+.eq-quotes__err { font-size: 12px; color: var(--eq-err); padding: 4px 0; }
+.eq-quotes__customers { display: flex; gap: 1.5rem; align-items: flex-start; }
+.eq-quotes__customer-row { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--eq-border); cursor: pointer; }
+.eq-quotes__customer-row--active { background: var(--eq-ice); }
 .eq-quotes__detail-header { display: flex; flex-direction: column; gap: 10px; }
 .eq-quotes__back { background: none; border: none; font-family: inherit; font-size: 13px; color: var(--eq-primary); cursor: pointer; padding: 0; font-weight: 500; align-self: flex-start; }
 .eq-quotes__back:hover { text-decoration: underline; }
