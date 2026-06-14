@@ -919,13 +919,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   }, [view]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Keyboard shortcuts: Escape = back, ← / → = prev/next quote in detail
+  // Keyboard shortcuts: Escape = back, ← / → = prev/next quote in detail; N = new quote
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "n" && detailIdRef.current === null && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setView("create");
+        return;
+      }
       if (detailIdRef.current === null) return;
-      if ((e.target as HTMLElement)?.tagName === "INPUT" ||
-          (e.target as HTMLElement)?.tagName === "TEXTAREA" ||
-          (e.target as HTMLElement)?.tagName === "SELECT") return;
       if (e.key === "Escape") {
         setDetailId(null);
         setDetail(null);
@@ -2814,7 +2817,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               </div>
             )}
             <div style={{ padding: "8px 0", textAlign: "center", fontSize: 11, color: "var(--eq-muted, #aaa)" }}>
-              ← → to navigate · Esc to close
+              ← → to navigate · Esc to close · N to create new quote
             </div>
           </div>
         )}
