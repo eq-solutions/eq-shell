@@ -10,7 +10,7 @@ interface QuotesSetupProps {
   supabase: SupabaseClient | null;
 }
 
-type SetupTab = "config" | "materials" | "products" | "bands" | "templates";
+type SetupTab = "config" | "materials" | "products" | "bands" | "templates" | "presets";
 
 const num = (s: string): number => {
   const n = parseFloat(s);
@@ -69,6 +69,25 @@ interface TemplateDraft {
   saving?: boolean;
 }
 
+interface PresetDraft {
+  preset_id: string | null;
+  category: string;
+  description: string;
+  unit: string;
+  rate: string;   // dollars
+  qty: string;    // quantity
+  sort_order: number;
+  active: boolean;
+}
+
+// The quick-add preset category aligns with the four quote line-item sections.
+const PRESET_CATEGORIES = [
+  { value: "labour", label: "Labour" },
+  { value: "material", label: "Materials" },
+  { value: "subcontractor", label: "Subcontractors" },
+  { value: "one_off", label: "One-off" },
+];
+
 export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
   const [tab, setTab] = useState<SetupTab>("config");
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +101,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
   const [bands, setBands] = useState<BandDraft[]>([]);
   const [bandsSaving, setBandsSaving] = useState(false);
   const [templates, setTemplates] = useState<TemplateDraft[]>([]);
+  const [presets, setPresets] = useState<PresetDraft[]>([]);
 
   const flash = (msg: string) => {
     setSavedMsg(msg);
@@ -171,6 +191,23 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     })));
   }, [supabase]);
 
+  const loadPresets = useCallback(async () => {
+    if (!supabase) return;
+    const { data, error: e } = await supabase.rpc("eq_list_rate_presets_admin");
+    if (e) { setError(e.message); return; }
+    setError(null);
+    setPresets(((data as Record<string, unknown>[]) ?? []).map((p) => ({
+      preset_id: String(p.preset_id),
+      category: p.category ? String(p.category) : "",
+      description: String(p.description ?? ""),
+      unit: p.unit ? String(p.unit) : "",
+      rate: (Number(p.unit_rate_cents ?? 0) / 100).toFixed(2),
+      qty: (Number(p.qty_thousandths ?? 1000) / 1000).toString(),
+      sort_order: Number(p.sort_order ?? 0),
+      active: Boolean(p.active),
+    })));
+  }, [supabase]);
+
   // Fetch the active tab's data. The loaders only setState after an await, so the
   // synchronous cascading-render case this rule guards against doesn't apply here.
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -180,7 +217,8 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     else if (tab === "products") { void loadMaterials(); void loadProducts(); }
     else if (tab === "bands") void loadBands();
     else if (tab === "templates") void loadTemplates();
-  }, [tab, loadConfig, loadMaterials, loadProducts, loadBands, loadTemplates]);
+    else if (tab === "presets") void loadPresets();
+  }, [tab, loadConfig, loadMaterials, loadProducts, loadBands, loadTemplates, loadPresets]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── Config ──────────────────────────────────────────────────────────────────
@@ -237,6 +275,45 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     if (e) { captureRpcError("eq_archive_pricing_material", e); setError(e.message); return; }
     await loadMaterials();
     flash("Material archived.");
+  };
+
+  // ── Presets (quick-add line-item library) ─────────────────────────────────────
+  const updPreset = (i: number, field: keyof PresetDraft, value: string) =>
+    setPresets((prev) => prev.map((p, j) => (j === i ? { ...p, [field]: value } : p)));
+
+  const addPreset = () =>
+    setPresets((prev) => [...prev, {
+      preset_id: null, category: "labour", description: "", unit: "", rate: "", qty: "1",
+      sort_order: (prev.length + 1) * 10, active: true,
+    }]);
+
+  const savePreset = async (i: number) => {
+    if (!supabase) return;
+    const p = presets[i];
+    if (!p.description.trim()) { setError("Preset needs a description."); return; }
+    setError(null);
+    const { error: e } = await supabase.rpc("eq_upsert_rate_preset", {
+      p_preset_id: p.preset_id,
+      p_category: p.category.trim() || null,
+      p_description: p.description.trim(),
+      p_unit: p.unit.trim() || null,
+      p_unit_rate_cents: Math.round(num(p.rate) * 100),
+      p_qty_thousandths: Math.round((num(p.qty) || 1) * 1000),
+      p_sort_order: p.sort_order,
+    });
+    if (e) { captureRpcError("eq_upsert_rate_preset", e); setError(e.message); return; }
+    await loadPresets();
+    flash("Preset saved.");
+  };
+
+  const archivePreset = async (i: number) => {
+    if (!supabase) return;
+    const p = presets[i];
+    if (!p.preset_id) { setPresets((prev) => prev.filter((_, j) => j !== i)); return; }
+    const { error: e } = await supabase.rpc("eq_archive_rate_preset", { p_preset_id: p.preset_id, p_active: !p.active });
+    if (e) { captureRpcError("eq_archive_rate_preset", e); setError(e.message); return; }
+    await loadPresets();
+    flash(p.active ? "Preset archived." : "Preset restored.");
   };
 
   // ── Products ─────────────────────────────────────────────────────────────────
@@ -355,6 +432,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     { key: "products", label: "Products" },
     { key: "bands", label: "Volume bands" },
     { key: "templates", label: "Templates" },
+    { key: "presets", label: "Quick-add presets" },
   ];
 
   return (
@@ -450,6 +528,51 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
           </div>
           <div style={{ marginTop: "0.75rem" }}>
             <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addMaterial}>+ Add material</button>
+          </div>
+        </div>
+      )}
+
+      {/* Quick-add presets */}
+      {tab === "presets" && (
+        <div className="eq-quotes__detail-card">
+          <div className="eq-quotes__section-title">Quick-add presets</div>
+          <p className="eq-quotes__muted" style={{ fontSize: 13, marginTop: -4 }}>
+            The click-to-add line-item library estimators use on the quote form. Archived presets stay out of the form but can be restored.
+          </p>
+          <div className="eq-quotes__table-wrap">
+            <table className="eq-quotes__table">
+              <thead>
+                <tr>
+                  <th>Section</th><th>Description</th><th>Unit</th>
+                  <th className="eq-quotes__th--right">Qty</th>
+                  <th className="eq-quotes__th--right">Rate ($)</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {presets.map((p, i) => (
+                  <tr className="eq-quotes__row" key={p.preset_id ?? `new-${i}`} style={p.active ? undefined : { opacity: 0.55 }}>
+                    <td>
+                      <select className="eq-quotes__select eq-quotes__input--sm" value={p.category} onChange={(e) => updPreset(i, "category", e.target.value)}>
+                        <option value="">—</option>
+                        {PRESET_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </td>
+                    <td><input className="eq-quotes__input" value={p.description} onChange={(e) => updPreset(i, "description", e.target.value)} /></td>
+                    <td><input className="eq-quotes__input eq-quotes__input--sm" value={p.unit} onChange={(e) => updPreset(i, "unit", e.target.value)} /></td>
+                    <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={p.qty} onChange={(e) => updPreset(i, "qty", e.target.value)} /></td>
+                    <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={p.rate} onChange={(e) => updPreset(i, "rate", e.target.value)} /></td>
+                    <td className="eq-quotes__td--right">
+                      <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" onClick={() => void savePreset(i)}>Save</button>{" "}
+                      <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void archivePreset(i)}>{!p.preset_id ? "Remove" : p.active ? "Archive" : "Restore"}</button>
+                    </td>
+                  </tr>
+                ))}
+                {presets.length === 0 && <tr><td colSpan={6} className="eq-quotes__muted">No presets yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addPreset}>+ Add preset</button>
           </div>
         </div>
       )}
