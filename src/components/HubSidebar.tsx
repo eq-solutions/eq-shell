@@ -38,6 +38,7 @@ export const HUB_APP_ICONS: Record<string, React.ReactNode> = {
   'eq-quotes': <ScrollText size={16} aria-hidden="true" />,
   cards:      <CreditCard size={16} aria-hidden="true" />,
   comms:      <Network size={16} aria-hidden="true" />,
+  ops:        <FileText size={16} aria-hidden="true" />,
 };
 
 const RECORD_ICONS: Record<string, React.ReactNode> = {

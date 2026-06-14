@@ -129,11 +129,11 @@
   min-width: 0;
 }
 
-/* Count — sky, tabular. Muted + warn variants. */
+/* Count — brighter sky (--eq-live) for legibility on dark navy, tabular. Muted + warn variants. */
 .eq-hub-sidebar__nav-count {
   font-size: 13.5px;
   font-weight: 700;
-  color: var(--eq-sky);
+  color: var(--eq-live, #38BDF8);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }

@@ -108,7 +108,7 @@ const SUBMIT_BRIEFING_TOOL = {
           required: ['rank', 'title', 'source', 'urgency', 'app_link'],
           properties: {
             rank:     { type: 'integer', minimum: 1, maximum: 3 },
-            title:    { type: 'string', description: 'Concise action title — what to do.' },
+            title:    { type: 'string', description: 'Short imperative action, 8 words or fewer — the task only. E.g. "Renew Collin Toohey\'s licences", "Invoice 13 verbal-agreement jobs", "Confirm crew for SY6 CT testing". Put any date in the deadline field, never in the title; do not append site, client, or deployment detail to the title.' },
             source:   { type: 'string', description: 'App that owns this: eq-field, eq-service, eq-quotes, eq-cards, sks-pipeline.' },
             app_link: { type: 'string', enum: ['field', 'service', 'quotes', 'cards'], description: 'App slug for navigation. Omit for sks-pipeline items.' },
             deadline: { type: 'string', description: 'Human deadline string, e.g. "3 days", "overdue 18h", "closes Friday". Omit if none.' },
@@ -163,7 +163,7 @@ RULES:
 - Brief: 2-3 sentences, plain English, no markdown. Lead with the most urgent item. Name people, sites, and references explicitly ONLY when they appear verbatim in the data — never infer or invent a name. Surface cross-app connections.
 - Recency: events are tagged [recent <12h] or [older]. Lead with [recent <12h] items. Treat [older] items as background context, not new alerts — only raise an older item if it is still unresolved or time-critical (e.g. an open defect, an overdue task, an expiring licence). Do not present a days-old routine event as if it just happened.
 - Snapshots (licences_expiring, service_due, open_defects, open_incidents) are current state, not new activity — they have no recency tag. Treat them as standing compliance/operational obligations. A large overdue backlog is worth one summarising action ("N tools overdue calibration, oldest X days") rather than one action per item.
-- Actions: max 3. Rank by: compliance/safety first, operational gaps second, commercial third. Skip anything in recently_actioned.
+- Actions: max 3. Rank by: compliance/safety first, operational gaps second, commercial third. Skip anything in recently_actioned. Keep each title a short imperative (8 words or fewer) — the task only. Dates go in the deadline field; never pack site names, client names, or deployment context into the title.
 - On shift: only from shift.started events where occurred_at is within 12 hours. Use the most recent such event and read its payload's "on_shift" array — each entry already has a resolved "name" and human "site". If "on_shift" is absent, label the "assignments" object's site codes using the payload's "sites" map (code -> human name). Never output a raw site code; always the human site name. "scheduled_count" is the full headcount even though "on_shift" lists only the headline few. Never invent names — if the array is empty and no sites map is present, leave on_shift empty.
 - Upcoming: only items with a verifiable future date from the data. Pipeline start_date_estimated qualifies.
 - GROUNDING (critical): every name, site, client, number, reference, and date in your output must trace to a specific line in the data above. If it is not in the data, it does not go in the briefing. Do not infer identities or quantities. When uncertain, omit — a blank panel is correct; a plausible-looking guess is a failure.`;

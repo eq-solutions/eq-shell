@@ -26,11 +26,13 @@ function setCachedDashboard(key: string, data: DashboardResponse): void {
   _dashboardCache.set(key, { data, ts: Date.now() });
 }
 
-const HUB_APPS: Array<{ key: string; label: string; to: string; isBeta: boolean; alwaysShow?: boolean }> = [
+const HUB_APPS: Array<{ key: string; label: string; to: string; isBeta: boolean; alwaysShow?: boolean; platformOnly?: boolean }> = [
   { key: 'field',     label: 'EQ Field',   to: 'field',     isBeta: false },
   { key: 'service',   label: 'EQ Service', to: 'service',   isBeta: true  },
-  { key: 'quotes',    label: 'EQ Ops',     to: 'quotes',    isBeta: false },
+  // EQ Quotes — the standalone tool the team uses today (external redirect).
   { key: 'eq-quotes', label: 'EQ Quotes',  to: 'eq-quotes', isBeta: false, alwaysShow: true },
+  // EQ Ops — the in-shell replacement; platform-admin debug surface for now.
+  { key: 'ops',       label: 'EQ Ops',     to: 'ops',       isBeta: true,  platformOnly: true },
   { key: 'cards',     label: 'EQ Cards',   to: 'cards',     isBeta: true  },
   { key: 'comms',     label: 'NSW Comms',  to: 'comms',     isBeta: true  },
 ];
@@ -102,7 +104,9 @@ export function HubLayout({
   }
 
   const sidebarApps: HubApp[] = HUB_APPS
-    .filter((a) => a.alwaysShow || (session ? moduleEnabled(session, a.key) : false))
+    .filter((a) => a.platformOnly
+      ? (session?.user.is_platform_admin ?? false)
+      : (a.alwaysShow || (session ? moduleEnabled(session, a.key) : false)))
     .map((a) => ({
       key: a.key,
       label: a.label,
