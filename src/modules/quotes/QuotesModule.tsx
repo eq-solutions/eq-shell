@@ -3172,6 +3172,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const createMarginPct = createCost > 0 && createSubtotal > 0
     ? Math.round(((createSubtotal - createCost) / createSubtotal) * 100)
     : null;
+  const catSubtotals = (() => {
+    const map = new Map<string, number>();
+    for (const li of createLineItems) {
+      const cat = li.category || "other";
+      const t = calcLineTotal(li);
+      if (t > 0) map.set(cat, (map.get(cat) ?? 0) + t);
+    }
+    return map.size >= 2 ? map : null;
+  })();
 
   // One editable line-item row, rendered inside each section group. Uses the flat
   // index `i` so updateLineItem/removeLineItem keep working unchanged.
@@ -3809,6 +3818,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
               <div className="eq-quotes__financials" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
+                {catSubtotals && (
+                  <>
+                    {[...catSubtotals.entries()].map(([cat, total]) => (
+                      <div key={cat} className="eq-quotes__financial-row" style={{ fontSize: 12 }}>
+                        <span style={{ color: "var(--eq-muted)", textTransform: "capitalize" }}>{cat}</span>
+                        <span style={{ color: "var(--eq-muted)" }}>{aud(total)}</span>
+                      </div>
+                    ))}
+                    <div style={{ height: 1, background: "var(--eq-border)", margin: "4px 0" }} />
+                  </>
+                )}
                 <div className="eq-quotes__financial-row">
                   <span>Subtotal</span>
                   <span>{aud(createSubtotal)}</span>
