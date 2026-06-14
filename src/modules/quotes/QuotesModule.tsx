@@ -2667,6 +2667,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             {nexts.length > 0 && (
               <div className="eq-quotes__detail-card">
                 <h3 className="eq-quotes__section-title">Advance Status</h3>
+                {(() => {
+                  const hints: Record<string, string> = {
+                    "draft": "Ready to send? Submit to client.",
+                    "submitted": "Waiting for client response — follow up if no reply.",
+                    "client-reviewing": "Client has the quote — awaiting their decision.",
+                    "on-hold": "On hold — check back in with the client.",
+                    "verbal-win": "Won verbally — enter the Workbench Job No. to advance.",
+                    "won-awaiting-job-no": "Enter the Workbench Job No. to mark the job as created.",
+                    "won-job-created": "Record the PO number when received from client.",
+                  };
+                  const hint = hints[detail.status];
+                  return hint ? (
+                    <p style={{ fontSize: 12, color: "var(--eq-muted, #888)", marginBottom: 8 }}>{hint}</p>
+                  ) : null;
+                })()}
                 <div className="eq-quotes__initials-row">
                   <label className="eq-quotes__label">
                     Your initials
