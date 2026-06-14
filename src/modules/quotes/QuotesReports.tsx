@@ -108,7 +108,14 @@ export function QuotesReports({ supabase }: Props) {
   const [quotes, setQuotes]   = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
-  const [tab, setTab]         = useState<"pipeline" | "aging" | "register" | "estimators" | "trend">("pipeline");
+  const [tab, setTab]         = useState<"pipeline" | "aging" | "register" | "estimators" | "trend" | "winloss">("pipeline");
+  const [lossRows, setLossRows]   = useState<{
+    quote_id: string; quote_number: string; status: string;
+    project_name: string | null; estimator_initials: string | null;
+    loss_reason: string | null; total_cents: number; customer_name: string | null;
+    created_at: string;
+  }[]>([]);
+  const [lossLoading, setLossLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -121,6 +128,29 @@ export function QuotesReports({ supabase }: Props) {
   }, [supabase]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const loadLossReasons = useCallback(async () => {
+    if (!supabase) return;
+    setLossLoading(true);
+    const { data, error: err } = await supabase.rpc("eq_list_loss_reasons");
+    setLossLoading(false);
+    if (err) { console.error("[QuotesReports] eq_list_loss_reasons:", err.message); return; }
+    setLossRows(((data ?? []) as Record<string, unknown>[]).map((r) => ({
+      quote_id:          String(r.quote_id),
+      quote_number:      String(r.quote_number ?? ""),
+      status:            String(r.status ?? ""),
+      project_name:      r.project_name ? String(r.project_name) : null,
+      estimator_initials: r.estimator_initials ? String(r.estimator_initials) : null,
+      loss_reason:       r.loss_reason ? String(r.loss_reason) : null,
+      total_cents:       Number(r.total_cents ?? 0),
+      customer_name:     r.customer_name ? String(r.customer_name) : null,
+      created_at:        String(r.created_at),
+    })));
+  }, [supabase]);
+
+  useEffect(() => {
+    if (tab === "winloss") void loadLossReasons();
+  }, [tab, loadLossReasons]);
 
   // ── Pipeline summary ──────────────────────────────────────────────────────
 
@@ -249,14 +279,14 @@ export function QuotesReports({ supabase }: Props) {
     <div className="eq-quotes__reports">
       {/* Sub-tabs */}
       <div className="eq-quotes__reports-tabs">
-        {(["pipeline", "aging", "estimators", "trend", "register"] as const).map((t) => (
+        {(["pipeline", "aging", "estimators", "trend", "winloss", "register"] as const).map((t) => (
           <button
             key={t}
             type="button"
             className={`eq-quotes__view-tab${tab === t ? " eq-quotes__view-tab--active" : ""}`}
             onClick={() => setTab(t)}
           >
-            {t === "pipeline" ? "Pipeline" : t === "aging" ? "Aging" : t === "estimators" ? "By Estimator" : t === "trend" ? "Monthly" : "Register / Export"}
+            {t === "pipeline" ? "Pipeline" : t === "aging" ? "Aging" : t === "estimators" ? "By Estimator" : t === "trend" ? "Monthly" : t === "winloss" ? "Win / Loss" : "Register / Export"}
           </button>
         ))}
       </div>
@@ -440,6 +470,58 @@ export function QuotesReports({ supabase }: Props) {
               <tbody><tr><td colSpan={3} style={{ textAlign: "center", color: "var(--eq-muted,#6b7280)" }}>No sent quotes yet.</td></tr></tbody>
             )}
           </table>
+        </div>
+      )}
+
+      {/* ── Win / Loss Reasons ── */}
+      {tab === "winloss" && (
+        <div className="eq-quotes__reports-section">
+          {lossLoading && <p className="eq-quotes__reports-hint">Loading…</p>}
+          {!lossLoading && lossRows.length === 0 && (
+            <p className="eq-quotes__reports-hint">No lost, cancelled, or expired quotes.</p>
+          )}
+          {!lossLoading && lossRows.length > 0 && (
+            <>
+              <p className="eq-quotes__reports-hint">
+                {lossRows.length} closed-out quote{lossRows.length !== 1 ? "s" : ""} — lost, cancelled, expired, or superseded.
+              </p>
+              <table className="eq-quotes__reports-table">
+                <thead>
+                  <tr>
+                    <th>Quote No.</th>
+                    <th>Status</th>
+                    <th>Customer</th>
+                    <th>Project</th>
+                    <th>Reason</th>
+                    <th style={{ textAlign: "right" }}>Value</th>
+                    <th>Est.</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lossRows.map((r) => (
+                    <tr key={r.quote_id}>
+                      <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>{r.quote_number}</td>
+                      <td>{STATUS_LABELS[r.status] ?? r.status}</td>
+                      <td>{r.customer_name ?? "—"}</td>
+                      <td>{r.project_name ?? "—"}</td>
+                      <td style={{ color: r.loss_reason ? undefined : "var(--eq-muted,#6b7280)" }}>
+                        {r.loss_reason ?? "—"}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{fmtMoney(r.total_cents)}</td>
+                      <td>
+                        {r.estimator_initials
+                          ? <span className="eq-quotes__initials-badge">{r.estimator_initials}</span>
+                          : "—"
+                        }
+                      </td>
+                      <td>{new Date(r.created_at).toLocaleDateString("en-AU")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
       )}
 
