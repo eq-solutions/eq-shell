@@ -388,6 +388,14 @@ function fmtDate(iso: string | null): string {
     year: "numeric",
   });
 }
+function fmtExpiry(iso: string | null): { text: string; urgent: boolean; overdue: boolean } {
+  if (!iso) return { text: "—", urgent: false, overdue: false };
+  const days = Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
+  if (days < 0) return { text: `${Math.abs(days)}d ago`, urgent: false, overdue: true };
+  if (days === 0) return { text: "Today", urgent: true, overdue: false };
+  if (days <= 7) return { text: `${days}d`, urgent: true, overdue: false };
+  return { text: fmtDate(iso), urgent: false, overdue: false };
+}
 
 function csvEscape(v: string | number | null): string {
   const s = v == null ? "" : String(v);
@@ -1592,6 +1600,23 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       key: "sent_at", header: "Sent",
       sortAccessor: (q) => q.sent_at ?? "",
       render: (q) => fmtDate(q.sent_at),
+    },
+    {
+      key: "expires_at", header: "Expires",
+      sortAccessor: (q) => q.expires_at ?? "",
+      render: (q) => {
+        if (!q.expires_at) return <span className="eq-quotes__muted">—</span>;
+        const { text, urgent, overdue } = fmtExpiry(q.expires_at);
+        return (
+          <span style={{
+            fontSize: 12,
+            fontWeight: urgent || overdue ? 600 : undefined,
+            color: overdue ? "var(--eq-err, #c0392b)" : urgent ? "var(--eq-amber, #d4820a)" : undefined,
+          }}>
+            {text}
+          </span>
+        );
+      },
     },
   ];
 
