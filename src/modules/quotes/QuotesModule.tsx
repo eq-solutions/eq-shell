@@ -496,7 +496,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // ── Pipeline state ────────────────────────────────────────────────────────
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [statusFilter, setStatusFilter] = useState("active-jobs");
+  const [statusFilter, setStatusFilter] = useState(() =>
+    (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-tab") : null) ?? "active-jobs"
+  );
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -702,6 +704,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // cascading-render case react-hooks/set-state-in-effect targets doesn't apply.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    try { localStorage.setItem("eq-quotes-tab", statusFilter); } catch { /* ignore */ }
     void loadQuotes(statusFilter, search);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
@@ -3494,6 +3497,29 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
             />
+            {(() => {
+              const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+              const today = new Date();
+              const presets: Array<{ label: string; from: string; to: string }> = [
+                { label: "This month", from: isoDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: isoDate(today) },
+                { label: "3 months", from: isoDate(new Date(today.getFullYear(), today.getMonth() - 3, 1)), to: isoDate(today) },
+                { label: "This year", from: isoDate(new Date(today.getFullYear(), 0, 1)), to: isoDate(today) },
+              ];
+              return presets.map((p) => {
+                const active = dateFrom === p.from && dateTo === p.to;
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    className={`eq-quotes__btn ${active ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+                    style={{ fontSize: 12 }}
+                    onClick={() => { if (active) { setDateFrom(""); setDateTo(""); } else { setDateFrom(p.from); setDateTo(p.to); } }}
+                  >
+                    {p.label}
+                  </button>
+                );
+              });
+            })()}
             <input
               className="eq-quotes__input eq-quotes__input--sm"
               type="date"
