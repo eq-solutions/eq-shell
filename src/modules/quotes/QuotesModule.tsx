@@ -465,6 +465,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [accordionLoading, setAccordionLoading] = useState(false);
   const [accordionError, setAccordionError] = useState<string | null>(null);
   const [accordionActiveOnly, setAccordionActiveOnly] = useState(true);
+  const [accordionSearch, setAccordionSearch] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["equinix"]));
 
   // ── Customers + sites + presets + create form state ─────────────────────
@@ -2689,8 +2690,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           {accordionError && <div className="eq-quotes__error-banner">{accordionError}</div>}
           {!accordionLoading && !accordionError && (
             <>
-              {/* Active-only toggle */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              {/* Active-only toggle + search */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
                 <button
                   type="button"
                   className={`eq-quotes__btn${accordionActiveOnly ? " eq-quotes__btn--primary" : " eq-quotes__btn--outline"}`}
@@ -2698,11 +2699,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 >
                   {accordionActiveOnly ? "Active + Sent" : "All statuses"}
                 </button>
-                <span style={{ fontSize: 12, color: "var(--eq-muted, #888)" }}>
-                  {accordionActiveOnly
-                    ? "Showing sent and active jobs only"
-                    : "Showing all quotes"}
-                </span>
+                <input
+                  className="eq-quotes__search"
+                  style={{ maxWidth: 260 }}
+                  type="search"
+                  placeholder="Search client or group…"
+                  value={accordionSearch}
+                  onChange={(e) => setAccordionSearch(e.target.value)}
+                />
               </div>
               {/* Named client groups */}
               {Object.entries(groupMap).map(([groupId, group]) => {
@@ -2711,6 +2715,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   q.customer_name && memberNames.has(q.customer_name),
                 );
                 if (accordionActiveOnly && groupQuotes.length === 0) return null;
+                const searchLower = accordionSearch.toLowerCase().trim();
+                if (searchLower && !group.name.toLowerCase().includes(searchLower) &&
+                  ![...memberNames].some((n) => n.toLowerCase().includes(searchLower))) return null;
                 const groupTotal = groupQuotes.reduce((s, q) => s + q.total_cents, 0);
                 const isOpen = expandedGroups.has(group.slug);
                 return (
@@ -2797,8 +2804,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 const groupedNames = new Set(
                   clientGroups.map((g) => g.customer_name),
                 );
+                const searchLower2 = accordionSearch.toLowerCase().trim();
                 const ungrouped = Object.entries(quotesByCustomer).filter(
-                  ([name]) => !groupedNames.has(name),
+                  ([name]) => !groupedNames.has(name) &&
+                    (!searchLower2 || name.toLowerCase().includes(searchLower2)),
                 );
                 if (ungrouped.length === 0) return null;
                 return (
