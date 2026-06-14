@@ -662,6 +662,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [markingSent, setMarkingSent] = useState(false);
   const [quickWinBusy, setQuickWinBusy] = useState(false);
   const [quickLoseBusy, setQuickLoseBusy] = useState(false);
+  const [losePromptOpen, setLosePromptOpen] = useState(false);
+  const [loseReason, setLoseReason] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -1239,16 +1241,18 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
-  const handleQuickLose = async () => {
+  const handleQuickLose = async (reason?: string) => {
     if (!supabase || !detail) return;
     setQuickLoseBusy(true);
     const { error } = await supabase.rpc("eq_update_quote_status", {
       p_quote_id: detail.quote_id,
       p_new_status: "lost",
-      p_note: null,
+      p_note: reason?.trim() || null,
       p_initials: initials.trim() || null,
     });
     setQuickLoseBusy(false);
+    setLosePromptOpen(false);
+    setLoseReason("");
     if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
     await openDetail(detail.quote_id);
     void loadQuotes(statusFilter, search);
@@ -1909,11 +1913,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   type="button"
                   className="eq-quotes__btn eq-quotes__btn--outline"
                   disabled={quickLoseBusy}
-                  onClick={() => void handleQuickLose()}
+                  onClick={() => setLosePromptOpen((o) => !o)}
                   title="Mark as Lost"
                   style={{ color: "var(--eq-err, #c0392b)" }}
                 >
-                  {quickLoseBusy ? "…" : "Lose"}
+                  {quickLoseBusy ? "…" : losePromptOpen ? "Cancel" : "Lose"}
                 </button>
               )}
               {!detail.sent_at && ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
@@ -1964,6 +1968,37 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           {/* Share link feedback */}
           {shareMsg && (
             <div style={{ marginTop: 4, fontSize: 12, color: "var(--eq-sky, #2986B4)" }}>{shareMsg}</div>
+          )}
+          {/* Lose reason prompt */}
+          {losePromptOpen && detail && (
+            <div className="eq-quotes__detail-card" style={{ marginTop: 8, padding: "12px 16px" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <label className="eq-quotes__info-label">Loss reason (optional)</label>
+                  <input
+                    className="eq-quotes__input"
+                    style={{ width: "100%" }}
+                    placeholder="e.g. Price, Timeline, No response…"
+                    value={loseReason}
+                    onChange={(e) => setLoseReason(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") void handleQuickLose(loseReason); }}
+                    autoFocus
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  disabled={quickLoseBusy}
+                  onClick={() => void handleQuickLose(loseReason)}
+                  style={{ color: "var(--eq-err, #c0392b)" }}
+                >
+                  {quickLoseBusy ? "…" : "Confirm Loss"}
+                </button>
+                <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => { setLosePromptOpen(false); setLoseReason(""); }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
