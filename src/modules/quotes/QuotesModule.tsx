@@ -482,6 +482,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [estFilter, setEstFilter] = useState("");
+  const [customerFilter, setCustomerFilter] = useState("");
   const [expiringOnly, setExpiringOnly] = useState(false);
   const [unsentOnly, setUnsentOnly] = useState(false);
   const [pipelineLoading, setPipelineLoading] = useState(true);
@@ -1534,6 +1535,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   if (dateFrom) displayedQuotes = displayedQuotes.filter((q) => q.created_at >= dateFrom);
   if (dateTo)   displayedQuotes = displayedQuotes.filter((q) => q.created_at.slice(0, 10) <= dateTo);
   if (estFilter) displayedQuotes = displayedQuotes.filter((q) => q.estimator_initials === estFilter);
+  if (customerFilter) displayedQuotes = displayedQuotes.filter((q) => q.customer_name === customerFilter);
   if (expiringOnly) {
     const soon = new Date(Date.now() + 14 * 86_400_000).toISOString();
     displayedQuotes = displayedQuotes.filter(
@@ -1547,6 +1549,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   }
   const estimatorOptions = Array.from(
     new Set(quotes.map((q) => q.estimator_initials).filter((i): i is string => i !== null && i !== ""))
+  ).sort();
+  const customerOptions = Array.from(
+    new Set(quotes.map((q) => q.customer_name).filter((n): n is string => n !== null && n !== ""))
   ).sort();
   const visibleTotal = displayedQuotes.reduce((s, q) => s + q.total_cents, 0);
   const wonTotal = displayedQuotes
@@ -3272,6 +3277,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 {estimatorOptions.map((i) => <option key={i} value={i}>{i}</option>)}
               </select>
             )}
+            {customerOptions.length > 1 && (
+              <select
+                className="eq-quotes__select"
+                style={{ fontSize: 13, padding: "4px 6px" }}
+                value={customerFilter}
+                onChange={(e) => setCustomerFilter(e.target.value)}
+              >
+                <option value="">All clients</option>
+                {customerOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            )}
             <button
               type="button"
               className={`eq-quotes__btn ${expiringOnly ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
@@ -3288,11 +3304,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             >
               Unsent
             </button>
-            {(dateFrom || dateTo || estFilter || expiringOnly || unsentOnly) && (
+            {(dateFrom || dateTo || estFilter || customerFilter || expiringOnly || unsentOnly) && (
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
-                onClick={() => { setDateFrom(""); setDateTo(""); setEstFilter(""); setExpiringOnly(false); setUnsentOnly(false); }}
+                onClick={() => { setDateFrom(""); setDateTo(""); setEstFilter(""); setCustomerFilter(""); setExpiringOnly(false); setUnsentOnly(false); }}
               >
                 Clear filters
               </button>
