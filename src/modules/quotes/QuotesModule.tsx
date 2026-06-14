@@ -505,6 +505,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detailIdRef = useRef<string | null>(null);
+  const displayedQuotesRef = useRef<Quote[]>([]);
 
   // ── Detail state ──────────────────────────────────────────────────────────
   const [detail, setDetail] = useState<QuoteDetail | null>(null);
@@ -906,6 +908,30 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Keyboard shortcuts: Escape = back, ← / → = prev/next quote in detail
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (detailIdRef.current === null) return;
+      if ((e.target as HTMLElement)?.tagName === "INPUT" ||
+          (e.target as HTMLElement)?.tagName === "TEXTAREA" ||
+          (e.target as HTMLElement)?.tagName === "SELECT") return;
+      if (e.key === "Escape") {
+        setDetailId(null);
+        setDetail(null);
+        return;
+      }
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        const dq = displayedQuotesRef.current;
+        const idx = dq.findIndex((q) => q.quote_id === detailIdRef.current);
+        if (idx < 0) return;
+        const target = e.key === "ArrowLeft" ? dq[idx - 1] : dq[idx + 1];
+        if (target) void openDetail(target.quote_id);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [openDetail]);
 
   // ── Create form helpers ───────────────────────────────────────────────────
 
@@ -1571,6 +1597,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     new Set(quotes.map((q) => q.customer_name).filter((n): n is string => n !== null && n !== ""))
   ).sort();
   const visibleTotal = displayedQuotes.reduce((s, q) => s + q.total_cents, 0);
+  // Keep refs fresh for keyboard handler
+  detailIdRef.current = detailId;
+  displayedQuotesRef.current = displayedQuotes;
   const wonTotal = displayedQuotes
     .filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
     .reduce((s, q) => s + q.total_cents, 0);
