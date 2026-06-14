@@ -310,6 +310,23 @@ function summariseAudit(a: QuoteAuditEntry): string {
     if (c["validity_days"] != null) parts.push(`${String(c["validity_days"])}d validity`);
     return parts.length > 0 ? parts.join(" · ") : "Payment terms updated";
   }
+  if (a.action === "header") {
+    const FIELD_LABELS: Record<string, string> = {
+      project_name: "Project", quote_number: "Quote #", customer_id: "Customer",
+      site_id: "Site", estimator_name: "Estimator", po_number: "PO",
+    };
+    const changed = Object.entries(c)
+      .filter(([, v]) => v && typeof v === "object" && ("old" in (v as object) || "new" in (v as object)))
+      .map(([k, v]) => {
+        const label = FIELD_LABELS[k] ?? k.replace(/_/g, " ");
+        const diff = v as { old?: unknown; new?: unknown };
+        if (diff.old && diff.new) return `${label}: ${String(diff.old)} → ${String(diff.new)}`;
+        if (diff.new) return `${label}: set to ${String(diff.new)}`;
+        if (diff.old) return `${label}: cleared`;
+        return label;
+      });
+    return changed.length > 0 ? changed.join(", ") : "Details edited";
+  }
   if (a.action === "recipient") {
     const parts: string[] = [];
     const first = c["attn_first_name"];
