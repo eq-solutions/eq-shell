@@ -33,6 +33,7 @@ interface MaterialDraft {
   unit: string;
   unit_cost: string;
   sort_order: number;
+  archived?: boolean;
   saving?: boolean;
 }
 
@@ -129,7 +130,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
 
   const loadMaterials = useCallback(async () => {
     if (!supabase) return;
-    const { data, error: e } = await supabase.rpc("eq_list_pricing_materials", { p_include_archived: false });
+    const { data, error: e } = await supabase.rpc("eq_list_pricing_materials", { p_include_archived: true });
     if (e) { setError(e.message); return; }
     setError(null);
     setMaterials(((data as Record<string, unknown>[]) ?? []).map((m) => ({
@@ -139,6 +140,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       unit: m.unit ? String(m.unit) : "",
       unit_cost: String(m.unit_cost ?? "0"),
       sort_order: Number(m.sort_order ?? 0),
+      archived: Boolean(m.archived),
     })));
   }, [supabase]);
 
@@ -277,6 +279,16 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     flash("Material archived.");
   };
 
+  const restoreMaterial = async (i: number) => {
+    if (!supabase) return;
+    const m = materials[i];
+    if (!m.material_id) return;
+    const { error: e } = await supabase.rpc("eq_archive_pricing_material", { p_material_id: m.material_id, p_archived: false });
+    if (e) { captureRpcError("eq_archive_pricing_material", e); setError(e.message); return; }
+    await loadMaterials();
+    flash("Material restored.");
+  };
+
   // ── Presets (quick-add line-item library) ─────────────────────────────────────
   const updPreset = (i: number, field: keyof PresetDraft, value: string) =>
     setPresets((prev) => prev.map((p, j) => (j === i ? { ...p, [field]: value } : p)));
@@ -302,6 +314,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       p_sort_order: p.sort_order,
     });
     if (e) { captureRpcError("eq_upsert_rate_preset", e); setError(e.message); return; }
+    await supabase.rpc("eq_log_config_audit", { p_entity_type: "rate_preset", p_action: p.preset_id ? "update" : "create", p_label: p.description.trim() }).catch(() => { /* non-fatal */ });
     await loadPresets();
     flash("Preset saved.");
   };
@@ -312,6 +325,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     if (!p.preset_id) { setPresets((prev) => prev.filter((_, j) => j !== i)); return; }
     const { error: e } = await supabase.rpc("eq_archive_rate_preset", { p_preset_id: p.preset_id, p_active: !p.active });
     if (e) { captureRpcError("eq_archive_rate_preset", e); setError(e.message); return; }
+    await supabase.rpc("eq_log_config_audit", { p_entity_type: "rate_preset", p_action: p.active ? "archive" : "restore", p_label: p.description }).catch(() => { /* non-fatal */ });
     await loadPresets();
     flash(p.active ? "Preset archived." : "Preset restored.");
   };
@@ -411,6 +425,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       p_sort_order: t.sort_order,
     });
     if (e) { captureRpcError("eq_upsert_quote_template", e); setError(e.message); return; }
+    await supabase.rpc("eq_log_config_audit", { p_entity_type: "quote_template", p_action: t.template_id ? "update" : "create", p_label: t.name.trim() }).catch(() => { /* non-fatal */ });
     await loadTemplates();
     flash("Template saved.");
   };
@@ -421,6 +436,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     if (!t.template_id) { setTemplates((prev) => prev.filter((_, j) => j !== i)); return; }
     const { error: e } = await supabase.rpc("eq_archive_quote_template", { p_template_id: t.template_id, p_archived: true });
     if (e) { captureRpcError("eq_archive_quote_template", e); setError(e.message); return; }
+    await supabase.rpc("eq_log_config_audit", { p_entity_type: "quote_template", p_action: "archive", p_label: t.name }).catch(() => { /* non-fatal */ });
     await loadTemplates();
     flash("Template archived.");
   };
@@ -500,7 +516,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       {/* Materials */}
       {tab === "materials" && (
         <div className="eq-quotes__detail-card">
-          <div className="eq-quotes__section-title">Materials</div>
+          <div className="eq-quotes__section-title">Active materials</div>
           <div className="eq-quotes__table-wrap">
             <table className="eq-quotes__table">
               <thead>
@@ -510,25 +526,61 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {materials.map((m, i) => (
-                  <tr className="eq-quotes__row" key={m.material_id ?? `new-${i}`}>
-                    <td><input className="eq-quotes__input" value={m.part_no} onChange={(e) => updMaterial(i, "part_no", e.target.value)} /></td>
-                    <td><input className="eq-quotes__input" value={m.description} onChange={(e) => updMaterial(i, "description", e.target.value)} /></td>
-                    <td><input className="eq-quotes__input eq-quotes__input--sm" value={m.unit} onChange={(e) => updMaterial(i, "unit", e.target.value)} /></td>
-                    <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={m.unit_cost} onChange={(e) => updMaterial(i, "unit_cost", e.target.value)} /></td>
-                    <td className="eq-quotes__td--right">
-                      <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" onClick={() => void saveMaterial(i)}>Save</button>{" "}
-                      <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void archiveMaterial(i)}>{m.material_id ? "Archive" : "Remove"}</button>
-                    </td>
-                  </tr>
-                ))}
-                {materials.length === 0 && <tr><td colSpan={5} className="eq-quotes__muted">No materials yet.</td></tr>}
+                {materials.filter((m) => !m.archived).map((m, _i) => {
+                  const i = materials.indexOf(m);
+                  return (
+                    <tr className="eq-quotes__row" key={m.material_id ?? `new-${i}`}>
+                      <td><input className="eq-quotes__input" value={m.part_no} onChange={(e) => updMaterial(i, "part_no", e.target.value)} /></td>
+                      <td><input className="eq-quotes__input" value={m.description} onChange={(e) => updMaterial(i, "description", e.target.value)} /></td>
+                      <td><input className="eq-quotes__input eq-quotes__input--sm" value={m.unit} onChange={(e) => updMaterial(i, "unit", e.target.value)} /></td>
+                      <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={m.unit_cost} onChange={(e) => updMaterial(i, "unit_cost", e.target.value)} /></td>
+                      <td className="eq-quotes__td--right">
+                        <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" onClick={() => void saveMaterial(i)}>Save</button>{" "}
+                        <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void archiveMaterial(i)}>{m.material_id ? "Archive" : "Remove"}</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {materials.filter((m) => !m.archived).length === 0 && <tr><td colSpan={5} className="eq-quotes__muted">No active materials.</td></tr>}
               </tbody>
             </table>
           </div>
           <div style={{ marginTop: "0.75rem" }}>
             <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addMaterial}>+ Add material</button>
           </div>
+
+          {/* Archived materials */}
+          {materials.some((m) => m.archived) && (
+            <div style={{ marginTop: "1.5rem" }}>
+              <div className="eq-quotes__section-title" style={{ color: "var(--eq-muted, #888)" }}>Archived materials</div>
+              <div className="eq-quotes__table-wrap">
+                <table className="eq-quotes__table">
+                  <thead>
+                    <tr>
+                      <th>Part no.</th><th>Description</th><th>Unit</th>
+                      <th className="eq-quotes__th--right">Unit cost ($)</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {materials.filter((m) => m.archived).map((m) => {
+                      const i = materials.indexOf(m);
+                      return (
+                        <tr className="eq-quotes__row" key={m.material_id} style={{ opacity: 0.65 }}>
+                          <td>{m.part_no}</td>
+                          <td>{m.description}</td>
+                          <td>{m.unit}</td>
+                          <td className="eq-quotes__td--right">{m.unit_cost}</td>
+                          <td className="eq-quotes__td--right">
+                            <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void restoreMaterial(i)}>Restore</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

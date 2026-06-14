@@ -427,6 +427,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [addingNote, setAddingNote] = useState(false);
   const [noteMutErr, setNoteMutErr] = useState<string | null>(null);
 
+  // Email PDF
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailToName, setEmailToName] = useState("");
+  const [emailingPdf, setEmailingPdf] = useState(false);
+  const [emailMsg, setEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Share link
+  const [sharingLink, setSharingLink] = useState(false);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
+
   // ── Accordion state ───────────────────────────────────────────────────────
   const [clientGroups, setClientGroups] = useState<ClientGroup[]>([]);
   const [accordionQuotes, setAccordionQuotes] = useState<Quote[]>([]);
@@ -1061,6 +1072,56 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     await openDetail(detail.quote_id);
   };
 
+  const handleEmailPdf = async () => {
+    if (!supabase || !detail || !emailTo.trim()) return;
+    setEmailingPdf(true);
+    setEmailMsg(null);
+    try {
+      const res = await fetch("/.netlify/functions/quote-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quote_id: detail.quote_id, to_email: emailTo.trim(), to_name: emailToName.trim() || undefined }),
+        credentials: "include",
+      });
+      const json = await res.json() as { ok: boolean; error?: string };
+      if (json.ok) {
+        setEmailMsg({ ok: true, text: `Sent to ${emailTo.trim()}.` });
+        setEmailTo("");
+        setEmailToName("");
+        setShowEmailForm(false);
+        await openDetail(detail.quote_id);
+      } else {
+        setEmailMsg({ ok: false, text: json.error === "email_not_configured" ? "Email not configured on this deployment." : `Send failed: ${json.error ?? "unknown error"}` });
+      }
+    } catch {
+      setEmailMsg({ ok: false, text: "Network error." });
+    }
+    setEmailingPdf(false);
+  };
+
+  const handleShareLink = async () => {
+    if (!supabase || !detail || sharingLink) return;
+    setSharingLink(true);
+    setShareMsg(null);
+    const { data, error } = await supabase.rpc("eq_create_share_link", { p_quote_id: detail.quote_id });
+    if (error || !data) {
+      setSharingLink(false);
+      setShareMsg("Could not create share link.");
+      return;
+    }
+    const token = (data as { token: string }).token;
+    const tenantSlug = window.location.pathname.split("/").filter(Boolean)[0] ?? "sks";
+    const url = `${window.location.origin}/portal/quote/${tenantSlug}/${token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareMsg("Link copied to clipboard.");
+    } catch {
+      setShareMsg(`Link: ${url}`);
+    }
+    setSharingLink(false);
+    setTimeout(() => setShareMsg(null), 5000);
+  };
+
   // ── Import actions ────────────────────────────────────────────────────────
 
   const handleCsvChange = (text: string) => {
@@ -1257,6 +1318,22 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => { setShowEmailForm((v) => !v); setEmailMsg(null); }}
+              >
+                Email PDF
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                disabled={sharingLink}
+                onClick={() => void handleShareLink()}
+                title="Create a shareable portal link for this quote"
+              >
+                {sharingLink ? "…" : "Share"}
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
                 onClick={() => void generateJobExcel(detail.quote_id)}
               >
                 Create Job
@@ -1272,6 +1349,32 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 {trashing ? "…" : "Trash"}
               </button>
             </div>
+          )}
+          {/* Email PDF inline form */}
+          {showEmailForm && detail && (
+            <div className="eq-quotes__detail-card" style={{ marginTop: 8, padding: "12px 16px" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div>
+                  <label className="eq-quotes__info-label">To name</label>
+                  <input className="eq-quotes__input" style={{ width: 160 }} value={emailToName} onChange={(e) => setEmailToName(e.target.value)} placeholder="Contact name" />
+                </div>
+                <div>
+                  <label className="eq-quotes__info-label">Email address</label>
+                  <input className="eq-quotes__input" style={{ width: 220 }} type="email" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="client@example.com" />
+                </div>
+                <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" disabled={emailingPdf || !emailTo.trim()} onClick={() => void handleEmailPdf()}>
+                  {emailingPdf ? "Sending…" : "Send"}
+                </button>
+                <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => { setShowEmailForm(false); setEmailMsg(null); }}>Cancel</button>
+              </div>
+              {emailMsg && (
+                <div style={{ marginTop: 6, fontSize: 12, color: emailMsg.ok ? "var(--eq-sky, #2986B4)" : "var(--eq-err, #c0392b)" }}>{emailMsg.text}</div>
+              )}
+            </div>
+          )}
+          {/* Share link feedback */}
+          {shareMsg && (
+            <div style={{ marginTop: 4, fontSize: 12, color: "var(--eq-sky, #2986B4)" }}>{shareMsg}</div>
           )}
         </div>
 
