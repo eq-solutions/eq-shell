@@ -31,8 +31,7 @@ When you change anything in this list, also verify the downstream consumer:
 | File / behaviour | Downstream that depends on it |
 |---|---|
 | `netlify/functions/_shared/token.ts` (`ShellTokenPayload`, `ServiceTokenPayload`) | eq-solves-field's `verify-pin.js` (action `verify-shell-token`), eq-solves-service's `/.netlify/functions/shell-auth` |
-| `netlify/functions/mint-iframe-token.ts` | eq-solves-field iframe handoff (PR #106 on Milmlow/eq-field-app) |
-| `netlify/functions/mint-service-iframe-token.ts` | eq-solves-service `/shell` route → `/api/shell-auth` |
+| `netlify/functions/mint-iframe-token.ts` (`aud='field'` default + `aud='service'`) | eq-solves-field iframe handoff (PR #106 on Milmlow/eq-field-app); eq-solves-service `/shell` → `/api/shell-auth`. There is **no** separate `mint-service-iframe-token.ts` — Service is the `aud='service'` branch of this file. |
 | `netlify/functions/mint-cards-iframe-token.ts` | eq-cards Flutter web app (`CARDS_USE_SHELL_SSO=true`) |
 | Session cookie shape in `_shared/token.ts` (`SessionPayload`) | Every Netlify function that calls `verifySessionToken` — login/logout/verify/mint-* all assume it |
 | Supabase JWT shape in `_shared/supabase-jwt.ts` | All RLS policies on eq-canonical (read `auth.jwt() -> 'app_metadata' ->> 'tenant_id'`) |
@@ -82,8 +81,17 @@ The tenant data planes are **production × two entities** — zaap (EQ ·
 - **RLS norm = ON for every `app_data` table, on every plane.** No exceptions.
   `check-tenant-drift.mjs` CHECK 4 enforces this **absolutely** (not just
   tenant-vs-tenant), so a "both planes wrong together" state fails the build.
-  Never blind-toggle RLS on prod to chase a green check — green now means
-  genuinely converged; if it's red, fix the migration.
+  Never blind-toggle RLS on prod to chase a green check — green means the
+  security invariants hold; if it's red, fix the migration.
+- **The required `Schema drift` gate enforces the ABSOLUTE security invariants
+  only** — anon-grant, spine RLS (CHECK 4), tenant-isolation policy-lint
+  (CHECK 5). As of 2026-06-14 it **no longer passes `--strict-spine`**:
+  cross-tenant spine-SET parity is reported-but-informational, because the EQ
+  (zaap) and SKS (ehow) planes legitimately run divergent feature sets (EQ
+  Quotes/pricing not yet live on zaap). Do NOT re-add `--strict-spine` to
+  `tenant-drift.yml` until the planes are meant to be converged — a permanent
+  red there just trains admin-bypass, which also waves through the security
+  checks on the same job.
 - **Service-role-only table** (no browser path, e.g. `migration_baseline`,
   `_eq_migrations`): enable RLS with **no** policy, `REVOKE` from
   PUBLIC/anon/authenticated, `GRANT` to service_role only. Add it to
