@@ -28,7 +28,7 @@ function setCachedDashboard(key: string, data: DashboardResponse): void {
 
 const HUB_APPS: Array<{ key: string; label: string; to: string; isBeta: boolean; alwaysShow?: boolean; platformOnly?: boolean }> = [
   { key: 'field',     label: 'EQ Field',   to: 'field',     isBeta: false },
-  { key: 'service',   label: 'EQ Service', to: 'service',   isBeta: true  },
+  { key: 'service',   label: 'EQ Service', to: 'service',   isBeta: false },
   // EQ Quotes — the standalone tool the team uses today (external redirect).
   { key: 'eq-quotes', label: 'EQ Quotes',  to: 'eq-quotes', isBeta: false, alwaysShow: true },
   // EQ Ops — the in-shell replacement; platform-admin debug surface for now.
