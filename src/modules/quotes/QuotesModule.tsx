@@ -259,6 +259,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   contact_linked: "linked contact",
   expired: "auto-expired",
   project: "updated project",
+  payment_terms: "updated payment terms",
 };
 function auditActionLabel(action: string): string {
   return AUDIT_ACTION_LABELS[action] ?? action;
@@ -502,6 +503,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [savingExpires, setSavingExpires] = useState(false);
   const [expiresErr, setExpiresErr] = useState<string | null>(null);
 
+  // Payment terms / validity days inline edit
+  const [termsEditing, setTermsEditing] = useState(false);
+  const [termsInput, setTermsInput] = useState("");
+  const [validityInput, setValidityInput] = useState("");
+  const [savingTerms, setSavingTerms] = useState(false);
+  const [termsErr, setTermsErr] = useState<string | null>(null);
+
   // Project name / estimator inline edit
   const [projectEditing, setProjectEditing] = useState(false);
   const [projectInput, setProjectInput] = useState("");
@@ -673,6 +681,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         setSentAtInput(row.sent_at ? row.sent_at.slice(0, 10) : "");
         setExpiresInput(row.expires_at ? row.expires_at.slice(0, 10) : "");
         setExpiresErr(null);
+        setTermsEditing(false);
+        setTermsInput(row.payment_terms ?? "");
+        setValidityInput(row.validity_days != null ? String(row.validity_days) : "");
+        setTermsErr(null);
         setProjectEditing(false);
         setProjectInput(row.project_name ?? "");
         setEstimatorInput(row.estimator_name ?? "");
@@ -1221,6 +1233,23 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setProjectEditing(false);
     await openDetail(detail.quote_id);
     void loadQuotes(statusFilter, search);
+  };
+
+  const handleSaveTerms = async () => {
+    if (!supabase || !detail) return;
+    setSavingTerms(true);
+    setTermsErr(null);
+    const validityDays = validityInput.trim() ? parseInt(validityInput, 10) : null;
+    const { error } = await supabase.rpc("eq_set_payment_terms", {
+      p_quote_id:      detail.quote_id,
+      p_payment_terms: termsInput.trim() || null,
+      p_validity_days: validityDays && !isNaN(validityDays) ? validityDays : null,
+      p_initials:      initials.trim() || null,
+    });
+    setSavingTerms(false);
+    if (error) { captureRpcError("eq_set_payment_terms", error, { quote_id: detail.quote_id }); setTermsErr(error.message); return; }
+    setTermsEditing(false);
+    await openDetail(detail.quote_id);
   };
 
   const handleSaveScope = async () => {
@@ -1909,10 +1938,65 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     <span className="eq-quotes__info-val">{detail.coupa_entity}</span>
                   </div>
                 )}
-                {detail.payment_terms && (
+                {!termsEditing ? (
                   <div className="eq-quotes__info-item">
                     <span className="eq-quotes__info-label">Payment Terms</span>
-                    <span className="eq-quotes__info-val">{detail.payment_terms}</span>
+                    <span className="eq-quotes__info-val">
+                      {detail.payment_terms ?? <span className="eq-quotes__muted">—</span>}
+                      {detail.validity_days != null && (
+                        <span className="eq-quotes__muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                          ({detail.validity_days}d validity)
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        style={{ marginLeft: 8, fontSize: 12, padding: "2px 8px" }}
+                        onClick={() => { setTermsEditing(true); setTermsErr(null); }}
+                      >
+                        Edit
+                      </button>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full" style={{ gap: 6 }}>
+                    <span className="eq-quotes__info-label">Payment Terms / Validity</span>
+                    <div className="eq-quotes__job-no-row">
+                      <input
+                        className="eq-quotes__input"
+                        style={{ maxWidth: 280 }}
+                        value={termsInput}
+                        onChange={(e) => setTermsInput(e.target.value)}
+                        placeholder="e.g. Net 30 days"
+                      />
+                      <input
+                        className="eq-quotes__input eq-quotes__input--sm"
+                        style={{ maxWidth: 80 }}
+                        type="number"
+                        min={1}
+                        value={validityInput}
+                        onChange={(e) => setValidityInput(e.target.value)}
+                        placeholder="Days"
+                        title="Validity days"
+                      />
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--primary"
+                        disabled={savingTerms}
+                        onClick={() => void handleSaveTerms()}
+                      >
+                        {savingTerms ? "…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        disabled={savingTerms}
+                        onClick={() => { setTermsEditing(false); setTermsErr(null); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {termsErr && <span className="eq-quotes__err">{termsErr}</span>}
                   </div>
                 )}
                 {detail.address && (
