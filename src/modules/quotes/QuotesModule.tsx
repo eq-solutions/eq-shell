@@ -511,6 +511,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [unsentOnly, setUnsentOnly] = useState(false);
   const [needsJobNoOnly, setNeedsJobNoOnly] = useState(false);
   const [overdueFupOnly, setOverdueFupOnly] = useState(false);
+  const [staleOnly, setStaleOnly] = useState(false);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1769,6 +1770,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   if (overdueFupOnly) {
     displayedQuotes = displayedQuotes.filter(
       (q) => q.follow_up_at !== null && q.follow_up_at <= today
+    );
+  }
+  if (staleOnly) {
+    const staleThreshold = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    displayedQuotes = displayedQuotes.filter(
+      (q) => !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status) &&
+             !q.follow_up_at && q.created_at.slice(0, 10) < staleThreshold
     );
   }
   const estimatorOptions = Array.from(
@@ -3830,7 +3838,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             const overdueFup = quotes.filter((q) => q.follow_up_at && q.follow_up_at <= todayStr && !CLOSED_STATUSES.has(q.status)).length;
             const expiringSoon = quotes.filter((q) => q.expires_at && q.expires_at.slice(0, 10) <= in14Days && !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status)).length;
             const needsJobNo = quotes.filter((q) => !q.workbench_job_no && ACTIVE_JOB_STATUSES.has(q.status)).length;
-            if (overdueFup === 0 && expiringSoon === 0 && needsJobNo === 0) return null;
+            const staleThreshold = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+            const staleCount = quotes.filter((q) => !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status) && !q.follow_up_at && q.created_at.slice(0, 10) < staleThreshold).length;
+            if (overdueFup === 0 && expiringSoon === 0 && needsJobNo === 0 && staleCount === 0) return null;
             return (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "6px 0 2px" }}>
                 {overdueFup > 0 && (
@@ -3849,6 +3859,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <button type="button" onClick={() => { setNeedsJobNoOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
                     style={{ background: "var(--eq-ice, #EAF5FB)", border: "1px solid var(--eq-sky, #3DA8D8)33", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-deep, #2986B4)", cursor: "pointer" }}>
                     {needsJobNo} need{needsJobNo === 1 ? "s" : ""} job no.
+                  </button>
+                )}
+                {staleCount > 0 && (
+                  <button type="button" onClick={() => { setStaleOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
+                    style={{ background: "var(--eq-surface-2, #f5f5f5)", border: "1px solid var(--eq-border, #e0e0e0)", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-muted, #6b7280)", cursor: "pointer" }}>
+                    {staleCount} stale — no follow-up set
                   </button>
                 )}
               </div>
@@ -3967,14 +3983,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             >
               Follow-up due
             </button>
-            {(search || dateFrom || dateTo || estFilter || customerFilter || siteFilter || expiringOnly || unsentOnly || needsJobNoOnly || overdueFupOnly) && (
+            {(search || dateFrom || dateTo || estFilter || customerFilter || siteFilter || expiringOnly || unsentOnly || needsJobNoOnly || overdueFupOnly || staleOnly) && (
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
                 onClick={() => {
                   if (search) handleSearch("");
                   setDateFrom(""); setDateTo(""); setEstFilter(""); setCustomerFilter(""); setSiteFilter("");
-                  setExpiringOnly(false); setUnsentOnly(false); setNeedsJobNoOnly(false); setOverdueFupOnly(false);
+                  setExpiringOnly(false); setUnsentOnly(false); setNeedsJobNoOnly(false); setOverdueFupOnly(false); setStaleOnly(false);
                 }}
               >
                 Clear filters
