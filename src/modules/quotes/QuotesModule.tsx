@@ -430,6 +430,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [dateTo, setDateTo] = useState("");
   const [estFilter, setEstFilter] = useState("");
   const [expiringOnly, setExpiringOnly] = useState(false);
+  const [unsentOnly, setUnsentOnly] = useState(false);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1340,6 +1341,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     const soon = new Date(Date.now() + 14 * 86_400_000).toISOString();
     displayedQuotes = displayedQuotes.filter(
       (q) => q.expires_at && q.expires_at <= soon && ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status)
+    );
+  }
+  if (unsentOnly) {
+    displayedQuotes = displayedQuotes.filter(
+      (q) => !q.sent_at && ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status)
     );
   }
   const estimatorOptions = Array.from(
@@ -2737,7 +2743,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             <input
               className="eq-quotes__search"
               type="search"
-              placeholder="Search by quote #, project, or customer…"
+              placeholder="Search by quote #, project, customer, job no. or PO…"
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
             />
@@ -2775,11 +2781,19 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             >
               Expiring soon
             </button>
-            {(dateFrom || dateTo || estFilter || expiringOnly) && (
+            <button
+              type="button"
+              className={`eq-quotes__btn ${unsentOnly ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+              onClick={() => setUnsentOnly((v) => !v)}
+              title="Show submitted quotes with no sent date stamped"
+            >
+              Unsent
+            </button>
+            {(dateFrom || dateTo || estFilter || expiringOnly || unsentOnly) && (
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
-                onClick={() => { setDateFrom(""); setDateTo(""); setEstFilter(""); setExpiringOnly(false); }}
+                onClick={() => { setDateFrom(""); setDateTo(""); setEstFilter(""); setExpiringOnly(false); setUnsentOnly(false); }}
               >
                 Clear filters
               </button>
