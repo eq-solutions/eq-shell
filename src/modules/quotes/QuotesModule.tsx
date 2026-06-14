@@ -685,6 +685,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkFupDate, setBulkFupDate] = useState("");
+  const [bulkFupBusy, setBulkFupBusy] = useState(false);
 
   // ── Import state ──────────────────────────────────────────────────────────
   const [csvText, setCsvText] = useState("");
@@ -1346,6 +1348,18 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (error) { captureRpcError("eq_bulk_update_quote_status", error, { count: selectedIds.size }); setPipelineError(error.message); return; }
     setSelectedIds(new Set());
     setBulkStatus("");
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleBulkFollowUp = async () => {
+    if (!supabase || !bulkFupDate || selectedIds.size === 0) return;
+    setBulkFupBusy(true);
+    await Promise.all(Array.from(selectedIds).map((id) =>
+      supabase!.rpc("eq_set_follow_up_date", { p_quote_id: id, p_follow_up_at: bulkFupDate, p_initials: initials.trim() || null })
+    ));
+    setBulkFupBusy(false);
+    setBulkFupDate("");
+    setSelectedIds(new Set());
     void loadQuotes(statusFilter, search);
   };
 
@@ -4184,6 +4198,24 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 onClick={() => void handleBulkStatus()}
               >
                 {bulkBusy ? "Applying…" : "Apply"}
+              </button>
+              <span style={{ fontSize: 12, color: "var(--eq-muted, #6b7280)", margin: "0 4px" }}>|</span>
+              <input
+                type="date"
+                className="eq-quotes__input eq-quotes__input--sm"
+                style={{ width: 130, fontSize: 13, padding: "4px 6px" }}
+                value={bulkFupDate}
+                onChange={(e) => setBulkFupDate(e.target.value)}
+                title="Set follow-up date for all selected"
+              />
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                disabled={!bulkFupDate || bulkFupBusy}
+                onClick={() => void handleBulkFollowUp()}
+                title="Apply follow-up date to all selected quotes"
+              >
+                {bulkFupBusy ? "Saving…" : "Set follow-up"}
               </button>
               <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => setSelectedIds(new Set())}>
                 Clear
