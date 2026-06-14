@@ -107,6 +107,8 @@ interface QuoteDetail {
   customer_name: string | null;
   site_name: string | null;
   site_code: string | null;
+  contact_id: string | null;
+  contact_email: string | null;
   line_items: LineItem[];
   notes: QuoteNote[];
 }
@@ -1406,9 +1408,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 className="eq-quotes__btn eq-quotes__btn--outline"
                 onClick={() => {
                   setShowEmailForm((v) => {
-                    if (!v && detail && !emailToName.trim()) {
-                      const name = [detail.attn_first_name, detail.attn_name].filter(Boolean).join(" ");
-                      if (name) setEmailToName(name);
+                    if (!v && detail) {
+                      if (!emailToName.trim()) {
+                        const name = [detail.attn_first_name, detail.attn_name].filter(Boolean).join(" ");
+                        if (name) setEmailToName(name);
+                      }
+                      if (!emailTo.trim() && detail.contact_email) {
+                        setEmailTo(detail.contact_email);
+                      }
                     }
                     return !v;
                   });
