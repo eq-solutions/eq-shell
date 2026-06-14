@@ -416,6 +416,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [estFilter, setEstFilter] = useState("");
+  const [expiringOnly, setExpiringOnly] = useState(false);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1266,6 +1267,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   if (dateFrom) displayedQuotes = displayedQuotes.filter((q) => q.created_at >= dateFrom);
   if (dateTo)   displayedQuotes = displayedQuotes.filter((q) => q.created_at.slice(0, 10) <= dateTo);
   if (estFilter) displayedQuotes = displayedQuotes.filter((q) => q.estimator_initials === estFilter);
+  if (expiringOnly) {
+    const soon = new Date(Date.now() + 14 * 86_400_000).toISOString();
+    displayedQuotes = displayedQuotes.filter(
+      (q) => q.expires_at && q.expires_at <= soon && ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status)
+    );
+  }
   const estimatorOptions = Array.from(
     new Set(quotes.map((q) => q.estimator_initials).filter((i): i is string => i !== null && i !== ""))
   ).sort();
@@ -2638,11 +2645,19 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 {estimatorOptions.map((i) => <option key={i} value={i}>{i}</option>)}
               </select>
             )}
-            {(dateFrom || dateTo || estFilter) && (
+            <button
+              type="button"
+              className={`eq-quotes__btn ${expiringOnly ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+              onClick={() => setExpiringOnly((v) => !v)}
+              title="Show quotes expiring within 14 days"
+            >
+              Expiring soon
+            </button>
+            {(dateFrom || dateTo || estFilter || expiringOnly) && (
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
-                onClick={() => { setDateFrom(""); setDateTo(""); setEstFilter(""); }}
+                onClick={() => { setDateFrom(""); setDateTo(""); setEstFilter(""); setExpiringOnly(false); }}
               >
                 Clear filters
               </button>
