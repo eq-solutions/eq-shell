@@ -214,7 +214,7 @@ export function QuotesReports({ supabase }: Props) {
       q.estimator_name,
       q.subtotal_cents / 100,
       q.total_cents / 100,
-      q.margin_pct !== null ? (q.margin_pct / 100).toFixed(1) + "%" : "",
+      q.margin_pct !== null ? Number(q.margin_pct).toFixed(1) + "%" : "",
       q.sent_at ? new Date(q.sent_at).toLocaleDateString("en-AU") : "",
       new Date(q.created_at).toLocaleDateString("en-AU"),
       q.workbench_job_no,
@@ -623,7 +623,7 @@ export function QuotesReports({ supabase }: Props) {
                   <td>{q.customer_name ?? "—"}</td>
                   <td style={{ textAlign: "right" }}>{fmtMoney(q.total_cents)}</td>
                   <td style={{ textAlign: "right" }}>
-                    {q.margin_pct !== null ? (q.margin_pct / 100).toFixed(1) + "%" : "—"}
+                    {q.margin_pct !== null ? Number(q.margin_pct).toFixed(1) + "%" : "—"}
                   </td>
                   <td>{q.estimator_initials ?? "—"}</td>
                   <td>{new Date(q.created_at).toLocaleDateString("en-AU")}</td>
