@@ -257,20 +257,23 @@ export function QuotesReports({ supabase }: Props) {
   // ── Monthly trend ─────────────────────────────────────────────────────────
 
   const monthlyRows = React.useMemo(() => {
-    const map = new Map<string, { count: number; total: number }>();
+    const map = new Map<string, { count: number; total: number; wonCount: number; wonTotal: number }>();
     for (const q of quotes) {
       if (!q.sent_at) continue;
       const d = new Date(q.sent_at);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const cur = map.get(key) ?? { count: 0, total: 0 };
-      map.set(key, { count: cur.count + 1, total: cur.total + q.total_cents });
+      const cur = map.get(key) ?? { count: 0, total: 0, wonCount: 0, wonTotal: 0 };
+      cur.count++;
+      cur.total += q.total_cents;
+      if (WON_STATUSES.has(q.status)) { cur.wonCount++; cur.wonTotal += q.total_cents; }
+      map.set(key, cur);
     }
-    // Last 18 months in descending order, only show months with data
     const months = [...map.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 18);
     return months.map(([key, d]) => {
       const [yr, mo] = key.split("-");
       const label = new Date(Number(yr), Number(mo) - 1, 1).toLocaleDateString("en-AU", { month: "short", year: "numeric" });
-      return { key, label, count: d.count, total: d.total };
+      const winRate = d.count > 0 ? Math.round((d.wonCount / d.count) * 100) : null;
+      return { key, label, count: d.count, total: d.total, wonCount: d.wonCount, wonTotal: d.wonTotal, winRate };
     });
   }, [quotes]);
 
@@ -505,12 +508,12 @@ export function QuotesReports({ supabase }: Props) {
       {tab === "trend" && (
         <div className="eq-quotes__reports-section">
           <div className="eq-quotes__reports-export-bar">
-            <span className="eq-quotes__reports-hint">Quotes sent per month (by sent date) — last 18 months.</span>
+            <span className="eq-quotes__reports-hint">Quotes sent per month (by sent date) — last 18 months. Win rate = won quotes / quotes sent that month.</span>
             {monthlyRows.length > 0 && (
               <button type="button" className="eq-quotes__btn eq-quotes__btn--outline"
                 onClick={() => downloadCsv(
-                  [["Month", "Quotes sent", "Total value inc GST"],
-                   ...monthlyRows.map((r) => [r.label, r.count, (r.total / 100).toFixed(2)])],
+                  [["Month", "Sent", "Won", "Win rate %", "Total value inc GST", "Won value inc GST"],
+                   ...monthlyRows.map((r) => [r.label, r.count, r.wonCount, r.winRate ?? "", (r.total / 100).toFixed(2), (r.wonTotal / 100).toFixed(2)])],
                   "sks-quotes-monthly-trend.csv"
                 )}>Download CSV</button>
             )}
@@ -519,8 +522,11 @@ export function QuotesReports({ supabase }: Props) {
             <thead>
               <tr>
                 <th>Month</th>
-                <th style={{ textAlign: "right" }}>Quotes sent</th>
+                <th style={{ textAlign: "right" }}>Sent</th>
+                <th style={{ textAlign: "right" }}>Won</th>
+                <th style={{ textAlign: "right" }}>Win rate</th>
                 <th style={{ textAlign: "right" }}>Total value (inc GST)</th>
+                <th style={{ textAlign: "right" }}>Won value (inc GST)</th>
               </tr>
             </thead>
             <tbody>
@@ -528,12 +534,17 @@ export function QuotesReports({ supabase }: Props) {
                 <tr key={r.key}>
                   <td>{r.label}</td>
                   <td style={{ textAlign: "right" }}>{r.count}</td>
+                  <td style={{ textAlign: "right" }}>{r.wonCount || "—"}</td>
+                  <td style={{ textAlign: "right", fontWeight: 600, color: r.winRate !== null ? (r.winRate >= 50 ? "var(--eq-green,#27ae60)" : r.winRate >= 30 ? "var(--eq-amber,#d4820a)" : "var(--eq-err,#c0392b)") : undefined }}>
+                    {r.winRate !== null ? `${r.winRate}%` : "—"}
+                  </td>
                   <td style={{ textAlign: "right" }}>{fmtMoney(r.total)}</td>
+                  <td style={{ textAlign: "right" }}>{r.wonTotal > 0 ? fmtMoney(r.wonTotal) : "—"}</td>
                 </tr>
               ))}
             </tbody>
             {monthlyRows.length === 0 && (
-              <tbody><tr><td colSpan={3} style={{ textAlign: "center", color: "var(--eq-muted,#6b7280)" }}>No sent quotes yet.</td></tr></tbody>
+              <tbody><tr><td colSpan={6} style={{ textAlign: "center", color: "var(--eq-muted,#6b7280)" }}>No sent quotes yet.</td></tr></tbody>
             )}
           </table>
         </div>
