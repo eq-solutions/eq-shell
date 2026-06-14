@@ -1817,8 +1817,24 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       sortAccessor: (q) => q.customer_name ?? "",
       render: (q) => (
         <div className="eq-quotes__customer-cell">
-          <span>{q.customer_name ?? "—"}</span>
-          {q.site_code && <span className="eq-quotes__site-code">{q.site_code}</span>}
+          {q.customer_name ? (
+            <span
+              className="eq-quotes__filter-link"
+              title={`Filter by ${q.customer_name}`}
+              onClick={(e) => { e.stopPropagation(); setCustomerFilter(q.customer_name ?? ""); }}
+            >
+              {q.customer_name}
+            </span>
+          ) : <span className="eq-quotes__muted">—</span>}
+          {q.site_code && (
+            <span
+              className="eq-quotes__site-code eq-quotes__filter-link"
+              title={`Filter by site ${q.site_code}`}
+              onClick={(e) => { e.stopPropagation(); setSiteFilter(q.site_code ?? ""); }}
+            >
+              {q.site_code}
+            </span>
+          )}
         </div>
       ),
     },
@@ -1831,7 +1847,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       key: "estimator_initials", header: "Est.",
       sortAccessor: (q) => q.estimator_initials ?? "",
       render: (q) => q.estimator_initials
-        ? <span className="eq-quotes__initials-badge">{q.estimator_initials}</span>
+        ? (
+          <span
+            className="eq-quotes__initials-badge eq-quotes__filter-link"
+            title={`Filter by ${q.estimator_initials}`}
+            onClick={(e) => { e.stopPropagation(); setEstFilter(q.estimator_initials ?? ""); }}
+          >
+            {q.estimator_initials}
+          </span>
+        )
         : <span className="eq-quotes__muted">—</span>,
     },
     {

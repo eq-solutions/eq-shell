@@ -210,6 +210,8 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
 .eq-quotes__cat-badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #f3f4f6; color: var(--eq-muted); }
 .eq-quotes__muted { color: var(--eq-muted); }
 .eq-quotes__customer-cell { display: flex; align-items: center; flex-wrap: wrap; gap: 0; }
+.eq-quotes__filter-link { cursor: pointer; }
+.eq-quotes__filter-link:hover { opacity: 0.75; text-decoration: underline; text-underline-offset: 2px; }
 .eq-quotes__loading, .eq-quotes__empty { padding: 40px 24px; text-align: center; color: var(--eq-muted); font-size: 14px; }
 .eq-quotes__error-banner { background: #fef2f2; border: 1px solid #fecaca; color: var(--eq-err); border-radius: 6px; padding: 10px 14px; font-size: 13px; }
 .eq-quotes__inline-err { font-size: 12px; color: var(--eq-err); padding: 4px 0; }
