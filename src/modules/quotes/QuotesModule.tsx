@@ -258,6 +258,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   sent_at: "changed sent date",
   contact_linked: "linked contact",
   expired: "auto-expired",
+  project: "updated project",
 };
 function auditActionLabel(action: string): string {
   return AUDIT_ACTION_LABELS[action] ?? action;
@@ -294,6 +295,12 @@ function summariseAudit(a: QuoteAuditEntry): string {
   }
   if (a.action === "expired") {
     return "Auto-expired by scheduler";
+  }
+  if (a.action === "project") {
+    const parts: string[] = [];
+    if (c["project_name"]) parts.push(`Project: ${String(c["project_name"])}`);
+    if (c["estimator_name"]) parts.push(`Estimator: ${String(c["estimator_name"])}`);
+    return parts.length > 0 ? parts.join(" · ") : "Project details updated";
   }
   return "Changed " + Object.keys(c).map((f) => f.replace(/_/g, " ")).join(", ");
 }
@@ -495,6 +502,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [savingExpires, setSavingExpires] = useState(false);
   const [expiresErr, setExpiresErr] = useState<string | null>(null);
 
+  // Project name / estimator inline edit
+  const [projectEditing, setProjectEditing] = useState(false);
+  const [projectInput, setProjectInput] = useState("");
+  const [estimatorInput, setEstimatorInput] = useState("");
+  const [estInitialsInput, setEstInitialsInput] = useState("");
+  const [savingProject, setSavingProject] = useState(false);
+  const [projectErr, setProjectErr] = useState<string | null>(null);
+
   // Scope / clarifications / notes inline edit
   const [scopeEditing, setScopeEditing] = useState(false);
   const [scopeInput, setScopeInput] = useState("");
@@ -658,6 +673,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         setSentAtInput(row.sent_at ? row.sent_at.slice(0, 10) : "");
         setExpiresInput(row.expires_at ? row.expires_at.slice(0, 10) : "");
         setExpiresErr(null);
+        setProjectEditing(false);
+        setProjectInput(row.project_name ?? "");
+        setEstimatorInput(row.estimator_name ?? "");
+        setEstInitialsInput(row.estimator_initials ?? "");
+        setProjectErr(null);
         setScopeEditing(false);
         setScopeInput(row.scope_of_works ?? "");
         setClarInput(row.clarifications ?? "");
@@ -1185,6 +1205,24 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  const handleSaveProject = async () => {
+    if (!supabase || !detail) return;
+    setSavingProject(true);
+    setProjectErr(null);
+    const { error } = await supabase.rpc("eq_set_quote_project", {
+      p_quote_id:           detail.quote_id,
+      p_project_name:       projectInput.trim() || null,
+      p_estimator_name:     estimatorInput.trim() || null,
+      p_estimator_initials: estInitialsInput.trim() || null,
+      p_initials:           initials.trim() || null,
+    });
+    setSavingProject(false);
+    if (error) { captureRpcError("eq_set_quote_project", error, { quote_id: detail.quote_id }); setProjectErr(error.message); return; }
+    setProjectEditing(false);
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
   const handleSaveScope = async () => {
     if (!supabase || !detail) return;
     setSavingScope(true);
@@ -1698,19 +1736,78 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     {linkContactErr && <span className="eq-quotes__err">{linkContactErr}</span>}
                   </div>
                 )}
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">Project</span>
-                  <span className="eq-quotes__info-val">{detail.project_name ?? "—"}</span>
-                </div>
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">Estimator</span>
-                  <span className="eq-quotes__info-val">
-                    {detail.estimator_name ?? "—"}
-                    {detail.estimator_initials && (
-                      <span className="eq-quotes__initials-badge">{detail.estimator_initials}</span>
-                    )}
-                  </span>
-                </div>
+                {!projectEditing ? (
+                  <>
+                    <div className="eq-quotes__info-item">
+                      <span className="eq-quotes__info-label">Project</span>
+                      <span className="eq-quotes__info-val">
+                        {detail.project_name ?? <span className="eq-quotes__muted">—</span>}
+                        <button
+                          type="button"
+                          className="eq-quotes__btn eq-quotes__btn--outline"
+                          style={{ marginLeft: 8, fontSize: 12, padding: "2px 8px" }}
+                          onClick={() => { setProjectEditing(true); setProjectErr(null); }}
+                        >
+                          Edit
+                        </button>
+                      </span>
+                    </div>
+                    <div className="eq-quotes__info-item">
+                      <span className="eq-quotes__info-label">Estimator</span>
+                      <span className="eq-quotes__info-val">
+                        {detail.estimator_name ?? <span className="eq-quotes__muted">—</span>}
+                        {detail.estimator_initials && (
+                          <span className="eq-quotes__initials-badge">{detail.estimator_initials}</span>
+                        )}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full" style={{ gap: 8 }}>
+                    <span className="eq-quotes__info-label">Project / Estimator</span>
+                    <input
+                      className="eq-quotes__input"
+                      style={{ maxWidth: 340 }}
+                      value={projectInput}
+                      onChange={(e) => setProjectInput(e.target.value)}
+                      placeholder="Project name"
+                    />
+                    <div className="eq-quotes__job-no-row" style={{ marginTop: 4 }}>
+                      <input
+                        className="eq-quotes__input"
+                        style={{ maxWidth: 220 }}
+                        value={estimatorInput}
+                        onChange={(e) => setEstimatorInput(e.target.value)}
+                        placeholder="Estimator name"
+                      />
+                      <input
+                        className="eq-quotes__input eq-quotes__input--sm"
+                        style={{ maxWidth: 72 }}
+                        value={estInitialsInput}
+                        onChange={(e) => setEstInitialsInput(e.target.value.toUpperCase())}
+                        placeholder="Init"
+                        maxLength={4}
+                      />
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--primary"
+                        disabled={savingProject}
+                        onClick={() => void handleSaveProject()}
+                      >
+                        {savingProject ? "…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        disabled={savingProject}
+                        onClick={() => { setProjectEditing(false); setProjectErr(null); }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {projectErr && <span className="eq-quotes__err">{projectErr}</span>}
+                  </div>
+                )}
                 <div className="eq-quotes__info-item eq-quotes__info-item--full">
                   <span className="eq-quotes__info-label">Sent</span>
                   <div className="eq-quotes__job-no-row">
