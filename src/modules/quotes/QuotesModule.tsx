@@ -344,6 +344,20 @@ function fmtDate(iso: string | null): string {
   });
 }
 
+function csvEscape(v: string | number | null): string {
+  const s = v == null ? "" : String(v);
+  if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+function downloadCsv(rows: (string | number | null)[][], filename: string): void {
+  const csv = rows.map((r) => r.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function qty(thousandths: number): string {
   return (thousandths / 1000).toLocaleString("en-AU", {
     minimumFractionDigits: 0,
@@ -397,6 +411,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [statusFilter, setStatusFilter] = useState("active-jobs");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [estFilter, setEstFilter] = useState("");
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1206,9 +1223,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // ── Computed totals ───────────────────────────────────────────────────────
 
-  const displayedQuotes = statusFilter === "active-jobs"
+  let displayedQuotes = statusFilter === "active-jobs"
     ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
     : quotes;
+  if (dateFrom) displayedQuotes = displayedQuotes.filter((q) => q.created_at >= dateFrom);
+  if (dateTo)   displayedQuotes = displayedQuotes.filter((q) => q.created_at.slice(0, 10) <= dateTo);
+  if (estFilter) displayedQuotes = displayedQuotes.filter((q) => q.estimator_initials === estFilter);
+  const estimatorOptions = Array.from(
+    new Set(quotes.map((q) => q.estimator_initials).filter((i): i is string => i !== null && i !== ""))
+  ).sort();
   const visibleTotal = displayedQuotes.reduce((s, q) => s + q.total_cents, 0);
   const wonTotal = displayedQuotes
     .filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
@@ -2470,7 +2493,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             })}
           </div>
 
-          {/* Search + totals */}
+          {/* Search + filters + export */}
           <div className="eq-quotes__pipeline-controls">
             <input
               className="eq-quotes__search"
@@ -2479,6 +2502,61 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
             />
+            <input
+              className="eq-quotes__input eq-quotes__input--sm"
+              type="date"
+              title="Created from"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+            <span style={{ fontSize: 12, color: "var(--eq-muted, #888)" }}>–</span>
+            <input
+              className="eq-quotes__input eq-quotes__input--sm"
+              type="date"
+              title="Created to"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+            {estimatorOptions.length > 0 && (
+              <select
+                className="eq-quotes__select"
+                style={{ fontSize: 13, padding: "4px 6px" }}
+                value={estFilter}
+                onChange={(e) => setEstFilter(e.target.value)}
+              >
+                <option value="">All estimators</option>
+                {estimatorOptions.map((i) => <option key={i} value={i}>{i}</option>)}
+              </select>
+            )}
+            {(dateFrom || dateTo || estFilter) && (
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => { setDateFrom(""); setDateTo(""); setEstFilter(""); }}
+              >
+                Clear filters
+              </button>
+            )}
+            {!pipelineLoading && displayedQuotes.length > 0 && (
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                title="Export current view to CSV"
+                onClick={() => {
+                  const header = ["Quote #", "Customer", "Site", "Project", "Estimator", "Status", "Job No.", "Total inc GST", "Sent", "Created"];
+                  const today = new Date().toISOString().slice(0, 10);
+                  downloadCsv([header, ...displayedQuotes.map((q) => [
+                    q.quote_number, q.customer_name ?? "", q.site_code ?? "", q.project_name ?? "",
+                    q.estimator_initials ?? "", STATUS_LABELS[q.status] ?? q.status, q.workbench_job_no ?? "",
+                    (q.total_cents / 100).toFixed(2),
+                    q.sent_at ? q.sent_at.slice(0, 10) : "",
+                    q.created_at.slice(0, 10),
+                  ])], `eq-pipeline-${today}.csv`);
+                }}
+              >
+                Export CSV
+              </button>
+            )}
             {!pipelineLoading && quotes.length > 0 && (
               <div className="eq-quotes__totals">
                 <span className="eq-quotes__total-item">
