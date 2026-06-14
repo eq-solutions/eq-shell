@@ -1737,6 +1737,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const wonTotal = displayedQuotes
     .filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
     .reduce((s, q) => s + q.total_cents, 0);
+  const atRiskTotal = displayedQuotes
+    .filter((q) => ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status))
+    .reduce((s, q) => s + q.total_cents, 0);
 
   // Canonical eq-ui table: sortable columns + per-column text/select filters.
   const pipelineColumns: TableColumn<Quote>[] = [
@@ -3812,7 +3815,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 className="eq-quotes__btn eq-quotes__btn--outline"
                 title="Export current view to CSV"
                 onClick={() => {
-                  const header = ["Quote #", "Customer", "Site", "Project", "Estimator", "Status", "Job No.", "PO Number", "Total inc GST", "Margin %", "Sent", "Expires", "Created"];
+                  const header = ["Quote #", "Customer", "Site", "Project", "Estimator", "Status", "Job No.", "PO Number", "Total inc GST", "Margin %", "Sent", "Expires", "Follow-up", "Created"];
                   const today = new Date().toISOString().slice(0, 10);
                   downloadCsv([header, ...displayedQuotes.map((q) => [
                     q.quote_number, q.customer_name ?? "", q.site_code ?? "", q.project_name ?? "",
@@ -3822,6 +3825,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     q.margin_pct !== null ? Number(q.margin_pct).toFixed(1) : "",
                     fmtDate(q.sent_at),
                     fmtDate(q.expires_at),
+                    q.follow_up_at ? fmtDate(q.follow_up_at) : "",
                     fmtDate(q.created_at),
                   ])], `eq-pipeline-${today}.csv`);
                 }}
@@ -3835,6 +3839,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <span className="eq-quotes__total-label">{displayedQuotes.length} quote{displayedQuotes.length !== 1 ? "s" : ""}</span>
                   <span className="eq-quotes__total-val">{aud(visibleTotal)}</span>
                 </span>
+                {atRiskTotal > 0 && atRiskTotal !== visibleTotal && (
+                  <span className="eq-quotes__total-item" title="Sum of submitted, reviewing, on-hold and verbal-win quotes">
+                    <span className="eq-quotes__total-label">In play</span>
+                    <span className="eq-quotes__total-val" style={{ color: "var(--eq-amber, #d4820a)" }}>{aud(atRiskTotal)}</span>
+                  </span>
+                )}
                 {wonTotal > 0 && wonTotal !== visibleTotal && (
                   <span className="eq-quotes__total-item">
                     <span className="eq-quotes__total-label">Won</span>
