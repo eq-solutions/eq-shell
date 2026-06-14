@@ -635,6 +635,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [presetsLoading, setPresetsLoading] = useState(false);
   const [createCustomerId, setCreateCustomerId] = useState("");
   const [createSiteId, setCreateSiteId] = useState("");
+  const [createContacts, setCreateContacts] = useState<ContactRow[]>([]);
   const [createProjectName, setCreateProjectName] = useState("");
   const [createEstimatorName, setCreateEstimatorName] = useState("");
   const [createEstimatorInitials, setCreateEstimatorInitials] = useState("");
@@ -972,6 +973,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCreateCustomerId("");
     setCreateSiteId("");
     setSites([]);
+    setCreateContacts([]);
     setCreateProjectName("");
     setCreateEstimatorName("");
     setCreateEstimatorInitials("");
@@ -1031,8 +1033,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     );
     setCreateError(null);
     void loadSites(d.customer_id);
+    if (supabase && d.customer_id) {
+      void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: d.customer_id }).then(({ data }) => {
+        setCreateContacts((data as ContactRow[]) ?? []);
+      });
+    } else {
+      setCreateContacts([]);
+    }
     setView("edit");
-  }, [loadSites]);
+  }, [loadSites, supabase]);
 
   const updateLineItem = (i: number, field: keyof CreateLineItem, value: string) => {
     setCreateLineItems((prev) => {
@@ -3107,6 +3116,20 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                       setCreateCustomerId(id);
                       setCreateSiteId("");
                       void loadSites(id);
+                      if (id && supabase) {
+                        void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: id }).then(({ data }) => {
+                          const rows = (data as ContactRow[]) ?? [];
+                          setCreateContacts(rows);
+                          const def = rows.find((c) => c.is_default_quote_contact) ?? rows[0];
+                          if (def && !createAttnFirstName && !createAttnName) {
+                            setCreateAttnFirstName(def.first_name ?? "");
+                            setCreateAttnName(def.last_name ?? "");
+                            setCreateAttnPhone(def.mobile_phone ?? def.work_phone ?? "");
+                          }
+                        });
+                      } else {
+                        setCreateContacts([]);
+                      }
                     }}
                   >
                     <option value="">Select a customer…</option>
@@ -3255,6 +3278,31 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               }}>
                 Contact &amp; Address
               </span>
+              {createContacts.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <span className="eq-quotes__info-label">Fill from contact</span>
+                  <select
+                    className="eq-quotes__select"
+                    style={{ maxWidth: 300 }}
+                    defaultValue=""
+                    onChange={(e) => {
+                      const contact = createContacts.find((c) => c.contact_id === e.target.value);
+                      if (!contact) return;
+                      setCreateAttnFirstName(contact.first_name ?? "");
+                      setCreateAttnName(contact.last_name ?? "");
+                      setCreateAttnPhone(contact.mobile_phone ?? contact.work_phone ?? "");
+                    }}
+                  >
+                    <option value="">Pick a contact…</option>
+                    {createContacts.map((c) => (
+                      <option key={c.contact_id} value={c.contact_id}>
+                        {[c.first_name, c.last_name].filter(Boolean).join(" ") || c.email || c.contact_id}
+                        {c.is_default_quote_contact ? " ★" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="eq-quotes__info-grid">
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">First Name</span>
