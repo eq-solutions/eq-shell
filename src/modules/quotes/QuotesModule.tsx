@@ -442,6 +442,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [savingPo, setSavingPo] = useState(false);
   const [poErr, setPoErr] = useState<string | null>(null);
 
+  // Sent date inline edit
+  const [sentAtInput, setSentAtInput] = useState("");
+  const [savingSentAt, setSavingSentAt] = useState(false);
+  const [sentAtErr, setSentAtErr] = useState<string | null>(null);
+
   // Note
   const [noteBody, setNoteBody] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -587,6 +592,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         if (nexts.length > 0) setAdvanceStatus(nexts[0]);
         setJobNoInput(row.workbench_job_no ?? "");
         setPoInput(row.po_number ?? "");
+        setSentAtInput(row.sent_at ? row.sent_at.slice(0, 10) : "");
       }
       // Change history (best-effort; never blocks the detail view).
       const { data: auditData } = await supabase.rpc("eq_list_quote_audit", { p_quote_id: quoteId });
@@ -1068,6 +1074,22 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  const handleSaveSentAt = async () => {
+    if (!supabase || !detail) return;
+    setSavingSentAt(true);
+    setSentAtErr(null);
+    const sentAtValue = sentAtInput ? new Date(sentAtInput + "T00:00:00").toISOString() : null;
+    const { error } = await supabase.rpc("eq_set_sent_at", {
+      p_quote_id: detail.quote_id,
+      p_sent_at: sentAtValue,
+      p_initials: initials.trim() || null,
+    });
+    setSavingSentAt(false);
+    if (error) { captureRpcError("eq_set_sent_at", error, { quote_id: detail.quote_id }); setSentAtErr(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
   const handleSavePoNumber = async () => {
     if (!supabase || !detail || !poInput.trim()) return;
     setSavingPo(true);
@@ -1474,9 +1496,37 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     )}
                   </span>
                 </div>
-                <div className="eq-quotes__info-item">
+                <div className="eq-quotes__info-item eq-quotes__info-item--full">
                   <span className="eq-quotes__info-label">Sent</span>
-                  <span className="eq-quotes__info-val">{fmtDate(detail.sent_at)}</span>
+                  <div className="eq-quotes__job-no-row">
+                    <input
+                      className="eq-quotes__input eq-quotes__input--job-no"
+                      type="date"
+                      value={sentAtInput}
+                      onChange={(e) => setSentAtInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleSaveSentAt(); }}
+                    />
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={savingSentAt || sentAtInput === (detail.sent_at ? detail.sent_at.slice(0, 10) : "")}
+                      onClick={() => void handleSaveSentAt()}
+                    >
+                      {savingSentAt ? "…" : "Save"}
+                    </button>
+                    {sentAtInput && (
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        disabled={savingSentAt}
+                        onClick={() => setSentAtInput("")}
+                        title="Clear sent date"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  {sentAtErr && <span className="eq-quotes__err">{sentAtErr}</span>}
                 </div>
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">Expires</span>
