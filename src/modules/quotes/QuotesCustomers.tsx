@@ -361,23 +361,39 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                   {selected.email && <span style={{ marginLeft: "0.75rem" }}>{selected.email}</span>}
                 </div>
               </div>
-              <button
-                className="eq-quotes__btn eq-quotes__btn--sm"
-                style={{ fontSize: "0.78rem", padding: "3px 10px", flexShrink: 0 }}
-                onClick={() => {
-                  setCustFormMode("edit");
-                  setCustForm({
-                    company_name:  selected.company_name  ?? "",
-                    email:         selected.email         ?? "",
-                    primary_phone: selected.primary_phone ?? "",
-                    suburb:        selected.suburb        ?? "",
-                    state:         selected.state         ?? "",
-                  });
-                  setShowCustForm(true);
-                }}
-              >
-                Edit client
-              </button>
+              <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
+                <button
+                  className="eq-quotes__btn eq-quotes__btn--sm"
+                  style={{ fontSize: "0.78rem", padding: "3px 10px" }}
+                  onClick={() => {
+                    setCustFormMode("edit");
+                    setCustForm({
+                      company_name:  selected.company_name  ?? "",
+                      email:         selected.email         ?? "",
+                      primary_phone: selected.primary_phone ?? "",
+                      suburb:        selected.suburb        ?? "",
+                      state:         selected.state         ?? "",
+                    });
+                    setShowCustForm(true);
+                  }}
+                >
+                  Edit
+                </button>
+                {selected.active && (
+                  <button
+                    className="eq-quotes__btn eq-quotes__btn--sm"
+                    style={{ fontSize: "0.78rem", padding: "3px 10px", color: "var(--eq-muted,#6b7280)" }}
+                    onClick={async () => {
+                      if (!supabase) return;
+                      await supabase.rpc("eq_archive_customer", { p_customer_id: selected.customer_id });
+                      setSelected(null);
+                      await load();
+                    }}
+                  >
+                    Archive
+                  </button>
+                )}
+              </div>
             </div>
 
             {detailLoading && <p className="eq-quotes__muted">Loading…</p>}
