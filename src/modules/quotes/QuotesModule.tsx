@@ -25,6 +25,7 @@ interface Quote {
   margin_pct: number | null;
   sent_at: string | null;
   expires_at: string | null;
+  follow_up_at: string | null;
   workbench_job_no: string | null;
   po_number: string | null;
   created_at: string;
@@ -87,6 +88,7 @@ interface QuoteDetail {
   margin_pct: number | null;
   sent_at: string | null;
   expires_at: string | null;
+  follow_up_at: string | null;
   workbench_job_no: string | null;
   po_number: string | null;
   coupa_entity: string | null;
@@ -507,6 +509,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [expiringOnly, setExpiringOnly] = useState(false);
   const [unsentOnly, setUnsentOnly] = useState(false);
   const [needsJobNoOnly, setNeedsJobNoOnly] = useState(false);
+  const [overdueFupOnly, setOverdueFupOnly] = useState(false);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -551,6 +554,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [expiresInput, setExpiresInput] = useState("");
   const [savingExpires, setSavingExpires] = useState(false);
   const [expiresErr, setExpiresErr] = useState<string | null>(null);
+
+  // Follow-up date inline edit
+  const [followUpInput, setFollowUpInput] = useState("");
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [followUpErr, setFollowUpErr] = useState<string | null>(null);
 
   // Payment terms / validity days inline edit
   const [termsEditing, setTermsEditing] = useState(false);
@@ -745,6 +753,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         setSentAtInput(row.sent_at ? row.sent_at.slice(0, 10) : "");
         setExpiresInput(row.expires_at ? row.expires_at.slice(0, 10) : "");
         setExpiresErr(null);
+        setFollowUpInput(row.follow_up_at ? row.follow_up_at.slice(0, 10) : "");
+        setFollowUpErr(null);
         setTermsEditing(false);
         setTermsInput(row.payment_terms ?? "");
         setValidityInput(row.validity_days != null ? String(row.validity_days) : "");
@@ -1386,6 +1396,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  const handleSaveFollowUp = async () => {
+    if (!supabase || !detail) return;
+    setSavingFollowUp(true);
+    setFollowUpErr(null);
+    const { error } = await supabase.rpc("eq_set_follow_up_date", {
+      p_quote_id: detail.quote_id,
+      p_follow_up_at: followUpInput || null,
+      p_initials: initials.trim() || null,
+    });
+    setSavingFollowUp(false);
+    if (error) { captureRpcError("eq_set_follow_up_date", error, { quote_id: detail.quote_id }); setFollowUpErr(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
   const handleSaveProject = async () => {
     if (!supabase || !detail) return;
     setSavingProject(true);
@@ -1693,6 +1718,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       (q) => !q.workbench_job_no && ACTIVE_JOB_STATUSES.has(q.status)
     );
   }
+  const today = new Date().toISOString().slice(0, 10);
+  if (overdueFupOnly) {
+    displayedQuotes = displayedQuotes.filter(
+      (q) => q.follow_up_at !== null && q.follow_up_at <= today
+    );
+  }
   const estimatorOptions = Array.from(
     new Set(quotes.map((q) => q.estimator_initials).filter((i): i is string => i !== null && i !== ""))
   ).sort();
@@ -1793,6 +1824,25 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             color: overdue ? "var(--eq-err, #c0392b)" : urgent ? "var(--eq-amber, #d4820a)" : undefined,
           }}>
             {text}
+          </span>
+        );
+      },
+    },
+    {
+      key: "follow_up_at", header: "Follow-up",
+      sortAccessor: (q) => q.follow_up_at ?? "",
+      render: (q) => {
+        if (!q.follow_up_at) return <span className="eq-quotes__muted">—</span>;
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const overdue = q.follow_up_at < todayStr;
+        const isToday = q.follow_up_at === todayStr;
+        return (
+          <span title={q.follow_up_at} style={{
+            fontSize: 12,
+            fontWeight: overdue || isToday ? 600 : undefined,
+            color: overdue ? "var(--eq-err, #c0392b)" : isToday ? "var(--eq-amber, #d4820a)" : undefined,
+          }}>
+            {fmtDate(q.follow_up_at)}
           </span>
         );
       },
@@ -2365,6 +2415,39 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     </button>
                   </div>
                   {expiresErr && <span className="eq-quotes__err">{expiresErr}</span>}
+                </div>
+                <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                  <span className="eq-quotes__info-label">Follow-up date</span>
+                  <div className="eq-quotes__job-no-row">
+                    <input
+                      className="eq-quotes__input eq-quotes__input--job-no"
+                      type="date"
+                      value={followUpInput}
+                      onChange={(e) => setFollowUpInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleSaveFollowUp(); }}
+                      title="Set a reminder to follow up on this quote"
+                    />
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={savingFollowUp || followUpInput === (detail.follow_up_at ? detail.follow_up_at.slice(0, 10) : "")}
+                      onClick={() => void handleSaveFollowUp()}
+                    >
+                      {savingFollowUp ? "…" : "Save"}
+                    </button>
+                    {followUpInput && (
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        disabled={savingFollowUp}
+                        onClick={() => { setFollowUpInput(""); void (async () => { await supabase?.rpc("eq_set_follow_up_date", { p_quote_id: detail.quote_id, p_follow_up_at: null, p_initials: initials.trim() || null }); await openDetail(detail.quote_id); void loadQuotes(statusFilter, search); })(); }}
+                        title="Clear follow-up date"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  {followUpErr && <span className="eq-quotes__err">{followUpErr}</span>}
                 </div>
                 <div className="eq-quotes__info-item eq-quotes__info-item--full">
                   <span className="eq-quotes__info-label">Workbench Job No.</span>
@@ -3683,14 +3766,22 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             >
               Needs Job No.
             </button>
-            {(search || dateFrom || dateTo || estFilter || customerFilter || expiringOnly || unsentOnly || needsJobNoOnly) && (
+            <button
+              type="button"
+              className={`eq-quotes__btn ${overdueFupOnly ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+              onClick={() => setOverdueFupOnly((v) => !v)}
+              title="Show quotes whose follow-up date has passed"
+            >
+              Follow-up due
+            </button>
+            {(search || dateFrom || dateTo || estFilter || customerFilter || expiringOnly || unsentOnly || needsJobNoOnly || overdueFupOnly) && (
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
                 onClick={() => {
                   if (search) handleSearch("");
                   setDateFrom(""); setDateTo(""); setEstFilter(""); setCustomerFilter("");
-                  setExpiringOnly(false); setUnsentOnly(false); setNeedsJobNoOnly(false);
+                  setExpiringOnly(false); setUnsentOnly(false); setNeedsJobNoOnly(false); setOverdueFupOnly(false);
                 }}
               >
                 Clear filters
