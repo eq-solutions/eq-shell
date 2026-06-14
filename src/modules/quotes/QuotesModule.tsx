@@ -516,6 +516,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [copiedQuoteId, setCopiedQuoteId] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const detailIdRef = useRef<string | null>(null);
   const displayedQuotesRef = useRef<Quote[]>([]);
 
@@ -939,11 +940,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   }, [view]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Keyboard shortcuts: Escape = back, ← / → = prev/next quote in detail; N = new quote
+  // Keyboard shortcuts: / = focus search, N = new quote, Escape = back, ← / → = navigate detail
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
       if (e.key === "n" && detailIdRef.current === null && !e.ctrlKey && !e.metaKey && !e.altKey) {
         setView("create");
         return;
@@ -3994,6 +4000,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           {/* Search + filters + export */}
           <div className="eq-quotes__pipeline-controls">
             <input
+              ref={searchInputRef}
               className="eq-quotes__search"
               type="search"
               placeholder="Search by quote #, project, customer, site, job no. or PO…"
