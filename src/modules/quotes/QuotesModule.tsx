@@ -286,6 +286,8 @@ const ACTIVE_JOB_STATUSES = new Set([
   "verbal-win", "won-awaiting-job-no", "won-job-created", "po-matched", "active",
 ]);
 
+const ACCORDION_ACTIVE = new Set([...ACTIVE_JOB_STATUSES, "sent"]);
+
 const STATUS_FILTERS = [
   { key: "active-jobs", label: "Active Jobs" },
   { key: "all", label: "All" },
@@ -461,6 +463,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [accordionQuotes, setAccordionQuotes] = useState<Quote[]>([]);
   const [accordionLoading, setAccordionLoading] = useState(false);
   const [accordionError, setAccordionError] = useState<string | null>(null);
+  const [accordionActiveOnly, setAccordionActiveOnly] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["equinix"]));
 
   // ── Customers + sites + presets + create form state ─────────────────────
@@ -1214,8 +1217,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     {},
   );
 
-  // Build: customer_name → Quote[]
-  const quotesByCustomer = accordionQuotes.reduce<Record<string, Quote[]>>((acc, q) => {
+  // Build: customer_name → Quote[] (respects active-only toggle)
+  const effectiveAccordionQuotes = accordionActiveOnly
+    ? accordionQuotes.filter((q) => ACCORDION_ACTIVE.has(q.status))
+    : accordionQuotes;
+  const quotesByCustomer = effectiveAccordionQuotes.reduce<Record<string, Quote[]>>((acc, q) => {
     const k = q.customer_name ?? "Unknown";
     (acc[k] ??= []).push(q);
     return acc;
@@ -2637,12 +2643,28 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           {accordionError && <div className="eq-quotes__error-banner">{accordionError}</div>}
           {!accordionLoading && !accordionError && (
             <>
+              {/* Active-only toggle */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <button
+                  type="button"
+                  className={`eq-quotes__btn${accordionActiveOnly ? " eq-quotes__btn--primary" : " eq-quotes__btn--outline"}`}
+                  onClick={() => setAccordionActiveOnly((v) => !v)}
+                >
+                  {accordionActiveOnly ? "Active + Sent" : "All statuses"}
+                </button>
+                <span style={{ fontSize: 12, color: "var(--eq-muted, #888)" }}>
+                  {accordionActiveOnly
+                    ? "Showing sent and active jobs only"
+                    : "Showing all quotes"}
+                </span>
+              </div>
               {/* Named client groups */}
               {Object.entries(groupMap).map(([groupId, group]) => {
                 const memberNames = new Set(group.members.map((m) => m.customer_name));
-                const groupQuotes = accordionQuotes.filter((q) =>
+                const groupQuotes = effectiveAccordionQuotes.filter((q) =>
                   q.customer_name && memberNames.has(q.customer_name),
                 );
+                if (accordionActiveOnly && groupQuotes.length === 0) return null;
                 const groupTotal = groupQuotes.reduce((s, q) => s + q.total_cents, 0);
                 const isOpen = expandedGroups.has(group.slug);
                 return (
@@ -2684,6 +2706,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                                         <th>Project</th>
                                         <th className="eq-quotes__th--right">Total</th>
                                         <th>Status</th>
+                                        <th>Job No.</th>
                                         <th>PO</th>
                                       </tr>
                                     </thead>
@@ -2701,6 +2724,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                                             <span className={statusClass(q.status)}>
                                               {STATUS_LABELS[q.status] ?? q.status}
                                             </span>
+                                          </td>
+                                          <td className="eq-quotes__td--mono">
+                                            {q.workbench_job_no ?? <span className="eq-quotes__muted">—</span>}
                                           </td>
                                           <td>
                                             {q.po_number ?? <span className="eq-quotes__muted">—</span>}
@@ -2759,6 +2785,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                                     <th>Project</th>
                                     <th className="eq-quotes__th--right">Total</th>
                                     <th>Status</th>
+                                    <th>Job No.</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -2775,6 +2802,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                                         <span className={statusClass(q.status)}>
                                           {STATUS_LABELS[q.status] ?? q.status}
                                         </span>
+                                      </td>
+                                      <td className="eq-quotes__td--mono">
+                                        {q.workbench_job_no ?? <span className="eq-quotes__muted">—</span>}
                                       </td>
                                     </tr>
                                   ))}
