@@ -45,67 +45,12 @@ import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { verifySupabaseJwt, readBearerJwt } from './_shared/supabase-jwt.js';
 import { can, type Principal } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
-
-// Table → module mapping. Mirrors the dispatcher in shared
-// eq_intake_commit_batch (and eq_schema_registry.module). Kept here so we
-// don't need a control-plane round-trip just to learn which tenant DB RPC
-// to call.
-const TABLE_MODULE: Record<string, IntakeModule> = {
-  // cards
-  licences: 'cards',
-  // service
-  assets: 'service',
-  // quotes
-  quote: 'quotes',
-  quote_line_item: 'quotes',
-  quote_status_history: 'quotes',
-  quote_attachment: 'quotes',
-  quote_email_outbox: 'quotes',
-  scope_template: 'quotes',
-  rate_library: 'quotes',
-  // core (SimPRO flow)
-  customers: 'core',
-  contacts: 'core',
-  sites: 'core',
-  // field — full list. Must mirror v_allowed in 0011_intake_field_rpc.sql.
-  staff:                     'field',
-  apprentice_profiles:       'field',
-  buddy_checkins:            'field',
-  checkins:                  'field',
-  engagement_logs:           'field',
-  feedback_entries:          'field',
-  incidents:                 'field',
-  itp_records:               'field',
-  jsa_records:               'field',
-  swms:                      'field',
-  prestart_checks:           'field',
-  toolbox_talks:             'field',
-  jobs:                      'field',
-  leave_approval_logs:       'field',
-  leave_balances:            'field',
-  leave_requests:            'field',
-  quarterly_reviews:         'field',
-  rotations:                 'field',
-  schedule_change_logs:      'field',
-  schedule_entries:          'field',
-  site_diaries:              'field',
-  skills_ratings:            'field',
-  tafe_calendars:            'field',
-  tender_enrichments:        'field',
-  tender_import_runs:        'field',
-  tender_nominations:        'field',
-  tender_review_decisions:   'field',
-  tenders:                   'field',
-  timesheets:                'field',
-  weekly_reports:            'field',
-};
-
-type IntakeModule = 'cards' | 'service' | 'quotes' | 'core' | 'field';
-type ImportMode  = 'append' | 'upsert' | 'replace';
-
-// Modules implemented on tenant data plane so far. Add to this set as
-// each per-module PR lands.
-const IMPLEMENTED_MODULES: ReadonlySet<IntakeModule> = new Set<IntakeModule>(['cards', 'service', 'quotes', 'core', 'field']);
+import {
+  TABLE_MODULE,
+  IMPLEMENTED_MODULES,
+  type IntakeModule,
+  type ImportMode,
+} from './_shared/intake-modules.js';
 
 interface CommitBody {
   intake_id:        string;

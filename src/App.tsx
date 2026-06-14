@@ -86,6 +86,11 @@ const IntakeCardsLanding = lazy(() =>
 const IntakeServiceLanding = lazy(() =>
   import('./modules/intake/DomainLanding').then((m) => ({ default: m.ServiceIntakeLanding })),
 );
+// Review queue — reviewer side of the intake staging flow (intake-stage parks
+// flagged rows; this approves/rejects them). Gated by intake.commit inside.
+const IntakeReviewQueue = lazy(() =>
+  import('./modules/intake/ReviewQueue').then((m) => ({ default: m.IntakeReviewQueue })),
+);
 // Plant & Equipment — internal calibration register. Permission-gated inside
 // the component (useCan), not an entitlement module, so no ModuleGate.
 const EquipmentModule = lazy(() => import('./modules/equipment/index'));
@@ -478,6 +483,16 @@ function TenantTree() {
             <ModuleGate module="intake">
               <Suspense fallback={<PageLoadingFallback />}>
                 <IntakeServiceLanding />
+              </Suspense>
+            </ModuleGate>
+          }
+        />
+        <Route
+          path="intake/review"
+          element={
+            <ModuleGate module="intake">
+              <Suspense fallback={<PageLoadingFallback />}>
+                <IntakeReviewQueue />
               </Suspense>
             </ModuleGate>
           }
