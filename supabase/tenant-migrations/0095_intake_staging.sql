@@ -112,7 +112,7 @@ REVOKE ALL ON app_data.eq_intake_staging FROM PUBLIC, anon;
 GRANT SELECT ON app_data.eq_intake_staging TO authenticated;
 GRANT ALL    ON app_data.eq_intake_staging TO service_role;
 
--- NB: no INSERT INTO app_data._eq_migrations here. The tenant runner
--- (scripts/migrate-tenants.mjs) records the ledger row under the full filename
--- on apply; a self-insert would write a duplicate bare-named twin. See
--- SCHEMA-GOVERNANCE.md → "Ledger truth: the runner records, the file does not".
+-- NB: this file deliberately does NOT self-register in the migrations ledger.
+-- The tenant runner (scripts/migrate-tenants.mjs) records the ledger row under
+-- the full filename on apply; a self-insert would write a duplicate bare-named
+-- twin. See SCHEMA-GOVERNANCE.md, "Ledger truth: the runner records, not the file".
