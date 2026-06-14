@@ -1864,6 +1864,24 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <div className="eq-quotes__info-item eq-quotes__info-item--full">
                     <span className="eq-quotes__info-label">Recipient</span>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                      {detail.contact_id && (() => {
+                        const linked = detailContacts.find((c) => c.contact_id === detail.contact_id);
+                        if (!linked) return null;
+                        return (
+                          <button
+                            type="button"
+                            className="eq-quotes__btn eq-quotes__btn--outline"
+                            style={{ alignSelf: "flex-start", fontSize: 12 }}
+                            onClick={() => {
+                              setAttnFirstInput(linked.first_name ?? "");
+                              setAttnLastInput(linked.last_name ?? "");
+                              setAttnPhoneInput(linked.mobile_phone ?? linked.work_phone ?? "");
+                            }}
+                          >
+                            Use linked contact: {[linked.first_name, linked.last_name].filter(Boolean).join(" ")}
+                          </button>
+                        );
+                      })()}
                       <div style={{ display: "flex", gap: 6 }}>
                         <input
                           className="eq-quotes__input"
