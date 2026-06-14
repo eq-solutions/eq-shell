@@ -300,3 +300,24 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
 .eq-quotes__group-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--eq-primary-dark); }
 .eq-quotes__row--cat-subtotal td { background: var(--eq-paper); border-top: 1px solid var(--eq-line) !important; border-bottom: 2px solid var(--eq-line) !important; padding: 7px 14px !important; }
 .eq-quotes__financial-row--cat { border-left: 2px solid var(--eq-line); padding-left: 8px; }
+
+/* Reports */
+.eq-quotes__reports { display: flex; flex-direction: column; gap: 16px; }
+.eq-quotes__reports-tabs { display: flex; gap: 4px; }
+.eq-quotes__reports-section { display: flex; flex-direction: column; gap: 16px; }
+.eq-quotes__reports-kpis { display: flex; gap: 16px; flex-wrap: wrap; }
+.eq-quotes__reports-kpi { background: var(--eq-paper); border: 1px solid var(--eq-line); border-radius: 8px; padding: 16px 20px; display: flex; flex-direction: column; gap: 4px; min-width: 180px; }
+.eq-quotes__reports-kpi-value { font-size: 22px; font-weight: 700; color: var(--eq-ink); }
+.eq-quotes__reports-kpi-label { font-size: 12px; color: var(--eq-muted); }
+.eq-quotes__reports-table { width: 100%; border-collapse: collapse; background: var(--eq-paper); border: 1px solid var(--eq-line); border-radius: 8px; overflow: hidden; font-size: 13px; }
+.eq-quotes__reports-table th { background: var(--eq-ice); padding: 10px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--eq-muted); text-align: left; border-bottom: 1px solid var(--eq-line); }
+.eq-quotes__reports-table td { padding: 10px 14px; border-bottom: 1px solid var(--eq-line); color: var(--eq-ink); }
+.eq-quotes__reports-table tbody tr:last-child td { border-bottom: none; }
+.eq-quotes__reports-table tfoot td { border-top: 2px solid var(--eq-line); background: var(--eq-ice); padding: 10px 14px; }
+.eq-quotes__reports-row--won td { color: var(--eq-ok, #166534); }
+.eq-quotes__reports-row--lost td { color: var(--eq-muted); }
+.eq-quotes__reports-row--stale td { color: var(--eq-err, #c0392b); }
+.eq-quotes__reports-row--warn td { background: #fffbeb; }
+.eq-quotes__reports-hint { margin: 0; font-size: 12px; color: var(--eq-muted); }
+.eq-quotes__reports-subhead { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--eq-ink); }
+.eq-quotes__reports-export-bar { display: flex; align-items: center; justify-content: space-between; }

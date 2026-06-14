@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
 import { computeSellRate, computeMarkupPct } from "./quoteMath";
 import { QuotesSetup } from "./QuotesSetup";
+import { QuotesReports } from "./QuotesReports";
 import { captureRpcError } from "./quoteTelemetry";
 import { Table, type TableColumn } from "@eq-solutions/ui";
 
@@ -385,7 +386,7 @@ function parseCSV(text: string): CoupaRow[] {
 // ---------------------------------------------------------------------------
 
 export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element {
-  type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit" | "setup" | "trash";
+  type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit" | "setup" | "trash" | "reports";
 
   // ── Main navigation ──────────────────────────────────────────────────────
   const [view, setView] = useState<ModuleView>("pipeline");
@@ -2267,14 +2268,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             + New Quote
           </button>
           <div className="eq-quotes__view-tabs">
-            {(["pipeline", "accordion", "import", "setup", "trash"] as ModuleView[]).map((v) => (
+            {(["pipeline", "accordion", "import", "reports", "setup", "trash"] as ModuleView[]).map((v) => (
               <button
                 key={v}
                 type="button"
                 className={`eq-quotes__view-tab${view === v ? " eq-quotes__view-tab--active" : ""}`}
                 onClick={() => setView(v)}
               >
-                {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : v === "import" ? "Import Coupa" : v === "setup" ? "Setup" : "Trash"}
+                {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : v === "import" ? "Import Coupa" : v === "reports" ? "Reports" : v === "setup" ? "Setup" : "Trash"}
               </button>
             ))}
           </div>
@@ -2282,6 +2283,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       </div>
 
       {view === "setup" && <QuotesSetup supabase={supabase} />}
+      {view === "reports" && <QuotesReports supabase={supabase} />}
 
       {/* Trash view */}
       {view === "trash" && (
