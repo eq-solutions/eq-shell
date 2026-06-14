@@ -519,6 +519,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const detailIdRef = useRef<string | null>(null);
   const displayedQuotesRef = useRef<Quote[]>([]);
+  const detailRef = useRef<QuoteDetail | null>(null);
 
   // ── Detail state ──────────────────────────────────────────────────────────
   const [detail, setDetail] = useState<QuoteDetail | null>(null);
@@ -940,7 +941,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   }, [view]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Keyboard shortcuts: / = focus search, N = new quote, Escape = back, ← / → = navigate detail
+  // Keyboard shortcuts: / = focus search, N = new quote, Escape/E/D in detail
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -960,6 +961,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         setDetail(null);
         return;
       }
+      if (e.key === "e" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const d = detailRef.current;
+        if (d) openEditForm(d);
+        return;
+      }
+      if (e.key === "d" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const id = detailIdRef.current;
+        if (id) void handleDuplicate(id);
+        return;
+      }
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         const dq = displayedQuotesRef.current;
         const idx = dq.findIndex((q) => q.quote_id === detailIdRef.current);
@@ -970,7 +981,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [openDetail]);
+  }, [openDetail, openEditForm, handleDuplicate]);
 
   // Update browser tab title when viewing a quote
   useEffect(() => {
@@ -1827,6 +1838,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // Keep refs fresh for keyboard handler
   detailIdRef.current = detailId;
   displayedQuotesRef.current = displayedQuotes;
+  detailRef.current = detail;
   const wonTotal = displayedQuotes
     .filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
     .reduce((s, q) => s + q.total_cents, 0);
