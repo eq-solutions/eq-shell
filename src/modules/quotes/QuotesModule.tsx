@@ -2010,6 +2010,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
         {detail && (
           <div className="eq-quotes__detail-body">
+            {/* Expiry warning banner */}
+            {detail.expires_at && ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (() => {
+              const { text, urgent, overdue } = fmtExpiry(detail.expires_at);
+              if (!urgent && !overdue) return null;
+              return (
+                <div style={{
+                  padding: "8px 14px", borderRadius: 6, marginBottom: 8, fontSize: 13, fontWeight: 600,
+                  background: overdue ? "var(--eq-err-bg, #fdf1f1)" : "var(--eq-amber-bg, #fef9ee)",
+                  color: overdue ? "var(--eq-err, #c0392b)" : "var(--eq-amber, #d4820a)",
+                  border: `1px solid ${overdue ? "var(--eq-err, #c0392b)" : "var(--eq-amber, #d4820a)"}22`,
+                }}>
+                  {overdue ? `Quote expired ${text} — update the expiry date or close this quote` : `Quote expires in ${text} — follow up or extend`}
+                </div>
+              );
+            })()}
             {/* Info grid */}
             <div className="eq-quotes__detail-card">
               <div className="eq-quotes__info-grid">
