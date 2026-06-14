@@ -1597,6 +1597,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         : <span className="eq-quotes__muted">—</span>,
     },
     {
+      key: "created_at", header: "Created",
+      sortAccessor: (q) => q.created_at,
+      render: (q) => fmtDate(q.created_at),
+    },
+    {
       key: "sent_at", header: "Sent",
       sortAccessor: (q) => q.sent_at ?? "",
       render: (q) => fmtDate(q.sent_at),
@@ -3276,13 +3281,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 className="eq-quotes__btn eq-quotes__btn--outline"
                 title="Export current view to CSV"
                 onClick={() => {
-                  const header = ["Quote #", "Customer", "Site", "Project", "Estimator", "Status", "Job No.", "Total inc GST", "Sent", "Created"];
+                  const header = ["Quote #", "Customer", "Site", "Project", "Estimator", "Status", "Job No.", "Total inc GST", "Margin %", "Sent", "Expires", "Created"];
                   const today = new Date().toISOString().slice(0, 10);
                   downloadCsv([header, ...displayedQuotes.map((q) => [
                     q.quote_number, q.customer_name ?? "", q.site_code ?? "", q.project_name ?? "",
                     q.estimator_initials ?? "", STATUS_LABELS[q.status] ?? q.status, q.workbench_job_no ?? "",
                     (q.total_cents / 100).toFixed(2),
+                    q.margin_pct !== null ? Number(q.margin_pct).toFixed(1) : "",
                     q.sent_at ? q.sent_at.slice(0, 10) : "",
+                    q.expires_at ? q.expires_at.slice(0, 10) : "",
                     q.created_at.slice(0, 10),
                   ])], `eq-pipeline-${today}.csv`);
                 }}
