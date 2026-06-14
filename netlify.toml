@@ -15,6 +15,7 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+  included_files = ["netlify/functions/_templates/**"]
 
 # Local dev: `netlify dev` boots Vite as the target server and reverse-proxies
 # it on port 8888 alongside the Netlify Functions emulator. Explicit framework

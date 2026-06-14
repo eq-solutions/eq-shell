@@ -8,7 +8,6 @@
 // ---------------------------------------------------------------------------
 
 import JSZip from "jszip";
-import * as XLSX from "xlsx";
 
 // ---------------------------------------------------------------------------
 // Shared types (subset of QuoteDetail used here)
@@ -462,80 +461,27 @@ export async function generateQuoteDoc(q: QuoteDocData): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// generateJobExcel — Excel download
-// Reads the template, updates Job Creation + Budget sheets, downloads.
+// generateJobExcel — Excel download (server-side)
+// POSTs quote_id to /.netlify/functions/job-creation which uses exceljs to
+// fill the template server-side (preserves formulas + dropdowns) and returns
+// the binary xlsx. Budget uses COST (not sell) per user spec.
 // ---------------------------------------------------------------------------
 
-export async function generateJobExcel(q: QuoteDocData): Promise<void> {
-  const resp = await fetch("/templates/sks-job-creation-template.xlsx");
-  if (!resp.ok) throw new Error("Could not load job creation template");
-
-  const wb = XLSX.read(await resp.arrayBuffer(), { type: "array" });
-
-  // ── Job Creation sheet ──────────────────────────────────────────────────
-  const jc = wb.Sheets["Job Creation"];
-  if (!jc) throw new Error("Job Creation sheet not found");
-
-  const set = (cell: string, val: string | number) => {
-    jc[cell] = typeof val === "number"
-      ? { t: "n", v: val }
-      : { t: "s", v: val };
-  };
-
-  set("B4", q.project_name ?? "");
-  set("B5", q.customer_name ?? "");
-  set("B7", q.estimator_name ?? "Royce Milmlow");
-  set("B8", q.estimator_name ?? "Royce Milmlow");
-  set("B11", q.subtotal_cents / 100);        // Job Value ex GST
-  set("B12", q.po_number ?? "");
-
-  // ── Budget sheet ────────────────────────────────────────────────────────
-  const bud = wb.Sheets["Budget"];
-  if (!bud) throw new Error("Budget sheet not found");
-
-  const setBud = (cell: string, val: string | number) => {
-    bud[cell] = typeof val === "number"
-      ? { t: "n", v: val }
-      : { t: "s", v: val };
-  };
-
-  // Calculate category subtotals from line items. One-off items fold into the
-  // subcontractor budget bucket so no line total is dropped from the job sheet
-  // (the Word quote still shows One-off as its own group for the client).
-  const catSubtotals: Record<string, number> = { labour: 0, material: 0, subcontractor: 0 };
-  for (const li of q.line_items) {
-    let cat = li.category?.toLowerCase() ?? "";
-    if (cat === "one_off") cat = "subcontractor";
-    if (cat in catSubtotals) catSubtotals[cat] += li.line_total_cents;
+export async function generateJobExcel(quoteId: string): Promise<void> {
+  const resp = await fetch("/.netlify/functions/job-creation", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quote_id: quoteId }),
+  });
+  if (!resp.ok) {
+    let msg = `Server error ${resp.status}`;
+    try { const j = await resp.json(); msg = (j as { error?: string }).error ?? msg; } catch { /* ignore */ }
+    throw new Error(msg);
   }
-
-  const labourDollars = catSubtotals.labour / 100;
-  const materialDollars = catSubtotals.material / 100;
-  const subconDollars = catSubtotals.subcontractor / 100;
-  const totalDollars = q.subtotal_cents / 100;
-
-  // REV row (row 2) — FC Retail = total ex GST
-  setBud("K2", totalDollars);
-  setBud("J2", 1);
-
-  // MAT row (row 3)
-  setBud("I3", materialDollars);
-  setBud("J3", materialDollars > 0 ? 1 : 0);
-
-  // SLAB row (row 4) — labour
-  setBud("I4", labourDollars);
-  setBud("J4", labourDollars > 0 ? 1 : 0);
-
-  // SUBC row (row 11) — subcontractors
-  setBud("I11", subconDollars);
-  setBud("J11", subconDollars > 0 ? 1 : 0);
-
-  // Rebuild sheet range
-  XLSX.utils.sheet_add_aoa(jc, [], { origin: "A1" });
-  XLSX.utils.sheet_add_aoa(bud, [], { origin: "A1" });
-
-  const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const filename = `JobCreation-${q.quote_number}${q.customer_name ? "-" + q.customer_name : ""}.xlsx`;
+  const blob = await resp.blob();
+  const cd = resp.headers.get("Content-Disposition") ?? "";
+  const match = cd.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : `JobCreation-${quoteId}.xlsx`;
   triggerDownload(blob, filename);
 }

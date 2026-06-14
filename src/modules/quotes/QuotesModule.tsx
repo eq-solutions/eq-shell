@@ -1256,7 +1256,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
-                onClick={() => void generateJobExcel(detail)}
+                onClick={() => void generateJobExcel(detail.quote_id)}
               >
                 Create Job
               </button>
