@@ -13,7 +13,7 @@
 import type { Context } from '@netlify/functions';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
-import { buildScopePrompt, type ScopeInput } from './quote-suggest-scope.prompt.js';
+import { buildScopePrompt, type ScopeInput } from './_shared/quote-suggest-scope-prompt.js';
 
 const ANTHROPIC_API_VERSION = '2023-06-01';
 // Sonnet — a customer-facing scope draft is quality-sensitive prose, worth the

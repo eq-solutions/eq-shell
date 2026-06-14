@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildScopePrompt } from './quote-suggest-scope.prompt.ts';
+import { buildScopePrompt } from './quote-suggest-scope-prompt.ts';
 
 test('includes customer, site, project header when provided', () => {
   const p = buildScopePrompt({ customer_name: 'Equinix', site: 'SY6', project_name: 'UPS upgrade' });
