@@ -428,7 +428,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // Status update
   const [advanceStatus, setAdvanceStatus] = useState("");
   const [statusNote, setStatusNote] = useState("");
-  const [initials, setInitials] = useState("");
+  const [initials, setInitials] = useState(() =>
+    (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? ""
+  );
+  const updateInitials = (v: string) => {
+    const upper = v.toUpperCase();
+    setInitials(upper);
+    try { localStorage.setItem("eq-quotes-initials", upper); } catch { /* ignore */ }
+  };
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusMutErr, setStatusMutErr] = useState<string | null>(null);
 
@@ -1733,7 +1740,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     <input
                       className="eq-quotes__input eq-quotes__input--sm"
                       value={initials}
-                      onChange={(e) => setInitials(e.target.value.toUpperCase())}
+                      onChange={(e) => updateInitials(e.target.value)}
                       placeholder="RM"
                       maxLength={4}
                     />
@@ -2696,7 +2703,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 style={{ width: 70 }}
                 placeholder="Initials"
                 value={initials}
-                onChange={(e) => setInitials(e.target.value.toUpperCase())}
+                onChange={(e) => updateInitials(e.target.value)}
                 maxLength={4}
               />
               <button
