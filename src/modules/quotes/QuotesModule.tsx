@@ -304,6 +304,21 @@ function summariseAudit(a: QuoteAuditEntry): string {
     if (c["estimator_name"]) parts.push(`Estimator: ${String(c["estimator_name"])}`);
     return parts.length > 0 ? parts.join(" · ") : "Project details updated";
   }
+  if (a.action === "payment_terms") {
+    const parts: string[] = [];
+    if (c["payment_terms"]) parts.push(String(c["payment_terms"]));
+    if (c["validity_days"] != null) parts.push(`${String(c["validity_days"])}d validity`);
+    return parts.length > 0 ? parts.join(" · ") : "Payment terms updated";
+  }
+  if (a.action === "recipient") {
+    const parts: string[] = [];
+    const first = c["attn_first_name"];
+    const last = c["attn_name"];
+    if (first || last) parts.push([first, last].filter(Boolean).map(String).join(" "));
+    if (c["attn_phone"]) parts.push(`Ph: ${String(c["attn_phone"])}`);
+    if (c["address"]) parts.push("Address updated");
+    return parts.length > 0 ? parts.join(" · ") : "Recipient updated";
+  }
   return "Changed " + Object.keys(c).map((f) => f.replace(/_/g, " ")).join(", ");
 }
 
@@ -1641,7 +1656,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           </button>
           {detail && (
             <div className="eq-quotes__detail-title-row">
-              <h2 className="eq-quotes__detail-num">{detail.quote_number}</h2>
+              <h2
+                className="eq-quotes__detail-num"
+                style={{ cursor: "pointer" }}
+                title="Click to copy quote number"
+                onClick={() => void navigator.clipboard.writeText(detail.quote_number)}
+              >
+                {detail.quote_number}
+              </h2>
               <span className={statusClass(detail.status)}>
                 {STATUS_LABELS[detail.status] ?? detail.status}
               </span>
