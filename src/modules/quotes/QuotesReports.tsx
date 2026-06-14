@@ -346,9 +346,17 @@ export function QuotesReports({ supabase }: Props) {
       {/* ── Aging ── */}
       {tab === "aging" && (
         <div className="eq-quotes__reports-section">
-          <p className="eq-quotes__reports-hint">
-            Active pipeline only (Draft, Submitted, Client Reviewing, On Hold). Age from creation date.
-          </p>
+          <div className="eq-quotes__reports-export-bar">
+            <span className="eq-quotes__reports-hint">Active pipeline only — age from creation date.</span>
+            {agingRows.length > 0 && (
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => downloadCsv(
+                  [["Age bucket", "Quotes", "Value inc GST", "% of pipeline"],
+                   ...agingRows.map((r) => [r.bucket, r.count, (r.total / 100).toFixed(2), r.pct])],
+                  "sks-quotes-aging.csv"
+                )}>Download CSV</button>
+            )}
+          </div>
           {agingRows.length === 0 ? (
             <div className="eq-quotes__empty">No active pipeline quotes.</div>
           ) : (
@@ -407,7 +415,17 @@ export function QuotesReports({ supabase }: Props) {
       {/* ── By Estimator ── */}
       {tab === "estimators" && (
         <div className="eq-quotes__reports-section">
-          <p className="eq-quotes__reports-hint">Win rate and pipeline value per estimator across all quote statuses.</p>
+          <div className="eq-quotes__reports-export-bar">
+            <span className="eq-quotes__reports-hint">Win rate and pipeline per estimator — all statuses.</span>
+            {estimatorRows.length > 0 && (
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => downloadCsv(
+                  [["Estimator", "Won", "Lost", "Pipeline", "Win rate %", "Total value"],
+                   ...estimatorRows.map((r) => [r.name ?? r.initials, r.won, r.lost, r.pipeline, r.winRate !== null ? r.winRate : "", (r.total / 100).toFixed(2)])],
+                  "sks-quotes-by-estimator.csv"
+                )}>Download CSV</button>
+            )}
+          </div>
           <table className="eq-quotes__reports-table">
             <thead>
               <tr>
@@ -448,7 +466,17 @@ export function QuotesReports({ supabase }: Props) {
       {/* ── Monthly Trend ── */}
       {tab === "trend" && (
         <div className="eq-quotes__reports-section">
-          <p className="eq-quotes__reports-hint">Quotes sent per calendar month (by sent date). Last 18 months with activity.</p>
+          <div className="eq-quotes__reports-export-bar">
+            <span className="eq-quotes__reports-hint">Quotes sent per month (by sent date) — last 18 months.</span>
+            {monthlyRows.length > 0 && (
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => downloadCsv(
+                  [["Month", "Quotes sent", "Total value inc GST"],
+                   ...monthlyRows.map((r) => [r.label, r.count, (r.total / 100).toFixed(2)])],
+                  "sks-quotes-monthly-trend.csv"
+                )}>Download CSV</button>
+            )}
+          </div>
           <table className="eq-quotes__reports-table">
             <thead>
               <tr>
@@ -511,6 +539,15 @@ export function QuotesReports({ supabase }: Props) {
                   </div>
                 );
               })()}
+              <div className="eq-quotes__reports-export-bar" style={{ marginBottom: "0.5rem" }}>
+                <span />
+                <button type="button" className="eq-quotes__btn eq-quotes__btn--outline"
+                  onClick={() => downloadCsv(
+                    [["Quote No.", "Status", "Customer", "Project", "Loss reason", "Value inc GST", "Estimator", "Date"],
+                     ...lossRows.map((r) => [r.quote_number, r.status, r.customer_name ?? "", r.project_name ?? "", r.loss_reason ?? "", (r.total_cents / 100).toFixed(2), r.estimator_initials ?? "", new Date(r.created_at).toLocaleDateString("en-AU")])],
+                    "sks-quotes-win-loss.csv"
+                  )}>Download CSV</button>
+              </div>
               <table className="eq-quotes__reports-table">
                 <thead>
                   <tr>
