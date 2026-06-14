@@ -41,11 +41,10 @@ interface DashboardCounts {
   field:   number | null;
   service: number | null;
   quotes:  number | null;
-  cards:   number | null;
 }
 
 function extractCounts(data: DashboardResponse): DashboardCounts {
-  const counts: DashboardCounts = { field: null, service: null, quotes: null, cards: null };
+  const counts: DashboardCounts = { field: null, service: null, quotes: null };
   if (!data.ok || !data.counts) return counts;
   for (const row of data.counts) {
     if (typeof row.count_total !== 'number') continue;
@@ -53,7 +52,6 @@ function extractCounts(data: DashboardResponse): DashboardCounts {
       case 'staff':    counts.field   = row.count_total; break;
       case 'incident': counts.service = row.count_total || null; break;
       case 'quote':    counts.quotes  = row.count_total || null; break;
-      case 'licence':  counts.cards   = row.count_total || null; break;
     }
   }
   return counts;
@@ -75,7 +73,7 @@ export function HubLayout({
 }) {
   const { session } = useSession();
   const [liveCounts, setLiveCounts] = useState<DashboardCounts>({
-    field: null, service: null, quotes: null, cards: null,
+    field: null, service: null, quotes: null,
   });
 
   useEffect(() => {
