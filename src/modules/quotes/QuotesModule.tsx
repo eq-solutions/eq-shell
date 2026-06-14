@@ -211,15 +211,17 @@ const CAT_LABELS: Record<string, string> = {
   "": "Other",
 };
 
-// The four fixed line-item sections offered in the quote form. Stored keys are
-// kept singular (labour/material/subcontractor) to match existing data; one_off
-// is the new section. Display labels are the trade-standard plural forms.
+// The four fixed line-item sections (matches the Flask quote layout). The quote
+// form renders one group per section — the section IS the category, so there is
+// no per-row category dropdown. Stored keys stay singular
+// (labour/material/subcontractor) to match existing data; one_off is the new one.
 const QUOTE_SECTIONS: { value: string; label: string }[] = [
   { value: "labour", label: "Labour" },
   { value: "material", label: "Materials" },
   { value: "subcontractor", label: "Subcontractors" },
   { value: "one_off", label: "One-off" },
 ];
+const SECTION_VALUES = new Set(QUOTE_SECTIONS.map((s) => s.value));
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {
   header: "edited details",
@@ -435,7 +437,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [createQuoteNumber, setCreateQuoteNumber] = useState("");
   const [createClarifications, setCreateClarifications] = useState("");
   const [createLineItems, setCreateLineItems] = useState<CreateLineItem[]>([
-    { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "" },
+    { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "labour" },
   ]);
   const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
 
@@ -674,7 +676,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCreateValidityDays("30");
     setCreateQuoteNumber("");
     setCreateClarifications("");
-    setCreateLineItems([{ description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "" }]);
+    setCreateLineItems([{ description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "labour" }]);
     setCreateError(null);
     setEditingQuoteId(null);
   };
@@ -738,8 +740,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     });
   };
 
-  const addLineItem = () => {
-    setCreateLineItems((prev) => [...prev, { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "" }]);
+  const addLineItem = (category = "labour") => {
+    setCreateLineItems((prev) => [...prev, { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category }]);
   };
 
   const applyPreset = (preset: RatePreset) => {
@@ -1535,14 +1537,47 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const createGst = Math.round(createSubtotal / 10);
   const createTotal = createSubtotal + createGst;
 
-  const createCatBreakdown = CAT_ORDER
-    .map((cat) => {
-      const items = createLineItems.filter(
-        (li) => (li.category || "") === cat && li.description.trim(),
-      );
-      return { cat, label: CAT_LABELS[cat] ?? cat, total: items.reduce((s, li) => s + calcLineTotal(li), 0) };
-    })
-    .filter((g) => g.total > 0);
+  // One editable line-item row, rendered inside each section group. Uses the flat
+  // index `i` so updateLineItem/removeLineItem keep working unchanged.
+  const renderLineRow = (li: CreateLineItem, i: number) => (
+    <tr key={i} className="eq-quotes__row">
+      <td>
+        <input className="eq-quotes__input" style={{ width: "100%", padding: "5px 8px", fontSize: 13 }}
+          value={li.description} onChange={(e) => updateLineItem(i, "description", e.target.value)} placeholder="Description…" />
+      </td>
+      <td>
+        <input className="eq-quotes__input" style={{ width: 68, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
+          type="number" min="0" step="0.001" value={li.qty} onChange={(e) => updateLineItem(i, "qty", e.target.value)} />
+      </td>
+      <td>
+        <input className="eq-quotes__input" style={{ width: 44, padding: "5px 6px", fontSize: 13 }}
+          value={li.unit} onChange={(e) => updateLineItem(i, "unit", e.target.value)} placeholder="ea" />
+      </td>
+      <td>
+        <input className="eq-quotes__input" style={{ width: 76, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
+          type="number" min="0" step="0.01" value={li.cost} onChange={(e) => updateLineItem(i, "cost", e.target.value)} placeholder="0.00" />
+      </td>
+      <td>
+        <input className="eq-quotes__input" style={{ width: 60, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
+          type="number" min="0" step="0.5" value={li.markup} onChange={(e) => updateLineItem(i, "markup", e.target.value)}
+          placeholder="0" title="Markup %. Rate auto-computes from Cost × (1 + Markup/100)" />
+      </td>
+      <td>
+        <input className="eq-quotes__input"
+          style={{ width: 84, padding: "5px 8px", fontSize: 13, textAlign: "right", background: li.cost ? "var(--eq-surface-2, var(--eq-surface))" : undefined }}
+          type="number" min="0" step="0.01" value={li.rate} onChange={(e) => updateLineItem(i, "rate", e.target.value)}
+          placeholder="0.00" title={li.cost ? "Auto-computed from Cost × (1 + Markup%)" : "Enter sell rate"} />
+      </td>
+      <td className="eq-quotes__td--right eq-quotes__td--bold">
+        {calcLineTotal(li) > 0 ? aud(calcLineTotal(li)) : <span className="eq-quotes__muted">—</span>}
+      </td>
+      <td>
+        <button type="button"
+          style={{ background: "none", border: "none", color: "var(--eq-muted)", cursor: "pointer", fontSize: 18, padding: "2px 6px", lineHeight: 1 }}
+          onClick={() => removeLineItem(i)} title="Remove row" aria-label="Remove line item">×</button>
+      </td>
+    </tr>
+  );
 
   // ── Render: create view ───────────────────────────────────────────────────
 
@@ -1828,120 +1863,70 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     <th style={{ width: 88 }}>Cost ($)</th>
                     <th style={{ width: 72 }}>Mark-up%</th>
                     <th style={{ width: 96 }}>Rate ($)</th>
-                    <th style={{ width: 108 }}>Category</th>
                     <th className="eq-quotes__th--right" style={{ width: 96 }}>Total</th>
                     <th style={{ width: 30 }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {createLineItems.map((li, i) => (
-                    <tr key={i} className="eq-quotes__row">
-                      <td>
-                        <input
-                          className="eq-quotes__input"
-                          style={{ width: "100%", padding: "5px 8px", fontSize: 13 }}
-                          value={li.description}
-                          onChange={(e) => updateLineItem(i, "description", e.target.value)}
-                          placeholder="Description…"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="eq-quotes__input"
-                          style={{ width: 68, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
-                          type="number"
-                          min="0"
-                          step="0.001"
-                          value={li.qty}
-                          onChange={(e) => updateLineItem(i, "qty", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="eq-quotes__input"
-                          style={{ width: 44, padding: "5px 6px", fontSize: 13 }}
-                          value={li.unit}
-                          onChange={(e) => updateLineItem(i, "unit", e.target.value)}
-                          placeholder="ea"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="eq-quotes__input"
-                          style={{ width: 76, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={li.cost}
-                          onChange={(e) => updateLineItem(i, "cost", e.target.value)}
-                          placeholder="0.00"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="eq-quotes__input"
-                          style={{ width: 60, padding: "5px 8px", fontSize: 13, textAlign: "right" }}
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          value={li.markup}
-                          onChange={(e) => updateLineItem(i, "markup", e.target.value)}
-                          placeholder="0"
-                          title="Markup %. Rate auto-computes from Cost × (1 + Markup/100)"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="eq-quotes__input"
-                          style={{
-                            width: 84, padding: "5px 8px", fontSize: 13, textAlign: "right",
-                            background: li.cost ? "var(--eq-surface-2, var(--eq-surface))" : undefined,
-                          }}
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={li.rate}
-                          onChange={(e) => updateLineItem(i, "rate", e.target.value)}
-                          placeholder="0.00"
-                          title={li.cost ? "Auto-computed from Cost × (1 + Markup%)" : "Enter sell rate"}
-                        />
-                      </td>
-                      <td>
-                        <select
-                          className="eq-quotes__select"
-                          style={{ width: 100, padding: "5px 6px", fontSize: 13 }}
-                          value={li.category}
-                          onChange={(e) => updateLineItem(i, "category", e.target.value)}
-                        >
-                          <option value="">—</option>
-                          {QUOTE_SECTIONS.map((s) => (
-                            <option key={s.value} value={s.value}>{s.label}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="eq-quotes__td--right eq-quotes__td--bold">
-                        {calcLineTotal(li) > 0
-                          ? aud(calcLineTotal(li))
-                          : <span className="eq-quotes__muted">—</span>}
-                      </td>
-                      <td>
-                        {createLineItems.length > 1 && (
-                          <button
-                            type="button"
-                            style={{
-                              background: "none", border: "none", color: "var(--eq-muted)",
-                              cursor: "pointer", fontSize: 18, padding: "2px 6px", lineHeight: 1,
-                            }}
-                            onClick={() => removeLineItem(i)}
-                            title="Remove row"
-                            aria-label="Remove line item"
-                          >
-                            ×
-                          </button>
+                  {QUOTE_SECTIONS.map((sec) => {
+                    const secRows = createLineItems
+                      .map((li, i) => ({ li, i }))
+                      .filter((x) => x.li.category === sec.value);
+                    const secTotal = secRows.reduce((s, x) => s + calcLineTotal(x.li), 0);
+                    return (
+                      <React.Fragment key={sec.value}>
+                        <tr className="eq-quotes__row--group-header">
+                          <td colSpan={8} className="eq-quotes__group-label">{sec.label}</td>
+                        </tr>
+                        {secRows.map(({ li, i }) => renderLineRow(li, i))}
+                        <tr>
+                          <td colSpan={8} style={{ padding: "4px 8px" }}>
+                            <button
+                              type="button"
+                              style={{
+                                background: "none", border: "none", color: "var(--eq-sky, #3DA8D8)",
+                                cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "2px 0",
+                              }}
+                              onClick={() => addLineItem(sec.value)}
+                            >
+                              + Add {sec.label.toLowerCase()} line
+                            </button>
+                          </td>
+                        </tr>
+                        {secTotal > 0 && (
+                          <tr className="eq-quotes__row--cat-subtotal">
+                            <td colSpan={7} className="eq-quotes__td--right">
+                              <span className="eq-quotes__muted" style={{ fontSize: 12 }}>{sec.label} subtotal</span>
+                            </td>
+                            <td className="eq-quotes__td--right eq-quotes__td--bold">{aud(secTotal)}</td>
+                          </tr>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                      </React.Fragment>
+                    );
+                  })}
+                  {(() => {
+                    const other = createLineItems
+                      .map((li, i) => ({ li, i }))
+                      .filter((x) => !SECTION_VALUES.has(x.li.category));
+                    if (other.length === 0) return null;
+                    const t = other.reduce((s, x) => s + calcLineTotal(x.li), 0);
+                    return (
+                      <React.Fragment key="_other">
+                        <tr className="eq-quotes__row--group-header">
+                          <td colSpan={8} className="eq-quotes__group-label">Other / uncategorised</td>
+                        </tr>
+                        {other.map(({ li, i }) => renderLineRow(li, i))}
+                        {t > 0 && (
+                          <tr className="eq-quotes__row--cat-subtotal">
+                            <td colSpan={7} className="eq-quotes__td--right">
+                              <span className="eq-quotes__muted" style={{ fontSize: 12 }}>Other subtotal</span>
+                            </td>
+                            <td className="eq-quotes__td--right eq-quotes__td--bold">{aud(t)}</td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -2137,21 +2122,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               )}
             </div>
 
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginTop: 14, flexWrap: "wrap", gap: 12 }}>
-              <button
-                type="button"
-                className="eq-quotes__btn eq-quotes__btn--outline"
-                onClick={addLineItem}
-              >
-                + Add Line
-              </button>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
               <div className="eq-quotes__financials" style={{ marginTop: 0, paddingTop: 0, borderTop: "none" }}>
-                {createCatBreakdown.length > 1 && createCatBreakdown.map((g) => (
-                  <div key={g.cat || "_other"} className="eq-quotes__financial-row eq-quotes__financial-row--cat">
-                    <span className="eq-quotes__muted" style={{ fontSize: 13 }}>{g.label}</span>
-                    <span className="eq-quotes__muted" style={{ fontSize: 13 }}>{aud(g.total)}</span>
-                  </div>
-                ))}
                 <div className="eq-quotes__financial-row">
                   <span>Subtotal</span>
                   <span>{aud(createSubtotal)}</span>
