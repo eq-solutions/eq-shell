@@ -148,16 +148,13 @@ declare module '@eq-solutions/ui' {
   }
 
   export interface TablePagination {
-    pageSize: number
-    page?: number
-    onPageChange?: (page: number) => void
+    pageSize?: number
+    totalCount?: number
   }
 
-  export interface TableBulkActionProps {
-    onClick: () => void
+  export interface TableBulkActionProps extends ButtonHTMLAttributes<HTMLButtonElement> {
     icon?: ReactNode
     danger?: boolean
-    children?: ReactNode
   }
   export function TableBulkAction(props: TableBulkActionProps): React.ReactElement
 
@@ -174,17 +171,34 @@ declare module '@eq-solutions/ui' {
     onSelectionChange?: (ids: Set<string>) => void
     onRowClick?: (row: T) => void
     loading?: boolean
+    loadingRows?: number
     // v1.4 props
     slicers?: TableSlicer<T>[]
     activeSlicer?: string
     onSlicerChange?: (key: string) => void
-    globalSearch?: { placeholder?: string }
+    globalSearch?: boolean | { placeholder?: string }
     columnToggle?: boolean
-    exportable?: { filename?: string }
+    exportable?: boolean | { filename?: string }
     bulkActions?: (rows: T[], clearSelection: () => void) => ReactNode
     rowIndicator?: (row: T) => { color: string } | null | undefined
+    density?: 'comfortable' | 'compact'
+    rowVariant?: 'lines' | 'zebra' | 'plain'
     pagination?: TablePagination
-    summary?: (visibleCount: number, totalCount: number) => ReactNode
+    summary?: string | ((visibleCount: number, totalCount: number) => ReactNode)
+    // v1.5 built-in row actions
+    onDelete?: (rows: T[]) => Promise<void> | void
+    onArchive?: (rows: T[]) => Promise<void> | void
+    deleteLabel?: string
+    archiveLabel?: string
+    deleteConfirm?: {
+      title?: string | ((count: number) => string)
+      description?: string | ((count: number) => string)
+    }
+    archiveConfirm?: boolean | {
+      title?: string | ((count: number) => string)
+      description?: string | ((count: number) => string)
+    }
+    onActionError?: (action: 'delete' | 'archive', error: unknown) => void
   }
   export function Table<T>(props: TableProps<T>): React.ReactElement
 
