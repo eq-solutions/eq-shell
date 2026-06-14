@@ -3782,7 +3782,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             <input
               className="eq-quotes__search"
               type="search"
-              placeholder="Search by quote #, project, customer, job no. or PO…"
+              placeholder="Search by quote #, project, customer, site, job no. or PO…"
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
             />
