@@ -2119,6 +2119,25 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 </div>
               );
             })()}
+            {/* Follow-up overdue banner */}
+            {detail.follow_up_at && (() => {
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const overdueFup = detail.follow_up_at < todayStr;
+              const todayFup = detail.follow_up_at === todayStr;
+              if (!overdueFup && !todayFup) return null;
+              return (
+                <div style={{
+                  padding: "8px 14px", borderRadius: 6, marginBottom: 8, fontSize: 13, fontWeight: 600,
+                  background: overdueFup ? "var(--eq-err-bg, #fdf1f1)" : "var(--eq-amber-bg, #fef9ee)",
+                  color: overdueFup ? "var(--eq-err, #c0392b)" : "var(--eq-amber, #d4820a)",
+                  border: `1px solid ${overdueFup ? "var(--eq-err, #c0392b)" : "var(--eq-amber, #d4820a)"}22`,
+                }}>
+                  {overdueFup
+                    ? `Follow-up was due ${fmtDate(detail.follow_up_at)} — chase the client or update the date`
+                    : `Follow-up due today — contact the client`}
+                </div>
+              );
+            })()}
             {/* Info grid */}
             <div className="eq-quotes__detail-card">
               <div className="eq-quotes__info-grid">
