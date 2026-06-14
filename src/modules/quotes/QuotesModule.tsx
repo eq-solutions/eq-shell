@@ -1295,6 +1295,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           : <span className="eq-quotes__muted">—</span>,
     },
     {
+      key: "margin_pct", header: "Margin", align: "right" as const,
+      sortAccessor: (q) => q.margin_pct ?? -1,
+      render: (q) => q.margin_pct !== null
+        ? <span style={{ fontSize: 12 }}>{Number(q.margin_pct).toFixed(1)}%</span>
+        : <span className="eq-quotes__muted">—</span>,
+    },
+    {
       key: "sent_at", header: "Sent",
       sortAccessor: (q) => q.sent_at ?? "",
       render: (q) => fmtDate(q.sent_at),
@@ -1530,6 +1537,26 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     </span>
                   </div>
                 )}
+                {detail.client_accepted_at && (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label">Client Accepted</span>
+                    <span className="eq-quotes__info-val" style={{ color: "var(--eq-deep, #2986B4)", fontWeight: 600 }}>
+                      {detail.client_accepted_by ? `${detail.client_accepted_by} · ` : ""}{fmtDate(detail.client_accepted_at)}
+                    </span>
+                  </div>
+                )}
+                {detail.client_declined_at && (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label">Client Declined</span>
+                    <span className="eq-quotes__info-val" style={{ color: "var(--eq-err)" }}>
+                      {fmtDate(detail.client_declined_at)}
+                    </span>
+                  </div>
+                )}
+                <div className="eq-quotes__info-item">
+                  <span className="eq-quotes__info-label">Created</span>
+                  <span className="eq-quotes__info-val">{fmtDate(detail.created_at)}</span>
+                </div>
               </div>
 
               {detail.scope_of_works && (
@@ -1543,6 +1570,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 <div className="eq-quotes__scope">
                   <span className="eq-quotes__info-label">Clarifications</span>
                   <p className="eq-quotes__scope-text">{detail.clarifications}</p>
+                </div>
+              )}
+
+              {detail.quote_notes && (
+                <div className="eq-quotes__scope">
+                  <span className="eq-quotes__info-label">Terms &amp; Notes</span>
+                  <p className="eq-quotes__scope-text">{detail.quote_notes}</p>
                 </div>
               )}
 
