@@ -2254,7 +2254,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                         <th>Description</th>
                         <th className="eq-quotes__th--right" style={{ width: 60 }}>Qty</th>
                         <th style={{ width: 48 }}>Unit</th>
-                        <th className="eq-quotes__th--right" style={{ width: 100 }}>Rate</th>
+                        <th className="eq-quotes__th--right" style={{ width: 90 }}>Cost</th>
+                        <th className="eq-quotes__th--right" style={{ width: 90 }}>Rate</th>
+                        <th className="eq-quotes__th--right" style={{ width: 64 }}>Mkup%</th>
                         <th className="eq-quotes__th--right" style={{ width: 110 }}>Total</th>
                       </tr>
                     </thead>
@@ -2268,22 +2270,33 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                         return (
                           <React.Fragment key={cat || "_other"}>
                             <tr className="eq-quotes__row--group-header">
-                              <td colSpan={6} className="eq-quotes__group-label">
+                              <td colSpan={8} className="eq-quotes__group-label">
                                 {CAT_LABELS[cat] ?? cat}
                               </td>
                             </tr>
-                            {items.map((li) => (
+                            {items.map((li) => {
+                              const mkup = li.cost_rate_cents > 0 && li.unit_rate_cents > 0
+                                ? computeMarkupPct(li.cost_rate_cents, li.unit_rate_cents)
+                                : null;
+                              return (
                               <tr key={li.line_number}>
                                 <td className="eq-quotes__td--mono">{li.line_number}</td>
                                 <td>{li.description}</td>
                                 <td className="eq-quotes__td--right">{qty(li.quantity_thousandths)}</td>
                                 <td>{li.unit ?? <span className="eq-quotes__muted">—</span>}</td>
+                                <td className="eq-quotes__td--right eq-quotes__muted">
+                                  {li.cost_rate_cents > 0 ? aud(li.cost_rate_cents) : <span>—</span>}
+                                </td>
                                 <td className="eq-quotes__td--right">{aud(li.unit_rate_cents)}</td>
+                                <td className="eq-quotes__td--right" style={{ fontSize: 12, color: mkup !== null && mkup < 0 ? "var(--eq-err, #c0392b)" : undefined }}>
+                                  {mkup !== null ? `${mkup.toFixed(1)}%` : <span className="eq-quotes__muted">—</span>}
+                                </td>
                                 <td className="eq-quotes__td--right eq-quotes__td--bold">{aud(li.line_total_cents)}</td>
                               </tr>
-                            ))}
+                              );
+                            })}
                             <tr className="eq-quotes__row--cat-subtotal">
-                              <td colSpan={5} className="eq-quotes__td--right">
+                              <td colSpan={7} className="eq-quotes__td--right">
                                 <span className="eq-quotes__muted" style={{ fontSize: 12 }}>
                                   {CAT_LABELS[cat] ?? cat} subtotal
                                 </span>
