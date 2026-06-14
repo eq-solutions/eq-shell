@@ -2057,7 +2057,22 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <div className="eq-quotes__info-grid">
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">Customer</span>
-                  <span className="eq-quotes__info-val">{detail.customer_name ?? "—"}</span>
+                  <span className="eq-quotes__info-val" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {detail.customer_name ?? "—"}
+                    {detail.customer_name && (() => {
+                      const others = quotes.filter((q) => q.customer_name === detail.customer_name && q.quote_id !== detail.quote_id);
+                      if (others.length === 0) return null;
+                      return (
+                        <button
+                          type="button"
+                          style={{ background: "none", border: "none", color: "var(--eq-sky, #2986B4)", cursor: "pointer", fontSize: 11, padding: 0 }}
+                          onClick={() => { setCustomerFilter(detail.customer_name!); setStatusFilter("all"); void loadQuotes("all", search); }}
+                        >
+                          +{others.length} other{others.length !== 1 ? "s" : ""}
+                        </button>
+                      );
+                    })()}
+                  </span>
                 </div>
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">Site</span>
