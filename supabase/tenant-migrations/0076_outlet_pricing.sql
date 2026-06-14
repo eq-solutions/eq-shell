@@ -153,8 +153,7 @@ BEGIN
     (v_tenant, 'OUT-3P-32A-C', 'Outlet three phase 32A Clipsal',   'ea', 38.00, 50),
     (v_tenant, 'OUT-3P-32A-I', 'Outlet three phase 32A IPD',       'ea', 34.50, 60),
     (v_tenant, 'BRK-1P-32A',   'Breaker single phase 32A',         'ea', 28.00, 70),
-    (v_tenant, 'BRK-3P-32A',   'Breaker three phase 32A',          'ea', 42.00, 80)
-  RETURNING material_id INTO v_cable;  -- only captures last; we re-select below
+    (v_tenant, 'BRK-3P-32A',   'Breaker three phase 32A',          'ea', 42.00, 80);
 
   -- Re-select material IDs by part_no
   SELECT material_id INTO v_cable    FROM app_data.pricing_materials WHERE tenant_id = v_tenant AND part_no = 'CBL-6MM-2CE';

@@ -121,8 +121,17 @@ BEGIN
 END;
 $$;
 
--- Old signature (no p_site_id) is superseded — revoke it, grant new one
-REVOKE ALL ON FUNCTION public.eq_create_quote(uuid, text, text, text, text, text, integer) FROM PUBLIC;
+-- Old 7-arg signature superseded — revoke if it exists (may be absent on planes where 0070 had partial state)
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'eq_create_quote'
+      AND array_length(p.proargtypes, 1) = 7
+  ) THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.eq_create_quote(uuid, text, text, text, text, text, integer) FROM PUBLIC';
+  END IF;
+END $$;
 REVOKE ALL ON FUNCTION public.eq_create_quote(uuid, uuid, text, text, text, text, text, integer) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.eq_create_quote(uuid, uuid, text, text, text, text, text, integer) TO authenticated;
 
