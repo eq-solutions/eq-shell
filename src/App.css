@@ -1804,7 +1804,9 @@ table.prev th {
 .eq-hub-sidebar__nav-count {
   font-size: 13px;
   font-weight: 700;
-  color: var(--eq-brand);
+  /* Brighter sky (--eq-live) than --eq-brand so the count reads clearly on the
+     dark navy sidebar — the plain sky was too low-contrast at this size. */
+  color: var(--eq-live, #38BDF8);
 }
 
 .eq-hub-sidebar__nav-alert {
@@ -2682,6 +2684,32 @@ table.prev th {
   letter-spacing: 0.08em;
   color: var(--eq-sky, #3DA8D8);
   margin-top: 4px;
+}
+
+/* Clickable stat cards — the four hero metrics link/scroll to their source.
+   Reset <a>/<button> defaults and add hover + keyboard-focus affordance. */
+a.eq-hub-stat,
+button.eq-hub-stat {
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  width: 100%;
+  transition: border-color var(--eq-duration-default, 0.15s) var(--eq-ease, ease),
+              background var(--eq-duration-default, 0.15s) var(--eq-ease, ease);
+}
+a.eq-hub-stat:hover,
+button.eq-hub-stat:hover {
+  border-color: var(--eq-sky, #3DA8D8);
+}
+.eq-hub-stat:not(.eq-hub-stat--warn):hover {
+  background: var(--eq-ice, #EAF5FB);
+}
+a.eq-hub-stat:focus-visible,
+button.eq-hub-stat:focus-visible {
+  outline: 2px solid var(--eq-sky, #3DA8D8);
+  outline-offset: 2px;
 }
 
 /* ── Ask anything bar ── */

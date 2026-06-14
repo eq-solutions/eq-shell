@@ -46,6 +46,7 @@ import { StaffPage } from './pages/StaffPage';
 import ServiceIframe from './pages/ServiceIframe';
 const QuotesNative = lazy(() => import('./pages/QuotesNative'));
 const EqQuotesExternal = lazy(() => import('./pages/EqQuotesExternal'));
+const EqOpsPage = lazy(() => import('./pages/EqOps'));
 import StorageBrowser from './pages/StorageBrowser';
 import LicenceOcrPage from './pages/ocr/LicenceOcrPage';
 import NotFound from './pages/NotFound';
@@ -502,6 +503,17 @@ function TenantTree() {
           element={
             <Suspense fallback={<PageLoadingFallback />}>
               <EqQuotesExternal />
+            </Suspense>
+          }
+        />
+        {/* EQ Ops — the in-shell build that will replace EQ Quotes. Renders the
+            same module as /quotes; gated to platform admins inside the page so it's
+            a debug surface while the team stays on the external EQ Quotes tool. */}
+        <Route
+          path="ops"
+          element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              <EqOpsPage />
             </Suspense>
           }
         />

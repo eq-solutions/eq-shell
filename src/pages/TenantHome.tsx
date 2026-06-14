@@ -166,20 +166,27 @@ const APP_LABELS: Record<string, string> = {
 // Today: trial users don't see Quotes (the in-shell Quotes module is just a
 // pointer to the standalone Flask pilot — confusing for new users) and don't
 // see Service (the Next.js app is still in active development).
-const HUB_APPS: { key: string; label: string; to: string; isBeta: boolean; hideForTier?: EqTier[] }[] = [
-  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: false },
-  { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
-  { key: 'service', label: 'EQ Service', to: 'service', isBeta: false, hideForTier: ['trial'] },
-  { key: 'quotes',  label: 'EQ Quotes',  to: 'quotes',  isBeta: false, hideForTier: ['trial'] },
-  { key: 'comms',   label: 'NSW Comms',  to: 'comms',   isBeta: true  },
+const HUB_APPS: { key: string; label: string; to: string; isBeta: boolean; hideForTier?: EqTier[]; alwaysShow?: boolean; platformOnly?: boolean }[] = [
+  { key: 'cards',     label: 'EQ Cards',   to: 'cards',     isBeta: false },
+  { key: 'field',     label: 'EQ Field',   to: 'field',     isBeta: false },
+  { key: 'service',   label: 'EQ Service', to: 'service',   isBeta: false, hideForTier: ['trial'] },
+  // EQ Quotes — the standalone quoting tool the team uses today (external redirect
+  // to quotes.eq.solutions). Always shown; not an entitlement module.
+  { key: 'eq-quotes', label: 'EQ Quotes',  to: 'eq-quotes', isBeta: false, alwaysShow: true },
+  // EQ Ops — the in-shell build that will replace EQ Quotes (route /ops renders the
+  // in-shell module). Platform-admin only for now: a debug surface while the team
+  // stays on EQ Quotes. Keep this wiring in sync with HubLayout + IconRail.
+  { key: 'ops',       label: 'EQ Ops',     to: 'ops',       isBeta: true,  platformOnly: true, hideForTier: ['trial'] },
+  { key: 'comms',     label: 'NSW Comms',  to: 'comms',     isBeta: true  },
 ];
 
 const APP_DESCRIPTIONS: Record<string, string> = {
-  field:   'Rosters, staff, licences and availability.',
-  service: 'Maintenance, defects and customer reports.',
-  quotes:  'Quoting and proposals.',
-  cards:   'Staff profiles and licence cards.',
-  comms:   'NSW Comms job pipeline — quotes, POs and invoicing.',
+  field:       'Rosters, staff, licences and availability.',
+  service:     'Maintenance, defects and customer reports.',
+  'eq-quotes': 'Your current quoting tool.',
+  ops:         'The new build that will replace EQ Quotes.',
+  cards:       'Staff profiles and licence cards.',
+  comms:       'NSW Comms job pipeline — quotes, POs and invoicing.',
 };
 
 
@@ -443,14 +450,19 @@ export default function TenantHome() {
   // only appears once data actually flows from that app into canonical.
   const tier: EqTier = session.tenant.tier;
   const visibleApps = HUB_APPS
-    .filter((a) => moduleEnabled(session, a.key))
+    // platformOnly (EQ Ops debug) → admins only; alwaysShow (external EQ Quotes) →
+    // everyone; otherwise gate on the entitlement module.
+    .filter((a) => a.platformOnly
+      ? session.user.is_platform_admin
+      : (a.alwaysShow || moduleEnabled(session, a.key)))
     .filter((a) => !a.hideForTier?.includes(tier));
 
   const appCountMap: Record<string, number | null> = {
-    field:   staffCount,    // active staff — always available
-    service: incidentCount, // open incidents in canonical
-    quotes:  quoteCount,    // quotes in canonical
-    cards:   licenceCount,  // staff licences (proxy until issued-card entity)
+    field:   staffCount || null, // active staff — hide the badge at 0 (canonical not yet populated)
+    service: incidentCount,      // open incidents in canonical
+    ops:     quoteCount,         // EQ Ops surfaces quotes/tenders from canonical
+    // cards: intentionally no badge. The only proxy is licence count, which on a
+    // profile/card app reads like unread cards/notifications and confuses (2026-06-14).
   };
 
   const sidebarApps: HubApp[] = visibleApps.map((a) => ({
@@ -520,7 +532,7 @@ export default function TenantHome() {
                 ? '1 item overdue for service'
                 : `${assetOverdue} items overdue for service`}
               {' — '}
-              <Link to={`/${tenantSlug}/service`} className="eq-hub-alert__link">review in Service →</Link>
+              <Link to={`/${tenantSlug}/equipment`} className="eq-hub-alert__link">review in Plant &amp; equipment →</Link>
             </span>
           </div>
         )}
@@ -571,23 +583,23 @@ export default function TenantHome() {
             {greeting()}, {greetName}.
           </h1>
 
-          {/* Cross-app stat cards */}
+          {/* Cross-app stat cards — each clicks through to the surface it summarises */}
           <div className="eq-hub-stats">
-            <div className="eq-hub-stat">
+            <Link to={`/${tenantSlug}/field`} className="eq-hub-stat">
               <span className="eq-hub-stat__value">
                 {loading ? '…' : (aiData?.shift_scheduled_count ?? staffCount ?? '—')}
               </span>
               <span className="eq-hub-stat__label">scheduled today</span>
               <span className="eq-hub-stat__app">EQ FIELD</span>
-            </div>
-            <div className={`eq-hub-stat${assetOverdue > 0 ? ' eq-hub-stat--warn' : ''}`}>
+            </Link>
+            <Link to={`/${tenantSlug}/equipment`} className={`eq-hub-stat${assetOverdue > 0 ? ' eq-hub-stat--warn' : ''}`}>
               <span className="eq-hub-stat__value">
-                {loading ? '…' : assetOverdue > 0 ? assetOverdue : (incidentCount ?? '—')}
+                {loading ? '…' : (assetOverdue > 0 ? assetOverdue : '—')}
               </span>
-              <span className="eq-hub-stat__label">overdue items</span>
-              <span className="eq-hub-stat__app">EQ SERVICE</span>
-            </div>
-            <div className="eq-hub-stat">
+              <span className="eq-hub-stat__label">overdue for service</span>
+              <span className="eq-hub-stat__app">PLANT &amp; EQUIPMENT</span>
+            </Link>
+            <Link to={`/${tenantSlug}/eq-quotes`} className="eq-hub-stat">
               <span className="eq-hub-stat__value">
                 {loading ? '…' : aiData?.pipeline
                   ? new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', notation: 'compact', maximumFractionDigits: 0 }).format(aiData.pipeline.total_value_cents / 100)
@@ -595,14 +607,18 @@ export default function TenantHome() {
               </span>
               <span className="eq-hub-stat__label">live quotes</span>
               <span className="eq-hub-stat__app">EQ QUOTES</span>
-            </div>
-            <div className="eq-hub-stat">
+            </Link>
+            <button
+              type="button"
+              className="eq-hub-stat"
+              onClick={() => document.getElementById('todays-actions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            >
               <span className="eq-hub-stat__value">
                 {aiData ? (aiData.actions.filter(a => !actionedTitles.has(a.title)).length || '—') : '—'}
               </span>
               <span className="eq-hub-stat__label">pending actions</span>
-              <span className="eq-hub-stat__app">EQ FIELD</span>
-            </div>
+              <span className="eq-hub-stat__app">TODAY'S ACTIONS</span>
+            </button>
           </div>
 
           {/* AI Brief — auto-loaded on mount */}
@@ -672,7 +688,7 @@ export default function TenantHome() {
           <div className="eq-hub-cols">
 
             {/* TODAY'S ACTIONS */}
-            <div className="eq-hub-col">
+            <div className="eq-hub-col" id="todays-actions">
               <div className="eq-hub-col__head">
                 <span className="eq-hub-col__title">Today's actions</span>
                 {aiData && <span className="eq-hub-col__count">{aiData.actions.filter(a => !actionedTitles.has(a.title)).length} ranked</span>}
