@@ -1892,7 +1892,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     {
       key: "project_name", header: "Project", filterable: "text",
       sortAccessor: (q) => q.project_name ?? "",
-      render: (q) => q.project_name ?? <span className="eq-quotes__muted">—</span>,
+      render: (q) => (
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span>{q.project_name ?? <span className="eq-quotes__muted">—</span>}</span>
+          {q.line_item_count === 0 && (
+            <span className="eq-quotes__badge eq-quotes__badge--xs" style={{ background: "#fef2f2", color: "#c0392b", fontSize: 10, flexShrink: 0 }} title="No line items — add items before sending">
+              no items
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: "estimator_initials", header: "Est.",
