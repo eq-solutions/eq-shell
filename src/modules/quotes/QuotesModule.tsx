@@ -1248,7 +1248,20 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     });
     setMarkingSent(false);
     if (error) { captureRpcError("eq_set_sent_at", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    // Auto-set follow-up to 7 days out if not already set
+    if (!detail.follow_up_at) {
+      const fupDate = new Date();
+      fupDate.setDate(fupDate.getDate() + 7);
+      const fupStr = fupDate.toISOString().slice(0, 10);
+      await supabase.rpc("eq_set_follow_up_date", {
+        p_quote_id: detail.quote_id,
+        p_follow_up_at: fupStr,
+        p_initials: initials.trim() || null,
+      });
+      setFollowUpInput(fupStr);
+    }
     await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
   };
 
   const handleQuickWin = async () => {
