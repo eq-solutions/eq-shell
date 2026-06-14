@@ -73,6 +73,9 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const [contacts, setContacts]     = useState<ContactRow[]>([]);
   const [custQuotes, setCustQuotes] = useState<CustomerQuote[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [addForm, setAddForm] = useState({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
+  const [addSaving, setAddSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -95,11 +98,47 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     })));
   }, [supabase]);
 
+  const saveContact = useCallback(async () => {
+    if (!supabase || !selected) return;
+    setAddSaving(true);
+    const extId = `EQ-${crypto.randomUUID()}`;
+    const { error } = await supabase.rpc("eq_upsert_contact", {
+      p_external_id:  extId,
+      p_customer_id:  selected.customer_id,
+      p_first_name:   addForm.first_name || null,
+      p_last_name:    addForm.last_name  || null,
+      p_email:        addForm.email      || null,
+      p_mobile_phone: addForm.mobile_phone || null,
+      p_position:     addForm.position   || null,
+    });
+    setAddSaving(false);
+    if (!error) {
+      setShowAddContact(false);
+      setAddForm({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
+      // Reload contacts for this customer
+      const { data } = await supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: selected.customer_id });
+      if (data) {
+        setContacts(((data as Record<string, unknown>[]).map((r) => ({
+          contact_id:               String(r.contact_id),
+          first_name:               r.first_name ? String(r.first_name) : null,
+          last_name:                r.last_name ? String(r.last_name) : null,
+          email:                    r.email ? String(r.email) : null,
+          work_phone:               r.work_phone ? String(r.work_phone) : null,
+          mobile_phone:             r.mobile_phone ? String(r.mobile_phone) : null,
+          contact_position:         r.contact_position ? String(r.contact_position) : null,
+          is_default_quote_contact: Boolean(r.is_default_quote_contact),
+        }))));
+      }
+    }
+  }, [supabase, selected, addForm]);
+
   const loadDetail = useCallback(async (c: CustomerRow) => {
     if (!supabase) return;
     setSelected(c);
     setContacts([]);
     setCustQuotes([]);
+    setShowAddContact(false);
+    setAddForm({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
     setDetailLoading(true);
     const [ctRes, qRes] = await Promise.all([
       supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: c.customer_id }),
@@ -215,10 +254,66 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
             {!detailLoading && (
               <>
                 {/* Contacts */}
-                <div className="eq-quotes__section-title" style={{ marginBottom: "0.5rem" }}>
-                  Contacts ({contacts.length})
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                  <span className="eq-quotes__section-title">Contacts ({contacts.length})</span>
+                  <button
+                    className="eq-quotes__btn eq-quotes__btn--sm"
+                    onClick={() => setShowAddContact((v) => !v)}
+                    style={{ fontSize: "0.78rem", padding: "3px 10px" }}
+                  >
+                    {showAddContact ? "Cancel" : "+ Add"}
+                  </button>
                 </div>
-                {contacts.length === 0 && (
+
+                {showAddContact && (
+                  <div style={{ background: "var(--eq-ice,#EAF5FB)", border: "1px solid var(--eq-border,#e5e7eb)", borderRadius: "6px", padding: "0.75rem", marginBottom: "1rem" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                      {(["first_name","last_name"] as const).map((k) => (
+                        <input
+                          key={k}
+                          className="eq-quotes__input"
+                          placeholder={k === "first_name" ? "First name" : "Last name"}
+                          value={addForm[k]}
+                          onChange={(e) => setAddForm((f) => ({ ...f, [k]: e.target.value }))}
+                        />
+                      ))}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                      <input
+                        className="eq-quotes__input"
+                        placeholder="Email"
+                        type="email"
+                        value={addForm.email}
+                        onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))}
+                      />
+                      <input
+                        className="eq-quotes__input"
+                        placeholder="Mobile"
+                        value={addForm.mobile_phone}
+                        onChange={(e) => setAddForm((f) => ({ ...f, mobile_phone: e.target.value }))}
+                      />
+                    </div>
+                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                      <input
+                        className="eq-quotes__input"
+                        placeholder="Role / position"
+                        value={addForm.position}
+                        style={{ flex: 1 }}
+                        onChange={(e) => setAddForm((f) => ({ ...f, position: e.target.value }))}
+                      />
+                      <button
+                        className="eq-quotes__btn eq-quotes__btn--primary"
+                        disabled={addSaving}
+                        onClick={() => { void saveContact(); }}
+                        style={{ whiteSpace: "nowrap", fontSize: "0.82rem" }}
+                      >
+                        {addSaving ? "Saving…" : "Save contact"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {contacts.length === 0 && !showAddContact && (
                   <p className="eq-quotes__muted" style={{ marginBottom: "1rem" }}>No contacts on file.</p>
                 )}
                 {contacts.length > 0 && (

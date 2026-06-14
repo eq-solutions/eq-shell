@@ -485,6 +485,32 @@ export function QuotesReports({ supabase }: Props) {
               <p className="eq-quotes__reports-hint">
                 {lossRows.length} closed-out quote{lossRows.length !== 1 ? "s" : ""} — lost, cancelled, expired, or superseded.
               </p>
+              {/* Reason breakdown */}
+              {(() => {
+                const reasons = new Map<string, { count: number; total: number }>();
+                for (const r of lossRows) {
+                  const key = r.loss_reason ?? "(no reason given)";
+                  const cur = reasons.get(key) ?? { count: 0, total: 0 };
+                  reasons.set(key, { count: cur.count + 1, total: cur.total + r.total_cents });
+                }
+                const sorted = [...reasons.entries()].sort((a, b) => b[1].count - a[1].count);
+                return (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
+                    {sorted.map(([reason, d]) => (
+                      <span key={reason} style={{
+                        background: "var(--eq-ice,#EAF5FB)",
+                        border: "1px solid var(--eq-border,#e5e7eb)",
+                        borderRadius: "4px",
+                        padding: "4px 10px",
+                        fontSize: "0.82rem",
+                      }}>
+                        {reason} <strong>{d.count}</strong>
+                        <span style={{ marginLeft: "0.4rem", color: "var(--eq-muted,#6b7280)" }}>{fmtMoney(d.total)}</span>
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
               <table className="eq-quotes__reports-table">
                 <thead>
                   <tr>
