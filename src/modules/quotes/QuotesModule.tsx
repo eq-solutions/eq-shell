@@ -632,6 +632,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [createEstimatorName, setCreateEstimatorName] = useState("");
   const [createEstimatorInitials, setCreateEstimatorInitials] = useState("");
   const [createScope, setCreateScope] = useState("");
+  const [draftingScope, setDraftingScope] = useState(false);
+  const [scopeAiErr, setScopeAiErr] = useState<string | null>(null);
   const [createNotes, setCreateNotes] = useState("");
   const [createAttnName, setCreateAttnName] = useState("");
   const [createAttnFirstName, setCreateAttnFirstName] = useState("");
@@ -1001,6 +1003,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCreateClarifications("");
     setCreateLineItems([{ description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "labour" }]);
     setCreateError(null);
+    setScopeAiErr(null);
+    setDraftingScope(false);
     setEditingQuoteId(null);
   };
 
@@ -1094,6 +1098,43 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   const removeLineItem = (i: number) => {
     setCreateLineItems((prev) => prev.filter((_, j) => j !== i));
+  };
+
+  const handleDraftScope = async () => {
+    setDraftingScope(true);
+    setScopeAiErr(null);
+    try {
+      const customer = customers.find((c) => c.customer_id === createCustomerId);
+      const site = sites.find((s) => s.site_id === createSiteId);
+      const lineDescriptions = createLineItems.map((li) => li.description).filter((d) => d.trim());
+      const res = await fetch("/.netlify/functions/quote-suggest-scope", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          customer_name: customer?.company_name || undefined,
+          project_name: createProjectName.trim() || undefined,
+          site: site ? (site.code ?? site.name) : undefined,
+          brief: createScope.trim() || undefined,
+          line_items: lineDescriptions,
+        }),
+      });
+      const j = await res.json() as { ok: boolean; scope?: string; clarifications?: string; error?: string };
+      if (!res.ok || !j.ok) {
+        setScopeAiErr(
+          j.error === "ai_not_configured" ? "AI isn't configured on the server."
+          : j.error === "need_brief" ? "Add a project name, a few words of scope, or some line items first."
+          : "Couldn't draft the scope — try again.",
+        );
+        return;
+      }
+      if (j.scope) setCreateScope(j.scope);
+      if (j.clarifications && !createClarifications.trim()) setCreateClarifications(j.clarifications);
+    } catch {
+      setScopeAiErr("Couldn't reach the AI service.");
+    } finally {
+      setDraftingScope(false);
+    }
   };
 
   const handleCreateQuote = async () => {
@@ -3355,6 +3396,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
                   <span className="eq-quotes__info-label" style={{ marginBottom: 0 }}>Scope of Works</span>
+                  <button
+                    type="button"
+                    className="eq-quotes__btn eq-quotes__btn--outline"
+                    style={{ fontSize: 11, padding: "2px 8px", height: 24 }}
+                    disabled={draftingScope}
+                    onClick={() => void handleDraftScope()}
+                    title="Draft a scope from the customer, project, your notes and the line items. You can edit it after."
+                  >
+                    {draftingScope ? "Drafting…" : "✨ Draft with AI"}
+                  </button>
                   {templates.filter((t) => t.template_type === "scope").length > 0 && (
                     <select
                       className="eq-quotes__select"
@@ -3376,10 +3427,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   className="eq-quotes__textarea"
                   style={{ maxWidth: 560, minHeight: 72 }}
                   value={createScope}
-                  onChange={(e) => setCreateScope(e.target.value)}
+                  onChange={(e) => { setCreateScope(e.target.value); if (scopeAiErr) setScopeAiErr(null); }}
                   placeholder="Describe the scope of works…"
                   rows={3}
                 />
+                {scopeAiErr && <span className="eq-quotes__inline-err">{scopeAiErr}</span>}
               </div>
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
