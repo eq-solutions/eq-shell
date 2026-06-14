@@ -190,13 +190,20 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const resBody = await res.json() as { id: string };
 
-  // Audit the send on the quote timeline (best-effort)
-  await supabase.rpc('eq_add_quote_note', {
-    p_quote_id: quote_id,
-    p_body: `Quote PDF emailed to ${to_email}`,
-    p_note_type: 'system',
-    p_initials: null,
-  }).catch(() => { /* non-fatal */ });
+  // Stamp sent_at and audit the send (best-effort; non-fatal)
+  await Promise.all([
+    supabase.rpc('eq_set_sent_at', {
+      p_quote_id: quote_id,
+      p_sent_at: new Date().toISOString(),
+      p_initials: null,
+    }),
+    supabase.rpc('eq_add_quote_note', {
+      p_quote_id: quote_id,
+      p_body: `Quote PDF emailed to ${to_email}`,
+      p_note_type: 'system',
+      p_initials: null,
+    }),
+  ]).catch(() => { /* non-fatal */ });
 
   return new Response(JSON.stringify({ ok: true, message_id: resBody.id }), {
     status: 200,
