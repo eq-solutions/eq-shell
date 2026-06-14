@@ -59,7 +59,7 @@ END $$;
 
 DROP FUNCTION IF EXISTS public.eq_add_line_item(uuid, integer, text, bigint, bigint, text, text);
 
-CREATE FUNCTION public.eq_add_line_item(
+CREATE OR REPLACE FUNCTION public.eq_add_line_item(
   p_quote_id           uuid,
   p_line_number        integer,
   p_description        text,
@@ -188,7 +188,7 @@ GRANT  EXECUTE ON FUNCTION public.eq_replace_line_items(uuid, jsonb) TO authenti
 
 DROP FUNCTION IF EXISTS public.eq_create_quote(uuid, uuid, text, text, text, text, text, integer, text, text, text, text, text);
 
-CREATE FUNCTION public.eq_create_quote(
+CREATE OR REPLACE FUNCTION public.eq_create_quote(
   p_customer_id          uuid,
   p_site_id              uuid    DEFAULT NULL,
   p_project_name         text    DEFAULT NULL,
@@ -274,7 +274,7 @@ GRANT  EXECUTE ON FUNCTION public.eq_create_quote(uuid, uuid, text, text, text, 
 
 DROP FUNCTION IF EXISTS public.eq_update_quote(uuid, uuid, uuid, text, text, text, text, text, integer, text, text, text, text, text);
 
-CREATE FUNCTION public.eq_update_quote(
+CREATE OR REPLACE FUNCTION public.eq_update_quote(
   p_quote_id             uuid,
   p_customer_id          uuid,
   p_site_id              uuid    DEFAULT NULL,
@@ -461,7 +461,7 @@ GRANT  EXECUTE ON FUNCTION public.eq_archive_quote_template(uuid, boolean) TO au
 
 DROP FUNCTION IF EXISTS public.eq_get_quote_detail(uuid);
 
-CREATE FUNCTION public.eq_get_quote_detail(p_quote_id uuid)
+CREATE OR REPLACE FUNCTION public.eq_get_quote_detail(p_quote_id uuid)
 RETURNS TABLE (
   quote_id            uuid,
   customer_id         uuid,
