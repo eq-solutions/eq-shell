@@ -659,6 +659,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [trashed, setTrashed] = useState<TrashedQuote[]>([]);
   const [trashedLoading, setTrashedLoading] = useState(false);
   const [trashing, setTrashing] = useState(false);
+  const [markingSent, setMarkingSent] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -1196,6 +1197,29 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (error) { captureRpcError("eq_restore_quote", error, { quote_id: quoteId }); return; }
     void loadTrashed();
     void loadQuotes(statusFilter, search);
+  };
+
+  const handleMarkAsSent = async () => {
+    if (!supabase || !detail) return;
+    setMarkingSent(true);
+    if (detail.status === "draft") {
+      const { error: se } = await supabase.rpc("eq_update_quote_status", {
+        p_quote_id: detail.quote_id,
+        p_new_status: "submitted",
+        p_note: null,
+        p_initials: initials.trim() || null,
+      });
+      if (se) { captureRpcError("eq_update_quote_status", se, { quote_id: detail.quote_id }); setMarkingSent(false); return; }
+    }
+    const today = new Date().toISOString();
+    const { error } = await supabase.rpc("eq_set_sent_at", {
+      p_quote_id: detail.quote_id,
+      p_sent_at: today,
+      p_initials: initials.trim() || null,
+    });
+    setMarkingSent(false);
+    if (error) { captureRpcError("eq_set_sent_at", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    await openDetail(detail.quote_id);
   };
 
   const handleBulkStatus = async () => {
@@ -1836,6 +1860,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               >
                 Create Job
               </button>
+              {!detail.sent_at && ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  disabled={markingSent}
+                  onClick={() => void handleMarkAsSent()}
+                  title={detail.status === "draft" ? "Submit and mark as sent today" : "Mark as sent today"}
+                >
+                  {markingSent ? "…" : detail.status === "draft" ? "Submit & Mark Sent" : "Mark as Sent"}
+                </button>
+              )}
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
