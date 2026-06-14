@@ -489,14 +489,25 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [estFilter, setEstFilter] = useState("");
-  const [customerFilter, setCustomerFilter] = useState("");
-  const [siteFilter, setSiteFilter] = useState("");
-  const [expiringOnly, setExpiringOnly] = useState(false);
-  const [unsentOnly, setUnsentOnly] = useState(false);
-  const [needsJobNoOnly, setNeedsJobNoOnly] = useState(false);
-  const [overdueFupOnly, setOverdueFupOnly] = useState(false);
-  const [staleOnly, setStaleOnly] = useState(false);
+  // Pipeline client-side filters persist across reloads (estimator/customer/site +
+  // quick toggles). Date range is intentionally NOT persisted (time-sensitive).
+  const savedFiltersRef = useRef<Record<string, unknown> | null>(null);
+  if (savedFiltersRef.current === null) {
+    try {
+      savedFiltersRef.current = typeof localStorage !== "undefined"
+        ? (JSON.parse(localStorage.getItem("eq-quotes-pipeline-filters") || "{}") as Record<string, unknown>)
+        : {};
+    } catch { savedFiltersRef.current = {}; }
+  }
+  const _sf = savedFiltersRef.current;
+  const [estFilter, setEstFilter] = useState(() => (typeof _sf.est === "string" ? _sf.est : ""));
+  const [customerFilter, setCustomerFilter] = useState(() => (typeof _sf.customer === "string" ? _sf.customer : ""));
+  const [siteFilter, setSiteFilter] = useState(() => (typeof _sf.site === "string" ? _sf.site : ""));
+  const [expiringOnly, setExpiringOnly] = useState(() => _sf.expiring === true);
+  const [unsentOnly, setUnsentOnly] = useState(() => _sf.unsent === true);
+  const [needsJobNoOnly, setNeedsJobNoOnly] = useState(() => _sf.needsJobNo === true);
+  const [overdueFupOnly, setOverdueFupOnly] = useState(() => _sf.overdueFup === true);
+  const [staleOnly, setStaleOnly] = useState(() => _sf.stale === true);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [copiedQuoteId, setCopiedQuoteId] = useState<string | null>(null);
@@ -720,6 +731,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Persist the client-side pipeline filters so they survive a reload.
+  useEffect(() => {
+    try {
+      localStorage.setItem("eq-quotes-pipeline-filters", JSON.stringify({
+        est: estFilter, customer: customerFilter, site: siteFilter,
+        expiring: expiringOnly, unsent: unsentOnly, needsJobNo: needsJobNoOnly,
+        overdueFup: overdueFupOnly, stale: staleOnly,
+      }));
+    } catch { /* ignore */ }
+  }, [estFilter, customerFilter, siteFilter, expiringOnly, unsentOnly, needsJobNoOnly, overdueFupOnly, staleOnly]);
 
   const openDetail = useCallback(
     async (quoteId: string) => {
