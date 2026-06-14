@@ -979,13 +979,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     const savedEstInitials = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? "";
     setCreateEstimatorName(savedEstName);
     setCreateEstimatorInitials(savedEstInitials);
+    const savedTerms = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-payment-terms") : null) ?? "";
+    setCreatePaymentTerms(savedTerms);
     setCreateScope("");
     setCreateNotes("");
     setCreateAttnName("");
     setCreateAttnFirstName("");
     setCreateAttnPhone("");
     setCreateAddress("");
-    setCreatePaymentTerms("");
     setCreateValidityDays("30");
     setCreateQuoteNumber("");
     setCreateClarifications("");
@@ -3357,7 +3358,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   <input
                     className="eq-quotes__input"
                     value={createPaymentTerms}
-                    onChange={(e) => setCreatePaymentTerms(e.target.value)}
+                    onChange={(e) => {
+                      setCreatePaymentTerms(e.target.value);
+                      try { localStorage.setItem("eq-quotes-payment-terms", e.target.value); } catch { /* ignore */ }
+                    }}
                     placeholder="e.g. 30 days net"
                   />
                 </div>
