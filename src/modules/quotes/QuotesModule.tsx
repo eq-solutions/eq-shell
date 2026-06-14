@@ -457,6 +457,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // Share link
   const [sharingLink, setSharingLink] = useState(false);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const [docMode, setDocMode] = useState<"detailed" | "summary">("detailed");
 
   // ── Accordion state ───────────────────────────────────────────────────────
   const [clientGroups, setClientGroups] = useState<ClientGroup[]>([]);
@@ -1082,7 +1083,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   const handleGenerateDoc = async () => {
     if (!supabase || !detail) return;
-    await generateQuoteDoc(detail);
+    await generateQuoteDoc(detail, docMode);
     // Audit: record the document generation on the quote timeline.
     await supabase.rpc("eq_add_quote_note", {
       p_quote_id: detail.quote_id,
@@ -1345,6 +1346,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               >
                 {duplicating ? "Duplicating…" : "Duplicate"}
               </button>
+              <select
+                className="eq-quotes__select"
+                style={{ fontSize: 12, padding: "3px 6px" }}
+                value={docMode}
+                onChange={(e) => setDocMode(e.target.value as "detailed" | "summary")}
+                title="Line items table mode"
+              >
+                <option value="detailed">Detailed</option>
+                <option value="summary">Summary</option>
+              </select>
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
