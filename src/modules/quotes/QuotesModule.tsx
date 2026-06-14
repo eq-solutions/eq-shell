@@ -946,6 +946,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     return () => document.removeEventListener("keydown", handler);
   }, [openDetail]);
 
+  // Update browser tab title when viewing a quote
+  useEffect(() => {
+    const prev = document.title;
+    if (detail) { document.title = `${detail.quote_number} — EQ Quotes`; }
+    else        { document.title = "EQ Quotes"; }
+    return () => { document.title = prev; };
+  }, [detail]);
+
   // ── Create form helpers ───────────────────────────────────────────────────
 
   const resetCreateForm = () => {
