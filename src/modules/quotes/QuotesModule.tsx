@@ -474,6 +474,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [savingExpires, setSavingExpires] = useState(false);
   const [expiresErr, setExpiresErr] = useState<string | null>(null);
 
+  // Scope / clarifications / notes inline edit
+  const [scopeEditing, setScopeEditing] = useState(false);
+  const [scopeInput, setScopeInput] = useState("");
+  const [clarInput, setClarInput] = useState("");
+  const [quoteNotesInput, setQuoteNotesInput] = useState("");
+  const [savingScope, setSavingScope] = useState(false);
+  const [scopeErr, setScopeErr] = useState<string | null>(null);
+
   // Contact picker
   const [detailContacts, setDetailContacts] = useState<ContactRow[]>([]);
   const [contactPickerVal, setContactPickerVal] = useState("");
@@ -629,6 +637,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         setSentAtInput(row.sent_at ? row.sent_at.slice(0, 10) : "");
         setExpiresInput(row.expires_at ? row.expires_at.slice(0, 10) : "");
         setExpiresErr(null);
+        setScopeEditing(false);
+        setScopeInput(row.scope_of_works ?? "");
+        setClarInput(row.clarifications ?? "");
+        setQuoteNotesInput(row.quote_notes ?? "");
+        setScopeErr(null);
         setContactPickerVal(row.contact_id ?? "");
         setLinkContactErr(null);
         if (row.customer_id) {
@@ -1149,6 +1162,23 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (error) { captureRpcError("eq_set_expires_at", error, { quote_id: detail.quote_id }); setExpiresErr(error.message); return; }
     await openDetail(detail.quote_id);
     void loadQuotes(statusFilter, search);
+  };
+
+  const handleSaveScope = async () => {
+    if (!supabase || !detail) return;
+    setSavingScope(true);
+    setScopeErr(null);
+    const { error } = await supabase.rpc("eq_set_quote_scope", {
+      p_quote_id:       detail.quote_id,
+      p_scope_of_works: scopeInput.trim() || null,
+      p_clarifications: clarInput.trim() || null,
+      p_quote_notes:    quoteNotesInput.trim() || null,
+      p_initials:       initials.trim() || null,
+    });
+    setSavingScope(false);
+    if (error) { captureRpcError("eq_set_quote_scope", error, { quote_id: detail.quote_id }); setScopeErr(error.message); return; }
+    setScopeEditing(false);
+    await openDetail(detail.quote_id);
   };
 
   const handleLinkContact = async () => {
@@ -1803,24 +1833,88 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 </div>
               </div>
 
-              {detail.scope_of_works && (
+              {!scopeEditing ? (
+                <>
+                  {detail.scope_of_works && (
+                    <div className="eq-quotes__scope">
+                      <span className="eq-quotes__info-label">Scope of Works</span>
+                      <p className="eq-quotes__scope-text">{detail.scope_of_works}</p>
+                    </div>
+                  )}
+                  {detail.clarifications && (
+                    <div className="eq-quotes__scope">
+                      <span className="eq-quotes__info-label">Clarifications</span>
+                      <p className="eq-quotes__scope-text">{detail.clarifications}</p>
+                    </div>
+                  )}
+                  {detail.quote_notes && (
+                    <div className="eq-quotes__scope">
+                      <span className="eq-quotes__info-label">Terms &amp; Notes</span>
+                      <p className="eq-quotes__scope-text">{detail.quote_notes}</p>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="eq-quotes__btn eq-quotes__btn--outline"
+                    style={{ marginTop: 8, fontSize: 12 }}
+                    onClick={() => {
+                      setScopeInput(detail.scope_of_works ?? "");
+                      setClarInput(detail.clarifications ?? "");
+                      setQuoteNotesInput(detail.quote_notes ?? "");
+                      setScopeEditing(true);
+                    }}
+                  >
+                    Edit scope
+                  </button>
+                </>
+              ) : (
                 <div className="eq-quotes__scope">
-                  <span className="eq-quotes__info-label">Scope of Works</span>
-                  <p className="eq-quotes__scope-text">{detail.scope_of_works}</p>
-                </div>
-              )}
-
-              {detail.clarifications && (
-                <div className="eq-quotes__scope">
-                  <span className="eq-quotes__info-label">Clarifications</span>
-                  <p className="eq-quotes__scope-text">{detail.clarifications}</p>
-                </div>
-              )}
-
-              {detail.quote_notes && (
-                <div className="eq-quotes__scope">
-                  <span className="eq-quotes__info-label">Terms &amp; Notes</span>
-                  <p className="eq-quotes__scope-text">{detail.quote_notes}</p>
+                  <div style={{ marginBottom: 10 }}>
+                    <span className="eq-quotes__info-label">Scope of Works</span>
+                    <textarea
+                      className="eq-quotes__input"
+                      style={{ width: "100%", minHeight: 120, resize: "vertical", fontFamily: "inherit", fontSize: 13, marginTop: 4 }}
+                      value={scopeInput}
+                      onChange={(e) => setScopeInput(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <span className="eq-quotes__info-label">Clarifications</span>
+                    <textarea
+                      className="eq-quotes__input"
+                      style={{ width: "100%", minHeight: 60, resize: "vertical", fontFamily: "inherit", fontSize: 13, marginTop: 4 }}
+                      value={clarInput}
+                      onChange={(e) => setClarInput(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <span className="eq-quotes__info-label">Terms &amp; Notes</span>
+                    <textarea
+                      className="eq-quotes__input"
+                      style={{ width: "100%", minHeight: 60, resize: "vertical", fontFamily: "inherit", fontSize: 13, marginTop: 4 }}
+                      value={quoteNotesInput}
+                      onChange={(e) => setQuoteNotesInput(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={savingScope}
+                      onClick={() => void handleSaveScope()}
+                    >
+                      {savingScope ? "…" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--outline"
+                      disabled={savingScope}
+                      onClick={() => { setScopeEditing(false); setScopeErr(null); }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {scopeErr && <span className="eq-quotes__err">{scopeErr}</span>}
                 </div>
               )}
 
