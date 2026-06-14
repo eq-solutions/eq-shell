@@ -469,6 +469,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [savingSentAt, setSavingSentAt] = useState(false);
   const [sentAtErr, setSentAtErr] = useState<string | null>(null);
 
+  // Expiry date inline edit
+  const [expiresInput, setExpiresInput] = useState("");
+  const [savingExpires, setSavingExpires] = useState(false);
+  const [expiresErr, setExpiresErr] = useState<string | null>(null);
+
   // Contact picker
   const [detailContacts, setDetailContacts] = useState<ContactRow[]>([]);
   const [contactPickerVal, setContactPickerVal] = useState("");
@@ -622,6 +627,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         setJobNoInput(row.workbench_job_no ?? "");
         setPoInput(row.po_number ?? "");
         setSentAtInput(row.sent_at ? row.sent_at.slice(0, 10) : "");
+        setExpiresInput(row.expires_at ? row.expires_at.slice(0, 10) : "");
+        setExpiresErr(null);
         setContactPickerVal(row.contact_id ?? "");
         setLinkContactErr(null);
         if (row.customer_id) {
@@ -1125,6 +1132,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     });
     setSavingSentAt(false);
     if (error) { captureRpcError("eq_set_sent_at", error, { quote_id: detail.quote_id }); setSentAtErr(error.message); return; }
+    await openDetail(detail.quote_id);
+    void loadQuotes(statusFilter, search);
+  };
+
+  const handleSaveExpires = async () => {
+    if (!supabase || !detail || !expiresInput) return;
+    setSavingExpires(true);
+    setExpiresErr(null);
+    const { error } = await supabase.rpc("eq_set_expires_at", {
+      p_quote_id: detail.quote_id,
+      p_expires_at: new Date(expiresInput + "T00:00:00").toISOString(),
+      p_initials: initials.trim() || null,
+    });
+    setSavingExpires(false);
+    if (error) { captureRpcError("eq_set_expires_at", error, { quote_id: detail.quote_id }); setExpiresErr(error.message); return; }
     await openDetail(detail.quote_id);
     void loadQuotes(statusFilter, search);
   };
@@ -1670,9 +1692,26 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   </div>
                   {sentAtErr && <span className="eq-quotes__err">{sentAtErr}</span>}
                 </div>
-                <div className="eq-quotes__info-item">
+                <div className="eq-quotes__info-item eq-quotes__info-item--full">
                   <span className="eq-quotes__info-label">Expires</span>
-                  <span className="eq-quotes__info-val">{fmtDate(detail.expires_at)}</span>
+                  <div className="eq-quotes__job-no-row">
+                    <input
+                      className="eq-quotes__input eq-quotes__input--job-no"
+                      type="date"
+                      value={expiresInput}
+                      onChange={(e) => setExpiresInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleSaveExpires(); }}
+                    />
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--primary"
+                      disabled={savingExpires || expiresInput === (detail.expires_at ? detail.expires_at.slice(0, 10) : "")}
+                      onClick={() => void handleSaveExpires()}
+                    >
+                      {savingExpires ? "…" : "Save"}
+                    </button>
+                  </div>
+                  {expiresErr && <span className="eq-quotes__err">{expiresErr}</span>}
                 </div>
                 <div className="eq-quotes__info-item eq-quotes__info-item--full">
                   <span className="eq-quotes__info-label">Workbench Job No.</span>
