@@ -260,6 +260,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   expired: "auto-expired",
   project: "updated project",
   payment_terms: "updated payment terms",
+  recipient: "updated recipient",
 };
 function auditActionLabel(action: string): string {
   return AUDIT_ACTION_LABELS[action] ?? action;
@@ -518,6 +519,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [savingProject, setSavingProject] = useState(false);
   const [projectErr, setProjectErr] = useState<string | null>(null);
 
+  // Recipient (attention block + address) inline edit
+  const [recipientEditing, setRecipientEditing] = useState(false);
+  const [attnFirstInput, setAttnFirstInput] = useState("");
+  const [attnLastInput, setAttnLastInput] = useState("");
+  const [attnPhoneInput, setAttnPhoneInput] = useState("");
+  const [addressInput, setAddressInput] = useState("");
+  const [savingRecipient, setSavingRecipient] = useState(false);
+  const [recipientErr, setRecipientErr] = useState<string | null>(null);
+
   // Scope / clarifications / notes inline edit
   const [scopeEditing, setScopeEditing] = useState(false);
   const [scopeInput, setScopeInput] = useState("");
@@ -690,6 +700,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         setEstimatorInput(row.estimator_name ?? "");
         setEstInitialsInput(row.estimator_initials ?? "");
         setProjectErr(null);
+        setRecipientEditing(false);
+        setAttnFirstInput(row.attn_first_name ?? "");
+        setAttnLastInput(row.attn_name ?? "");
+        setAttnPhoneInput(row.attn_phone ?? "");
+        setAddressInput(row.address ?? "");
+        setRecipientErr(null);
         setScopeEditing(false);
         setScopeInput(row.scope_of_works ?? "");
         setClarInput(row.clarifications ?? "");
@@ -1252,6 +1268,24 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     await openDetail(detail.quote_id);
   };
 
+  const handleSaveRecipient = async () => {
+    if (!supabase || !detail) return;
+    setSavingRecipient(true);
+    setRecipientErr(null);
+    const { error } = await supabase.rpc("eq_set_quote_recipient", {
+      p_quote_id:        detail.quote_id,
+      p_attn_first_name: attnFirstInput.trim() || null,
+      p_attn_name:       attnLastInput.trim() || null,
+      p_attn_phone:      attnPhoneInput.trim() || null,
+      p_address:         addressInput.trim() || null,
+      p_initials:        initials.trim() || null,
+    });
+    setSavingRecipient(false);
+    if (error) { captureRpcError("eq_set_quote_recipient", error, { quote_id: detail.quote_id }); setRecipientErr(error.message); return; }
+    setRecipientEditing(false);
+    await openDetail(detail.quote_id);
+  };
+
   const handleSaveScope = async () => {
     if (!supabase || !detail) return;
     setSavingScope(true);
@@ -1723,16 +1757,87 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     )}
                   </span>
                 </div>
-                {detail.attn_name && (
-                  <div className="eq-quotes__info-item">
-                    <span className="eq-quotes__info-label">Attention</span>
-                    <span className="eq-quotes__info-val">{detail.attn_name}</span>
-                  </div>
-                )}
-                {detail.attn_phone && (
-                  <div className="eq-quotes__info-item">
-                    <span className="eq-quotes__info-label">Phone</span>
-                    <span className="eq-quotes__info-val">{detail.attn_phone}</span>
+                {!recipientEditing ? (
+                  <>
+                    <div className="eq-quotes__info-item">
+                      <span className="eq-quotes__info-label">Attention</span>
+                      <span className="eq-quotes__info-val">
+                        {[detail.attn_first_name, detail.attn_name].filter(Boolean).join(" ") || <span className="eq-quotes__muted">—</span>}
+                        <button
+                          type="button"
+                          className="eq-quotes__btn eq-quotes__btn--outline"
+                          style={{ marginLeft: 8, fontSize: 12, padding: "2px 8px" }}
+                          onClick={() => { setRecipientEditing(true); setRecipientErr(null); }}
+                        >
+                          Edit
+                        </button>
+                      </span>
+                    </div>
+                    {detail.attn_phone && (
+                      <div className="eq-quotes__info-item">
+                        <span className="eq-quotes__info-label">Phone</span>
+                        <span className="eq-quotes__info-val">{detail.attn_phone}</span>
+                      </div>
+                    )}
+                    {detail.address && (
+                      <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                        <span className="eq-quotes__info-label">Address</span>
+                        <span className="eq-quotes__info-val">{detail.address}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label">Recipient</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                          className="eq-quotes__input"
+                          placeholder="First name"
+                          value={attnFirstInput}
+                          onChange={(e) => setAttnFirstInput(e.target.value)}
+                        />
+                        <input
+                          className="eq-quotes__input"
+                          placeholder="Last name"
+                          value={attnLastInput}
+                          onChange={(e) => setAttnLastInput(e.target.value)}
+                        />
+                      </div>
+                      <input
+                        className="eq-quotes__input"
+                        placeholder="Phone"
+                        value={attnPhoneInput}
+                        onChange={(e) => setAttnPhoneInput(e.target.value)}
+                      />
+                      <textarea
+                        className="eq-quotes__input"
+                        placeholder="Delivery address"
+                        rows={3}
+                        value={addressInput}
+                        onChange={(e) => setAddressInput(e.target.value)}
+                        style={{ resize: "vertical" }}
+                      />
+                      <div className="eq-quotes__job-no-row">
+                        <button
+                          type="button"
+                          className="eq-quotes__btn eq-quotes__btn--primary"
+                          disabled={savingRecipient}
+                          onClick={() => void handleSaveRecipient()}
+                        >
+                          {savingRecipient ? "…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          className="eq-quotes__btn eq-quotes__btn--outline"
+                          disabled={savingRecipient}
+                          onClick={() => { setRecipientEditing(false); setRecipientErr(null); }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {recipientErr && <span className="eq-quotes__err">{recipientErr}</span>}
+                    </div>
                   </div>
                 )}
                 {detailContacts.length > 0 && (
@@ -1997,12 +2102,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                       </button>
                     </div>
                     {termsErr && <span className="eq-quotes__err">{termsErr}</span>}
-                  </div>
-                )}
-                {detail.address && (
-                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
-                    <span className="eq-quotes__info-label">Address</span>
-                    <span className="eq-quotes__info-val">{detail.address}</span>
                   </div>
                 )}
                 {detail.loss_reason && (
