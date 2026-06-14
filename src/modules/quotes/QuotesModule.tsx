@@ -457,7 +457,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // Share link
   const [sharingLink, setSharingLink] = useState(false);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
-  const [docMode, setDocMode] = useState<"detailed" | "summary">("detailed");
+  const [docMode, setDocMode] = useState<"detailed" | "summary" | "lump_sum">("detailed");
 
   // ── Accordion state ───────────────────────────────────────────────────────
   const [clientGroups, setClientGroups] = useState<ClientGroup[]>([]);
@@ -1350,11 +1350,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 className="eq-quotes__select"
                 style={{ fontSize: 12, padding: "3px 6px" }}
                 value={docMode}
-                onChange={(e) => setDocMode(e.target.value as "detailed" | "summary")}
+                onChange={(e) => setDocMode(e.target.value as "detailed" | "summary" | "lump_sum")}
                 title="Line items table mode"
               >
                 <option value="detailed">Detailed</option>
                 <option value="summary">Summary</option>
+                <option value="lump_sum">Lump Sum</option>
               </select>
               <button
                 type="button"

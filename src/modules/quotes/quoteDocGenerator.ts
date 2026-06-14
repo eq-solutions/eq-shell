@@ -390,7 +390,16 @@ function buildSummaryTableRows(items: DocLineItem[], subtotal: number, gst: numb
   return rows;
 }
 
-function replaceLineItemsTable(xml: string, items: DocLineItem[], subtotal: number, gst: number, total: number, mode: "detailed" | "summary" = "detailed"): string {
+function buildLumpSumTableRows(subtotal: number, gst: number, total: number): string {
+  return (
+    mkLineItemRow("Labour, materials, and associated works", "1", "Lump sum", "", fmtMoney(subtotal)) +
+    `<w:tr><w:trPr><w:cantSplit/></w:trPr>${mkSpanCell("Subtotal (ex GST)", "F2F2F2", true)}${mkAmountCell(fmtMoney(subtotal), "F2F2F2", true)}</w:tr>` +
+    `<w:tr><w:trPr><w:cantSplit/></w:trPr>${mkSpanCell("GST (10%)")}${mkAmountCell(fmtMoney(gst))}</w:tr>` +
+    `<w:tr><w:trPr><w:cantSplit/></w:trPr>${mkSpanCell("TOTAL (inc GST)", "002060", true, true)}${mkAmountCell(fmtMoney(total), "002060", true, true)}</w:tr>`
+  );
+}
+
+function replaceLineItemsTable(xml: string, items: DocLineItem[], subtotal: number, gst: number, total: number, mode: "detailed" | "summary" | "lump_sum" = "detailed"): string {
   // Find the line items table by its header content
   const marker = ">Description<";
   const markerPos = xml.indexOf(marker);
@@ -415,6 +424,8 @@ function replaceLineItemsTable(xml: string, items: DocLineItem[], subtotal: numb
   // Build new body + totals
   const body = mode === "summary"
     ? buildSummaryTableRows(items, subtotal, gst, total)
+    : mode === "lump_sum"
+    ? buildLumpSumTableRows(subtotal, gst, total)
     : buildTableRows(items, subtotal, gst, total);
 
   return xml.substring(0, tblStart) + tblProps + headerRow + body + tblClose + xml.substring(tblEnd);
@@ -437,7 +448,7 @@ function triggerDownload(blob: Blob, filename: string): void {
 // generateQuoteDoc — Word download
 // ---------------------------------------------------------------------------
 
-export async function generateQuoteDoc(q: QuoteDocData, mode: "detailed" | "summary" = "detailed"): Promise<void> {
+export async function generateQuoteDoc(q: QuoteDocData, mode: "detailed" | "summary" | "lump_sum" = "detailed"): Promise<void> {
   const resp = await fetch("/templates/sks-quote-template.docx");
   if (!resp.ok) throw new Error("Could not load quote template");
 
