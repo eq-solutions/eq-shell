@@ -1209,6 +1209,26 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void openDetail(row.quote_id);
   };
 
+  const handleRevise = async () => {
+    if (!supabase || !detail) return;
+    setDuplicating(true);
+    // 1. Supersede the original
+    await supabase.rpc("eq_update_quote_status", {
+      p_quote_id: detail.quote_id,
+      p_new_status: "superseded",
+      p_note: null,
+      p_initials: initials.trim() || null,
+    });
+    // 2. Duplicate to a new draft
+    const { data, error } = await supabase.rpc("eq_duplicate_quote", { p_source_quote_id: detail.quote_id });
+    setDuplicating(false);
+    if (error) { captureRpcError("eq_duplicate_quote", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    const row = (data as Array<{ quote_id: string; quote_number: string }>)[0];
+    if (!row) { setDetailError("Revise failed: no quote returned."); return; }
+    void loadQuotes(statusFilter, search);
+    void openDetail(row.quote_id);
+  };
+
   const handleTrash = async (quoteId: string) => {
     if (!supabase) return;
     setTrashing(true);
@@ -1945,6 +1965,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               >
                 {duplicating ? "Duplicating…" : "Duplicate"}
               </button>
+              {["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  disabled={duplicating}
+                  onClick={() => void handleRevise()}
+                  title="Supersede this quote and open a new draft revision"
+                >
+                  {duplicating ? "…" : "Revise"}
+                </button>
+              )}
               <select
                 className="eq-quotes__select"
                 style={{ fontSize: 12, padding: "3px 6px" }}
