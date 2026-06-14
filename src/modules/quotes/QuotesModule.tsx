@@ -506,6 +506,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [dateTo, setDateTo] = useState("");
   const [estFilter, setEstFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
+  const [siteFilter, setSiteFilter] = useState("");
   const [expiringOnly, setExpiringOnly] = useState(false);
   const [unsentOnly, setUnsentOnly] = useState(false);
   const [needsJobNoOnly, setNeedsJobNoOnly] = useState(false);
@@ -1735,6 +1736,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   if (dateTo)   displayedQuotes = displayedQuotes.filter((q) => q.created_at.slice(0, 10) <= dateTo);
   if (estFilter) displayedQuotes = displayedQuotes.filter((q) => q.estimator_initials === estFilter);
   if (customerFilter) displayedQuotes = displayedQuotes.filter((q) => q.customer_name === customerFilter);
+  if (siteFilter) displayedQuotes = displayedQuotes.filter((q) => q.site_code === siteFilter);
   if (expiringOnly) {
     const soon = new Date(Date.now() + 14 * 86_400_000).toISOString();
     displayedQuotes = displayedQuotes.filter(
@@ -1762,6 +1764,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   ).sort();
   const customerOptions = Array.from(
     new Set(quotes.map((q) => q.customer_name).filter((n): n is string => n !== null && n !== ""))
+  ).sort();
+  const siteOptions = Array.from(
+    new Set(quotes.map((q) => q.site_code).filter((s): s is string => s !== null && s !== ""))
   ).sort();
   const visibleTotal = displayedQuotes.reduce((s, q) => s + q.total_cents, 0);
   // Keep refs fresh for keyboard handler
@@ -3846,6 +3851,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 {customerOptions.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             )}
+            {siteOptions.length > 1 && (
+              <select
+                className="eq-quotes__select"
+                style={{ fontSize: 13, padding: "4px 6px" }}
+                value={siteFilter}
+                onChange={(e) => setSiteFilter(e.target.value)}
+              >
+                <option value="">All sites</option>
+                {siteOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            )}
             <button
               type="button"
               className={`eq-quotes__btn ${expiringOnly ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
@@ -3878,13 +3894,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             >
               Follow-up due
             </button>
-            {(search || dateFrom || dateTo || estFilter || customerFilter || expiringOnly || unsentOnly || needsJobNoOnly || overdueFupOnly) && (
+            {(search || dateFrom || dateTo || estFilter || customerFilter || siteFilter || expiringOnly || unsentOnly || needsJobNoOnly || overdueFupOnly) && (
               <button
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--outline"
                 onClick={() => {
                   if (search) handleSearch("");
-                  setDateFrom(""); setDateTo(""); setEstFilter(""); setCustomerFilter("");
+                  setDateFrom(""); setDateTo(""); setEstFilter(""); setCustomerFilter(""); setSiteFilter("");
                   setExpiringOnly(false); setUnsentOnly(false); setNeedsJobNoOnly(false); setOverdueFupOnly(false);
                 }}
               >
