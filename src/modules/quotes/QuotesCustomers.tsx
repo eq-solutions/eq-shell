@@ -77,6 +77,10 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const [editingContact, setEditingContact] = useState<ContactRow | null>(null);
   const [addForm, setAddForm] = useState({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
   const [addSaving, setAddSaving] = useState(false);
+  const [showCustForm, setShowCustForm] = useState(false);
+  const [custFormMode, setCustFormMode] = useState<"create" | "edit">("create");
+  const [custForm, setCustForm] = useState({ company_name: "", email: "", primary_phone: "", suburb: "", state: "" });
+  const [custSaving, setCustSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -153,6 +157,36 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     await reloadContacts(selected.customer_id);
   }, [supabase, selected, reloadContacts]);
 
+  const saveCustomer = useCallback(async () => {
+    if (!supabase) return;
+    if (!custForm.company_name.trim()) return;
+    setCustSaving(true);
+    if (custFormMode === "edit" && selected) {
+      await supabase.rpc("eq_update_customer", {
+        p_customer_id:   selected.customer_id,
+        p_company_name:  custForm.company_name.trim(),
+        p_email:         custForm.email.trim()         || null,
+        p_primary_phone: custForm.primary_phone.trim() || null,
+        p_suburb:        custForm.suburb.trim()        || null,
+        p_state:         custForm.state.trim()         || null,
+      });
+    } else {
+      const extId = `EQ-${crypto.randomUUID()}`;
+      await supabase.rpc("eq_upsert_customer", {
+        p_external_id:   extId,
+        p_company_name:  custForm.company_name.trim(),
+        p_email:         custForm.email.trim()         || null,
+        p_primary_phone: custForm.primary_phone.trim() || null,
+        p_suburb:        custForm.suburb.trim()        || null,
+        p_state:         custForm.state.trim()         || null,
+      });
+    }
+    setCustSaving(false);
+    setShowCustForm(false);
+    setCustForm({ company_name: "", email: "", primary_phone: "", suburb: "", state: "" });
+    await load();
+  }, [supabase, custForm, custFormMode, selected, load]);
+
   const loadDetail = useCallback(async (c: CustomerRow) => {
     if (!supabase) return;
     setSelected(c);
@@ -212,7 +246,63 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     <div className="eq-quotes__customers" style={{ display: "flex", gap: "1.5rem", alignItems: "flex-start" }}>
       {/* ── List pane ── */}
       <div style={{ flex: "0 0 420px", minWidth: 0 }}>
-        <div style={{ marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <div style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <button
+            className="eq-quotes__btn eq-quotes__btn--primary"
+            style={{ whiteSpace: "nowrap", fontSize: "0.82rem", padding: "4px 12px" }}
+            onClick={() => {
+              setCustFormMode("create");
+              setCustForm({ company_name: "", email: "", primary_phone: "", suburb: "", state: "" });
+              setShowCustForm(true);
+            }}
+          >
+            + New client
+          </button>
+        </div>
+
+        {showCustForm && (
+          <div style={{ background: "var(--eq-ice,#EAF5FB)", border: "1px solid var(--eq-border,#e5e7eb)", borderRadius: "6px", padding: "0.75rem", marginBottom: "0.75rem" }}>
+            <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: "0.5rem", color: "var(--eq-ink,#1A1A2E)" }}>
+              {custFormMode === "edit" ? "Edit client" : "New client"}
+            </div>
+            <input
+              className="eq-quotes__input"
+              placeholder="Company name *"
+              value={custForm.company_name}
+              style={{ width: "100%", marginBottom: "0.4rem" }}
+              onChange={(e) => setCustForm((f) => ({ ...f, company_name: e.target.value }))}
+            />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem", marginBottom: "0.4rem" }}>
+              <input className="eq-quotes__input" placeholder="Email" value={custForm.email}
+                onChange={(e) => setCustForm((f) => ({ ...f, email: e.target.value }))} />
+              <input className="eq-quotes__input" placeholder="Phone" value={custForm.primary_phone}
+                onChange={(e) => setCustForm((f) => ({ ...f, primary_phone: e.target.value }))} />
+              <input className="eq-quotes__input" placeholder="Suburb" value={custForm.suburb}
+                onChange={(e) => setCustForm((f) => ({ ...f, suburb: e.target.value }))} />
+              <input className="eq-quotes__input" placeholder="State (e.g. NSW)" value={custForm.state}
+                onChange={(e) => setCustForm((f) => ({ ...f, state: e.target.value }))} />
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                className="eq-quotes__btn eq-quotes__btn--primary"
+                disabled={custSaving || !custForm.company_name.trim()}
+                onClick={() => { void saveCustomer(); }}
+                style={{ fontSize: "0.82rem" }}
+              >
+                {custSaving ? "Saving…" : custFormMode === "edit" ? "Update" : "Create"}
+              </button>
+              <button
+                className="eq-quotes__btn eq-quotes__btn--sm"
+                onClick={() => setShowCustForm(false)}
+                style={{ fontSize: "0.82rem" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <input
             className="eq-quotes__input"
             style={{ flex: 1 }}
@@ -262,13 +352,32 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
         )}
         {selected && (
           <div className="eq-quotes__detail-card">
-            <div style={{ marginBottom: "1rem" }}>
-              <div className="eq-quotes__section-title" style={{ marginBottom: "0.25rem" }}>{selected.company_name}</div>
-              <div style={{ fontSize: "0.85rem", color: "var(--eq-muted,#6b7280)" }}>
-                {[selected.suburb, selected.state].filter(Boolean).join(", ")}
-                {selected.primary_phone && <span style={{ marginLeft: "0.75rem" }}>{selected.primary_phone}</span>}
-                {selected.email && <span style={{ marginLeft: "0.75rem" }}>{selected.email}</span>}
+            <div style={{ marginBottom: "1rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <div>
+                <div className="eq-quotes__section-title" style={{ marginBottom: "0.25rem" }}>{selected.company_name}</div>
+                <div style={{ fontSize: "0.85rem", color: "var(--eq-muted,#6b7280)" }}>
+                  {[selected.suburb, selected.state].filter(Boolean).join(", ")}
+                  {selected.primary_phone && <span style={{ marginLeft: "0.75rem" }}>{selected.primary_phone}</span>}
+                  {selected.email && <span style={{ marginLeft: "0.75rem" }}>{selected.email}</span>}
+                </div>
               </div>
+              <button
+                className="eq-quotes__btn eq-quotes__btn--sm"
+                style={{ fontSize: "0.78rem", padding: "3px 10px", flexShrink: 0 }}
+                onClick={() => {
+                  setCustFormMode("edit");
+                  setCustForm({
+                    company_name:  selected.company_name  ?? "",
+                    email:         selected.email         ?? "",
+                    primary_phone: selected.primary_phone ?? "",
+                    suburb:        selected.suburb        ?? "",
+                    state:         selected.state         ?? "",
+                  });
+                  setShowCustForm(true);
+                }}
+              >
+                Edit client
+              </button>
             </div>
 
             {detailLoading && <p className="eq-quotes__muted">Loading…</p>}
