@@ -3159,7 +3159,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                       />
                       <input
                         className="eq-quotes__input eq-quotes__input--sm"
-                        style={{ maxWidth: 72 }}
+                        style={{ maxWidth: 72, textTransform: "uppercase" }}
                         value={estInitialsInput}
                         onChange={(e) => setEstInitialsInput(e.target.value.toUpperCase())}
                         placeholder="Init"
@@ -3624,6 +3624,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     Your initials
                     <input
                       className="eq-quotes__input eq-quotes__input--sm"
+                      style={{ textTransform: "uppercase" }}
                       value={initials}
                       onChange={(e) => updateInitials(e.target.value)}
                       placeholder="RM"
@@ -4072,19 +4073,19 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end", padding: "10px 12px", background: "var(--eq-ice, #EAF5FB)", borderRadius: 8, border: "1px solid var(--eq-border, #ddd)" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                           <span className="eq-quotes__info-label" style={{ marginBottom: 2 }}>First Name *</span>
-                          <input className="eq-quotes__input eq-quotes__input--sm" style={{ minWidth: 120 }} value={newContactFirst} onChange={(e) => setNewContactFirst(e.target.value)} placeholder="First" autoFocus />
+                          <input className="eq-quotes__input" style={{ minWidth: 120 }} value={newContactFirst} onChange={(e) => setNewContactFirst(e.target.value)} placeholder="First" autoFocus />
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                           <span className="eq-quotes__info-label" style={{ marginBottom: 2 }}>Last Name</span>
-                          <input className="eq-quotes__input eq-quotes__input--sm" style={{ minWidth: 120 }} value={newContactLast} onChange={(e) => setNewContactLast(e.target.value)} placeholder="Last" />
+                          <input className="eq-quotes__input" style={{ minWidth: 120 }} value={newContactLast} onChange={(e) => setNewContactLast(e.target.value)} placeholder="Last" />
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                           <span className="eq-quotes__info-label" style={{ marginBottom: 2 }}>Phone</span>
-                          <input className="eq-quotes__input eq-quotes__input--sm" style={{ minWidth: 130 }} value={newContactPhone} onChange={(e) => setNewContactPhone(e.target.value)} placeholder="0400 000 000" />
+                          <input className="eq-quotes__input" style={{ minWidth: 130 }} value={newContactPhone} onChange={(e) => setNewContactPhone(e.target.value)} placeholder="0400 000 000" />
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                           <span className="eq-quotes__info-label" style={{ marginBottom: 2 }}>Email</span>
-                          <input className="eq-quotes__input eq-quotes__input--sm" style={{ minWidth: 180 }} value={newContactEmail} onChange={(e) => setNewContactEmail(e.target.value)} placeholder="email@example.com" />
+                          <input className="eq-quotes__input" style={{ minWidth: 180 }} value={newContactEmail} onChange={(e) => setNewContactEmail(e.target.value)} placeholder="email@example.com" />
                         </div>
                         <div style={{ display: "flex", gap: 6, alignItems: "flex-end", paddingBottom: 1 }}>
                           <button
@@ -4156,6 +4157,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 <span className="eq-quotes__info-label">Initials</span>
                 <input
                   className="eq-quotes__input eq-quotes__input--sm"
+                  style={{ textTransform: "uppercase" }}
                   value={createEstimatorInitials}
                   onChange={(e) => {
                     const upper = e.target.value.toUpperCase();
