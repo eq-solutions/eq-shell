@@ -18,12 +18,12 @@ const num = (s: string): number => {
 };
 
 const DEFAULT_CONFIG = {
-  material_markup: "1.15",
+  material_markup: "15",
   labour_normal_rate: "115.00",
   labour_supervisor_rate: "135.00",
   removal_base: "455.00",
   removal_increment: "170.00",
-  removal_markup: "1.25",
+  removal_markup: "25",
 };
 
 interface MaterialDraft {
@@ -126,6 +126,19 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
   const [history, setHistory] = useState<AuditEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  interface MatrixRow {
+    product_id: string;
+    name: string;
+    brand: string;
+    phase: string;
+    sort_order: number;
+    band_label: string;
+    min_qty: number;
+    computed_price: number;
+  }
+  const [matrix, setMatrix] = useState<MatrixRow[]>([]);
+  const [matrixLoading, setMatrixLoading] = useState(false);
+
   const flash = (msg: string) => {
     setSavedMsg(msg);
     setTimeout(() => setSavedMsg(null), 2500);
@@ -140,12 +153,12 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     const row = (data as Record<string, unknown>[] | null)?.[0];
     if (row) {
       setConfig({
-        material_markup: String(row.material_markup ?? DEFAULT_CONFIG.material_markup),
+        material_markup: String(((Number(row.material_markup ?? 1) - 1) * 100).toFixed(1)),
         labour_normal_rate: String(row.labour_normal_rate ?? DEFAULT_CONFIG.labour_normal_rate),
         labour_supervisor_rate: String(row.labour_supervisor_rate ?? DEFAULT_CONFIG.labour_supervisor_rate),
         removal_base: String(row.removal_base ?? DEFAULT_CONFIG.removal_base),
         removal_increment: String(row.removal_increment ?? DEFAULT_CONFIG.removal_increment),
-        removal_markup: String(row.removal_markup ?? DEFAULT_CONFIG.removal_markup),
+        removal_markup: String(((Number(row.removal_markup ?? 1) - 1) * 100).toFixed(1)),
       });
     }
   }, [supabase]);
@@ -264,16 +277,34 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     })));
   }, [supabase]);
 
+  const loadMatrix = useCallback(async () => {
+    if (!supabase) return;
+    setMatrixLoading(true);
+    const { data, error: e } = await supabase.rpc("eq_get_pricing_matrix");
+    setMatrixLoading(false);
+    if (e) { setError(e.message); return; }
+    setMatrix(((data as Record<string, unknown>[]) ?? []).map((r) => ({
+      product_id: String(r.product_id),
+      name: String(r.name ?? ""),
+      brand: String(r.brand ?? ""),
+      phase: String(r.phase ?? ""),
+      sort_order: Number(r.sort_order ?? 0),
+      band_label: String(r.band_label ?? ""),
+      min_qty: Number(r.min_qty ?? 0),
+      computed_price: Number(r.computed_price ?? 0),
+    })));
+  }, [supabase]);
+
   // Fetch the active tab's data. The loaders only setState after an await, so the
   // synchronous cascading-render case this rule guards against doesn't apply here.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (tab === "outlet") { void loadConfig(); void loadMaterials(); void loadProducts(); void loadBands(); }
+    if (tab === "outlet") { void loadConfig(); void loadMaterials(); void loadProducts(); void loadBands(); void loadMatrix(); }
     else if (tab === "rates") { void loadConfig(); void loadPresets(); }
     else if (tab === "templates") void loadTemplates();
     else if (tab === "estimators") void loadEstimators();
     else if (tab === "history") void loadHistory();
-  }, [tab, loadConfig, loadMaterials, loadProducts, loadBands, loadTemplates, loadPresets, loadEstimators, loadHistory]);
+  }, [tab, loadConfig, loadMaterials, loadProducts, loadBands, loadMatrix, loadTemplates, loadPresets, loadEstimators, loadHistory]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── Config ──────────────────────────────────────────────────────────────────
@@ -282,12 +313,12 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     setConfigSaving(true);
     setError(null);
     const { error: e } = await supabase.rpc("eq_upsert_pricing_config", {
-      p_material_markup: num(config.material_markup),
+      p_material_markup: num(config.material_markup) / 100 + 1,
       p_labour_normal_rate: num(config.labour_normal_rate),
       p_labour_supervisor_rate: num(config.labour_supervisor_rate),
       p_removal_base: num(config.removal_base),
       p_removal_increment: num(config.removal_increment),
-      p_removal_markup: num(config.removal_markup),
+      p_removal_markup: num(config.removal_markup) / 100 + 1,
     });
     setConfigSaving(false);
     if (e) { captureRpcError("eq_upsert_pricing_config", e); setError(e.message); return; }
@@ -525,12 +556,64 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       {tab === "outlet" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
+          {/* Pricing matrix — computed per-product × per-volume-band */}
+          <div className="eq-quotes__detail-card">
+            <div className="eq-quotes__section-title">Pricing matrix — per pair excl. GST</div>
+            {matrixLoading && <p className="eq-quotes__muted">Calculating…</p>}
+            {!matrixLoading && matrix.length > 0 && (() => {
+              const bands = Array.from(
+                new Map(matrix.map((r) => [r.min_qty, r.band_label])).entries()
+              ).sort((a, b) => a[0] - b[0]);
+              const seen = new Set<string>();
+              const products = matrix
+                .filter((r) => { if (seen.has(r.product_id)) return false; seen.add(r.product_id); return true; })
+                .sort((a, b) => a.sort_order - b.sort_order);
+              const priceOf = (pid: string, minQty: number) => {
+                const r = matrix.find((x) => x.product_id === pid && x.min_qty === minQty);
+                return r ? `$${Math.round(r.computed_price).toLocaleString()}` : "—";
+              };
+              return (
+                <div className="eq-quotes__table-wrap" style={{ overflowX: "auto" }}>
+                  <table className="eq-quotes__table">
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th>Brand</th>
+                        <th>Phase</th>
+                        {bands.map(([minQty, label]) => (
+                          <th key={minQty} className="eq-quotes__th--right">{label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.map((p) => (
+                        <tr key={p.product_id} className="eq-quotes__row">
+                          <td>{p.name}</td>
+                          <td>{p.brand || "—"}</td>
+                          <td>{p.phase || "—"}</td>
+                          {bands.map(([minQty]) => (
+                            <td key={minQty} className="eq-quotes__td--right" style={{ fontVariantNumeric: "tabular-nums" }}>
+                              {priceOf(p.product_id, minQty)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+            {!matrixLoading && matrix.length === 0 && (
+              <p className="eq-quotes__muted">No products configured yet. Add outlet products and bands below to see pricing.</p>
+            )}
+          </div>
+
           {/* Pricing defaults */}
           <div className="eq-quotes__detail-card">
             <div className="eq-quotes__section-title">Pricing defaults</div>
             <div className="eq-quotes__info-grid">
               <div className="eq-quotes__info-item">
-                <label className="eq-quotes__info-label">Material markup (×)</label>
+                <label className="eq-quotes__info-label">Material markup (%)</label>
                 <input className="eq-quotes__input" value={config.material_markup}
                   onChange={(e) => setConfig({ ...config, material_markup: e.target.value })} />
               </div>
@@ -555,7 +638,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
                   onChange={(e) => setConfig({ ...config, removal_increment: e.target.value })} />
               </div>
               <div className="eq-quotes__info-item">
-                <label className="eq-quotes__info-label">Removal markup (×)</label>
+                <label className="eq-quotes__info-label">Removal markup (%)</label>
                 <input className="eq-quotes__input" value={config.removal_markup}
                   onChange={(e) => setConfig({ ...config, removal_markup: e.target.value })} />
               </div>
@@ -754,7 +837,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
                   onChange={(e) => setConfig({ ...config, labour_supervisor_rate: e.target.value })} />
               </div>
               <div className="eq-quotes__info-item">
-                <label className="eq-quotes__info-label">Materials markup (×)</label>
+                <label className="eq-quotes__info-label">Materials markup (%)</label>
                 <input className="eq-quotes__input" value={config.material_markup}
                   onChange={(e) => setConfig({ ...config, material_markup: e.target.value })} />
               </div>
