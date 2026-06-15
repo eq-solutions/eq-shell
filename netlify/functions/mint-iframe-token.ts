@@ -154,6 +154,22 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(401, { valid: false });
   }
 
+  // H1 — bind non-platform-admin users to their Shell tenant's configured Field tenant.
+  // Platform admins retain the full allow-list so the tenant-picker/switch works.
+  // shell_control.tenants.field_tenant_slug is the canonical mapping (e.g. 'core' → 'eq',
+  // 'sks' → 'sks'). A null slug means no Field access is configured for that tenant.
+  if (aud === 'field' && !user.is_platform_admin) {
+    const { data: tenantRow } = await sb
+      .from('tenants')
+      .select('field_tenant_slug')
+      .eq('id', session.tenant_id)
+      .maybeSingle<{ field_tenant_slug: string | null }>();
+    const configuredSlug = tenantRow?.field_tenant_slug ?? null;
+    if (!configuredSlug || configuredSlug !== tenantSlug) {
+      return jsonResponse(403, { error: 'Field tenant not authorised for your account' });
+    }
+  }
+
   if (aud === 'service') {
     // Cross-tenant guard: DB user must belong to the authenticated session tenant.
     if (user.tenant_id !== session.tenant_id) {
