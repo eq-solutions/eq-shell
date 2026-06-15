@@ -11,7 +11,8 @@ import { QuotesSetup } from "./QuotesSetup";
 import { QuotesReports } from "./QuotesReports";
 import { QuotesCustomers } from "./QuotesCustomers";
 import { captureRpcError } from "./quoteTelemetry";
-import { Table, type TableColumn } from "@eq-solutions/ui";
+import { Table, type TableColumn, DropdownMenu, type DropdownMenuEntry } from "@eq-solutions/ui";
+import { MoreHorizontal, Copy, Trash2, FileUp, Users, BarChart2, Settings, FolderOpen } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -2519,6 +2520,31 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       },
     },
     {
+      key: "_actions", header: "",
+      render: (q) => {
+        const items: DropdownMenuEntry[] = [
+          { key: "dup",   label: "Duplicate",     icon: <Copy size={14} />,   onClick: () => void handleDuplicate(q.quote_id) },
+          { key: "sep",   separator: true },
+          { key: "trash", label: "Move to trash", icon: <Trash2 size={14} />, onClick: () => void handleTrash(q.quote_id), variant: "danger" },
+        ];
+        return (
+          <DropdownMenu
+            trigger={
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--ghost eq-quotes__btn--icon"
+                aria-label="More actions"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal size={15} />
+              </button>
+            }
+            items={items}
+          />
+        );
+      },
+    },
+    {
       key: "follow_up_at", header: "Follow-up",
       sortAccessor: (q) => q.follow_up_at ?? "",
       render: (q) => {
@@ -4733,17 +4759,38 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             onChange={(e) => void handlePdfFileStart(e)}
           />
           <div className="eq-quotes__view-tabs">
-            {(["pipeline", "accordion", "import", "customers", "reports", "setup", "trash"] as ModuleView[]).map((v) => (
+            {(["pipeline", "accordion"] as ModuleView[]).map((v) => (
               <button
                 key={v}
                 type="button"
                 className={`eq-quotes__view-tab${view === v ? " eq-quotes__view-tab--active" : ""}`}
                 onClick={() => setView(v)}
               >
-                {v === "pipeline" ? "Jobs" : v === "accordion" ? "By Client" : v === "import" ? "Import Coupa" : v === "customers" ? "Clients" : v === "reports" ? "Reports" : v === "setup" ? "Setup" : "Trash"}
+                {v === "pipeline" ? "Jobs" : "By Client"}
               </button>
             ))}
           </div>
+          <DropdownMenu
+            align="right"
+            trigger={
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline eq-quotes__btn--icon"
+                aria-label="More views"
+                title="More"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+            }
+            items={[
+              { key: "import",    label: "Import Coupa", icon: <FileUp size={14} />,    onClick: () => setView("import") },
+              { key: "customers", label: "Clients",       icon: <Users size={14} />,     onClick: () => setView("customers") },
+              { key: "reports",   label: "Reports",       icon: <BarChart2 size={14} />, onClick: () => setView("reports") },
+              { key: "setup",     label: "Setup",         icon: <Settings size={14} />,  onClick: () => setView("setup") },
+              { key: "sep",       separator: true },
+              { key: "trash",     label: "Trash",         icon: <FolderOpen size={14} />, onClick: () => setView("trash") },
+            ]}
+          />
         </div>
       </div>
 

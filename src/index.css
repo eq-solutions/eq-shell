@@ -256,6 +256,9 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
 .eq-quotes__btn--primary:hover:not(:disabled) { background: var(--eq-primary-dark); border-color: var(--eq-primary-dark); }
 .eq-quotes__btn--outline { background: transparent; color: var(--eq-primary); border-color: var(--eq-primary); text-decoration: none; display: inline-flex; align-items: center; }
 .eq-quotes__btn--outline:hover { background: var(--eq-ice); }
+.eq-quotes__btn--ghost { background: transparent; color: var(--eq-ink); border-color: transparent; display: inline-flex; align-items: center; }
+.eq-quotes__btn--ghost:hover:not(:disabled) { background: rgba(0,0,0,0.05); }
+.eq-quotes__btn--icon { padding: 5px; line-height: 1; }
 .eq-quotes__header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-left: auto; }
 .eq-quotes__info-item--full { grid-column: 1 / -1; }
 .eq-quotes__job-no-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
