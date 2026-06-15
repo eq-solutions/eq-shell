@@ -493,7 +493,7 @@ export async function generateQuoteDoc(q: QuoteDocData, mode: "detailed" | "summ
   zip.file("word/document.xml", xml);
 
   const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-  const filename = `${q.quote_number}${q.project_name ? " - " + q.project_name : ""}.docx`;
+  const filename = `SKS Quote - ${q.project_name || q.quote_number}.docx`;
   triggerDownload(blob, filename);
 }
 
