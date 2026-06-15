@@ -4166,6 +4166,30 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   maxLength={4}
                 />
               </div>
+              <div className="eq-quotes__info-item">
+                <span className="eq-quotes__info-label">Payment Terms</span>
+                <input
+                  className="eq-quotes__input"
+                  value={createPaymentTerms}
+                  onChange={(e) => {
+                    setCreatePaymentTerms(e.target.value);
+                    try { localStorage.setItem("eq-quotes-payment-terms", e.target.value); } catch { /* ignore */ }
+                  }}
+                  placeholder="e.g. 30 days net"
+                />
+              </div>
+              <div className="eq-quotes__info-item">
+                <span className="eq-quotes__info-label">Validity (days)</span>
+                <input
+                  className="eq-quotes__input eq-quotes__input--sm"
+                  type="number"
+                  min="1"
+                  max="365"
+                  style={{ width: 80 }}
+                  value={createValidityDays}
+                  onChange={(e) => setCreateValidityDays(e.target.value)}
+                />
+              </div>
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
                   <span className="eq-quotes__info-label" style={{ marginBottom: 0 }}>Scope of Works</span>
@@ -4253,79 +4277,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               </div>
             </div>
 
-            {/* Contact / address — for the quote document */}
-            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--eq-border)" }}>
-              <span style={{
-                display: "block", marginBottom: 10, fontSize: 11,
-                textTransform: "uppercase", letterSpacing: "0.06em",
-                color: "var(--eq-muted)", fontWeight: 600,
-              }}>
-                Contact &amp; Address
-              </span>
-              <div className="eq-quotes__info-grid">
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">First Name</span>
-                  <input
-                    className="eq-quotes__input"
-                    value={createAttnFirstName}
-                    onChange={(e) => setCreateAttnFirstName(e.target.value)}
-                    placeholder="e.g. Jacob"
-                  />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">Last Name</span>
-                  <input
-                    className="eq-quotes__input"
-                    value={createAttnName}
-                    onChange={(e) => setCreateAttnName(e.target.value)}
-                    placeholder="e.g. Brennan"
-                  />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">Phone</span>
-                  <input
-                    className="eq-quotes__input"
-                    value={createAttnPhone}
-                    onChange={(e) => setCreateAttnPhone(e.target.value)}
-                    placeholder="e.g. 02 9999 0000"
-                  />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">Payment Terms</span>
-                  <input
-                    className="eq-quotes__input"
-                    value={createPaymentTerms}
-                    onChange={(e) => {
-                      setCreatePaymentTerms(e.target.value);
-                      try { localStorage.setItem("eq-quotes-payment-terms", e.target.value); } catch { /* ignore */ }
-                    }}
-                    placeholder="e.g. 30 days net"
-                  />
-                </div>
-                <div className="eq-quotes__info-item eq-quotes__info-item--full">
-                  <span className="eq-quotes__info-label">Address</span>
-                  <input
-                    className="eq-quotes__input"
-                    style={{ maxWidth: 440 }}
-                    value={createAddress}
-                    onChange={(e) => setCreateAddress(e.target.value)}
-                    placeholder="e.g. Herbert St, St Leonards NSW 2065"
-                  />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">Validity (days)</span>
-                  <input
-                    className="eq-quotes__input eq-quotes__input--sm"
-                    type="number"
-                    min="1"
-                    max="365"
-                    style={{ width: 80 }}
-                    value={createValidityDays}
-                    onChange={(e) => setCreateValidityDays(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Line items */}
