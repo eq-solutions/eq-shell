@@ -3,6 +3,10 @@
 
 BEGIN;
 
+-- DROP first: some planes may have a newer signature (e.g. with follow_up_at from 0115
+-- applied out-of-band). Postgres rejects CREATE OR REPLACE when OUT param types differ.
+DROP FUNCTION IF EXISTS public.eq_list_quotes(text, text);
+
 CREATE OR REPLACE FUNCTION public.eq_list_quotes(
   p_status text DEFAULT NULL,
   p_search text DEFAULT NULL
