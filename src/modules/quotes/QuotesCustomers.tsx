@@ -25,6 +25,24 @@ interface ContactRow {
   is_default_quote_contact: boolean;
 }
 
+interface SiteRow {
+  site_id:     string;
+  name:        string;
+  code:        string | null;
+  customer_id: string | null;
+}
+
+interface ContactForSiteRow {
+  contact_id:       string;
+  first_name:       string | null;
+  last_name:        string | null;
+  email:            string | null;
+  work_phone:       string | null;
+  mobile_phone:     string | null;
+  contact_position: string | null;
+  role:             string | null;
+}
+
 interface CustomerQuote {
   quote_id: string;
   quote_number: string;
@@ -81,6 +99,14 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const [custFormMode, setCustFormMode] = useState<"create" | "edit">("create");
   const [custForm, setCustForm] = useState({ company_name: "", email: "", primary_phone: "", suburb: "", state: "" });
   const [custSaving, setCustSaving] = useState(false);
+  const [sites, setSites] = useState<SiteRow[]>([]);
+  const [siteContacts, setSiteContacts] = useState<Record<string, ContactForSiteRow[]>>({});
+  const [expandedSiteId, setExpandedSiteId] = useState<string | null>(null);
+  const [showAssignSite, setShowAssignSite] = useState(false);
+  const [allSites, setAllSites] = useState<SiteRow[]>([]);
+  const [assignSearch, setAssignSearch] = useState("");
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [showLinkContact, setShowLinkContact] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -157,6 +183,95 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     await reloadContacts(selected.customer_id);
   }, [supabase, selected, reloadContacts]);
 
+  const reloadSites = useCallback(async (customerId: string) => {
+    if (!supabase) return;
+    const { data } = await supabase.rpc("eq_list_sites", { p_customer_id: customerId });
+    if (data) {
+      setSites((data as Record<string, unknown>[]).map((r) => ({
+        site_id:     String(r.site_id),
+        name:        String(r.name ?? ""),
+        code:        r.code ? String(r.code) : null,
+        customer_id: r.customer_id ? String(r.customer_id) : null,
+      })));
+    }
+  }, [supabase]);
+
+  const loadSiteContacts = useCallback(async (siteId: string) => {
+    if (!supabase) return;
+    const { data } = await supabase.rpc("eq_list_contacts_for_site", { p_site_id: siteId });
+    if (data) {
+      setSiteContacts((prev) => ({
+        ...prev,
+        [siteId]: (data as Record<string, unknown>[]).map((r) => ({
+          contact_id:       String(r.contact_id),
+          first_name:       r.first_name ? String(r.first_name) : null,
+          last_name:        r.last_name ? String(r.last_name) : null,
+          email:            r.email ? String(r.email) : null,
+          work_phone:       r.work_phone ? String(r.work_phone) : null,
+          mobile_phone:     r.mobile_phone ? String(r.mobile_phone) : null,
+          contact_position: r.contact_position ? String(r.contact_position) : null,
+          role:             r.role ? String(r.role) : null,
+        })),
+      }));
+    }
+  }, [supabase]);
+
+  const toggleSiteExpand = useCallback(async (siteId: string) => {
+    if (expandedSiteId === siteId) {
+      setExpandedSiteId(null);
+      setShowLinkContact({});
+    } else {
+      setExpandedSiteId(siteId);
+      setShowLinkContact({});
+      await loadSiteContacts(siteId);
+    }
+  }, [expandedSiteId, loadSiteContacts]);
+
+  const loadAllSites = useCallback(async () => {
+    if (!supabase) return;
+    const { data } = await supabase.rpc("eq_list_sites");
+    if (data) {
+      setAllSites((data as Record<string, unknown>[]).map((r) => ({
+        site_id:     String(r.site_id),
+        name:        String(r.name ?? ""),
+        code:        r.code ? String(r.code) : null,
+        customer_id: r.customer_id ? String(r.customer_id) : null,
+      })));
+    }
+  }, [supabase]);
+
+  const handleAssignSite = useCallback(async (siteId: string) => {
+    if (!supabase || !selected || assignSaving) return;
+    setAssignSaving(true);
+    await supabase.rpc("eq_assign_site_to_customer", {
+      p_site_id:     siteId,
+      p_customer_id: selected.customer_id,
+    });
+    setAssignSaving(false);
+    setShowAssignSite(false);
+    setAssignSearch("");
+    await reloadSites(selected.customer_id);
+  }, [supabase, selected, assignSaving, reloadSites]);
+
+  const handleLinkContact = useCallback(async (siteId: string, contactId: string) => {
+    if (!supabase) return;
+    await supabase.rpc("eq_link_contact_to_site", {
+      p_contact_id: contactId,
+      p_site_id:    siteId,
+    });
+    setShowLinkContact((prev) => ({ ...prev, [siteId]: false }));
+    await loadSiteContacts(siteId);
+  }, [supabase, loadSiteContacts]);
+
+  const handleUnlinkContact = useCallback(async (siteId: string, contactId: string) => {
+    if (!supabase) return;
+    await supabase.rpc("eq_unlink_contact_from_site", {
+      p_contact_id: contactId,
+      p_site_id:    siteId,
+    });
+    await loadSiteContacts(siteId);
+  }, [supabase, loadSiteContacts]);
+
   const saveCustomer = useCallback(async () => {
     if (!supabase) return;
     if (!custForm.company_name.trim()) return;
@@ -192,13 +307,20 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     setSelected(c);
     setContacts([]);
     setCustQuotes([]);
+    setSites([]);
+    setSiteContacts({});
+    setExpandedSiteId(null);
+    setShowLinkContact({});
+    setShowAssignSite(false);
+    setAssignSearch("");
     setShowAddContact(false);
     setEditingContact(null);
     setAddForm({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
     setDetailLoading(true);
-    const [ctRes, qRes] = await Promise.all([
+    const [ctRes, qRes, sitesRes] = await Promise.all([
       supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: c.customer_id }),
       supabase.rpc("eq_list_quotes_for_customer",   { p_customer_id: c.customer_id }),
+      supabase.rpc("eq_list_sites",                 { p_customer_id: c.customer_id }),
     ]);
     setDetailLoading(false);
     if (ctRes.data) {
@@ -211,6 +333,14 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
         mobile_phone:             r.mobile_phone ? String(r.mobile_phone) : null,
         contact_position:         r.contact_position ? String(r.contact_position) : null,
         is_default_quote_contact: Boolean(r.is_default_quote_contact),
+      })));
+    }
+    if (sitesRes.data) {
+      setSites(((sitesRes.data ?? []) as Record<string, unknown>[]).map((r) => ({
+        site_id:     String(r.site_id),
+        name:        String(r.name ?? ""),
+        code:        r.code ? String(r.code) : null,
+        customer_id: r.customer_id ? String(r.customer_id) : null,
       })));
     }
     if (qRes.data) {
@@ -533,6 +663,170 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                             >Archive</button>
                           </td>
                         </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {/* Sites */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem", marginTop: "1.5rem" }}>
+                  <span className="eq-quotes__section-title">Sites ({sites.length})</span>
+                  <button
+                    className="eq-quotes__btn eq-quotes__btn--sm"
+                    style={{ fontSize: "0.78rem", padding: "3px 10px" }}
+                    onClick={async () => {
+                      if (!showAssignSite) { await loadAllSites(); }
+                      setShowAssignSite((v) => !v);
+                      setAssignSearch("");
+                    }}
+                  >
+                    {showAssignSite ? "Cancel" : "Assign existing"}
+                  </button>
+                </div>
+
+                {showAssignSite && (
+                  <div style={{ background: "var(--eq-ice,#EAF5FB)", border: "1px solid var(--eq-border,#e5e7eb)", borderRadius: "6px", padding: "0.75rem", marginBottom: "1rem" }}>
+                    <input
+                      className="eq-quotes__input"
+                      placeholder="Search sites…"
+                      value={assignSearch}
+                      style={{ width: "100%", marginBottom: "0.5rem" }}
+                      autoFocus
+                      onChange={(e) => setAssignSearch(e.target.value)}
+                    />
+                    <div style={{ maxHeight: "220px", overflowY: "auto" }}>
+                      {allSites
+                        .filter((s) => {
+                          if (s.customer_id === selected.customer_id) return false;
+                          if (!assignSearch.trim()) return true;
+                          const q = assignSearch.toLowerCase();
+                          return s.name.toLowerCase().includes(q) || (s.code ?? "").toLowerCase().includes(q);
+                        })
+                        .map((s) => (
+                          <div
+                            key={s.site_id}
+                            style={{ padding: "0.45rem 0.5rem", borderBottom: "1px solid var(--eq-border,#e5e7eb)", cursor: assignSaving ? "default" : "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                            onClick={() => { void handleAssignSite(s.site_id); }}
+                          >
+                            <span style={{ fontWeight: 500, fontSize: "0.88rem" }}>{s.name}</span>
+                            <span style={{ fontSize: "0.78rem", color: "var(--eq-muted,#6b7280)" }}>
+                              {s.code ?? ""}
+                              {s.customer_id && s.customer_id !== selected.customer_id && (
+                                <span style={{ marginLeft: "0.4rem", color: "var(--eq-err,#c0392b)", fontSize: "0.72rem" }}>reassign</span>
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                      {allSites.filter((s) => s.customer_id !== selected.customer_id).length === 0 && (
+                        <p className="eq-quotes__muted" style={{ padding: "0.5rem 0" }}>No other sites found.</p>
+                      )}
+                    </div>
+                    {assignSaving && <p className="eq-quotes__muted" style={{ marginTop: "0.4rem" }}>Assigning…</p>}
+                  </div>
+                )}
+
+                {sites.length === 0 && !showAssignSite && (
+                  <p className="eq-quotes__muted" style={{ marginBottom: "1rem" }}>No sites linked. Use "Assign existing" to link a site.</p>
+                )}
+
+                {sites.length > 0 && (
+                  <table className="eq-quotes__reports-table" style={{ marginBottom: "1.25rem" }}>
+                    <thead>
+                      <tr>
+                        <th>Site</th>
+                        <th>Code</th>
+                        <th>Contacts</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sites.map((s) => (
+                        <React.Fragment key={s.site_id}>
+                          <tr
+                            style={{ cursor: "pointer" }}
+                            onClick={() => { void toggleSiteExpand(s.site_id); }}
+                          >
+                            <td style={{ fontWeight: 500 }}>{s.name}</td>
+                            <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>{s.code ?? "—"}</td>
+                            <td>
+                              <span style={{ color: "var(--eq-sky,#3DA8D8)", fontSize: "0.82rem" }}>
+                                {expandedSiteId === s.site_id ? "▲" : "▼"}{" "}
+                                {(siteContacts[s.site_id] ?? []).length > 0
+                                  ? `${(siteContacts[s.site_id] ?? []).length} contact${(siteContacts[s.site_id] ?? []).length !== 1 ? "s" : ""}`
+                                  : "view contacts"}
+                              </span>
+                            </td>
+                            <td></td>
+                          </tr>
+                          {expandedSiteId === s.site_id && (
+                            <tr>
+                              <td colSpan={4} style={{ background: "var(--eq-ice,#EAF5FB)", padding: "0.6rem 0.75rem" }}>
+                                {(siteContacts[s.site_id] ?? []).length === 0 && (
+                                  <p className="eq-quotes__muted" style={{ marginBottom: "0.4rem" }}>No contacts linked to this site yet.</p>
+                                )}
+                                {(siteContacts[s.site_id] ?? []).map((ct) => (
+                                  <div key={ct.contact_id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.35rem", fontSize: "0.85rem" }}>
+                                    <span style={{ fontWeight: 500 }}>
+                                      {[ct.first_name, ct.last_name].filter(Boolean).join(" ") || "—"}
+                                    </span>
+                                    {ct.role && (
+                                      <span className="eq-quotes__muted">· {ct.role}</span>
+                                    )}
+                                    {ct.contact_position && !ct.role && (
+                                      <span className="eq-quotes__muted">· {ct.contact_position}</span>
+                                    )}
+                                    {ct.mobile_phone && (
+                                      <span className="eq-quotes__muted">{ct.mobile_phone}</span>
+                                    )}
+                                    <button
+                                      className="eq-quotes__btn eq-quotes__btn--sm"
+                                      style={{ fontSize: "0.7rem", padding: "1px 6px", marginLeft: "auto", color: "var(--eq-muted,#6b7280)" }}
+                                      onClick={() => { void handleUnlinkContact(s.site_id, ct.contact_id); }}
+                                    >
+                                      Unlink
+                                    </button>
+                                  </div>
+                                ))}
+                                <div style={{ marginTop: "0.5rem" }}>
+                                  {showLinkContact[s.site_id] ? (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                                      {contacts
+                                        .filter((ct) => !(siteContacts[s.site_id] ?? []).some((sc) => sc.contact_id === ct.contact_id))
+                                        .map((ct) => (
+                                          <div
+                                            key={ct.contact_id}
+                                            style={{ cursor: "pointer", fontSize: "0.85rem", padding: "0.25rem 0.4rem", borderRadius: "4px", border: "1px solid var(--eq-border,#e5e7eb)", background: "#fff" }}
+                                            onClick={() => { void handleLinkContact(s.site_id, ct.contact_id); }}
+                                          >
+                                            {[ct.first_name, ct.last_name].filter(Boolean).join(" ") || "(unnamed)"}
+                                            {ct.contact_position && <span className="eq-quotes__muted"> · {ct.contact_position}</span>}
+                                          </div>
+                                        ))}
+                                      {contacts.filter((ct) => !(siteContacts[s.site_id] ?? []).some((sc) => sc.contact_id === ct.contact_id)).length === 0 && (
+                                        <p className="eq-quotes__muted" style={{ fontSize: "0.8rem" }}>All customer contacts already linked.</p>
+                                      )}
+                                      <button
+                                        className="eq-quotes__btn eq-quotes__btn--sm"
+                                        style={{ fontSize: "0.75rem", padding: "2px 8px", alignSelf: "flex-start" }}
+                                        onClick={() => setShowLinkContact((prev) => ({ ...prev, [s.site_id]: false }))}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      className="eq-quotes__btn eq-quotes__btn--sm"
+                                      style={{ fontSize: "0.75rem", padding: "2px 8px" }}
+                                      onClick={() => setShowLinkContact((prev) => ({ ...prev, [s.site_id]: true }))}
+                                    >
+                                      + Link contact
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>
