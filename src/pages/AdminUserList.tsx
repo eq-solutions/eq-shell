@@ -26,12 +26,20 @@ import type { EqRole } from '../session';
 
 interface UserRow {
   id: string;
-  email: string;
+  email: string | null;
   name: string | null;
   role: EqRole;
   is_platform_admin: boolean;
   active: boolean;
   last_login_at: string | null;
+}
+
+// A user row can arrive with a null email/name (e.g. an invite stub that never
+// completed). Never let one bad row white-screen the whole page.
+function displayName(u: UserRow): string {
+  if (u.name) return u.name;
+  if (u.email) return u.email.split('@')[0];
+  return '(no email)';
 }
 
 function roleLabel(role: EqRole): string {
@@ -136,10 +144,10 @@ function AdminUserListInner() {
                   <tr key={u.id}>
                     <td>
                       <span style={{ fontWeight: 500 }}>
-                        {u.name ?? u.email.split('@')[0]}
+                        {displayName(u)}
                       </span>
                       <span className="eq-table__mute" style={{ display: 'block', fontSize: 12 }}>
-                        {u.email}
+                        {u.email ?? '—'}
                       </span>
                       {u.is_platform_admin && (
                         <span

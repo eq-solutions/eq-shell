@@ -14,8 +14,8 @@ import { QuotesCustomers } from "./QuotesCustomers";
 import { captureRpcError } from "./quoteTelemetry";
 import { Table, type TableColumn, DropdownMenu, type DropdownMenuEntry } from "@eq-solutions/ui";
 import {
-  MoreHorizontal, Copy, Trash2, FileUp, Users, BarChart2, Settings, FolderOpen,
-  Clock, Briefcase, CalendarClock, AlarmClock, LayoutGrid, List, SlidersHorizontal, X,
+  MoreHorizontal, Copy, Trash2, FileUp, Users, BarChart2, Settings,
+  Clock, Briefcase, CalendarClock, AlarmClock, LayoutGrid, List, SlidersHorizontal, X, Archive,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -1694,6 +1694,23 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  // Permanent delete — removes the quote and all its children (cascade). No undo;
+  // Archive (eq_trash_quote) is the recoverable path.
+  const handleDelete = async (quoteId: string, quoteNumber?: string | null) => {
+    if (!supabase) return;
+    if (typeof window !== "undefined" && !window.confirm(
+      `Permanently delete quote ${quoteNumber ?? ""}?\n\n` +
+      `This removes it and all its line items, notes and history for good. ` +
+      `This cannot be undone — use Archive instead if you might need it back.`
+    )) return;
+    const { error } = await supabase.rpc("eq_delete_quote", { p_quote_id: quoteId });
+    if (error) { captureRpcError("eq_delete_quote", error, { quote_id: quoteId }); setDetailError(error.message); return; }
+    setDetailId(null);
+    setDetail(null);
+    void loadTrashed();
+    void loadQuotes(statusFilter, search);
+  };
+
   const handleMarkAsSent = async () => {
     if (!supabase || !detail) return;
     setMarkingSent(true);
@@ -2679,9 +2696,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       key: "_actions", header: "",
       render: (q) => {
         const items: DropdownMenuEntry[] = [
-          { key: "dup",   label: "Duplicate",     icon: <Copy size={14} />,   onClick: () => void handleDuplicate(q.quote_id) },
-          { key: "sep",   separator: true },
-          { key: "trash", label: "Move to trash", icon: <Trash2 size={14} />, onClick: () => void handleTrash(q.quote_id), variant: "danger" },
+          { key: "dup",     label: "Duplicate", icon: <Copy size={14} />,    onClick: () => void handleDuplicate(q.quote_id) },
+          { key: "archive", label: "Archive",   icon: <Archive size={14} />, onClick: () => void handleTrash(q.quote_id) },
+          { key: "sep",     separator: true },
+          { key: "delete",  label: "Delete permanently", icon: <Trash2 size={14} />, onClick: () => void handleDelete(q.quote_id, q.quote_number), variant: "danger" },
         ];
         return (
           <DropdownMenu
@@ -2960,10 +2978,19 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   className="eq-quotes__btn eq-quotes__btn--outline"
                   disabled={trashing}
                   onClick={() => void handleTrash(detail.quote_id)}
-                  title="Move this quote to Trash"
-                  style={{ color: "var(--eq-err, #c0392b)", marginLeft: "auto" }}
+                  title="Archive this quote (recoverable from the Archived view)"
+                  style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}
                 >
-                  {trashing ? "…" : "Trash"}
+                  <Archive size={14} /> {trashing ? "…" : "Archive"}
+                </button>
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--outline"
+                  onClick={() => void handleDelete(detail.quote_id, detail.quote_number)}
+                  title="Permanently delete this quote — cannot be undone"
+                  style={{ color: "var(--eq-err, #c0392b)", display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  <Trash2 size={14} /> Delete
                 </button>
               </div>
             </div>
@@ -5026,7 +5053,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               { key: "reports",   label: "Reports",       icon: <BarChart2 size={14} />, onClick: () => setView("reports") },
               { key: "setup",     label: "Setup",         icon: <Settings size={14} />,  onClick: () => setView("setup") },
               { key: "sep",       separator: true },
-              { key: "trash",     label: "Trash",         icon: <FolderOpen size={14} />, onClick: () => setView("trash") },
+              { key: "trash",     label: "Archived",      icon: <Archive size={14} />,   onClick: () => setView("trash") },
             ]}
           />
         </div>
@@ -5050,7 +5077,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           {trashedLoading ? (
             <div className="eq-quotes__loading">Loading…</div>
           ) : trashed.length === 0 ? (
-            <div className="eq-quotes__empty">Trash is empty.</div>
+            <div className="eq-quotes__empty">No archived quotes.</div>
           ) : (
             <div className="eq-quotes__table-wrap">
               <table className="eq-quotes__table">
@@ -5060,8 +5087,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     <th>Customer</th>
                     <th>Project</th>
                     <th className="eq-quotes__th--right">Total</th>
-                    <th>Deleted</th>
-                    <th style={{ width: 90 }}></th>
+                    <th>Archived</th>
+                    <th style={{ width: 160 }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5073,13 +5100,23 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                       <td className="eq-quotes__td--right">{aud(q.total_cents)}</td>
                       <td>{fmtDate(q.deleted_at)}</td>
                       <td>
-                        <button
-                          type="button"
-                          className="eq-quotes__btn eq-quotes__btn--outline"
-                          onClick={() => void handleRestore(q.quote_id)}
-                        >
-                          Restore
-                        </button>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            type="button"
+                            className="eq-quotes__btn eq-quotes__btn--outline"
+                            onClick={() => void handleRestore(q.quote_id)}
+                          >
+                            Restore
+                          </button>
+                          <button
+                            type="button"
+                            className="eq-quotes__btn eq-quotes__btn--outline"
+                            style={{ color: "var(--eq-err, #c0392b)" }}
+                            onClick={() => void handleDelete(q.quote_id, q.quote_number)}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
