@@ -94,7 +94,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (action === 'list') {
     const [custRes, siteRes, contactRes] = await Promise.all([
-      sb.from('customers').select('customer_id, company_name, first_name, last_name, customer_group, state, active').order('company_name'),
+      sb.from('customers').select('customer_id, company_name, first_name, last_name, customer_group, state, active').order('created_at', { ascending: false }),
       sb.from('sites').select('customer_id'),
       sb.from('contacts').select('customer_id'),
     ]);
