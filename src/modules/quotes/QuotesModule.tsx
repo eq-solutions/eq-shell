@@ -397,6 +397,8 @@ function summariseAudit(a: QuoteAuditEntry): string {
 
 const ACCORDION_ACTIVE = new Set([...ACTIVE_JOB_STATUSES, "sent"]);
 
+const DRAFT_KEY = "eq-quotes-draft-new";
+
 const STATUS_FILTERS = [
   { key: "active-jobs", label: "Active Jobs" },
   { key: "all", label: "All" },
@@ -558,6 +560,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [copiedQuoteId, setCopiedQuoteId] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const detailIdRef = useRef<string | null>(null);
   const displayedQuotesRef = useRef<Quote[]>([]);
@@ -694,8 +697,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [siteContactsForForm, setSiteContactsForForm] = useState<ContactRow[]>([]);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [estimators, setEstimators] = useState<EstimatorRow[]>([]);
-  const [pdfParsing, setPdfParsing] = useState(false);
-  const [pdfParseErr, setPdfParseErr] = useState<string | null>(null);
   const [createProjectName, setCreateProjectName] = useState("");
   const [createEstimatorName, setCreateEstimatorName] = useState("");
   const [createEstimatorInitials, setCreateEstimatorInitials] = useState("");
@@ -714,6 +715,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [createLineItems, setCreateLineItems] = useState<CreateLineItem[]>([
     { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "labour" },
   ]);
+  const [showDraftBanner, setShowDraftBanner] = useState(false);
   const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
 
   // ── Outlet calculator state ───────────────────────────────────────────────
@@ -1114,6 +1116,99 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setEditingQuoteId(null);
   };
 
+  const clearDraft = () => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    setShowDraftBanner(false);
+  };
+
+  const restoreDraft = () => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as {
+        savedAt?: string; customerId?: string; customerSearch?: string;
+        siteId?: string; siteSearch?: string; projectName?: string;
+        estimatorName?: string; estimatorInitials?: string; scope?: string;
+        clarifications?: string; notes?: string; attnFirstName?: string;
+        attnLastName?: string; attnPhone?: string; address?: string;
+        paymentTerms?: string; validityDays?: string; quoteNumber?: string;
+        lineItems?: CreateLineItem[];
+      };
+      if (d.customerId) setCreateCustomerId(d.customerId);
+      if (d.customerSearch) setCreateCustomerSearch(d.customerSearch);
+      if (d.siteId) setCreateSiteId(d.siteId);
+      if (d.siteSearch) setCreateSiteSearch(d.siteSearch);
+      if (d.projectName) setCreateProjectName(d.projectName);
+      if (d.estimatorName) setCreateEstimatorName(d.estimatorName);
+      if (d.estimatorInitials) setCreateEstimatorInitials(d.estimatorInitials);
+      if (d.scope) setCreateScope(d.scope);
+      if (d.clarifications) setCreateClarifications(d.clarifications);
+      if (d.notes) setCreateNotes(d.notes);
+      if (d.attnFirstName) setCreateAttnFirstName(d.attnFirstName);
+      if (d.attnLastName) setCreateAttnName(d.attnLastName);
+      if (d.attnPhone) setCreateAttnPhone(d.attnPhone);
+      if (d.address) setCreateAddress(d.address);
+      if (d.paymentTerms) setCreatePaymentTerms(d.paymentTerms);
+      if (d.validityDays) setCreateValidityDays(d.validityDays);
+      if (d.quoteNumber) setCreateQuoteNumber(d.quoteNumber);
+      if (d.lineItems?.length) setCreateLineItems(d.lineItems);
+      setShowDraftBanner(false);
+    } catch { setShowDraftBanner(false); }
+  };
+
+  // Show draft banner when entering create view (not edit) and a draft exists
+  useEffect(() => {
+    if (view !== "create" || editingQuoteId) { setShowDraftBanner(false); return; }
+    try {
+      if (localStorage.getItem(DRAFT_KEY)) setShowDraftBanner(true);
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
+  // Auto-save draft to localStorage while creating (debounced 800ms)
+  useEffect(() => {
+    if (view !== "create" || editingQuoteId) return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      const isEmpty =
+        createQuoteNumber === "SKS-" &&
+        !createCustomerSearch &&
+        createLineItems.every((li) => !li.description.trim());
+      if (isEmpty) { try { localStorage.removeItem(DRAFT_KEY); } catch { /* */ } return; }
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          savedAt: new Date().toISOString(),
+          customerId: createCustomerId,
+          customerSearch: createCustomerSearch,
+          siteId: createSiteId,
+          siteSearch: createSiteSearch,
+          projectName: createProjectName,
+          estimatorName: createEstimatorName,
+          estimatorInitials: createEstimatorInitials,
+          scope: createScope,
+          clarifications: createClarifications,
+          notes: createNotes,
+          attnFirstName: createAttnFirstName,
+          attnLastName: createAttnName,
+          attnPhone: createAttnPhone,
+          address: createAddress,
+          paymentTerms: createPaymentTerms,
+          validityDays: createValidityDays,
+          quoteNumber: createQuoteNumber,
+          lineItems: createLineItems,
+        }));
+      } catch { /* storage full — ignore */ }
+    }, 800);
+    return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); };
+  }, [
+    view, editingQuoteId,
+    createCustomerId, createCustomerSearch, createSiteId, createSiteSearch,
+    createProjectName, createEstimatorName, createEstimatorInitials,
+    createScope, createClarifications, createNotes,
+    createAttnFirstName, createAttnName, createAttnPhone, createAddress,
+    createPaymentTerms, createValidityDays, createQuoteNumber, createLineItems,
+  ]);
+
   const openEditForm = useCallback((d: QuoteDetail) => {
     setEditingQuoteId(d.quote_id);
     setDetailId(null);
@@ -1370,6 +1465,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     });
 
     setCreating(false);
+    clearDraft();
     resetCreateForm();
     void loadQuotes(statusFilter, search);
     void openDetail(row.quote_id);
@@ -3610,6 +3706,49 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         </div>
 
         <div className="eq-quotes__detail-body">
+          {/* Draft restore banner — visible on create only when a saved draft exists */}
+          {!isEditMode && showDraftBanner && (() => {
+            let draftTime = "";
+            try {
+              const raw = localStorage.getItem(DRAFT_KEY);
+              if (raw) {
+                const savedAt = (JSON.parse(raw) as { savedAt?: string }).savedAt;
+                if (savedAt) {
+                  const d = new Date(savedAt);
+                  draftTime = d.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+                }
+              }
+            } catch { /* ignore */ }
+            return (
+              <div style={{
+                marginBottom: 14, padding: "10px 16px",
+                background: "#EAF5FB", border: "1px solid #b3d9ee",
+                borderRadius: 8, display: "flex", alignItems: "center",
+                gap: 12, fontSize: 13,
+              }}>
+                <span style={{ flex: 1 }}>
+                  You have an unsaved draft{draftTime ? ` from ${draftTime}` : ""}. Restore it?
+                </span>
+                <button
+                  type="button"
+                  className="eq-quotes__btn eq-quotes__btn--primary"
+                  style={{ padding: "5px 14px", fontSize: 13 }}
+                  onClick={restoreDraft}
+                >
+                  Restore
+                </button>
+                <button
+                  type="button"
+                  className="eq-quotes__btn"
+                  style={{ padding: "5px 14px", fontSize: 13 }}
+                  onClick={clearDraft}
+                >
+                  Discard
+                </button>
+              </div>
+            );
+          })()}
+
           {/* PDF import — visible on create only (not edit) */}
           {!isEditMode && (
             <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
