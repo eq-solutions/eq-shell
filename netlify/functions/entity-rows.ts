@@ -36,7 +36,7 @@ const FIELD_ENTITIES = new Set<string>([
   'prestart', 'toolbox_talk', 'licence',
 ]);
 
-const MAX_LIMIT = 200;
+const MAX_LIMIT = 1000;
 const DEFAULT_LIMIT = 50;
 
 function json(status: number, body: unknown): Response {

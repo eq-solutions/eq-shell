@@ -1,5 +1,5 @@
-// AdminAuditPage — visibility into intake events + token mints.
-// Two tabs. Click an intake to drill into per-row audit.
+// AdminAuditPage — login activity and intake events.
+// Two tabs. Click an intake to drill into per-row audit or roll it back.
 
 import { useEffect, useState } from 'react';
 import { Button } from '@eq-solutions/ui';
@@ -24,18 +24,6 @@ interface IntakeEvent {
   rows_rejected: number;
   started_at: string;
   completed_at: string | null;
-}
-
-interface MintAudit {
-  audit_id: string;
-  user_id: string | null;
-  token_type: string;
-  jti: string | null;
-  source_app: string | null;
-  source_ip: string | null;
-  user_agent: string | null;
-  exp_at: string | null;
-  minted_at: string;
 }
 
 interface AuthEvent {
@@ -86,10 +74,9 @@ function eventPill(event: string): string {
 }
 
 function AdminAuditInner() {
-  const [tab, setTab] = useState<'auth' | 'intakes' | 'mints'>('auth');
+  const [tab, setTab] = useState<'auth' | 'intakes'>('auth');
   const [authEvents, setAuthEvents] = useState<AuthEvent[] | null>(null);
   const [intakes, setIntakes] = useState<IntakeEvent[] | null>(null);
-  const [mints, setMints] = useState<MintAudit[] | null>(null);
   const [drilldown, setDrilldown] = useState<{
     intake: IntakeEvent;
     rows: IntakeRow[] | null;
@@ -103,17 +90,14 @@ function AdminAuditInner() {
     setErr(null);
     try {
       const sb = await createSupabaseClient();
-      const [aRes, iRes, mRes] = await Promise.all([
+      const [aRes, iRes] = await Promise.all([
         sb.rpc('eq_recent_auth_events', { p_limit: 100 }),
         sb.rpc('eq_recent_intake_events', { p_limit: 50 }),
-        sb.rpc('eq_recent_mint_audit', { p_limit: 50 }),
       ]);
       if (aRes.error) throw new Error(aRes.error.message);
       if (iRes.error) throw new Error(iRes.error.message);
-      if (mRes.error) throw new Error(mRes.error.message);
       setAuthEvents(aRes.data as AuthEvent[]);
       setIntakes(iRes.data as IntakeEvent[]);
-      setMints(mRes.data as MintAudit[]);
     } catch (e) {
       setErr(friendlyError(e, "We couldn't load the activity log. Please try refreshing."));
     } finally {
@@ -196,13 +180,6 @@ function AdminAuditInner() {
             onClick={() => setTab('intakes')}
           >
             Imports {intakes && `(${intakes.length})`}
-          </button>
-          <button
-            type="button"
-            className={`eq-tab ${tab === 'mints' ? 'eq-tab--active' : ''}`}
-            onClick={() => setTab('mints')}
-          >
-            Sign-in tokens {mints && `(${mints.length})`}
           </button>
         </div>
 
@@ -296,53 +273,6 @@ function AdminAuditInner() {
                           View
                         </Button>
                       </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {tab === 'mints' && (
-          <div className="eq-table-wrap">
-            <table className="eq-table">
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Source app</th>
-                  <th>User</th>
-                  <th>IP</th>
-                  <th>Minted</th>
-                  <th>Expires</th>
-                  <th>JTI</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading && !mints ? (
-                  <tr>
-                    <td colSpan={7}>
-                      <Skeleton variant="row" count={5} />
-                    </td>
-                  </tr>
-                ) : !mints || mints.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: 28 }}>
-                      No mint events yet.
-                    </td>
-                  </tr>
-                ) : (
-                  mints.map((m) => (
-                    <tr key={m.audit_id}>
-                      <td>
-                        <span className="eq-pill eq-pill--info">{m.token_type}</span>
-                      </td>
-                      <td>{m.source_app ?? '—'}</td>
-                      <td className="eq-table__mute">{m.user_id?.slice(0, 8) ?? '—'}…</td>
-                      <td className="eq-table__mono">{m.source_ip ?? '—'}</td>
-                      <td className="eq-table__mute">{relTime(m.minted_at)}</td>
-                      <td className="eq-table__mute">{m.exp_at ? relTime(m.exp_at) : '—'}</td>
-                      <td className="eq-table__mono">{m.jti?.slice(0, 8) ?? '—'}…</td>
                     </tr>
                   ))
                 )}

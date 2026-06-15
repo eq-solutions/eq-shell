@@ -2,7 +2,7 @@ import { useParams, useLocation } from 'react-router-dom';
 import {
   Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings,
   Download, Users2, ClipboardList, Gauge, BarChart2, ShieldCheck, Database,
-  ListChecks, BadgeCheck, ToggleLeft, Network, ScrollText,
+  BadgeCheck, Network, ScrollText,
 } from 'lucide-react';
 import { AppSidebar, type AppSidebarSection } from '@eq-solutions/ui';
 import { useSession } from '../session';
@@ -140,11 +140,10 @@ export function HubSidebar({ apps, records }: Props) {
     const adminItems = [];
     if (canAdmin) {
       adminItems.push(
-        { key: 'users',          label: 'Users',           href: `/${tenantSlug}/admin/users`,          icon: <Users2 size={16} aria-hidden="true" />,       isActive: active(`/${tenantSlug}/admin/users`) },
+        { key: 'admin-hub',      label: 'Overview',        href: `/${tenantSlug}/admin`,                icon: <Gauge size={16} aria-hidden="true" />,         isActive: location.pathname === `/${tenantSlug}/admin` },
+        { key: 'users',          label: 'Users',           href: `/${tenantSlug}/admin/users`,          icon: <Users2 size={16} aria-hidden="true" />,        isActive: active(`/${tenantSlug}/admin/users`) },
         { key: 'audit',          label: 'Audit log',       href: `/${tenantSlug}/admin/audit`,          icon: <ClipboardList size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/admin/audit`) },
-        { key: 'migration',      label: 'Migration',       href: `/${tenantSlug}/admin/migration`,      icon: <ListChecks size={16} aria-hidden="true" />,    isActive: active(`/${tenantSlug}/admin/migration`) },
         { key: 'access-control', label: 'Security groups', href: `/${tenantSlug}/admin/access-control`, icon: <ShieldCheck size={16} aria-hidden="true" />,   isActive: active(`/${tenantSlug}/admin/access-control`) },
-        { key: 'data-activation', label: 'App activation',   href: `/${tenantSlug}/admin/data-activation`, icon: <ToggleLeft size={16} aria-hidden="true" />,    isActive: active(`/${tenantSlug}/admin/data-activation`) },
         { key: 'settings',       label: 'Settings',        href: `/${tenantSlug}/admin/settings`,       icon: <Settings size={16} aria-hidden="true" />,      isActive: active(`/${tenantSlug}/admin/settings`) },
       );
     }

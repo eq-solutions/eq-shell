@@ -36,6 +36,7 @@ interface SiteItem {
 
 interface ContactItem {
   id: string;
+  name: string;
   first_name: string | null;
   last_name: string | null;
   position: string | null;
@@ -91,7 +92,7 @@ async function crmFetch(params: Record<string, string>): Promise<Response> {
   return fetch(`/.netlify/functions/crm-customers?${qs}`, { credentials: 'include' });
 }
 async function entityFetch(entity: string, extra: Record<string, string> = {}): Promise<EntityResp> {
-  const qs = new URLSearchParams({ entity, page: '1', per_page: '500', ...extra });
+  const qs = new URLSearchParams({ entity, limit: '1000', offset: '0', ...extra });
   const res = await fetch(`/.netlify/functions/entity-rows?${qs}`, { credentials: 'include' });
   return res.json() as Promise<EntityResp>;
 }
@@ -108,10 +109,13 @@ function mapSite(row: Record<string, unknown>): SiteItem {
   };
 }
 function mapContact(row: Record<string, unknown>): ContactItem {
+  const first = (row['first_name'] as string | null) ?? null;
+  const last  = (row['last_name']  as string | null) ?? null;
   return {
     id:          String(row['contact_id'] ?? row['id'] ?? ''),
-    first_name:  (row['first_name']   as string | null) ?? null,
-    last_name:   (row['last_name']    as string | null) ?? null,
+    name:        [first, last].filter(Boolean).join(' ') || 'Unnamed',
+    first_name:  first,
+    last_name:   last,
     position:    (row['position']     as string | null) ?? null,
     email:       (row['email']        as string | null) ?? null,
     phone:       ((row['mobile_phone'] ?? row['work_phone']) as string | null) ?? null,
@@ -123,7 +127,7 @@ function mapContact(row: Record<string, unknown>): ContactItem {
 
 const CUSTOMER_COLS: TableColumn<CustomerItem>[] = [
   {
-    key: 'company',
+    key: 'name',
     header: 'Company',
     sortAccessor: (c) => c.name,
     render: (c) => (
@@ -148,7 +152,7 @@ const CUSTOMER_COLS: TableColumn<CustomerItem>[] = [
     render: (c) => <span style={{ color: '#64748B' }}>{c.state ?? '—'}</span>,
   },
   {
-    key: 'sites',
+    key: 'site_count',
     header: 'Sites',
     align: 'center',
     sortAccessor: (c) => c.site_count,
@@ -158,7 +162,7 @@ const CUSTOMER_COLS: TableColumn<CustomerItem>[] = [
         : <span style={{ color: '#CBD5E1' }}>—</span>,
   },
   {
-    key: 'contacts',
+    key: 'contact_count',
     header: 'Contacts',
     align: 'center',
     sortAccessor: (c) => c.contact_count,
