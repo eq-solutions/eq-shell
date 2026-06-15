@@ -30,6 +30,34 @@
 BEGIN;
 
 -- ──────────────────────────────────────────────────────────────────────
+-- Reconcile a pre-existing NON-canonical contract_scopes (forward-fix)
+-- ──────────────────────────────────────────────────────────────────────
+-- ehow's 2026-06-08 force-push left an app-native app_data.contract_scopes
+-- (`id` PK, no scope_id, ~150 seed/test rows) that is incompatible with this
+-- canonical shape and blocked the first apply (the index hit a missing
+-- external_id). Royce-authorised 2026-06-15 to drop the seed/test rows.
+-- Guarded on the ABSENCE of `scope_id`, so a correctly-shaped canonical table
+-- (e.g. a tenant where this migration already created it) is LEFT INTACT —
+-- a strict no-op there. CASCADE clears only the 4 FK constraints from the
+-- sibling force-pushed tables (contract_scopes_history, contract_variations,
+-- scope_coverage_gaps, pm_calendar); those tables and their rows survive.
+DO $$
+BEGIN
+  IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'app_data' AND table_name = 'contract_scopes'
+     )
+     AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'app_data' AND table_name = 'contract_scopes'
+          AND column_name = 'scope_id'
+     )
+  THEN
+    DROP TABLE app_data.contract_scopes CASCADE;
+  END IF;
+END $$;
+
+-- ──────────────────────────────────────────────────────────────────────
 -- app_data.contract_scopes
 -- ──────────────────────────────────────────────────────────────────────
 
@@ -120,48 +148,13 @@ CREATE TRIGGER contract_scopes_touch_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION app_data.touch_updated_at();
 
--- ──────────────────────────────────────────────────────────────────────
--- Read bridge for EQ Service (security_invoker → base-table RLS applies)
--- ──────────────────────────────────────────────────────────────────────
-
-CREATE OR REPLACE VIEW app_data.service_contract_scopes AS
-  SELECT
-    scope_id AS id,
-    scope_id,
-    tenant_id,
-    customer_id,
-    service_contract_id,
-    site_id,
-    asset_id,
-    financial_year,
-    scope_item,
-    is_included,
-    billing_basis,
-    lifecycle_status,
-    jp_code,
-    notes,
-    asset_qty,
-    intervals_text,
-    cycle_costs,
-    year_totals,
-    due_years,
-    labour_hours_per_asset,
-    unit_rate_per_asset,
-    has_bundled_scope,
-    commercial_gap,
-    source_workbook,
-    source_sheet,
-    source_row,
-    source_import_id,
-    active,
-    imported_at,
-    imported_from,
-    created_at,
-    updated_at
-  FROM app_data.contract_scopes;
-
-ALTER VIEW app_data.service_contract_scopes SET (security_invoker = on);
-GRANT SELECT ON app_data.service_contract_scopes TO authenticated;
+-- NOTE: the EQ Service read-bridge is NOT created here. EQ Service reads the
+-- `service` schema (its client pins db.schema='service'), so the bridge must be
+-- `service.contract_scopes` — applied to the SKS tenant's `service` schema as
+-- part of the cutover-shim layer (outside the One Pipe), not an app_data view.
+-- An earlier app_data.service_contract_scopes view (security_invoker, granted to
+-- authenticated) tripped the anon-grant invariant (granted view without RLS) and
+-- was the wrong schema anyway; migration 0124 drops it.
 
 -- ──────────────────────────────────────────────────────────────────────
 -- Reconcile: app_data.assets was missing the authenticated SELECT grant that
