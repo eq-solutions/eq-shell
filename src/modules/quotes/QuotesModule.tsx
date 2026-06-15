@@ -131,6 +131,36 @@ interface ContactRow {
   is_default_quote_contact: boolean;
 }
 
+interface EstimatorRow {
+  estimator_id: string;
+  name: string;
+  initials: string | null;
+  sort_order: number;
+}
+
+interface ParsedQuotePdf {
+  customer_name?: string | null;
+  site_name?: string | null;
+  project_name?: string | null;
+  estimator_name?: string | null;
+  estimator_initials?: string | null;
+  scope?: string | null;
+  clarifications?: string | null;
+  attn_first_name?: string | null;
+  attn_last_name?: string | null;
+  attn_phone?: string | null;
+  address?: string | null;
+  payment_terms?: string | null;
+  line_items?: Array<{
+    description?: string;
+    qty?: number;
+    unit?: string;
+    rate?: number;
+    cost?: number;
+    category?: string;
+  }> | null;
+}
+
 interface ClientGroup {
   group_id: string;
   group_name: string;
@@ -657,8 +687,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [presets, setPresets] = useState<RatePreset[]>([]);
   const [presetsLoading, setPresetsLoading] = useState(false);
   const [createCustomerId, setCreateCustomerId] = useState("");
+  const [createCustomerSearch, setCreateCustomerSearch] = useState("");
   const [createSiteId, setCreateSiteId] = useState("");
+  const [createSiteSearch, setCreateSiteSearch] = useState("");
   const [createContacts, setCreateContacts] = useState<ContactRow[]>([]);
+  const [siteContactsForForm, setSiteContactsForForm] = useState<ContactRow[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const [estimators, setEstimators] = useState<EstimatorRow[]>([]);
+  const [pdfParsing, setPdfParsing] = useState(false);
+  const [pdfParseErr, setPdfParseErr] = useState<string | null>(null);
   const [createProjectName, setCreateProjectName] = useState("");
   const [createEstimatorName, setCreateEstimatorName] = useState("");
   const [createEstimatorInitials, setCreateEstimatorInitials] = useState("");
@@ -908,6 +945,18 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     if (!error) setTemplates((data as QuoteTemplate[]) ?? []);
   }, [supabase]);
 
+  const loadEstimators = useCallback(async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.rpc("eq_list_estimators");
+    if (!error) setEstimators((data as EstimatorRow[]) ?? []);
+  }, [supabase]);
+
+  const loadSiteContactsForForm = useCallback(async (siteId: string) => {
+    if (!supabase || !siteId) { setSiteContactsForForm([]); return; }
+    const { data, error } = await supabase.rpc("eq_list_contacts_for_site", { p_site_id: siteId });
+    if (!error) setSiteContactsForForm((data as ContactRow[]) ?? []);
+  }, [supabase]);
+
   const loadCalcProducts = useCallback(async () => {
     if (!supabase) return;
     const { data, error } = await supabase.rpc("eq_list_pricing_products");
@@ -973,6 +1022,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       void loadPresets();
       void loadTemplates();
       void loadCalcProducts();
+      void loadEstimators();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
@@ -1032,9 +1082,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   const resetCreateForm = () => {
     setCreateCustomerId("");
+    setCreateCustomerSearch("");
     setCreateSiteId("");
+    setCreateSiteSearch("");
     setSites([]);
     setCreateContacts([]);
+    setSiteContactsForForm([]);
+    setSelectedContactId(null);
+    setPdfParsing(false);
+    setPdfParseErr(null);
     setCreateProjectName("");
     const savedEstName = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-estimator-name") : null) ?? "";
     const savedEstInitials = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? "";
@@ -1062,7 +1118,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setEditingQuoteId(d.quote_id);
     setDetailId(null);
     setCreateCustomerId(d.customer_id);
+    setCreateCustomerSearch(d.customer_name ?? "");
     setCreateSiteId(d.site_id ?? "");
+    setCreateSiteSearch(d.site_name ? `${d.site_name}${d.site_code ? ` [${d.site_code}]` : ""}` : "");
+    setSiteContactsForForm([]);
+    setSelectedContactId(null);
     setCreateProjectName(d.project_name ?? "");
     setCreateEstimatorName(d.estimator_name ?? "");
     setCreateEstimatorInitials(d.estimator_initials ?? "");
@@ -1184,6 +1244,71 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       setScopeAiErr("Couldn't reach the AI service.");
     } finally {
       setDraftingScope(false);
+    }
+  };
+
+  const handlePdfImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setPdfParsing(true);
+    setPdfParseErr(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      const b64 = btoa(binary);
+      const res = await fetch("/.netlify/functions/quote-parse-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pdf_base64: b64 }),
+      });
+      const parsed = await res.json() as ParsedQuotePdf & { ok?: boolean; error?: string };
+      if (!res.ok || parsed.ok === false) {
+        setPdfParseErr(parsed.error === "ai_not_configured" ? "AI not configured on this server." : "Could not parse PDF — check the format.");
+        return;
+      }
+      if (parsed.customer_name) {
+        setCreateCustomerSearch(parsed.customer_name);
+        const match = customers.find((c) => c.company_name.toLowerCase() === parsed.customer_name!.toLowerCase());
+        if (match && match.customer_id !== createCustomerId) {
+          setCreateCustomerId(match.customer_id);
+          void loadSites(match.customer_id);
+          if (supabase) {
+            void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: match.customer_id }).then(({ data }) => {
+              setCreateContacts((data as ContactRow[]) ?? []);
+            });
+          }
+        }
+      }
+      if (parsed.site_name) setCreateSiteSearch(parsed.site_name);
+      if (parsed.project_name) setCreateProjectName(parsed.project_name);
+      if (parsed.estimator_name) setCreateEstimatorName(parsed.estimator_name);
+      if (parsed.estimator_initials) { const upper = parsed.estimator_initials.toUpperCase(); setCreateEstimatorInitials(upper); updateInitials(upper); }
+      if (parsed.scope) setCreateScope(parsed.scope);
+      if (parsed.clarifications) setCreateClarifications(parsed.clarifications);
+      if (parsed.attn_first_name) setCreateAttnFirstName(parsed.attn_first_name);
+      if (parsed.attn_last_name) setCreateAttnName(parsed.attn_last_name);
+      if (parsed.attn_phone) setCreateAttnPhone(parsed.attn_phone);
+      if (parsed.address) setCreateAddress(parsed.address);
+      if (parsed.payment_terms) setCreatePaymentTerms(parsed.payment_terms);
+      if (parsed.line_items?.length) {
+        setCreateLineItems(parsed.line_items.map((li) => ({
+          description: li.description ?? "",
+          qty: String(li.qty ?? 1),
+          unit: li.unit ?? "",
+          cost: li.cost != null ? String(li.cost) : "",
+          markup: "",
+          rate: li.rate != null ? String(li.rate) : "",
+          category: li.category ?? "labour",
+        })));
+      }
+    } catch {
+      setPdfParseErr("PDF parse failed — try again.");
+    } finally {
+      setPdfParsing(false);
     }
   };
 
@@ -3485,6 +3610,35 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         </div>
 
         <div className="eq-quotes__detail-body">
+          {/* PDF import — visible on create only (not edit) */}
+          {!isEditMode && (
+            <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
+              <label
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "6px 14px", borderRadius: 6, fontSize: 13,
+                  border: "1px solid var(--eq-border, #ddd)", background: "#fff",
+                  cursor: pdfParsing ? "default" : "pointer",
+                  color: pdfParsing ? "var(--eq-muted)" : "var(--eq-ink)",
+                  opacity: pdfParsing ? 0.7 : 1,
+                }}
+                title="Upload a PDF quote to auto-fill the form"
+              >
+                {pdfParsing ? "⏳ Parsing PDF…" : "⬆ Import from PDF"}
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  style={{ display: "none" }}
+                  disabled={pdfParsing}
+                  onChange={(e) => { void handlePdfImport(e); }}
+                />
+              </label>
+              {pdfParseErr && (
+                <span className="eq-quotes__inline-err">{pdfParseErr}</span>
+              )}
+            </div>
+          )}
+
           {/* Quote details */}
           <div className="eq-quotes__detail-card">
             <h3 className="eq-quotes__section-title">Quote Details</h3>
@@ -3513,38 +3667,44 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 {customersLoading ? (
                   <span className="eq-quotes__muted" style={{ fontSize: 14 }}>Loading…</span>
                 ) : (
-                  <select
-                    className="eq-quotes__select"
-                    style={{ maxWidth: 440 }}
-                    value={createCustomerId}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      setCreateCustomerId(id);
-                      setCreateSiteId("");
-                      void loadSites(id);
-                      if (id && supabase) {
-                        void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: id }).then(({ data }) => {
-                          const rows = (data as ContactRow[]) ?? [];
-                          setCreateContacts(rows);
-                          const def = rows.find((c) => c.is_default_quote_contact) ?? rows[0];
-                          if (def && !createAttnFirstName && !createAttnName) {
-                            setCreateAttnFirstName(def.first_name ?? "");
-                            setCreateAttnName(def.last_name ?? "");
-                            setCreateAttnPhone(def.mobile_phone ?? def.work_phone ?? "");
+                  <>
+                    <datalist id="eq-form-customers">
+                      {customers.map((c) => <option key={c.customer_id} value={c.company_name} />)}
+                    </datalist>
+                    <input
+                      className="eq-quotes__input"
+                      style={{ maxWidth: 440 }}
+                      list="eq-form-customers"
+                      placeholder="Type to search customers…"
+                      value={createCustomerSearch}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCreateCustomerSearch(val);
+                        const match = customers.find((c) => c.company_name === val);
+                        if (match) {
+                          if (match.customer_id !== createCustomerId) {
+                            setCreateCustomerId(match.customer_id);
+                            setCreateSiteId("");
+                            setCreateSiteSearch("");
+                            setSiteContactsForForm([]);
+                            void loadSites(match.customer_id);
+                            if (supabase) {
+                              void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: match.customer_id }).then(({ data }) => {
+                                setCreateContacts((data as ContactRow[]) ?? []);
+                              });
+                            }
                           }
-                        });
-                      } else {
-                        setCreateContacts([]);
-                      }
-                    }}
-                  >
-                    <option value="">Select a customer…</option>
-                    {customers.map((c) => (
-                      <option key={c.customer_id} value={c.customer_id}>
-                        {c.company_name}
-                      </option>
-                    ))}
-                  </select>
+                        } else {
+                          setCreateCustomerId("");
+                          setCreateSiteId("");
+                          setCreateSiteSearch("");
+                          setSites([]);
+                          setCreateContacts([]);
+                          setSiteContactsForForm([]);
+                        }
+                      }}
+                    />
+                  </>
                 )}
               </div>
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
@@ -3552,22 +3712,33 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 {sitesLoading ? (
                   <span className="eq-quotes__muted" style={{ fontSize: 14 }}>Loading…</span>
                 ) : (
-                  <select
-                    className="eq-quotes__select"
-                    style={{ maxWidth: 440 }}
-                    value={createSiteId}
-                    onChange={(e) => setCreateSiteId(e.target.value)}
-                    disabled={!createCustomerId}
-                  >
-                    <option value="">
-                      {createCustomerId ? (sites.length === 0 ? "No sites for this customer" : "Select a site (optional)…") : "Select a customer first"}
-                    </option>
-                    {sites.map((s) => (
-                      <option key={s.site_id} value={s.site_id}>
-                        {s.name}{s.code ? ` [${s.code}]` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <datalist id="eq-form-sites">
+                      {sites.map((s) => <option key={s.site_id} value={`${s.name}${s.code ? ` [${s.code}]` : ""}`} />)}
+                    </datalist>
+                    <input
+                      className="eq-quotes__input"
+                      style={{ maxWidth: 440 }}
+                      list="eq-form-sites"
+                      placeholder={createCustomerId ? (sites.length === 0 ? "No sites — type to set" : "Type to search sites…") : "Select a customer first"}
+                      disabled={!createCustomerId}
+                      value={createSiteSearch}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCreateSiteSearch(val);
+                        const match = sites.find((s) => `${s.name}${s.code ? ` [${s.code}]` : ""}` === val || s.name === val);
+                        if (match) {
+                          if (match.site_id !== createSiteId) {
+                            setCreateSiteId(match.site_id);
+                            void loadSiteContactsForForm(match.site_id);
+                          }
+                        } else {
+                          setCreateSiteId("");
+                          setSiteContactsForForm([]);
+                        }
+                      }}
+                    />
+                  </>
                 )}
               </div>
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
@@ -3582,12 +3753,23 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               </div>
               <div className="eq-quotes__info-item">
                 <span className="eq-quotes__info-label">Estimator Name</span>
+                <datalist id="eq-form-estimators">
+                  {estimators.map((est) => <option key={est.estimator_id} value={est.name} />)}
+                </datalist>
                 <input
                   className="eq-quotes__input"
+                  list="eq-form-estimators"
                   value={createEstimatorName}
                   onChange={(e) => {
-                    setCreateEstimatorName(e.target.value);
-                    try { localStorage.setItem("eq-quotes-estimator-name", e.target.value); } catch { /* ignore */ }
+                    const val = e.target.value;
+                    setCreateEstimatorName(val);
+                    try { localStorage.setItem("eq-quotes-estimator-name", val); } catch { /* ignore */ }
+                    const match = estimators.find((est) => est.name === val);
+                    if (match?.initials) {
+                      const upper = match.initials.toUpperCase();
+                      setCreateEstimatorInitials(upper);
+                      updateInitials(upper);
+                    }
                   }}
                   placeholder="e.g. Royce Milmlow"
                 />
@@ -3702,31 +3884,55 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               }}>
                 Contact &amp; Address
               </span>
-              {createContacts.length > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  <span className="eq-quotes__info-label">Fill from contact</span>
-                  <select
-                    className="eq-quotes__select"
-                    style={{ maxWidth: 300 }}
-                    defaultValue=""
-                    onChange={(e) => {
-                      const contact = createContacts.find((c) => c.contact_id === e.target.value);
-                      if (!contact) return;
-                      setCreateAttnFirstName(contact.first_name ?? "");
-                      setCreateAttnName(contact.last_name ?? "");
-                      setCreateAttnPhone(contact.mobile_phone ?? contact.work_phone ?? "");
-                    }}
-                  >
-                    <option value="">Pick a contact…</option>
-                    {createContacts.map((c) => (
-                      <option key={c.contact_id} value={c.contact_id}>
-                        {[c.first_name, c.last_name].filter(Boolean).join(" ") || c.email || c.contact_id}
-                        {c.is_default_quote_contact ? " ★" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              {(() => {
+                const siteIds = new Set(siteContactsForForm.map((c) => c.contact_id));
+                const allContacts = [
+                  ...siteContactsForForm,
+                  ...createContacts.filter((c) => !siteIds.has(c.contact_id)),
+                ];
+                if (allContacts.length === 0) return null;
+                return (
+                  <div style={{ marginBottom: 12 }}>
+                    <span className="eq-quotes__info-label" style={{ marginBottom: 6, display: "block" }}>
+                      {createSiteId ? "Site & Customer Contacts" : "Customer Contacts"}
+                    </span>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                      {allContacts.map((ct) => {
+                        const name = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unknown";
+                        const isSelected = selectedContactId === ct.contact_id;
+                        const isSiteContact = siteIds.has(ct.contact_id);
+                        return (
+                          <button
+                            key={ct.contact_id}
+                            type="button"
+                            style={{
+                              fontSize: "0.82rem",
+                              padding: "4px 12px",
+                              borderRadius: "20px",
+                              border: `1px solid ${isSelected ? "var(--eq-deep, #2986B4)" : "var(--eq-border, #ddd)"}`,
+                              background: isSelected ? "var(--eq-ice, #EAF5FB)" : "#fff",
+                              color: isSelected ? "var(--eq-ink, #1A1A2E)" : "var(--eq-muted, #666)",
+                              cursor: "pointer",
+                              fontWeight: isSelected ? 600 : undefined,
+                            }}
+                            onClick={() => {
+                              setSelectedContactId(ct.contact_id);
+                              setCreateAttnFirstName(ct.first_name ?? "");
+                              setCreateAttnName(ct.last_name ?? "");
+                              setCreateAttnPhone(ct.mobile_phone ?? ct.work_phone ?? "");
+                            }}
+                            title={isSiteContact ? "Site contact" : "Customer contact"}
+                          >
+                            {name}
+                            {isSiteContact && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>📍</span>}
+                            {ct.is_default_quote_contact && <span style={{ marginLeft: 4, color: "var(--eq-sky, #3DA8D8)" }}>★</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="eq-quotes__info-grid">
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">First Name</span>

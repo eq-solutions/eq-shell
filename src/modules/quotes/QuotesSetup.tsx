@@ -10,7 +10,7 @@ interface QuotesSetupProps {
   supabase: SupabaseClient | null;
 }
 
-type SetupTab = "config" | "materials" | "products" | "bands" | "templates" | "presets" | "history";
+type SetupTab = "config" | "materials" | "products" | "bands" | "templates" | "presets" | "estimators" | "history";
 
 const num = (s: string): number => {
   const n = parseFloat(s);
@@ -81,6 +81,14 @@ interface PresetDraft {
   active: boolean;
 }
 
+interface EstimatorDraft {
+  estimator_id: string | null;
+  name: string;
+  initials: string;
+  sort_order: number;
+  saving?: boolean;
+}
+
 // The quick-add preset category aligns with the four quote line-item sections.
 const PRESET_CATEGORIES = [
   { value: "labour", label: "Labour" },
@@ -103,6 +111,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
   const [bandsSaving, setBandsSaving] = useState(false);
   const [templates, setTemplates] = useState<TemplateDraft[]>([]);
   const [presets, setPresets] = useState<PresetDraft[]>([]);
+  const [estimatorDrafts, setEstimatorDrafts] = useState<EstimatorDraft[]>([]);
 
   interface AuditEntry {
     audit_id: string;
@@ -223,6 +232,19 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     })));
   }, [supabase]);
 
+  const loadEstimators = useCallback(async () => {
+    if (!supabase) return;
+    const { data, error: e } = await supabase.rpc("eq_list_estimators");
+    if (e) { setError(e.message); return; }
+    setError(null);
+    setEstimatorDrafts(((data as Record<string, unknown>[]) ?? []).map((r) => ({
+      estimator_id: String(r.estimator_id),
+      name: String(r.name ?? ""),
+      initials: r.initials ? String(r.initials) : "",
+      sort_order: Number(r.sort_order ?? 0),
+    })));
+  }, [supabase]);
+
   const loadHistory = useCallback(async () => {
     if (!supabase) return;
     setHistoryLoading(true);
@@ -252,8 +274,9 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     else if (tab === "bands") void loadBands();
     else if (tab === "templates") void loadTemplates();
     else if (tab === "presets") void loadPresets();
+    else if (tab === "estimators") void loadEstimators();
     else if (tab === "history") void loadHistory();
-  }, [tab, loadConfig, loadMaterials, loadProducts, loadBands, loadTemplates, loadPresets, loadHistory]);
+  }, [tab, loadConfig, loadMaterials, loadProducts, loadBands, loadTemplates, loadPresets, loadEstimators, loadHistory]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── Config ──────────────────────────────────────────────────────────────────
@@ -482,6 +505,7 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
     { key: "bands", label: "Volume bands" },
     { key: "templates", label: "Templates" },
     { key: "presets", label: "Quick-add presets" },
+    { key: "estimators", label: "Estimators" },
     { key: "history", label: "History" },
   ];
 
@@ -792,6 +816,104 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
           {templates.length === 0 && <p className="eq-quotes__muted">No templates yet.</p>}
           <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => addTemplate("scope")}>+ Add scope</button>{" "}
           <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => addTemplate("clarification")}>+ Add clarification</button>
+        </div>
+      )}
+
+      {/* Estimators */}
+      {tab === "estimators" && (
+        <div className="eq-quotes__detail-card">
+          <div className="eq-quotes__section-title">Estimators</div>
+          <p style={{ fontSize: 13, color: "var(--eq-muted)", marginBottom: 12 }}>
+            Staff who can appear as the estimator on a quote. Free-type is always allowed — this list just speeds up selection.
+          </p>
+          <table className="eq-quotes__table" style={{ width: "100%", maxWidth: 560 }}>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Initials</th>
+                <th>Order</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {estimatorDrafts.map((est, i) => (
+                <tr key={est.estimator_id ?? `new-${i}`}>
+                  <td>
+                    <input
+                      className="eq-quotes__input"
+                      value={est.name}
+                      onChange={(e) => setEstimatorDrafts((prev) => prev.map((r, j) => j === i ? { ...r, name: e.target.value } : r))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="eq-quotes__input eq-quotes__input--sm"
+                      maxLength={4}
+                      value={est.initials}
+                      onChange={(e) => setEstimatorDrafts((prev) => prev.map((r, j) => j === i ? { ...r, initials: e.target.value.toUpperCase() } : r))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="eq-quotes__input eq-quotes__input--sm"
+                      type="number"
+                      value={est.sort_order}
+                      onChange={(e) => setEstimatorDrafts((prev) => prev.map((r, j) => j === i ? { ...r, sort_order: parseInt(e.target.value, 10) || 0 } : r))}
+                      style={{ width: 56 }}
+                    />
+                  </td>
+                  <td style={{ display: "flex", gap: 6 }}>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--outline"
+                      disabled={est.saving || !est.name.trim()}
+                      onClick={async () => {
+                        if (!supabase) return;
+                        setEstimatorDrafts((prev) => prev.map((r, j) => j === i ? { ...r, saving: true } : r));
+                        const { error: e } = await supabase.rpc("eq_upsert_estimator", {
+                          p_estimator_id: est.estimator_id ?? null,
+                          p_name: est.name.trim(),
+                          p_initials: est.initials.trim() || null,
+                          p_sort_order: est.sort_order,
+                        });
+                        if (e) { setError(e.message); }
+                        await loadEstimators();
+                        flash("Saved.");
+                      }}
+                    >
+                      {est.saving ? "…" : "Save"}
+                    </button>
+                    {est.estimator_id && (
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        style={{ color: "var(--eq-err, #c0392b)" }}
+                        onClick={async () => {
+                          if (!supabase || !est.estimator_id) return;
+                          await supabase.rpc("eq_archive_estimator", { p_estimator_id: est.estimator_id });
+                          await loadEstimators();
+                          flash("Archived.");
+                        }}
+                      >
+                        Archive
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {estimatorDrafts.length === 0 && (
+                <tr><td colSpan={4}><span className="eq-quotes__muted">No estimators yet.</span></td></tr>
+              )}
+            </tbody>
+          </table>
+          <button
+            type="button"
+            className="eq-quotes__btn eq-quotes__btn--outline"
+            style={{ marginTop: 10 }}
+            onClick={() => setEstimatorDrafts((prev) => [...prev, { estimator_id: null, name: "", initials: "", sort_order: (prev.length + 1) * 10 }])}
+          >
+            + Add estimator
+          </button>
         </div>
       )}
 
