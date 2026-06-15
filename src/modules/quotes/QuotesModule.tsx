@@ -227,6 +227,19 @@ interface RemovalResult {
   line: CalcLine;
 }
 
+interface ParsedSubItem {
+  description: string;
+  qty: number;
+  unit: string;
+  unit_price: number;
+}
+
+interface PdfParseResult {
+  supplier_name?: string;
+  quote_ref?: string;
+  items: ParsedSubItem[];
+}
+
 interface QuotesModuleProps {
   supabase: SupabaseClient | null;
 }
@@ -691,6 +704,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkFupDate, setBulkFupDate] = useState("");
   const [bulkFupBusy, setBulkFupBusy] = useState(false);
+
+  // ── PDF import state ─────────────────────────────────────────────────────
+  const pdfFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [pdfParsing, setPdfParsing] = useState(false);
+  const [pdfParseErr, setPdfParseErr] = useState<string | null>(null);
+  const [pdfParseResult, setPdfParseResult] = useState<PdfParseResult | null>(null);
 
   // ── Import state ──────────────────────────────────────────────────────────
   const [csvText, setCsvText] = useState("");
@@ -1430,6 +1449,70 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setBulkFupDate("");
     setSelectedIds(new Set());
     void loadQuotes(statusFilter, search);
+  };
+
+  // ── PDF import ───────────────────────────────────────────────────────────
+
+  const handlePdfFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPdfParsing(true);
+    setPdfParseErr(null);
+    setPdfParseResult(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let b64 = '';
+      const CHUNK = 8192;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        b64 += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+      }
+      b64 = btoa(b64);
+      const res = await fetch('/.netlify/functions/quote-parse-subcontractor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ file_base64: b64, mime_type: file.type || 'application/pdf', file_name: file.name }),
+      });
+      const j = await res.json() as { ok: boolean; supplier_name?: string; quote_ref?: string; items?: ParsedSubItem[]; error?: string };
+      if (!res.ok || !j.ok) {
+        setPdfParseErr(
+          j.error === 'ai_not_configured' ? 'AI not configured on the server.'
+          : j.error === 'file_too_large' ? 'File too large (max 10 MB).'
+          : 'Could not read the PDF — try again.',
+        );
+        return;
+      }
+      if ((j.items ?? []).length === 0) {
+        setPdfParseErr('No priced line items found in this document.');
+        return;
+      }
+      setPdfParseResult({ supplier_name: j.supplier_name, quote_ref: j.quote_ref, items: j.items ?? [] });
+    } catch {
+      setPdfParseErr('Could not read the PDF — try again.');
+    } finally {
+      setPdfParsing(false);
+    }
+  };
+
+  const confirmPdfImport = () => {
+    if (!pdfParseResult) return;
+    const newItems: CreateLineItem[] = pdfParseResult.items.map((it) => ({
+      description: it.description,
+      qty: String(it.qty > 0 ? it.qty : 1),
+      unit: it.unit,
+      cost: it.unit_price > 0 ? it.unit_price.toFixed(2) : '',
+      markup: '',
+      rate: it.unit_price > 0 ? it.unit_price.toFixed(2) : '',
+      category: 'subcontractor',
+    }));
+    setCreateLineItems((prev) => {
+      const filtered = prev.filter((li) => li.category !== 'subcontractor' || li.description.trim());
+      return [...filtered, ...newItems];
+    });
+    setPdfParseResult(null);
+    setPdfParseErr(null);
   };
 
   // ── Pipeline actions ──────────────────────────────────────────────────────
@@ -3294,6 +3377,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       if (savedId) void openDetail(savedId);
     };
     return (
+      <>
       <div className="eq-quotes">
         <div className="eq-quotes__detail-header">
           <button
@@ -3645,7 +3729,40 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     return (
                       <React.Fragment key={sec.value}>
                         <tr className="eq-quotes__row--group-header">
-                          <td colSpan={8} className="eq-quotes__group-label">{sec.label}</td>
+                          <td colSpan={8} className="eq-quotes__group-label">
+                            <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              {sec.label}
+                              {sec.value === "subcontractor" && (
+                                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  {pdfParseErr && (
+                                    <span style={{ color: "var(--eq-err, #c0392b)", fontWeight: 400, textTransform: "none", letterSpacing: 0, fontSize: 11 }}>
+                                      {pdfParseErr}
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    disabled={pdfParsing}
+                                    onClick={() => pdfFileInputRef.current?.click()}
+                                    style={{
+                                      background: "none", border: "none", padding: 0,
+                                      color: "var(--eq-sky, #3DA8D8)", fontWeight: 600,
+                                      fontSize: 11, textTransform: "none", letterSpacing: 0,
+                                      cursor: pdfParsing ? "wait" : "pointer",
+                                    }}
+                                  >
+                                    {pdfParsing ? "Reading…" : "Import from PDF"}
+                                  </button>
+                                  <input
+                                    ref={pdfFileInputRef}
+                                    type="file"
+                                    accept=".pdf,image/jpeg,image/png"
+                                    style={{ display: "none" }}
+                                    onChange={(e) => void handlePdfFile(e)}
+                                  />
+                                </span>
+                              )}
+                            </span>
+                          </td>
                         </tr>
                         {secRows.map(({ li, i }) => renderLineRow(li, i))}
                         <tr>
@@ -3955,6 +4072,77 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           </div>
         </div>
       </div>
+
+      {/* PDF review modal */}
+      {pdfParseResult && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(26,26,46,0.5)",
+          zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+        }}>
+          <div style={{
+            background: "var(--eq-paper)", borderRadius: 12, width: "100%", maxWidth: 640,
+            maxHeight: "80vh", overflow: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 16,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+          }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--eq-ink)" }}>
+                Review supplier quote
+              </h3>
+              {(pdfParseResult.supplier_name || pdfParseResult.quote_ref) && (
+                <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--eq-muted)" }}>
+                  {[pdfParseResult.supplier_name, pdfParseResult.quote_ref && `Ref: ${pdfParseResult.quote_ref}`].filter(Boolean).join(" · ")}
+                </p>
+              )}
+            </div>
+            <div className="eq-quotes__table-wrap" style={{ maxHeight: 360, overflow: "auto" }}>
+              <table className="eq-quotes__table">
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th style={{ width: 60 }}>Qty</th>
+                    <th style={{ width: 56 }}>Unit</th>
+                    <th style={{ width: 100, textAlign: "right" }}>Unit price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pdfParseResult.items.map((it, i) => (
+                    <tr key={i} className="eq-quotes__row">
+                      <td>{it.description}</td>
+                      <td>{it.qty}</td>
+                      <td>{it.unit || <span className="eq-quotes__muted">—</span>}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {it.unit_price > 0
+                          ? (it.unit_price).toLocaleString("en-AU", { style: "currency", currency: "AUD" })
+                          : <span className="eq-quotes__muted">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--eq-muted)" }}>
+              {pdfParseResult.items.length} item{pdfParseResult.items.length !== 1 ? "s" : ""} will be added to the Subcontractors section. Cost = supplier price. Set your markup % on each line after importing.
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                onClick={() => setPdfParseResult(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--primary"
+                onClick={confirmPdfImport}
+              >
+                Import {pdfParseResult.items.length} item{pdfParseResult.items.length !== 1 ? "s" : ""}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
     );
   }
 
