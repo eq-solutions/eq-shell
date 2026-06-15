@@ -1025,7 +1025,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCreateAttnPhone("");
     setCreateAddress("");
     setCreateValidityDays("30");
-    setCreateQuoteNumber("");
+    setCreateQuoteNumber("SKS-");
     setCreateClarifications("");
     setCreateLineItems([{ description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "labour" }]);
     setCreateError(null);
@@ -3281,6 +3281,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   if (view === "create" || view === "edit") {
     const isEditMode = view === "edit";
+    // Quote number is required. New quotes must carry the SKS- prefix; existing
+    // quotes (some legacy EQ-…) only need to be non-empty when edited.
+    const trimmedQuoteNo = createQuoteNumber.trim();
+    const quoteNumberValid = isEditMode
+      ? trimmedQuoteNo.length > 0
+      : trimmedQuoteNo.startsWith("SKS-") && trimmedQuoteNo.length > 4;
     const handleCancelCreateEdit = () => {
       const savedId = editingQuoteId;
       resetCreateForm();
@@ -3309,18 +3315,23 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           <div className="eq-quotes__detail-card">
             <h3 className="eq-quotes__section-title">Quote Details</h3>
             <div className="eq-quotes__info-grid">
-              {isEditMode && (
-                <div className="eq-quotes__info-item">
-                  <span className="eq-quotes__info-label">Quote Number</span>
-                  <input
-                    className="eq-quotes__input eq-quotes__td--mono"
-                    style={{ maxWidth: 220 }}
-                    value={createQuoteNumber}
-                    onChange={(e) => setCreateQuoteNumber(e.target.value)}
-                    placeholder="EQ-YYMMDD-NNNN"
-                  />
-                </div>
-              )}
+              <div className="eq-quotes__info-item">
+                <span className="eq-quotes__info-label">
+                  Quote Number <span style={{ color: "var(--eq-err)", fontWeight: 700 }}>*</span>
+                </span>
+                <input
+                  className="eq-quotes__input eq-quotes__td--mono"
+                  style={{ maxWidth: 220 }}
+                  value={createQuoteNumber}
+                  onChange={(e) => setCreateQuoteNumber(e.target.value)}
+                  placeholder="SKS-16951"
+                />
+                {!quoteNumberValid && (
+                  <span className="eq-quotes__inline-err" style={{ fontSize: 11 }}>
+                    {isEditMode ? "Quote number is required." : "Required — must start with “SKS-”."}
+                  </span>
+                )}
+              </div>
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
                 <span className="eq-quotes__info-label">
                   Customer <span style={{ color: "var(--eq-err)", fontWeight: 700 }}>*</span>
@@ -3926,7 +3937,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               type="button"
               className="eq-quotes__btn eq-quotes__btn--primary"
               style={{ padding: "9px 24px", fontSize: 14 }}
-              disabled={creating || !createCustomerId || createLineItems.filter((li) => li.description.trim()).length === 0}
+              disabled={creating || !createCustomerId || !quoteNumberValid || createLineItems.filter((li) => li.description.trim()).length === 0}
               onClick={() => isEditMode ? void handleEditQuote() : void handleCreateQuote()}
             >
               {creating
