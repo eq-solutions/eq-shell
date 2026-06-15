@@ -51,6 +51,7 @@ interface JobCreationLine {
 
 interface JobCreationData {
   quote_number: string;
+  po_number: string | null;
   project_name: string | null;
   customer_name: string | null;
   customer_abn: string | null;
@@ -113,13 +114,21 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   jc.getCell('B8').value = d.estimator_name ?? 'Royce Milmlow';
   // B11: job value ex GST — stored as a number so Excel's currency format applies
   jc.getCell('B11').value = d.subtotal_cents / 100;
+  // B12: PO number if known
+  jc.getCell('B12').value = d.po_number ?? '';
+  // B14: SKS quote number
+  jc.getCell('B14').value = d.quote_number ?? '';
   // B17/B18: clear hyperlink + set text
   const b17 = jc.getCell('B17');
   b17.value = d.customer_email ?? '';
   b17.style = { ...b17.style };     // detach shared style reference
   // B18: ABN
   jc.getCell('B18').value = d.customer_abn ?? '';
-  // B29/B30: market_vertical / end_client — not in EQ Ops yet, leave blank
+  // B27/B28/B29: Client ID / Market Segment / Market Vertical — add dropdowns from Extention Column Tabs
+  const extSheet = "'Extention Column Tabs'";
+  jc.getCell('B27').dataValidation = { type: 'list', allowBlank: true, formulae: [`${extSheet}!$A$2:$A$7`] };
+  jc.getCell('B28').dataValidation = { type: 'list', allowBlank: true, formulae: [`${extSheet}!$B$2:$B$7`] };
+  jc.getCell('B29').dataValidation = { type: 'list', allowBlank: true, formulae: [`${extSheet}!$C$2:$C$20`] };
 
   // ── Budget sheet ─────────────────────────────────────────────────────────
   const bud = wb.getWorksheet('Budget');
@@ -140,14 +149,20 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     else if (cat === 'subcontractor')                subconCost   += costCents;
   }
 
-  // I2 (REV formula) is left intact — it links to Job Creation!B11.
-  // We write only the cost input cells + quantities.
-  bud.getCell('I3').value  = materialCost / 100;   // MAT unit cost
+  // Write cost buckets and revenue total directly — ExcelJS doesn't recalculate
+  // formulas on write, so we supply all values explicitly.
+  bud.getCell('I2').value  = d.subtotal_cents / 100;  // REV cost (= job value ex GST)
+  bud.getCell('J2').value  = 1;
+  bud.getCell('K2').value  = d.subtotal_cents / 100;  // FC Retail total
+  bud.getCell('I3').value  = materialCost / 100;      // MAT unit cost
   bud.getCell('J3').value  = 1;
-  bud.getCell('I4').value  = labourCost / 100;     // SLAB unit cost
+  bud.getCell('K3').value  = materialCost / 100;
+  bud.getCell('I4').value  = labourCost / 100;        // SLAB unit cost
   bud.getCell('J4').value  = 1;
-  bud.getCell('I11').value = subconCost / 100;     // SUBC unit cost
+  bud.getCell('K4').value  = labourCost / 100;
+  bud.getCell('I11').value = subconCost / 100;        // SUBC unit cost
   bud.getCell('J11').value = 1;
+  bud.getCell('K11').value = subconCost / 100;
 
   // ── Serialise and return ──────────────────────────────────────────────────
   const outBuffer = await wb.xlsx.writeBuffer();

@@ -4387,61 +4387,31 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 </tbody>
               </table>
             </div>
-            {/* Rate preset chips */}
-            {!presetsLoading && presets.length > 0 && (() => {
-              const categories = Array.from(new Set(presets.map((p) => p.category ?? "")));
-              return (
-                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--eq-border)" }}>
-                  <span style={{
-                    display: "block", marginBottom: 8, fontSize: 11,
-                    textTransform: "uppercase", letterSpacing: "0.06em",
-                    color: "var(--eq-muted)", fontWeight: 600,
-                  }}>
-                    Quick Add
-                  </span>
-                  {categories.map((cat) => (
-                    <div key={cat} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                      {cat && (
-                        <span style={{
-                          fontSize: 11, color: "var(--eq-muted)", minWidth: 64,
-                          textTransform: "uppercase", letterSpacing: "0.04em",
-                        }}>
-                          {cat}
-                        </span>
-                      )}
+            {/* Add from preset dropdown */}
+            {!presetsLoading && presets.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <select
+                  className="eq-quotes__select"
+                  style={{ fontSize: 13 }}
+                  value=""
+                  onChange={(e) => {
+                    const preset = presets.find((p) => p.preset_id === e.target.value);
+                    if (preset) applyPreset(preset);
+                  }}
+                >
+                  <option value="">Add from setup…</option>
+                  {Array.from(new Set(presets.map((p) => p.category ?? ""))).map((cat) => (
+                    <optgroup key={cat} label={cat || "General"}>
                       {presets.filter((p) => (p.category ?? "") === cat).map((p) => (
-                        <button
-                          key={p.preset_id}
-                          type="button"
-                          onClick={() => applyPreset(p)}
-                          title={`${p.description}${p.unit_rate_cents > 0 ? ` — ${aud(p.unit_rate_cents)}${p.unit ? " / " + p.unit : ""}` : ""}`}
-                          style={{
-                            border: "1px solid var(--eq-border)",
-                            borderRadius: 6,
-                            background: "var(--eq-surface)",
-                            color: "var(--eq-text)",
-                            fontSize: 12,
-                            padding: "3px 10px",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          {p.description}
-                          {p.unit_rate_cents > 0 && (
-                            <span style={{ color: "var(--eq-muted)", fontSize: 11 }}>
-                              {aud(p.unit_rate_cents)}{p.unit ? ` / ${p.unit}` : ""}
-                            </span>
-                          )}
-                        </button>
+                        <option key={p.preset_id} value={p.preset_id}>
+                          {p.description}{p.unit_rate_cents > 0 ? ` — ${aud(p.unit_rate_cents)}${p.unit ? " / " + p.unit : ""}` : ""}
+                        </option>
                       ))}
-                    </div>
+                    </optgroup>
                   ))}
-                </div>
-              );
-            })()}
+                </select>
+              </div>
+            )}
 
             {/* Outlet pricing calculator */}
             <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--eq-border)" }}>
