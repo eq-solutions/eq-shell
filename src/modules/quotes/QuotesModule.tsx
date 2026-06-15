@@ -6,13 +6,17 @@ import {
   STATUS_LABELS,
   ACTIVE_JOB_STATUSES,
   CLOSED_LOST_STATUSES as CLOSED_STATUSES,
+  OPEN_PIPELINE_STATUSES,
 } from "./taxonomy";
 import { QuotesSetup } from "./QuotesSetup";
 import { QuotesReports } from "./QuotesReports";
 import { QuotesCustomers } from "./QuotesCustomers";
 import { captureRpcError } from "./quoteTelemetry";
 import { Table, type TableColumn, DropdownMenu, type DropdownMenuEntry } from "@eq-solutions/ui";
-import { MoreHorizontal, Copy, Trash2, FileUp, Users, BarChart2, Settings, FolderOpen } from "lucide-react";
+import {
+  MoreHorizontal, Copy, Trash2, FileUp, Users, BarChart2, Settings, FolderOpen,
+  Clock, Briefcase, CalendarClock, AlarmClock, LayoutGrid, List, SlidersHorizontal, X,
+} from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -431,6 +435,26 @@ const NEXT_STATUSES: Record<string, string[]> = {
   "on-hold": ["submitted", "verbal-win", "lost", "cancelled"],
 };
 
+// Lifecycle stages — the compact replacement for the 14 granular status tabs.
+// Granular status stays reachable via the inline cell editor, the column-header
+// select filter, and the board columns; the chips only carry the four buckets
+// the business actually triages by. `match` partitions every quote.status.
+const STAGES: Array<{ key: string; label: string; match: (s: string) => boolean }> = [
+  { key: "active-jobs", label: "Active jobs", match: (s) => ACTIVE_JOB_STATUSES.has(s) },
+  { key: "open",        label: "Open",        match: (s) => OPEN_PIPELINE_STATUSES.has(s) },
+  { key: "closed",      label: "Closed",      match: (s) => CLOSED_STATUSES.has(s) || s === "complete" || s === "ready-to-invoice" },
+  { key: "all",         label: "All",         match: () => true },
+];
+const STAGE_KEYS = new Set(STAGES.map((s) => s.key));
+
+// Board columns — one status per column so a drag-drop is an unambiguous status
+// set. Terminal/loss statuses are intentionally omitted (set those from the row).
+const BOARD_COLUMNS: string[] = [
+  "draft", "submitted", "client-reviewing", "on-hold",
+  "verbal-win", "won-awaiting-job-no", "won-job-created", "po-matched",
+  "active", "complete",
+];
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -617,6 +641,17 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // Inline follow-up edit from pipeline table
   const [pipelineFupEdit, setPipelineFupEdit] = useState<{ quoteId: string; value: string } | null>(null);
 
+  // Inline status + job-no edit from pipeline table
+  const [pipelineStatusEdit, setPipelineStatusEdit] = useState<string | null>(null);
+  const [pipelineJobNoEdit, setPipelineJobNoEdit] = useState<{ quoteId: string; value: string } | null>(null);
+
+  // Pipeline layout (table vs board) + consolidated-filters popover + board drag target
+  const [pipelineLayout, setPipelineLayout] = useState<"table" | "board">(() =>
+    (typeof localStorage !== "undefined" && localStorage.getItem("eq-quotes-layout") === "board") ? "board" : "table"
+  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+
   // Payment terms / validity days inline edit
   const [termsEditing, setTermsEditing] = useState(false);
   const [termsInput, setTermsInput] = useState("");
@@ -790,7 +825,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       setPipelineLoading(true);
       setPipelineError(null);
       const { data, error } = await supabase.rpc("eq_list_quotes", {
-        p_status: status === "all" || status === "active-jobs" || status === "closed" ? null : status,
+        p_status: STAGE_KEYS.has(status) ? null : status,
         p_search: q.trim() || null,
       });
       setPipelineLoading(false);
@@ -2027,6 +2062,46 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  const savePipelineStatus = async (q: Quote, newStatus: string) => {
+    setPipelineStatusEdit(null);
+    if (!supabase || !newStatus || newStatus === q.status) return;
+    const { error } = await supabase.rpc("eq_update_quote_status", {
+      p_quote_id: q.quote_id,
+      p_new_status: newStatus,
+      p_note: null,
+      p_initials: initials.trim() || null,
+    });
+    if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: q.quote_id, new_status: newStatus }); return; }
+    void loadQuotes(statusFilter, search);
+  };
+
+  const savePipelineJobNo = async (q: Quote, value: string) => {
+    setPipelineJobNoEdit(null);
+    const trimmed = value.trim();
+    if (!supabase || !trimmed || trimmed === (q.workbench_job_no ?? "")) return;
+    const { error } = await supabase.rpc("eq_set_workbench_job_no", {
+      p_quote_id: q.quote_id,
+      p_workbench_job_no: trimmed,
+      p_initials: initials.trim() || null,
+    });
+    if (error) { captureRpcError("eq_set_workbench_job_no", error, { quote_id: q.quote_id }); return; }
+    // Mirror the detail-panel rule: setting a job no on a won-awaiting quote advances it.
+    if (q.status === "won-awaiting-job-no") {
+      await supabase.rpc("eq_update_quote_status", {
+        p_quote_id: q.quote_id,
+        p_new_status: "won-job-created",
+        p_note: null,
+        p_initials: initials.trim() || null,
+      });
+    }
+    void loadQuotes(statusFilter, search);
+  };
+
+  const resetSmartFilters = () => {
+    setExpiringOnly(false); setUnsentOnly(false); setNeedsJobNoOnly(false);
+    setOverdueFupOnly(false); setStaleOnly(false);
+  };
+
   const handleSaveProject = async () => {
     if (!supabase || !detail) return;
     setSavingProject(true);
@@ -2330,11 +2405,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // ── Computed totals ───────────────────────────────────────────────────────
 
-  let displayedQuotes = statusFilter === "active-jobs"
-    ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
-    : statusFilter === "closed"
-    ? quotes.filter((q) => CLOSED_STATUSES.has(q.status))
-    : quotes;
+  const activeStage = STAGES.find((s) => s.key === statusFilter);
+  let displayedQuotes = activeStage
+    ? quotes.filter((q) => activeStage.match(q.status))
+    : quotes.filter((q) => q.status === statusFilter); // backward-compat: a stored granular key
   if (dateFrom) displayedQuotes = displayedQuotes.filter((q) => q.created_at >= dateFrom);
   if (dateTo)   displayedQuotes = displayedQuotes.filter((q) => q.created_at.slice(0, 10) <= dateTo);
   if (estFilter) displayedQuotes = displayedQuotes.filter((q) => q.estimator_initials === estFilter);
@@ -2379,6 +2453,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     new Set(quotes.map((q) => q.site_code).filter((s): s is string => s !== null && s !== ""))
   ).sort();
   const visibleTotal = displayedQuotes.reduce((s, q) => s + q.total_cents, 0);
+  const activeFilterCount =
+    (dateFrom || dateTo ? 1 : 0) + (estFilter ? 1 : 0) + (customerFilter ? 1 : 0) + (siteFilter ? 1 : 0) +
+    (expiringOnly ? 1 : 0) + (unsentOnly ? 1 : 0) + (needsJobNoOnly ? 1 : 0) + (overdueFupOnly ? 1 : 0) + (staleOnly ? 1 : 0);
   // Keep refs fresh for keyboard handler
   detailIdRef.current = detailId;
   displayedQuotesRef.current = displayedQuotes;
@@ -2484,16 +2561,80 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         .filter((f) => f.key !== "active-jobs" && f.key !== "all")
         .map((f) => ({ value: f.key, label: f.label })),
       sortAccessor: (q) => STATUS_LABELS[q.status] ?? q.status,
-      render: (q) => <span className={statusClass(q.status)}>{STATUS_LABELS[q.status] ?? q.status}</span>,
+      render: (q) => {
+        if (pipelineStatusEdit === q.quote_id) {
+          const nexts = NEXT_STATUSES[q.status] ?? [];
+          return (
+            <select
+              autoFocus
+              value={q.status}
+              style={{ fontSize: 12, padding: "2px 4px", border: "1px solid var(--eq-primary, #3DA8D8)", borderRadius: 4 }}
+              onChange={(e) => { void savePipelineStatus(q, e.target.value); }}
+              onBlur={() => setPipelineStatusEdit(null)}
+              onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setPipelineStatusEdit(null); } }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <option value={q.status}>{STATUS_LABELS[q.status] ?? q.status}</option>
+              {nexts.map((s) => <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>)}
+            </select>
+          );
+        }
+        return (
+          <span
+            className={`${statusClass(q.status)} eq-quotes__filter-link`}
+            title="Click to change status"
+            onClick={(e) => { e.stopPropagation(); setPipelineStatusEdit(q.quote_id); }}
+          >
+            {STATUS_LABELS[q.status] ?? q.status}
+          </span>
+        );
+      },
     },
     {
       key: "workbench_job_no", header: "Job No.",
       sortAccessor: (q) => q.workbench_job_no ?? "",
-      render: (q) => q.workbench_job_no
-        ? <span className="eq-quotes__td--mono">{q.workbench_job_no}</span>
-        : ACTIVE_JOB_STATUSES.has(q.status)
-          ? <span className="eq-quotes__badge eq-quotes__badge--amber eq-quotes__badge--xs">Needs no.</span>
-          : <span className="eq-quotes__muted">—</span>,
+      render: (q) => {
+        if (pipelineJobNoEdit?.quoteId === q.quote_id) {
+          return (
+            <input
+              type="text"
+              autoFocus
+              value={pipelineJobNoEdit.value}
+              placeholder="Job no."
+              style={{ fontSize: 12, padding: "2px 4px", border: "1px solid var(--eq-primary, #3DA8D8)", borderRadius: 4, width: 90, fontFamily: "ui-monospace, 'Cascadia Code', monospace" }}
+              onChange={(e) => setPipelineJobNoEdit({ quoteId: q.quote_id, value: e.target.value })}
+              onBlur={(e) => { void savePipelineJobNo(q, e.target.value); }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { e.stopPropagation(); setPipelineJobNoEdit(null); }
+                if (e.key === "Enter") { void savePipelineJobNo(q, pipelineJobNoEdit.value); }
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          );
+        }
+        if (q.workbench_job_no) {
+          return (
+            <span
+              className="eq-quotes__td--mono eq-quotes__filter-link"
+              title="Click to change job number"
+              onClick={(e) => { e.stopPropagation(); setPipelineJobNoEdit({ quoteId: q.quote_id, value: q.workbench_job_no ?? "" }); }}
+            >
+              {q.workbench_job_no}
+            </span>
+          );
+        }
+        return (
+          <span
+            className={ACTIVE_JOB_STATUSES.has(q.status)
+              ? "eq-quotes__badge eq-quotes__badge--amber eq-quotes__badge--xs eq-quotes__filter-link"
+              : "eq-quotes__muted eq-quotes__filter-link"}
+            title="Click to add job number"
+            onClick={(e) => { e.stopPropagation(); setPipelineJobNoEdit({ quoteId: q.quote_id, value: "" }); }}
+          >
+            {ACTIVE_JOB_STATUSES.has(q.status) ? "Needs no." : "—"}
+          </span>
+        );
+      },
     },
     {
       key: "margin_pct", header: "Margin", align: "right" as const,
@@ -4952,72 +5093,65 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       {/* Pipeline view */}
       {view === "pipeline" && (
         <div className="eq-quotes__pipeline">
-          {/* Status filter tabs */}
-          <div className="eq-quotes__status-filters">
-            {STATUS_FILTERS.map((f) => {
-              const count = f.key === "active-jobs"
-                ? quotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status)).length
-                : f.key === "closed" ? quotes.filter((q) => CLOSED_STATUSES.has(q.status)).length
-                : f.key === "all" ? quotes.length
-                : quotes.filter((q) => q.status === f.key).length;
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  className={`eq-quotes__status-tab${statusFilter === f.key ? " eq-quotes__status-tab--active" : ""}`}
-                  onClick={() => setStatusFilter(f.key)}
-                >
-                  {f.label}
-                  {count > 0 && (
-                    <span className="eq-quotes__status-tab-count">{pipelineLoading ? "…" : count}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Action items summary — key attention items across all quotes */}
+          {/* Action cards — what needs doing right now; click to filter to it */}
           {!pipelineLoading && quotes.length > 0 && (() => {
             const todayStr = new Date().toISOString().slice(0, 10);
             const in14Days = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
+            const staleThreshold = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
             const overdueFup = quotes.filter((q) => q.follow_up_at && q.follow_up_at <= todayStr && !CLOSED_STATUSES.has(q.status)).length;
             const expiringSoon = quotes.filter((q) => q.expires_at && q.expires_at.slice(0, 10) <= in14Days && !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status)).length;
             const needsJobNo = quotes.filter((q) => !q.workbench_job_no && ACTIVE_JOB_STATUSES.has(q.status)).length;
-            const staleThreshold = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
             const staleCount = quotes.filter((q) => !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status) && !q.follow_up_at && q.created_at.slice(0, 10) < staleThreshold).length;
-            if (overdueFup === 0 && expiringSoon === 0 && needsJobNo === 0 && staleCount === 0) return null;
+            const TONES: Record<string, { bg: string; fg: string; bd: string }> = {
+              sky:   { bg: "var(--eq-ice, #EAF5FB)",       fg: "var(--eq-deep, #2986B4)",  bd: "#3DA8D833" },
+              amber: { bg: "var(--eq-amber-bg, #fef9ee)",  fg: "var(--eq-amber, #d4820a)", bd: "#d4820a33" },
+              err:   { bg: "var(--eq-err-bg, #fdf1f1)",    fg: "var(--eq-err, #c0392b)",   bd: "#c0392b33" },
+              muted: { bg: "var(--eq-surface-2, #f5f5f5)", fg: "var(--eq-muted, #6b7280)", bd: "var(--eq-border, #e0e0e0)" },
+            };
+            const cards = [
+              { n: needsJobNo,   label: "need a job no.",       tone: "sky",   icon: <Briefcase size={15} />,     on: () => { resetSmartFilters(); setNeedsJobNoOnly(true); setStatusFilter("active-jobs"); } },
+              { n: expiringSoon, label: "expiring ≤ 14 days",   tone: "amber", icon: <Clock size={15} />,         on: () => { resetSmartFilters(); setExpiringOnly(true); setStatusFilter("all"); } },
+              { n: overdueFup,   label: "follow-ups overdue",   tone: "err",   icon: <CalendarClock size={15} />, on: () => { resetSmartFilters(); setOverdueFupOnly(true); setStatusFilter("all"); } },
+              { n: staleCount,   label: "stale — no follow-up", tone: "muted", icon: <AlarmClock size={15} />,    on: () => { resetSmartFilters(); setStaleOnly(true); setStatusFilter("open"); } },
+            ].filter((c) => c.n > 0);
+            if (cards.length === 0) return null;
             return (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "6px 0 2px" }}>
-                {overdueFup > 0 && (
-                  <button type="button" onClick={() => { setOverdueFupOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
-                    style={{ background: "var(--eq-err-bg, #fdf1f1)", border: "1px solid var(--eq-err, #c0392b)33", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-err, #c0392b)", cursor: "pointer" }}>
-                    {overdueFup} follow-up{overdueFup !== 1 ? "s" : ""} overdue
-                  </button>
-                )}
-                {expiringSoon > 0 && (
-                  <button type="button" onClick={() => { setExpiringOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
-                    style={{ background: "var(--eq-amber-bg, #fef9ee)", border: "1px solid var(--eq-amber, #d4820a)33", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-amber, #d4820a)", cursor: "pointer" }}>
-                    {expiringSoon} expiring within 14 days
-                  </button>
-                )}
-                {needsJobNo > 0 && (
-                  <button type="button" onClick={() => { setNeedsJobNoOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
-                    style={{ background: "var(--eq-ice, #EAF5FB)", border: "1px solid var(--eq-sky, #3DA8D8)33", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-deep, #2986B4)", cursor: "pointer" }}>
-                    {needsJobNo} need{needsJobNo === 1 ? "s" : ""} job no.
-                  </button>
-                )}
-                {staleCount > 0 && (
-                  <button type="button" onClick={() => { setStaleOnly(true); setStatusFilter("all"); void loadQuotes("all", search); }}
-                    style={{ background: "var(--eq-surface-2, #f5f5f5)", border: "1px solid var(--eq-border, #e0e0e0)", borderRadius: 20, padding: "3px 10px", fontSize: 12, fontWeight: 600, color: "var(--eq-muted, #6b7280)", cursor: "pointer" }}>
-                    {staleCount} stale — no follow-up set
-                  </button>
-                )}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "2px 0 12px" }}>
+                {cards.map((c) => {
+                  const t = TONES[c.tone];
+                  return (
+                    <button key={c.label} type="button" onClick={c.on}
+                      style={{ display: "flex", alignItems: "center", gap: 10, background: t.bg, border: `1px solid ${t.bd}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", color: t.fg, textAlign: "left" }}>
+                      <span style={{ display: "flex" }}>{c.icon}</span>
+                      <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1 }}>{c.n}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.85 }}>{c.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             );
           })()}
 
-          {/* Search + filters + export */}
-          <div className="eq-quotes__pipeline-controls">
+          {/* Unified toolbar: stages · search · filters · layout · export */}
+          <div className="eq-quotes__pipeline-controls" style={{ alignItems: "center" }}>
+            <div className="eq-quotes__status-filters" style={{ margin: 0 }}>
+              {STAGES.map((f) => {
+                const count = quotes.filter((q) => f.match(q.status)).length;
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    className={`eq-quotes__status-tab${statusFilter === f.key ? " eq-quotes__status-tab--active" : ""}`}
+                    onClick={() => setStatusFilter(f.key)}
+                  >
+                    {f.label}
+                    {count > 0 && (
+                      <span className="eq-quotes__status-tab-count">{pipelineLoading ? "…" : count}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
             <input
               ref={searchInputRef}
               className="eq-quotes__search"
@@ -5026,6 +5160,24 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
             />
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                className={`eq-quotes__btn ${activeFilterCount > 0 ? "eq-quotes__btn--primary" : "eq-quotes__btn--outline"}`}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+                onClick={() => setFiltersOpen((v) => !v)}
+              >
+                <SlidersHorizontal size={14} />
+                Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}
+              </button>
+              {filtersOpen && (
+                <>
+                  <div onClick={() => setFiltersOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                  <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 41, background: "var(--eq-surface, #fff)", border: "1px solid var(--eq-border, #e0e0e0)", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.10)", padding: 14, width: 360, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                    <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--eq-muted, #6b7280)" }}>Filters</span>
+                      <button type="button" onClick={() => setFiltersOpen(false)} className="eq-quotes__btn eq-quotes__btn--ghost eq-quotes__btn--icon" aria-label="Close filters"><X size={14} /></button>
+                    </div>
             {(() => {
               const isoDate = (d: Date) => d.toISOString().slice(0, 10);
               const today = new Date();
@@ -5142,6 +5294,31 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 Clear filters
               </button>
             )}
+                  </div>
+                </>
+              )}
+            </div>
+            {/* Layout toggle: table vs board */}
+            <div style={{ display: "inline-flex", border: "1px solid var(--eq-border, #e0e0e0)", borderRadius: 8, overflow: "hidden" }}>
+              <button
+                type="button"
+                title="Table view"
+                aria-label="Table view"
+                onClick={() => { setPipelineLayout("table"); try { localStorage.setItem("eq-quotes-layout", "table"); } catch { /* ignore */ } }}
+                style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 9px", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: pipelineLayout === "table" ? "var(--eq-ice, #EAF5FB)" : "transparent", color: pipelineLayout === "table" ? "var(--eq-deep, #2986B4)" : "var(--eq-muted, #6b7280)" }}
+              >
+                <List size={14} /> Table
+              </button>
+              <button
+                type="button"
+                title="Board view"
+                aria-label="Board view"
+                onClick={() => { setPipelineLayout("board"); try { localStorage.setItem("eq-quotes-layout", "board"); } catch { /* ignore */ } }}
+                style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 9px", border: "none", borderLeft: "1px solid var(--eq-border, #e0e0e0)", cursor: "pointer", fontSize: 12, fontWeight: 600, background: pipelineLayout === "board" ? "var(--eq-ice, #EAF5FB)" : "transparent", color: pipelineLayout === "board" ? "var(--eq-deep, #2986B4)" : "var(--eq-muted, #6b7280)" }}
+              >
+                <LayoutGrid size={14} /> Board
+              </button>
+            </div>
             {!pipelineLoading && displayedQuotes.length > 0 && (
               <button
                 type="button"
@@ -5252,6 +5429,68 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           {/* Table — canonical eq-ui Table (sortable + per-column filters + select) */}
           {pipelineError ? (
             <div className="eq-quotes__error-banner">{pipelineError}</div>
+          ) : pipelineLayout === "board" ? (
+            pipelineLoading ? (
+              <div className="eq-quotes__loading">Loading…</div>
+            ) : (
+              <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
+                {BOARD_COLUMNS.map((st) => {
+                  const colQuotes = displayedQuotes.filter((q) => q.status === st);
+                  const colTotal = colQuotes.reduce((s, q) => s + q.total_cents, 0);
+                  const isOver = dragOverStatus === st;
+                  return (
+                    <div
+                      key={st}
+                      onDragOver={(e) => { e.preventDefault(); if (dragOverStatus !== st) setDragOverStatus(st); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const id = e.dataTransfer.getData("text/plain");
+                        setDragOverStatus(null);
+                        const q = displayedQuotes.find((x) => x.quote_id === id);
+                        if (q && q.status !== st) void savePipelineStatus(q, st);
+                      }}
+                      style={{ flex: "0 0 240px", width: 240, background: isOver ? "var(--eq-ice, #EAF5FB)" : "var(--eq-surface-2, #f7f9fb)", border: `1px solid ${isOver ? "var(--eq-sky, #3DA8D8)" : "var(--eq-border, #e8e8e8)"}`, borderRadius: 10, padding: 8, minHeight: 120 }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 4px 8px" }}>
+                        <span className={statusClass(st)} style={{ fontSize: 11 }}>{STATUS_LABELS[st] ?? st}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--eq-muted, #6b7280)" }}>{colQuotes.length}</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {colQuotes.map((q) => (
+                          <div
+                            key={q.quote_id}
+                            draggable
+                            onDragStart={(e) => { e.dataTransfer.setData("text/plain", q.quote_id); e.dataTransfer.effectAllowed = "move"; }}
+                            onDragEnd={() => setDragOverStatus(null)}
+                            onClick={() => void openDetail(q.quote_id)}
+                            style={{ background: "var(--eq-surface, #fff)", border: "1px solid var(--eq-border, #e8e8e8)", borderRadius: 8, padding: "8px 10px", cursor: "grab", display: "flex", flexDirection: "column", gap: 4 }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                              <span style={{ fontFamily: "ui-monospace, 'Cascadia Code', monospace", fontSize: 12, fontWeight: 600 }}>{q.quote_number}</span>
+                              {q.estimator_initials && <span className="eq-quotes__initials-badge">{q.estimator_initials}</span>}
+                            </div>
+                            <span style={{ fontSize: 12, color: "var(--eq-ink, #1A1A2E)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.customer_name ?? "—"}</span>
+                            {q.project_name && <span style={{ fontSize: 11, color: "var(--eq-muted, #6b7280)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.project_name}</span>}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <span style={{ fontSize: 12, fontWeight: 700 }}>{aud(q.total_cents)}</span>
+                              {ACTIVE_JOB_STATUSES.has(q.status) && !q.workbench_job_no && (
+                                <span className="eq-quotes__badge eq-quotes__badge--amber eq-quotes__badge--xs">Needs no.</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        {colQuotes.length === 0 && (
+                          <div style={{ fontSize: 11, color: "var(--eq-muted, #9aa0a6)", textAlign: "center", padding: "12px 0" }}>—</div>
+                        )}
+                      </div>
+                      {colTotal > 0 && (
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--eq-muted, #6b7280)", textAlign: "right", padding: "8px 4px 2px" }}>{aud(colTotal)}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )
           ) : (
             <Table
               className="eq-quotes__pipeline-table"
