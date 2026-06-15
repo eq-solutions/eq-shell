@@ -5,43 +5,64 @@
 // AnthropicProvider (in @eq/ai) sets baseUrl to point here instead of
 // hitting api.anthropic.com directly.
 //
+// SECURITY (2026-06-15): this endpoint was previously open to the internet —
+// `Access-Control-Allow-Origin: *` and NO auth — so anyone could forward
+// arbitrary requests through the server's ANTHROPIC_API_KEY (cost/DoS, open
+// relay). It now (1) requires a valid EQ Shell session cookie and (2) only
+// echoes CORS for *.eq.solutions origins. Callers must be signed in.
+//
 // URL pattern the caller uses:
 //   POST /api/anthropic-proxy/messages
 //   (AnthropicProvider appends "/messages" to the configured baseUrl)
-//
-// The function strips the "/api/anthropic-proxy" prefix, keeps the rest of
-// the path (e.g. "/messages"), and forwards to
-//   https://api.anthropic.com/v1/<path>
-//
-// The real ANTHROPIC_API_KEY is injected server-side from the Netlify env var
-// and is never sent to the browser.
-//
-// If the API key is absent the function returns 503 and the IntakeModule
-// degrades gracefully to heuristic-only classification.
+// Forwards to https://api.anthropic.com/v1/<path>. The real ANTHROPIC_API_KEY
+// is injected server-side from the Netlify env var and never sent to the browser.
 
 import type { Context } from '@netlify/functions';
+import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { withSentry } from './_shared/sentry.js';
 
 const ANTHROPIC_BASE = 'https://api.anthropic.com/v1';
 const ANTHROPIC_VERSION = '2023-06-01';
 
-// CORS — permit the browser call from the same-origin shell page.
-const CORS_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Max-Age': '86400',
-};
+// CORS — only same-site EQ origins, with credentials so the HttpOnly session
+// cookie rides cross-subdomain. No wildcard; unknown origins get no ACAO.
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('Origin') || '';
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
+  };
+  if (/^https:\/\/([a-z0-9-]+\.)?eq\.solutions$/i.test(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+    headers['Access-Control-Allow-Credentials'] = 'true';
+  }
+  return headers;
+}
 
-export default async function handler(req: Request, _ctx: Context): Promise<Response> {
+export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
+  const CORS = corsHeaders(req);
+
   // Preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    return new Response(null, { status: 204, headers: CORS });
   }
 
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      headers: { ...CORS, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // AUTH — require a valid EQ Shell session. Without this the endpoint is an
+  // open relay on the server's Anthropic key.
+  const session = verifySessionToken(readSessionCookie(req));
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...CORS, 'Content-Type': 'application/json' },
     });
   }
 
@@ -49,20 +70,13 @@ export default async function handler(req: Request, _ctx: Context): Promise<Resp
   if (!apiKey) {
     return new Response(
       JSON.stringify({ error: 'Anthropic API key not configured on server' }),
-      {
-        status: 503,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      },
+      { status: 503, headers: { ...CORS, 'Content-Type': 'application/json' } },
     );
   }
 
-  // Extract the Anthropic sub-path from the request URL.
-  // The AnthropicProvider calls: <baseUrl>/messages
-  // Netlify mounts this at /api/anthropic-proxy, so the full URL is
-  // /api/anthropic-proxy/messages — we extract "/messages" from that.
+  // Extract the Anthropic sub-path from the request URL (e.g. "/messages").
   const url = new URL(req.url);
-  const prefixRe = /^\/api\/anthropic-proxy/;
-  const subPath = url.pathname.replace(prefixRe, '') || '/messages';
+  const subPath = url.pathname.replace(/^\/api\/anthropic-proxy/, '') || '/messages';
 
   let body: unknown;
   try {
@@ -70,7 +84,7 @@ export default async function handler(req: Request, _ctx: Context): Promise<Resp
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
       status: 400,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      headers: { ...CORS, 'Content-Type': 'application/json' },
     });
   }
 
@@ -90,7 +104,7 @@ export default async function handler(req: Request, _ctx: Context): Promise<Resp
     const msg = e instanceof Error ? e.message : 'Network error';
     return new Response(JSON.stringify({ error: `Upstream fetch failed: ${msg}` }), {
       status: 502,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      headers: { ...CORS, 'Content-Type': 'application/json' },
     });
   }
 
@@ -99,11 +113,11 @@ export default async function handler(req: Request, _ctx: Context): Promise<Resp
   return new Response(upstream, {
     status: anthropicResp.status,
     headers: {
-      ...CORS_HEADERS,
+      ...CORS,
       'Content-Type': anthropicResp.headers.get('Content-Type') ?? 'application/json',
     },
   });
-}
+});
 
 export const config = {
   path: '/api/anthropic-proxy/*',
