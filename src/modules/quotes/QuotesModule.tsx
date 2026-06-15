@@ -715,7 +715,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [createAddress, setCreateAddress] = useState("");
   const [createPaymentTerms, setCreatePaymentTerms] = useState("");
   const [createValidityDays, setCreateValidityDays] = useState("30");
-  const [createQuoteNumber, setCreateQuoteNumber] = useState("");
+  const [createQuoteNumber, setCreateQuoteNumber] = useState("SKS-");
   const [createClarifications, setCreateClarifications] = useState("");
   const [createLineItems, setCreateLineItems] = useState<CreateLineItem[]>([
     { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "labour" },
