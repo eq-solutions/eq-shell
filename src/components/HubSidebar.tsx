@@ -160,7 +160,7 @@ export function HubSidebar({ apps, records }: Props) {
   return (
     <AppSidebar
       homeHref={`/${tenantSlug}`}
-      logo={<EqLogo size={36} />}
+      logo={<EqLogo size={44} />}
       brandLabel="CORE"
       live
       tenantSwitcher={session.memberships && session.memberships.length > 1 ? <TenantSwitcher /> : undefined}
