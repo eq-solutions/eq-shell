@@ -559,7 +559,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [staleOnly, setStaleOnly] = useState(() => _sf.stale === true);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
-  const [copiedQuoteId, setCopiedQuoteId] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -1095,8 +1094,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // Update browser tab title when viewing a quote
   useEffect(() => {
     const prev = document.title;
-    if (detail) { document.title = `${detail.quote_number} — EQ Quotes`; }
-    else        { document.title = "EQ Quotes"; }
+    if (detail) { document.title = `${detail.quote_number} — EQ Ops`; }
+    else        { document.title = "EQ Ops"; }
     return () => { document.title = prev; };
   }, [detail]);
 
@@ -2389,17 +2388,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       render: (q) => (
         <span
           className="eq-quotes__filter-link"
-          title="Click to copy quote number"
+          title="Open quote"
           style={{ fontFamily: "ui-monospace, 'Cascadia Code', monospace", fontWeight: 600 }}
           onClick={(e) => {
             e.stopPropagation();
-            void navigator.clipboard.writeText(q.quote_number).then(() => {
-              setCopiedQuoteId(q.quote_id);
-              setTimeout(() => setCopiedQuoteId(null), 1500);
-            });
+            void openDetail(q.quote_id);
           }}
         >
-          {copiedQuoteId === q.quote_id ? <span style={{ color: "var(--eq-green,#27ae60)", fontSize: 11 }}>Copied!</span> : q.quote_number}
+          {q.quote_number}
         </span>
       ),
     },
@@ -2534,7 +2530,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 type="button"
                 className="eq-quotes__btn eq-quotes__btn--ghost eq-quotes__btn--icon"
                 aria-label="More actions"
-                onClick={(e) => e.stopPropagation()}
               >
                 <MoreHorizontal size={15} />
               </button>
@@ -3845,9 +3840,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     // Quote number is required. New quotes must carry the SKS- prefix; existing
     // quotes (some legacy EQ-…) only need to be non-empty when edited.
     const trimmedQuoteNo = createQuoteNumber.trim();
-    const quoteNumberValid = isEditMode
-      ? trimmedQuoteNo.length > 0
-      : trimmedQuoteNo.startsWith("SKS-") && trimmedQuoteNo.length > 4;
+    const quoteNumberValid = trimmedQuoteNo.length > 0;
     const handleCancelCreateEdit = () => {
       const savedId = editingQuoteId;
       resetCreateForm();
@@ -3962,7 +3955,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 />
                 {!quoteNumberValid && (
                   <span className="eq-quotes__inline-err" style={{ fontSize: 11 }}>
-                    {isEditMode ? "Quote number is required." : "Required — must start with “SKS-”."}
+                    Quote number is required.
                   </span>
                 )}
               </div>
