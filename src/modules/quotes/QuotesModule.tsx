@@ -739,6 +739,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [calcResult, setCalcResult] = useState<CalcResult | RemovalResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
+  const [presetPanelOpen, setPresetPanelOpen] = useState(false);
+  const [presetPanelCat, setPresetPanelCat] = useState("labour");
+  interface CalcMatrixRow { product_id: string; name: string; band_label: string; min_qty: number; computed_price: number; }
+  const [calcMatrix, setCalcMatrix] = useState<CalcMatrixRow[]>([]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
@@ -987,6 +991,20 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       if (prods.length > 0 && !calcProductId) setCalcProductId(prods[0].product_id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
+
+  const loadCalcMatrix = useCallback(async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase.rpc("eq_get_pricing_matrix");
+    if (!error && data) {
+      setCalcMatrix(((data as Record<string, unknown>[]) ?? []).map((r) => ({
+        product_id: String(r.product_id),
+        name: String(r.name ?? ""),
+        band_label: String(r.band_label ?? ""),
+        min_qty: Number(r.min_qty ?? 0),
+        computed_price: Number(r.computed_price ?? 0),
+      })));
+    }
   }, [supabase]);
 
   const runCalc = async () => {
@@ -2079,13 +2097,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     await openDetail(detail.quote_id);
   };
 
-  const handleLinkContact = async () => {
+  const handleLinkContact = async (newContactId?: string) => {
     if (!supabase || !detail) return;
+    const linkId = newContactId !== undefined ? newContactId : contactPickerVal;
     setLinkingContact(true);
     setLinkContactErr(null);
     const { error } = await supabase.rpc("eq_link_quote_contact", {
       p_quote_id: detail.quote_id,
-      p_contact_id: contactPickerVal || null,
+      p_contact_id: linkId || null,
       p_initials: initials.trim() || null,
     });
     setLinkingContact(false);
@@ -3106,30 +3125,35 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 )}
                 {detailContacts.length > 0 && (
                   <div className="eq-quotes__info-item eq-quotes__info-item--full">
-                    <span className="eq-quotes__info-label">Linked contact</span>
-                    <div className="eq-quotes__job-no-row">
-                      <select
-                        className="eq-quotes__input"
-                        style={{ maxWidth: 280 }}
-                        value={contactPickerVal}
-                        onChange={(e) => setContactPickerVal(e.target.value)}
-                      >
-                        <option value="">— no contact —</option>
-                        {detailContacts.map((c) => (
-                          <option key={c.contact_id} value={c.contact_id}>
-                            {[c.first_name, c.last_name].filter(Boolean).join(" ")}
-                            {c.email ? ` · ${c.email}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="eq-quotes__btn eq-quotes__btn--primary"
-                        disabled={linkingContact || contactPickerVal === (detail.contact_id ?? "")}
-                        onClick={() => void handleLinkContact()}
-                      >
-                        {linkingContact ? "…" : "Save"}
-                      </button>
+                    <span className="eq-quotes__info-label">Contact</span>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: 4 }}>
+                      {[{ contact_id: "", first_name: "None", last_name: null, email: null, is_default_quote_contact: false, mobile_phone: null, work_phone: null, contact_position: null } as ContactRow,
+                        ...detailContacts].map((c) => {
+                        const name = c.contact_id === "" ? "None" : ([c.first_name, c.last_name].filter(Boolean).join(" ") || c.email || "Unknown");
+                        const isSelected = contactPickerVal === c.contact_id;
+                        return (
+                          <button
+                            key={c.contact_id || "none"}
+                            type="button"
+                            disabled={linkingContact}
+                            onClick={() => {
+                              setContactPickerVal(c.contact_id);
+                              void handleLinkContact(c.contact_id);
+                            }}
+                            style={{
+                              fontSize: "0.82rem", padding: "4px 12px", borderRadius: "20px",
+                              border: `1px solid ${isSelected ? "var(--eq-deep, #2986B4)" : "var(--eq-border, #ddd)"}`,
+                              background: isSelected ? "var(--eq-ice, #EAF5FB)" : "#fff",
+                              color: isSelected ? "var(--eq-ink, #1A1A2E)" : "var(--eq-muted, #666)",
+                              cursor: linkingContact ? "wait" : "pointer",
+                              fontWeight: isSelected ? 600 : undefined,
+                            }}
+                          >
+                            {name}
+                            {c.is_default_quote_contact && <span style={{ marginLeft: 4, color: "var(--eq-sky, #3DA8D8)" }}>★</span>}
+                          </button>
+                        );
+                      })}
                     </div>
                     {linkContactErr && <span className="eq-quotes__err">{linkContactErr}</span>}
                   </div>
@@ -4406,29 +4430,72 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 </tbody>
               </table>
             </div>
-            {/* Add from preset dropdown */}
+            {/* Quick-add preset panel */}
             {!presetsLoading && presets.length > 0 && (
               <div style={{ marginTop: 10 }}>
-                <select
-                  className="eq-quotes__select"
-                  style={{ fontSize: 13 }}
-                  value=""
-                  onChange={(e) => {
-                    const preset = presets.find((p) => p.preset_id === e.target.value);
-                    if (preset) applyPreset(preset);
+                <button
+                  type="button"
+                  onClick={() => setPresetPanelOpen((o) => !o)}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    background: "none", border: "none", cursor: "pointer",
+                    fontSize: 12, color: "var(--eq-muted)", fontWeight: 600,
+                    textTransform: "uppercase", letterSpacing: "0.06em", padding: 0,
                   }}
                 >
-                  <option value="">Add from setup…</option>
-                  {Array.from(new Set(presets.map((p) => p.category ?? ""))).map((cat) => (
-                    <optgroup key={cat} label={cat || "General"}>
-                      {presets.filter((p) => (p.category ?? "") === cat).map((p) => (
-                        <option key={p.preset_id} value={p.preset_id}>
-                          {p.description}{p.unit_rate_cents > 0 ? ` — ${aud(p.unit_rate_cents)}${p.unit ? " / " + p.unit : ""}` : ""}
-                        </option>
+                  <span style={{ fontSize: 14 }}>{presetPanelOpen ? "▾" : "▸"}</span>
+                  Quick add from library
+                </button>
+                {presetPanelOpen && (
+                  <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--eq-surface-alt, var(--eq-surface))", borderRadius: 8, border: "1px solid var(--eq-border)" }}>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                      {QUOTE_SECTIONS.map((s) => (
+                        <button
+                          key={s.value}
+                          type="button"
+                          onClick={() => setPresetPanelCat(s.value)}
+                          style={{
+                            padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+                            cursor: "pointer", border: "1px solid var(--eq-border)",
+                            background: presetPanelCat === s.value ? "var(--eq-sky, #3DA8D8)" : "var(--eq-surface)",
+                            color: presetPanelCat === s.value ? "#fff" : "var(--eq-text)",
+                          }}
+                        >
+                          {s.label}
+                        </button>
                       ))}
-                    </optgroup>
-                  ))}
-                </select>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {presets
+                        .filter((p) => (p.category ?? "") === presetPanelCat)
+                        .map((p) => (
+                          <button
+                            key={p.preset_id}
+                            type="button"
+                            onClick={() => applyPreset(p)}
+                            style={{
+                              display: "flex", flexDirection: "column", alignItems: "flex-start",
+                              padding: "5px 10px", borderRadius: 8, minWidth: 140,
+                              border: "1px solid var(--eq-border)",
+                              background: "var(--eq-surface)",
+                              cursor: "pointer", textAlign: "left",
+                              transition: "border-color 0.1s",
+                            }}
+                          >
+                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--eq-text)" }}>{p.description}</span>
+                            {p.unit_rate_cents > 0 && (
+                              <span style={{ fontSize: 11, color: "var(--eq-muted)", marginTop: 1 }}>
+                                {aud(p.unit_rate_cents)}{p.unit ? ` / ${p.unit}` : ""}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      {presets.filter((p) => (p.category ?? "") === presetPanelCat).length === 0 && (
+                        <span className="eq-quotes__muted" style={{ fontSize: 12 }}>No presets in this section yet.</span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -4445,6 +4512,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 onClick={() => {
                   setCalcOpen((o) => !o);
                   if (!calcOpen && calcProducts.length === 0) void loadCalcProducts();
+                  if (!calcOpen && calcMatrix.length === 0) void loadCalcMatrix();
                 }}
               >
                 <span style={{ fontSize: 14 }}>{calcOpen ? "▾" : "▸"}</span>
@@ -4472,6 +4540,42 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     ))}
                   </div>
 
+                  {calcMode === "install" && calcMatrix.length > 0 && (() => {
+                    const seenProducts = new Set<string>();
+                    const uniqueProducts = calcMatrix.filter((r) => { if (seenProducts.has(r.product_id)) return false; seenProducts.add(r.product_id); return true; });
+                    return (
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--eq-muted)", marginBottom: 6 }}>Price guide (ex GST)</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {uniqueProducts.map((prod) => {
+                            const bands = calcMatrix.filter((r) => r.product_id === prod.product_id).sort((a, b) => a.min_qty - b.min_qty);
+                            const isActive = calcProductId === prod.product_id;
+                            return (
+                              <div key={prod.product_id} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 12, fontWeight: 600, minWidth: 120, color: "var(--eq-text)" }}>{prod.name}</span>
+                                {bands.map((b) => (
+                                  <button
+                                    key={b.min_qty}
+                                    type="button"
+                                    onClick={() => { setCalcProductId(prod.product_id); setCalcPairs(String(b.min_qty)); setCalcResult(null); }}
+                                    style={{
+                                      padding: "2px 8px", borderRadius: 6, fontSize: 11.5, cursor: "pointer",
+                                      border: `1px solid ${isActive && String(b.min_qty) === calcPairs ? "var(--eq-deep, #2986B4)" : "var(--eq-border)"}`,
+                                      background: isActive && String(b.min_qty) === calcPairs ? "var(--eq-ice, #EAF5FB)" : "var(--eq-surface)",
+                                      color: "var(--eq-text)",
+                                    }}
+                                  >
+                                    <span style={{ color: "var(--eq-muted)" }}>{b.band_label}</span>
+                                    <span style={{ fontWeight: 600, marginLeft: 5 }}>${Math.round(b.computed_price).toLocaleString()}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div style={{ display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap" }}>
                     {calcMode === "install" && (
                       <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
@@ -4484,7 +4588,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                         >
                           {calcProducts.length === 0 && <option value="">Loading…</option>}
                           {calcProducts.map((p) => (
-                            <option key={p.product_id} value={p.product_id}>{p.name}</option>
+                            <option key={p.product_id} value={p.product_id}>{p.name}{p.brand ? ` — ${p.brand}` : ""}{p.phase ? ` ${p.phase}` : ""}</option>
                           ))}
                         </select>
                       </label>
