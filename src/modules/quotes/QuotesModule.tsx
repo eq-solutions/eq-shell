@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { EqLogo } from "../../components/EqLogo";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
 import { computeSellRate, computeMarkupPct, lineTotalCentsFromInput } from "./quoteMath";
@@ -4966,7 +4967,11 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     <div className="eq-quotes">
       {/* Module header */}
       <div className="eq-quotes__module-header">
-        <h2 className="eq-quotes__title">EQ Ops</h2>
+        <h2 className="eq-quotes__title">
+          <EqLogo size={36} />
+          <span className="eq-quotes__title-sep" aria-hidden="true">|</span>
+          <span className="eq-quotes__title-label">OPS</span>
+        </h2>
         <div className="eq-quotes__header-right">
           <button
             type="button"

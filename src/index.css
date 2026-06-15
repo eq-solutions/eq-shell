@@ -167,7 +167,9 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
 
 .eq-quotes { display: flex; flex-direction: column; gap: 20px; }
 .eq-quotes__module-header { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
-.eq-quotes__title { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; color: var(--eq-ink); flex-shrink: 0; }
+.eq-quotes__title { margin: 0; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.eq-quotes__title-sep { font-size: 22px; font-weight: 300; line-height: 1; color: rgba(26, 26, 46, 0.2); }
+.eq-quotes__title-label { font-size: 26px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--eq-ink); }
 .eq-quotes__view-tabs { display: flex; gap: 4px; }
 .eq-quotes__view-tab { font-family: inherit; font-size: 13px; font-weight: 500; padding: 6px 14px; border: 1px solid var(--eq-line); border-radius: 6px; background: var(--eq-paper); color: var(--eq-muted); cursor: pointer; transition: all 0.1s ease; }
 .eq-quotes__view-tab--active { background: var(--eq-primary); border-color: var(--eq-primary); color: white; }
