@@ -10,7 +10,7 @@ interface QuotesSetupProps {
   supabase: SupabaseClient | null;
 }
 
-type SetupTab = "config" | "materials" | "products" | "bands" | "templates" | "presets" | "estimators" | "history";
+type SetupTab = "outlet" | "rates" | "templates" | "estimators" | "history";
 
 const num = (s: string): number => {
   const n = parseFloat(s);
@@ -98,7 +98,7 @@ const PRESET_CATEGORIES = [
 ];
 
 export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
-  const [tab, setTab] = useState<SetupTab>("config");
+  const [tab, setTab] = useState<SetupTab>("outlet");
   const [error, setError] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
@@ -268,12 +268,9 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
   // synchronous cascading-render case this rule guards against doesn't apply here.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (tab === "config") void loadConfig();
-    else if (tab === "materials") void loadMaterials();
-    else if (tab === "products") { void loadMaterials(); void loadProducts(); }
-    else if (tab === "bands") void loadBands();
+    if (tab === "outlet") { void loadConfig(); void loadMaterials(); void loadProducts(); void loadBands(); }
+    else if (tab === "rates") { void loadConfig(); void loadPresets(); }
     else if (tab === "templates") void loadTemplates();
-    else if (tab === "presets") void loadPresets();
     else if (tab === "estimators") void loadEstimators();
     else if (tab === "history") void loadHistory();
   }, [tab, loadConfig, loadMaterials, loadProducts, loadBands, loadTemplates, loadPresets, loadEstimators, loadHistory]);
@@ -499,12 +496,9 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
 
   // ── Render ────────────────────────────────────────────────────────────────────
   const TABS: { key: SetupTab; label: string }[] = [
-    { key: "config", label: "Pricing" },
-    { key: "materials", label: "Materials" },
-    { key: "products", label: "Products" },
-    { key: "bands", label: "Volume bands" },
+    { key: "outlet", label: "Outlet pricing" },
+    { key: "rates", label: "Rate library" },
     { key: "templates", label: "Templates" },
-    { key: "presets", label: "Quick-add presets" },
     { key: "estimators", label: "Estimators" },
     { key: "history", label: "History" },
   ];
@@ -527,269 +521,294 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       {error && <div className="eq-quotes__error-banner">{error}</div>}
       {savedMsg && <div className="eq-quotes__info-val" style={{ color: "var(--eq-sky, #2986B4)", marginBottom: "0.5rem" }}>{savedMsg}</div>}
 
-      {/* Pricing config */}
-      {tab === "config" && (
-        <div className="eq-quotes__detail-card">
-          <div className="eq-quotes__section-title">Outlet pricing settings</div>
-          <div className="eq-quotes__info-grid">
-            <div className="eq-quotes__info-item">
-              <label className="eq-quotes__info-label">Material markup (×)</label>
-              <input className="eq-quotes__input" value={config.material_markup}
-                onChange={(e) => setConfig({ ...config, material_markup: e.target.value })} />
+      {/* Outlet pricing — config + materials + products + bands */}
+      {tab === "outlet" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+
+          {/* Pricing defaults */}
+          <div className="eq-quotes__detail-card">
+            <div className="eq-quotes__section-title">Pricing defaults</div>
+            <div className="eq-quotes__info-grid">
+              <div className="eq-quotes__info-item">
+                <label className="eq-quotes__info-label">Material markup (×)</label>
+                <input className="eq-quotes__input" value={config.material_markup}
+                  onChange={(e) => setConfig({ ...config, material_markup: e.target.value })} />
+              </div>
+              <div className="eq-quotes__info-item">
+                <label className="eq-quotes__info-label">Labour rate — normal ($/hr)</label>
+                <input className="eq-quotes__input" value={config.labour_normal_rate}
+                  onChange={(e) => setConfig({ ...config, labour_normal_rate: e.target.value })} />
+              </div>
+              <div className="eq-quotes__info-item">
+                <label className="eq-quotes__info-label">Labour rate — supervisor ($/hr)</label>
+                <input className="eq-quotes__input" value={config.labour_supervisor_rate}
+                  onChange={(e) => setConfig({ ...config, labour_supervisor_rate: e.target.value })} />
+              </div>
+              <div className="eq-quotes__info-item">
+                <label className="eq-quotes__info-label">Removal — base ($)</label>
+                <input className="eq-quotes__input" value={config.removal_base}
+                  onChange={(e) => setConfig({ ...config, removal_base: e.target.value })} />
+              </div>
+              <div className="eq-quotes__info-item">
+                <label className="eq-quotes__info-label">Removal — per extra pair ($)</label>
+                <input className="eq-quotes__input" value={config.removal_increment}
+                  onChange={(e) => setConfig({ ...config, removal_increment: e.target.value })} />
+              </div>
+              <div className="eq-quotes__info-item">
+                <label className="eq-quotes__info-label">Removal markup (×)</label>
+                <input className="eq-quotes__input" value={config.removal_markup}
+                  onChange={(e) => setConfig({ ...config, removal_markup: e.target.value })} />
+              </div>
             </div>
-            <div className="eq-quotes__info-item">
-              <label className="eq-quotes__info-label">Labour rate — normal ($/hr)</label>
-              <input className="eq-quotes__input" value={config.labour_normal_rate}
-                onChange={(e) => setConfig({ ...config, labour_normal_rate: e.target.value })} />
-            </div>
-            <div className="eq-quotes__info-item">
-              <label className="eq-quotes__info-label">Labour rate — supervisor ($/hr)</label>
-              <input className="eq-quotes__input" value={config.labour_supervisor_rate}
-                onChange={(e) => setConfig({ ...config, labour_supervisor_rate: e.target.value })} />
-            </div>
-            <div className="eq-quotes__info-item">
-              <label className="eq-quotes__info-label">Removal — base ($)</label>
-              <input className="eq-quotes__input" value={config.removal_base}
-                onChange={(e) => setConfig({ ...config, removal_base: e.target.value })} />
-            </div>
-            <div className="eq-quotes__info-item">
-              <label className="eq-quotes__info-label">Removal — per extra pair ($)</label>
-              <input className="eq-quotes__input" value={config.removal_increment}
-                onChange={(e) => setConfig({ ...config, removal_increment: e.target.value })} />
-            </div>
-            <div className="eq-quotes__info-item">
-              <label className="eq-quotes__info-label">Removal markup (×)</label>
-              <input className="eq-quotes__input" value={config.removal_markup}
-                onChange={(e) => setConfig({ ...config, removal_markup: e.target.value })} />
+            <div style={{ marginTop: "1rem" }}>
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" disabled={configSaving} onClick={() => void saveConfig()}>
+                {configSaving ? "Saving…" : "Save settings"}
+              </button>
             </div>
           </div>
-          <div style={{ marginTop: "1rem" }}>
-            <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" disabled={configSaving} onClick={() => void saveConfig()}>
-              {configSaving ? "Saving…" : "Save settings"}
-            </button>
+
+          {/* Materials */}
+          <div className="eq-quotes__detail-card">
+            <div className="eq-quotes__section-title">Materials</div>
+            <div className="eq-quotes__table-wrap">
+              <table className="eq-quotes__table">
+                <thead>
+                  <tr>
+                    <th>Part no.</th><th>Description</th><th>Unit</th>
+                    <th className="eq-quotes__th--right">Unit cost ($)</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {materials.filter((m) => !m.archived).map((m, _i) => {
+                    const i = materials.indexOf(m);
+                    return (
+                      <tr className="eq-quotes__row" key={m.material_id ?? `new-${i}`}>
+                        <td><input className="eq-quotes__input" value={m.part_no} onChange={(e) => updMaterial(i, "part_no", e.target.value)} /></td>
+                        <td><input className="eq-quotes__input" value={m.description} onChange={(e) => updMaterial(i, "description", e.target.value)} /></td>
+                        <td><input className="eq-quotes__input eq-quotes__input--sm" value={m.unit} onChange={(e) => updMaterial(i, "unit", e.target.value)} /></td>
+                        <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={m.unit_cost} onChange={(e) => updMaterial(i, "unit_cost", e.target.value)} /></td>
+                        <td className="eq-quotes__td--right">
+                          <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" onClick={() => void saveMaterial(i)}>Save</button>{" "}
+                          <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void archiveMaterial(i)}>{m.material_id ? "Archive" : "Remove"}</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {materials.filter((m) => !m.archived).length === 0 && <tr><td colSpan={5} className="eq-quotes__muted">No active materials.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ marginTop: "0.75rem" }}>
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addMaterial}>+ Add material</button>
+            </div>
+            {materials.some((m) => m.archived) && (
+              <div style={{ marginTop: "1.25rem" }}>
+                <div className="eq-quotes__section-title" style={{ color: "var(--eq-muted, #888)", fontSize: "0.8rem" }}>Archived</div>
+                <div className="eq-quotes__table-wrap">
+                  <table className="eq-quotes__table">
+                    <thead><tr><th>Part no.</th><th>Description</th><th>Unit</th><th className="eq-quotes__th--right">Unit cost ($)</th><th></th></tr></thead>
+                    <tbody>
+                      {materials.filter((m) => m.archived).map((m) => {
+                        const i = materials.indexOf(m);
+                        return (
+                          <tr className="eq-quotes__row" key={m.material_id} style={{ opacity: 0.65 }}>
+                            <td>{m.part_no}</td><td>{m.description}</td><td>{m.unit}</td>
+                            <td className="eq-quotes__td--right">{m.unit_cost}</td>
+                            <td className="eq-quotes__td--right">
+                              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void restoreMaterial(i)}>Restore</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Products */}
+          <div className="eq-quotes__detail-card">
+            <div className="eq-quotes__section-title">Outlet products</div>
+            {products.map((p, i) => (
+              <div className="eq-quotes__detail-card" key={p.product_id ?? `new-${i}`} style={{ marginBottom: "0.75rem" }}>
+                <div className="eq-quotes__info-grid">
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <label className="eq-quotes__info-label">Name</label>
+                    <input className="eq-quotes__input" value={p.name} onChange={(e) => updProduct(i, "name", e.target.value)} />
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Brand</label>
+                    <input className="eq-quotes__input" value={p.brand} onChange={(e) => updProduct(i, "brand", e.target.value)} />
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Phase</label>
+                    <input className="eq-quotes__input" value={p.phase} onChange={(e) => updProduct(i, "phase", e.target.value)} />
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Plug type</label>
+                    <input className="eq-quotes__input" value={p.plug_type} onChange={(e) => updProduct(i, "plug_type", e.target.value)} />
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Cable material</label>
+                    <select className="eq-quotes__select" value={p.cable_material_id} onChange={(e) => updProduct(i, "cable_material_id", e.target.value)}>
+                      <option value="">—</option>
+                      {materials.map((m) => <option key={m.material_id} value={m.material_id ?? ""}>{m.part_no} — {m.description}</option>)}
+                    </select>
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Cable qty</label>
+                    <input className="eq-quotes__input eq-quotes__input--sm" value={p.cable_qty} onChange={(e) => updProduct(i, "cable_qty", e.target.value)} />
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Outlet material</label>
+                    <select className="eq-quotes__select" value={p.outlet_material_id} onChange={(e) => updProduct(i, "outlet_material_id", e.target.value)}>
+                      <option value="">—</option>
+                      {materials.map((m) => <option key={m.material_id} value={m.material_id ?? ""}>{m.part_no} — {m.description}</option>)}
+                    </select>
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Outlet qty</label>
+                    <input className="eq-quotes__input eq-quotes__input--sm" value={p.outlet_qty} onChange={(e) => updProduct(i, "outlet_qty", e.target.value)} />
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Breaker material</label>
+                    <select className="eq-quotes__select" value={p.breaker_material_id} onChange={(e) => updProduct(i, "breaker_material_id", e.target.value)}>
+                      <option value="">—</option>
+                      {materials.map((m) => <option key={m.material_id} value={m.material_id ?? ""}>{m.part_no} — {m.description}</option>)}
+                    </select>
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Breaker qty</label>
+                    <input className="eq-quotes__input eq-quotes__input--sm" value={p.breaker_qty} onChange={(e) => updProduct(i, "breaker_qty", e.target.value)} />
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Install hours</label>
+                    <input className="eq-quotes__input eq-quotes__input--sm" value={p.install_hours} onChange={(e) => updProduct(i, "install_hours", e.target.value)} />
+                  </div>
+                  <div className="eq-quotes__info-item">
+                    <label className="eq-quotes__info-label">Mgmt hours</label>
+                    <input className="eq-quotes__input eq-quotes__input--sm" value={p.mgmt_hours} onChange={(e) => updProduct(i, "mgmt_hours", e.target.value)} />
+                  </div>
+                </div>
+                <div style={{ marginTop: "0.5rem" }}>
+                  <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" onClick={() => void saveProduct(i)}>Save</button>{" "}
+                  <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void archiveProduct(i)}>{p.product_id ? "Archive" : "Remove"}</button>
+                </div>
+              </div>
+            ))}
+            {products.length === 0 && <p className="eq-quotes__muted">No products yet.</p>}
+            <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addProduct}>+ Add product</button>
+          </div>
+
+          {/* Volume bands */}
+          <div className="eq-quotes__detail-card">
+            <div className="eq-quotes__section-title">Volume discount bands</div>
+            <p className="eq-quotes__muted">Factor 1.00 = full price, 0.90 = 10% off. Leave the top band&apos;s &ldquo;to&rdquo; blank for &ldquo;and up&rdquo;.</p>
+            <div className="eq-quotes__table-wrap">
+              <table className="eq-quotes__table">
+                <thead>
+                  <tr><th>From (pairs)</th><th>To (pairs)</th><th className="eq-quotes__th--right">Factor (×)</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {bands.map((b, i) => (
+                    <tr className="eq-quotes__row" key={i}>
+                      <td><input className="eq-quotes__input eq-quotes__input--sm" value={b.min_qty} onChange={(e) => updBand(i, "min_qty", e.target.value)} /></td>
+                      <td><input className="eq-quotes__input eq-quotes__input--sm" value={b.max_qty} placeholder="and up" onChange={(e) => updBand(i, "max_qty", e.target.value)} /></td>
+                      <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={b.factor} onChange={(e) => updBand(i, "factor", e.target.value)} /></td>
+                      <td className="eq-quotes__td--right"><button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => removeBand(i)}>Remove</button></td>
+                    </tr>
+                  ))}
+                  {bands.length === 0 && <tr><td colSpan={4} className="eq-quotes__muted">No bands.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ marginTop: "0.75rem" }}>
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addBand}>+ Add band</button>{" "}
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" disabled={bandsSaving} onClick={() => void saveBands()}>{bandsSaving ? "Saving…" : "Save bands"}</button>
+            </div>
+          </div>
+
         </div>
       )}
 
-      {/* Materials */}
-      {tab === "materials" && (
-        <div className="eq-quotes__detail-card">
-          <div className="eq-quotes__section-title">Active materials</div>
-          <div className="eq-quotes__table-wrap">
-            <table className="eq-quotes__table">
-              <thead>
-                <tr>
-                  <th>Part no.</th><th>Description</th><th>Unit</th>
-                  <th className="eq-quotes__th--right">Unit cost ($)</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {materials.filter((m) => !m.archived).map((m, _i) => {
-                  const i = materials.indexOf(m);
-                  return (
-                    <tr className="eq-quotes__row" key={m.material_id ?? `new-${i}`}>
-                      <td><input className="eq-quotes__input" value={m.part_no} onChange={(e) => updMaterial(i, "part_no", e.target.value)} /></td>
-                      <td><input className="eq-quotes__input" value={m.description} onChange={(e) => updMaterial(i, "description", e.target.value)} /></td>
-                      <td><input className="eq-quotes__input eq-quotes__input--sm" value={m.unit} onChange={(e) => updMaterial(i, "unit", e.target.value)} /></td>
-                      <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={m.unit_cost} onChange={(e) => updMaterial(i, "unit_cost", e.target.value)} /></td>
+      {/* Rate library — defaults + presets */}
+      {tab === "rates" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+
+          {/* Default rates */}
+          <div className="eq-quotes__detail-card">
+            <div className="eq-quotes__section-title">Default rates</div>
+            <p className="eq-quotes__muted" style={{ fontSize: 13, marginTop: -4 }}>
+              Applied automatically when no preset overrides them. Labour and material defaults also drive outlet pricing.
+            </p>
+            <div className="eq-quotes__info-grid">
+              <div className="eq-quotes__info-item">
+                <label className="eq-quotes__info-label">Labour — normal ($/hr)</label>
+                <input className="eq-quotes__input" value={config.labour_normal_rate}
+                  onChange={(e) => setConfig({ ...config, labour_normal_rate: e.target.value })} />
+              </div>
+              <div className="eq-quotes__info-item">
+                <label className="eq-quotes__info-label">Labour — supervisor ($/hr)</label>
+                <input className="eq-quotes__input" value={config.labour_supervisor_rate}
+                  onChange={(e) => setConfig({ ...config, labour_supervisor_rate: e.target.value })} />
+              </div>
+              <div className="eq-quotes__info-item">
+                <label className="eq-quotes__info-label">Materials markup (×)</label>
+                <input className="eq-quotes__input" value={config.material_markup}
+                  onChange={(e) => setConfig({ ...config, material_markup: e.target.value })} />
+              </div>
+            </div>
+            <div style={{ marginTop: "1rem" }}>
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" disabled={configSaving} onClick={() => void saveConfig()}>
+                {configSaving ? "Saving…" : "Save defaults"}
+              </button>
+            </div>
+          </div>
+
+          {/* Preset line items */}
+          <div className="eq-quotes__detail-card">
+            <div className="eq-quotes__section-title">Preset line items</div>
+            <p className="eq-quotes__muted" style={{ fontSize: 13, marginTop: -4 }}>
+              Click-to-add library used on the quote form. Covers labour, materials, subcontractors, and one-off items.
+            </p>
+            <div className="eq-quotes__table-wrap">
+              <table className="eq-quotes__table">
+                <thead>
+                  <tr>
+                    <th>Section</th><th>Description</th><th>Unit</th>
+                    <th className="eq-quotes__th--right">Qty</th>
+                    <th className="eq-quotes__th--right">Rate ($)</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {presets.map((p, i) => (
+                    <tr className="eq-quotes__row" key={p.preset_id ?? `new-${i}`} style={p.active ? undefined : { opacity: 0.55 }}>
+                      <td>
+                        <select className="eq-quotes__select eq-quotes__input--sm" value={p.category} onChange={(e) => updPreset(i, "category", e.target.value)}>
+                          <option value="">—</option>
+                          {PRESET_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                        </select>
+                      </td>
+                      <td><input className="eq-quotes__input" value={p.description} onChange={(e) => updPreset(i, "description", e.target.value)} /></td>
+                      <td><input className="eq-quotes__input eq-quotes__input--sm" value={p.unit} onChange={(e) => updPreset(i, "unit", e.target.value)} /></td>
+                      <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={p.qty} onChange={(e) => updPreset(i, "qty", e.target.value)} /></td>
+                      <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={p.rate} onChange={(e) => updPreset(i, "rate", e.target.value)} /></td>
                       <td className="eq-quotes__td--right">
-                        <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" onClick={() => void saveMaterial(i)}>Save</button>{" "}
-                        <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void archiveMaterial(i)}>{m.material_id ? "Archive" : "Remove"}</button>
+                        <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" onClick={() => void savePreset(i)}>Save</button>{" "}
+                        <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void archivePreset(i)}>{!p.preset_id ? "Remove" : p.active ? "Archive" : "Restore"}</button>
                       </td>
                     </tr>
-                  );
-                })}
-                {materials.filter((m) => !m.archived).length === 0 && <tr><td colSpan={5} className="eq-quotes__muted">No active materials.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ marginTop: "0.75rem" }}>
-            <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addMaterial}>+ Add material</button>
-          </div>
-
-          {/* Archived materials */}
-          {materials.some((m) => m.archived) && (
-            <div style={{ marginTop: "1.5rem" }}>
-              <div className="eq-quotes__section-title" style={{ color: "var(--eq-muted, #888)" }}>Archived materials</div>
-              <div className="eq-quotes__table-wrap">
-                <table className="eq-quotes__table">
-                  <thead>
-                    <tr>
-                      <th>Part no.</th><th>Description</th><th>Unit</th>
-                      <th className="eq-quotes__th--right">Unit cost ($)</th><th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {materials.filter((m) => m.archived).map((m) => {
-                      const i = materials.indexOf(m);
-                      return (
-                        <tr className="eq-quotes__row" key={m.material_id} style={{ opacity: 0.65 }}>
-                          <td>{m.part_no}</td>
-                          <td>{m.description}</td>
-                          <td>{m.unit}</td>
-                          <td className="eq-quotes__td--right">{m.unit_cost}</td>
-                          <td className="eq-quotes__td--right">
-                            <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void restoreMaterial(i)}>Restore</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                  {presets.length === 0 && <tr><td colSpan={6} className="eq-quotes__muted">No presets yet.</td></tr>}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
-      )}
-
-      {/* Quick-add presets */}
-      {tab === "presets" && (
-        <div className="eq-quotes__detail-card">
-          <div className="eq-quotes__section-title">Quick-add presets</div>
-          <p className="eq-quotes__muted" style={{ fontSize: 13, marginTop: -4 }}>
-            The click-to-add line-item library estimators use on the quote form. Archived presets stay out of the form but can be restored.
-          </p>
-          <div className="eq-quotes__table-wrap">
-            <table className="eq-quotes__table">
-              <thead>
-                <tr>
-                  <th>Section</th><th>Description</th><th>Unit</th>
-                  <th className="eq-quotes__th--right">Qty</th>
-                  <th className="eq-quotes__th--right">Rate ($)</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {presets.map((p, i) => (
-                  <tr className="eq-quotes__row" key={p.preset_id ?? `new-${i}`} style={p.active ? undefined : { opacity: 0.55 }}>
-                    <td>
-                      <select className="eq-quotes__select eq-quotes__input--sm" value={p.category} onChange={(e) => updPreset(i, "category", e.target.value)}>
-                        <option value="">—</option>
-                        {PRESET_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                      </select>
-                    </td>
-                    <td><input className="eq-quotes__input" value={p.description} onChange={(e) => updPreset(i, "description", e.target.value)} /></td>
-                    <td><input className="eq-quotes__input eq-quotes__input--sm" value={p.unit} onChange={(e) => updPreset(i, "unit", e.target.value)} /></td>
-                    <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={p.qty} onChange={(e) => updPreset(i, "qty", e.target.value)} /></td>
-                    <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={p.rate} onChange={(e) => updPreset(i, "rate", e.target.value)} /></td>
-                    <td className="eq-quotes__td--right">
-                      <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" onClick={() => void savePreset(i)}>Save</button>{" "}
-                      <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void archivePreset(i)}>{!p.preset_id ? "Remove" : p.active ? "Archive" : "Restore"}</button>
-                    </td>
-                  </tr>
-                ))}
-                {presets.length === 0 && <tr><td colSpan={6} className="eq-quotes__muted">No presets yet.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ marginTop: "0.75rem" }}>
-            <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addPreset}>+ Add preset</button>
-          </div>
-        </div>
-      )}
-
-      {/* Products */}
-      {tab === "products" && (
-        <div className="eq-quotes__detail-card">
-          <div className="eq-quotes__section-title">Outlet products</div>
-          {products.map((p, i) => (
-            <div className="eq-quotes__detail-card" key={p.product_id ?? `new-${i}`} style={{ marginBottom: "0.75rem" }}>
-              <div className="eq-quotes__info-grid">
-                <div className="eq-quotes__info-item eq-quotes__info-item--full">
-                  <label className="eq-quotes__info-label">Name</label>
-                  <input className="eq-quotes__input" value={p.name} onChange={(e) => updProduct(i, "name", e.target.value)} />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Brand</label>
-                  <input className="eq-quotes__input" value={p.brand} onChange={(e) => updProduct(i, "brand", e.target.value)} />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Phase</label>
-                  <input className="eq-quotes__input" value={p.phase} onChange={(e) => updProduct(i, "phase", e.target.value)} />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Plug type</label>
-                  <input className="eq-quotes__input" value={p.plug_type} onChange={(e) => updProduct(i, "plug_type", e.target.value)} />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Cable material</label>
-                  <select className="eq-quotes__select" value={p.cable_material_id} onChange={(e) => updProduct(i, "cable_material_id", e.target.value)}>
-                    <option value="">—</option>
-                    {materials.map((m) => <option key={m.material_id} value={m.material_id ?? ""}>{m.part_no} — {m.description}</option>)}
-                  </select>
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Cable qty</label>
-                  <input className="eq-quotes__input eq-quotes__input--sm" value={p.cable_qty} onChange={(e) => updProduct(i, "cable_qty", e.target.value)} />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Outlet material</label>
-                  <select className="eq-quotes__select" value={p.outlet_material_id} onChange={(e) => updProduct(i, "outlet_material_id", e.target.value)}>
-                    <option value="">—</option>
-                    {materials.map((m) => <option key={m.material_id} value={m.material_id ?? ""}>{m.part_no} — {m.description}</option>)}
-                  </select>
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Outlet qty</label>
-                  <input className="eq-quotes__input eq-quotes__input--sm" value={p.outlet_qty} onChange={(e) => updProduct(i, "outlet_qty", e.target.value)} />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Breaker material</label>
-                  <select className="eq-quotes__select" value={p.breaker_material_id} onChange={(e) => updProduct(i, "breaker_material_id", e.target.value)}>
-                    <option value="">—</option>
-                    {materials.map((m) => <option key={m.material_id} value={m.material_id ?? ""}>{m.part_no} — {m.description}</option>)}
-                  </select>
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Breaker qty</label>
-                  <input className="eq-quotes__input eq-quotes__input--sm" value={p.breaker_qty} onChange={(e) => updProduct(i, "breaker_qty", e.target.value)} />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Install hours</label>
-                  <input className="eq-quotes__input eq-quotes__input--sm" value={p.install_hours} onChange={(e) => updProduct(i, "install_hours", e.target.value)} />
-                </div>
-                <div className="eq-quotes__info-item">
-                  <label className="eq-quotes__info-label">Mgmt hours</label>
-                  <input className="eq-quotes__input eq-quotes__input--sm" value={p.mgmt_hours} onChange={(e) => updProduct(i, "mgmt_hours", e.target.value)} />
-                </div>
-              </div>
-              <div style={{ marginTop: "0.5rem" }}>
-                <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" onClick={() => void saveProduct(i)}>Save</button>{" "}
-                <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => void archiveProduct(i)}>{p.product_id ? "Archive" : "Remove"}</button>
-              </div>
+            <div style={{ marginTop: "0.75rem" }}>
+              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addPreset}>+ Add preset</button>
             </div>
-          ))}
-          {products.length === 0 && <p className="eq-quotes__muted">No products yet.</p>}
-          <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addProduct}>+ Add product</button>
-        </div>
-      )}
+          </div>
 
-      {/* Volume bands */}
-      {tab === "bands" && (
-        <div className="eq-quotes__detail-card">
-          <div className="eq-quotes__section-title">Volume discount bands (outlets)</div>
-          <p className="eq-quotes__muted">Factor 1.00 = full price, 0.90 = 10% off. Leave the top band&apos;s &ldquo;to&rdquo; blank for &ldquo;and up&rdquo;.</p>
-          <div className="eq-quotes__table-wrap">
-            <table className="eq-quotes__table">
-              <thead>
-                <tr><th>From (pairs)</th><th>To (pairs)</th><th className="eq-quotes__th--right">Factor (×)</th><th></th></tr>
-              </thead>
-              <tbody>
-                {bands.map((b, i) => (
-                  <tr className="eq-quotes__row" key={i}>
-                    <td><input className="eq-quotes__input eq-quotes__input--sm" value={b.min_qty} onChange={(e) => updBand(i, "min_qty", e.target.value)} /></td>
-                    <td><input className="eq-quotes__input eq-quotes__input--sm" value={b.max_qty} placeholder="and up" onChange={(e) => updBand(i, "max_qty", e.target.value)} /></td>
-                    <td className="eq-quotes__td--right"><input className="eq-quotes__input eq-quotes__input--sm" value={b.factor} onChange={(e) => updBand(i, "factor", e.target.value)} /></td>
-                    <td className="eq-quotes__td--right"><button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => removeBand(i)}>Remove</button></td>
-                  </tr>
-                ))}
-                {bands.length === 0 && <tr><td colSpan={4} className="eq-quotes__muted">No bands.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ marginTop: "0.75rem" }}>
-            <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={addBand}>+ Add band</button>{" "}
-            <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" disabled={bandsSaving} onClick={() => void saveBands()}>{bandsSaving ? "Saving…" : "Save bands"}</button>
-          </div>
         </div>
       )}
 
@@ -823,8 +842,11 @@ export function QuotesSetup({ supabase }: QuotesSetupProps): React.JSX.Element {
       {tab === "estimators" && (
         <div className="eq-quotes__detail-card">
           <div className="eq-quotes__section-title">Estimators</div>
-          <p style={{ fontSize: 13, color: "var(--eq-muted)", marginBottom: 12 }}>
+          <p style={{ fontSize: 13, color: "var(--eq-muted)", marginBottom: 4 }}>
             Staff who can appear as the estimator on a quote. Free-type is always allowed — this list just speeds up selection.
+          </p>
+          <p style={{ fontSize: 12, color: "var(--eq-muted)", marginBottom: 12, fontStyle: "italic" }}>
+            This list will eventually pull from EQ canonical staff records.
           </p>
           <table className="eq-quotes__table" style={{ width: "100%", maxWidth: 560 }}>
             <thead>
