@@ -30,6 +30,34 @@
 BEGIN;
 
 -- ──────────────────────────────────────────────────────────────────────
+-- Reconcile a pre-existing NON-canonical contract_scopes (forward-fix)
+-- ──────────────────────────────────────────────────────────────────────
+-- ehow's 2026-06-08 force-push left an app-native app_data.contract_scopes
+-- (`id` PK, no scope_id, ~150 seed/test rows) that is incompatible with this
+-- canonical shape and blocked the first apply (the index hit a missing
+-- external_id). Royce-authorised 2026-06-15 to drop the seed/test rows.
+-- Guarded on the ABSENCE of `scope_id`, so a correctly-shaped canonical table
+-- (e.g. a tenant where this migration already created it) is LEFT INTACT —
+-- a strict no-op there. CASCADE clears only the 4 FK constraints from the
+-- sibling force-pushed tables (contract_scopes_history, contract_variations,
+-- scope_coverage_gaps, pm_calendar); those tables and their rows survive.
+DO $$
+BEGIN
+  IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'app_data' AND table_name = 'contract_scopes'
+     )
+     AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'app_data' AND table_name = 'contract_scopes'
+          AND column_name = 'scope_id'
+     )
+  THEN
+    DROP TABLE app_data.contract_scopes CASCADE;
+  END IF;
+END $$;
+
+-- ──────────────────────────────────────────────────────────────────────
 -- app_data.contract_scopes
 -- ──────────────────────────────────────────────────────────────────────
 
