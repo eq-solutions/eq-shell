@@ -148,48 +148,13 @@ CREATE TRIGGER contract_scopes_touch_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION app_data.touch_updated_at();
 
--- ──────────────────────────────────────────────────────────────────────
--- Read bridge for EQ Service (security_invoker → base-table RLS applies)
--- ──────────────────────────────────────────────────────────────────────
-
-CREATE OR REPLACE VIEW app_data.service_contract_scopes AS
-  SELECT
-    scope_id AS id,
-    scope_id,
-    tenant_id,
-    customer_id,
-    service_contract_id,
-    site_id,
-    asset_id,
-    financial_year,
-    scope_item,
-    is_included,
-    billing_basis,
-    lifecycle_status,
-    jp_code,
-    notes,
-    asset_qty,
-    intervals_text,
-    cycle_costs,
-    year_totals,
-    due_years,
-    labour_hours_per_asset,
-    unit_rate_per_asset,
-    has_bundled_scope,
-    commercial_gap,
-    source_workbook,
-    source_sheet,
-    source_row,
-    source_import_id,
-    active,
-    imported_at,
-    imported_from,
-    created_at,
-    updated_at
-  FROM app_data.contract_scopes;
-
-ALTER VIEW app_data.service_contract_scopes SET (security_invoker = on);
-GRANT SELECT ON app_data.service_contract_scopes TO authenticated;
+-- NOTE: the EQ Service read-bridge is NOT created here. EQ Service reads the
+-- `service` schema (its client pins db.schema='service'), so the bridge must be
+-- `service.contract_scopes` — applied to the SKS tenant's `service` schema as
+-- part of the cutover-shim layer (outside the One Pipe), not an app_data view.
+-- An earlier app_data.service_contract_scopes view (security_invoker, granted to
+-- authenticated) tripped the anon-grant invariant (granted view without RLS) and
+-- was the wrong schema anyway; migration 0124 drops it.
 
 -- ──────────────────────────────────────────────────────────────────────
 -- Reconcile: app_data.assets was missing the authenticated SELECT grant that
