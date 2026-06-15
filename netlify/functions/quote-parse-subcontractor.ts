@@ -1,8 +1,9 @@
 // POST /.netlify/functions/quote-parse-subcontractor
 //
 // Accepts a JSON body: { file_base64: string, mime_type: string, file_name?: string }
-// Sends the document to Claude and extracts structured line items from a subcontractor quote.
-// Returns: { ok: true, supplier_name?, quote_ref?, items: [{ description, qty, unit, unit_price }] }
+// Sends the document to Claude and extracts structured quote data from a subcontractor quote.
+// Returns: { ok: true, supplier_name?, quote_ref?, project_name?, scope_summary?, address?,
+//            items: [{ description, qty, unit, unit_price }] }
 //        | { ok: false, error: string }
 //
 // Auth: session cookie (same gate as quote-suggest-scope).
@@ -20,7 +21,7 @@ const MAX_TOKENS = 4096
 
 const EXTRACT_TOOL = {
   name: 'extract_line_items',
-  description: 'Extract all priced line items from the subcontractor quote.',
+  description: 'Extract structured data from a subcontractor quote: project context plus all priced line items.',
   input_schema: {
     type: 'object' as const,
     required: ['items'],
@@ -32,6 +33,18 @@ const EXTRACT_TOOL = {
       quote_ref: {
         type: 'string',
         description: "The supplier's own quote number or reference, if present.",
+      },
+      project_name: {
+        type: 'string',
+        description: 'The project name, job description, or description of works as stated in the quote.',
+      },
+      scope_summary: {
+        type: 'string',
+        description: 'A concise summary (1–3 sentences) of the scope of works described in the quote — what is being supplied or installed.',
+      },
+      address: {
+        type: 'string',
+        description: 'The site or delivery address if stated in the quote.',
       },
       items: {
         type: 'array',
@@ -123,7 +136,7 @@ export default withSentry(async (req: Request): Promise<Response> => {
             contentBlock,
             {
               type: 'text',
-              text: 'Extract all priced line items from this subcontractor quote using the extract_line_items tool. Include every line that has a price. For lump-sum lines with no explicit quantity, use qty 1. All prices in AUD.',
+              text: 'Extract structured data from this subcontractor quote using the extract_line_items tool. Capture the project name, scope summary, site address, supplier details, and every priced line item. For lump-sum lines with no explicit quantity use qty 1. All prices in AUD.',
             },
           ],
         }],
@@ -141,12 +154,22 @@ export default withSentry(async (req: Request): Promise<Response> => {
     if (!toolUse) throw new Error('Claude did not call extract_line_items')
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const out = toolUse.input as { supplier_name?: string; quote_ref?: string; items?: any[] }
+    const out = toolUse.input as {
+      supplier_name?: string
+      quote_ref?: string
+      project_name?: string
+      scope_summary?: string
+      address?: string
+      items?: any[]
+    }
 
     return json(200, {
       ok: true,
       supplier_name: out.supplier_name?.trim() || undefined,
       quote_ref: out.quote_ref?.trim() || undefined,
+      project_name: out.project_name?.trim() || undefined,
+      scope_summary: out.scope_summary?.trim() || undefined,
+      address: out.address?.trim() || undefined,
       items: (out.items ?? [])
         .map((it) => ({
           description: String(it.description ?? '').trim(),

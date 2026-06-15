@@ -237,6 +237,9 @@ interface ParsedSubItem {
 interface PdfParseResult {
   supplier_name?: string;
   quote_ref?: string;
+  project_name?: string;
+  scope_summary?: string;
+  address?: string;
   items: ParsedSubItem[];
 }
 
@@ -707,8 +710,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // ── PDF import state ─────────────────────────────────────────────────────
   const pdfFileInputRef = useRef<HTMLInputElement | null>(null);
+  const pdfStartFileInputRef = useRef<HTMLInputElement | null>(null);
   const [pdfParsing, setPdfParsing] = useState(false);
   const [pdfParseErr, setPdfParseErr] = useState<string | null>(null);
+  const [pdfStartErr, setPdfStartErr] = useState<string | null>(null);
   const [pdfParseResult, setPdfParseResult] = useState<PdfParseResult | null>(null);
 
   // ── Import state ──────────────────────────────────────────────────────────
@@ -1475,7 +1480,16 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         credentials: 'include',
         body: JSON.stringify({ file_base64: b64, mime_type: file.type || 'application/pdf', file_name: file.name }),
       });
-      const j = await res.json() as { ok: boolean; supplier_name?: string; quote_ref?: string; items?: ParsedSubItem[]; error?: string };
+      const j = await res.json() as {
+        ok: boolean;
+        supplier_name?: string;
+        quote_ref?: string;
+        project_name?: string;
+        scope_summary?: string;
+        address?: string;
+        items?: ParsedSubItem[];
+        error?: string;
+      };
       if (!res.ok || !j.ok) {
         setPdfParseErr(
           j.error === 'ai_not_configured' ? 'AI not configured on the server.'
@@ -1488,7 +1502,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         setPdfParseErr('No priced line items found in this document.');
         return;
       }
-      setPdfParseResult({ supplier_name: j.supplier_name, quote_ref: j.quote_ref, items: j.items ?? [] });
+      setPdfParseResult({
+        supplier_name: j.supplier_name,
+        quote_ref: j.quote_ref,
+        project_name: j.project_name,
+        scope_summary: j.scope_summary,
+        address: j.address,
+        items: j.items ?? [],
+      });
     } catch {
       setPdfParseErr('Could not read the PDF — try again.');
     } finally {
@@ -1513,6 +1534,75 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     });
     setPdfParseResult(null);
     setPdfParseErr(null);
+  };
+
+  const handlePdfFileStart = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPdfParsing(true);
+    setPdfStartErr(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let b64 = '';
+      const CHUNK = 8192;
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        b64 += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+      }
+      b64 = btoa(b64);
+      const res = await fetch('/.netlify/functions/quote-parse-subcontractor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ file_base64: b64, mime_type: file.type || 'application/pdf', file_name: file.name }),
+      });
+      const j = await res.json() as {
+        ok: boolean;
+        supplier_name?: string;
+        quote_ref?: string;
+        project_name?: string;
+        scope_summary?: string;
+        address?: string;
+        items?: ParsedSubItem[];
+        error?: string;
+      };
+      if (!res.ok || !j.ok) {
+        setPdfStartErr(
+          j.error === 'ai_not_configured' ? 'AI not configured on the server.'
+          : j.error === 'file_too_large' ? 'File too large (max 10 MB).'
+          : 'Could not read the PDF — try again.',
+        );
+        return;
+      }
+      if ((j.items ?? []).length === 0) {
+        setPdfStartErr('No priced line items found in this document.');
+        return;
+      }
+      resetCreateForm();
+      if (j.project_name) setCreateProjectName(j.project_name);
+      if (j.scope_summary) setCreateScope(j.scope_summary);
+      if (j.address) setCreateAddress(j.address);
+      const supplierNote = [
+        j.supplier_name && `Subcontractor: ${j.supplier_name}`,
+        j.quote_ref && `Supplier ref: ${j.quote_ref}`,
+      ].filter(Boolean).join(' · ');
+      if (supplierNote) setCreateClarifications(supplierNote);
+      setCreateLineItems((j.items ?? []).map((it) => ({
+        description: it.description,
+        qty: String(it.qty > 0 ? it.qty : 1),
+        unit: it.unit,
+        cost: it.unit_price > 0 ? it.unit_price.toFixed(2) : '',
+        markup: '',
+        rate: it.unit_price > 0 ? it.unit_price.toFixed(2) : '',
+        category: 'subcontractor' as const,
+      })));
+      setView('create');
+    } catch {
+      setPdfStartErr('Could not read the PDF — try again.');
+    } finally {
+      setPdfParsing(false);
+    }
   };
 
   // ── Pipeline actions ──────────────────────────────────────────────────────
@@ -3752,13 +3842,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                                   >
                                     {pdfParsing ? "Reading…" : "Import from PDF"}
                                   </button>
-                                  <input
-                                    ref={pdfFileInputRef}
-                                    type="file"
-                                    accept=".pdf,image/jpeg,image/png"
-                                    style={{ display: "none" }}
-                                    onChange={(e) => void handlePdfFile(e)}
-                                  />
                                 </span>
                               )}
                             </span>
@@ -4073,6 +4156,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
         </div>
       </div>
 
+      {/* Hidden file input for subcontractor "Import from PDF" in the line-items table */}
+      <input
+        ref={pdfFileInputRef}
+        type="file"
+        accept=".pdf,image/jpeg,image/png"
+        style={{ display: "none" }}
+        onChange={(e) => void handlePdfFile(e)}
+      />
+
       {/* PDF review modal */}
       {pdfParseResult && (
         <div style={{
@@ -4161,6 +4253,27 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           >
             + New Quote
           </button>
+          {pdfStartErr && (
+            <span style={{ fontSize: 12, color: "var(--eq-err, #c0392b)", alignSelf: "center" }}>
+              {pdfStartErr}
+            </span>
+          )}
+          <button
+            type="button"
+            className="eq-quotes__btn eq-quotes__btn--outline"
+            disabled={pdfParsing}
+            title="Start a new quote from a subcontractor PDF"
+            onClick={() => { setPdfStartErr(null); pdfStartFileInputRef.current?.click(); }}
+          >
+            {pdfParsing ? "Reading…" : "From PDF"}
+          </button>
+          <input
+            ref={pdfStartFileInputRef}
+            type="file"
+            accept=".pdf,image/jpeg,image/png"
+            style={{ display: "none" }}
+            onChange={(e) => void handlePdfFileStart(e)}
+          />
           <div className="eq-quotes__view-tabs">
             {(["pipeline", "accordion", "import", "customers", "reports", "setup", "trash"] as ModuleView[]).map((v) => (
               <button
