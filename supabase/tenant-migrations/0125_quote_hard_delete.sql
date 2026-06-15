@@ -1,4 +1,4 @@
--- Migration: 0123_quote_hard_delete
+-- Migration: 0125_quote_hard_delete
 -- Target:    Per-tenant data plane
 -- Purpose:   Permanent delete for EQ Ops quotes. Archive (eq_trash_quote) stays
 --            the recoverable soft-delete; this removes a quote for good. Every
