@@ -202,6 +202,27 @@ declare module '@eq-solutions/ui' {
   }
   export function Table<T>(props: TableProps<T>): React.ReactElement
 
+  // ── DropdownMenu ──────────────────────────────────────────────────────────
+  export interface DropdownMenuItemDef {
+    key: string
+    label: string
+    icon?: ReactNode
+    onClick: () => void
+    disabled?: boolean
+    variant?: 'default' | 'danger'
+  }
+  export interface DropdownMenuSeparatorDef {
+    key: string
+    separator: true
+  }
+  export type DropdownMenuEntry = DropdownMenuItemDef | DropdownMenuSeparatorDef
+  export interface DropdownMenuProps {
+    trigger: ReactNode
+    items: DropdownMenuEntry[]
+    align?: 'left' | 'right'
+  }
+  export function DropdownMenu(props: DropdownMenuProps): React.ReactElement
+
   // ── AppShell / AppSidebar / AppRail ────────────────────────────────────────
   export interface AppSidebarItem {
     key: string
