@@ -349,6 +349,11 @@ const KNOWN_LEGACY_ANON = {
     // security_invoker views — RLS enforced on underlying tables (see comment above)
     'app_data.field_managers', 'app_data.field_people', 'app_data.field_sites',
     'app_data.field_timesheet_locks',
+    // EQ Service security_invoker=on views (SELECT … FROM app_data.<table>): the
+    // base app_data tables have RLS on with tenant_id policies, so invoker-rights
+    // reads/writes are tenant-gated — the view object reporting rls=off is not a
+    // real exposure (same pattern as the field_* views above).
+    'service.assets', 'service.contacts', 'service.customers', 'service.sites',
     // pass-through views on public.* (views cannot have RLS enabled — tracked debt)
     'app_data.field_audit_log', 'app_data.field_leave_requests', 'app_data.field_prestarts',
     'app_data.field_schedule', 'app_data.field_site_diaries', 'app_data.field_timesheets',
