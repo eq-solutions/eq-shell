@@ -1,18 +1,19 @@
-import { useSession } from '../session';
+import { useSession, moduleEnabled } from '../session';
 import { HubLayout } from '../components/HubLayout';
 import QuotesNative from './QuotesNative';
 
 // EQ Ops (route /ops) — the in-shell build that will replace the standalone EQ
-// Quotes tool. It renders the same module as /quotes, but lives on its own route
-// and is gated to platform admins, so it can be debugged while the team stays on
-// the external EQ Quotes tool (quotes.eq.solutions). When EQ Ops is ready to take
-// over, point the team's nav here and retire the external EQ Quotes redirect.
+// Quotes tool. It renders the same module as /quotes, but lives on its own route.
+// Access is gated on the per-tenant `ops` module entitlement (enabled for SKS so
+// the team can test it), plus platform admins everywhere for debugging. When EQ
+// Ops is ready to take over fully, enable the `ops` entitlement per tenant and
+// retire the external EQ Quotes redirect.
 export default function EqOps() {
   const { session } = useSession();
   if (!session) return null;
 
-  // Not your debug surface — the team uses EQ Quotes (external) until this ships.
-  if (!session.user.is_platform_admin) {
+  // Gated to tenants with EQ Ops switched on (entitlement) + platform admins.
+  if (!moduleEnabled(session, 'ops') && !session.user.is_platform_admin) {
     return (
       <HubLayout>
         <div className="eq-page__header">

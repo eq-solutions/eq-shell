@@ -450,10 +450,11 @@ export default function TenantHome() {
   // only appears once data actually flows from that app into canonical.
   const tier: EqTier = session.tenant.tier;
   const visibleApps = HUB_APPS
-    // platformOnly (EQ Ops debug) → admins only; alwaysShow (external EQ Quotes) →
-    // everyone; otherwise gate on the entitlement module.
+    // platformOnly (EQ Ops) → tenants with the module entitlement on, plus platform
+    // admins everywhere; alwaysShow (external EQ Quotes) → everyone; otherwise gate
+    // on the entitlement module.
     .filter((a) => a.platformOnly
-      ? session.user.is_platform_admin
+      ? (session.user.is_platform_admin || moduleEnabled(session, a.key))
       : (a.alwaysShow || moduleEnabled(session, a.key)))
     .filter((a) => !a.hideForTier?.includes(tier));
 
