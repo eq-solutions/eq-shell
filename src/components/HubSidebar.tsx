@@ -127,15 +127,6 @@ export function HubSidebar({ apps, records }: Props) {
     }),
   });
 
-  if (canReports) {
-    const href = `/${tenantSlug}/reports`;
-    sections.push({
-      key: 'reports',
-      label: 'Reports',
-      items: [{ key: 'reports', label: 'Reports', href, icon: <BarChart2 size={16} aria-hidden="true" />, isActive: active(href), arrow: true }],
-    });
-  }
-
   if (canAdmin || canIntake) {
     const adminItems = [];
     if (canAdmin) {
@@ -145,25 +136,18 @@ export function HubSidebar({ apps, records }: Props) {
         { key: 'audit',          label: 'Audit log',       href: `/${tenantSlug}/admin/audit`,          icon: <ClipboardList size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/admin/audit`) },
         { key: 'access-control', label: 'Security groups', href: `/${tenantSlug}/admin/access-control`, icon: <ShieldCheck size={16} aria-hidden="true" />,   isActive: active(`/${tenantSlug}/admin/access-control`) },
         { key: 'settings',       label: 'Settings',        href: `/${tenantSlug}/admin/settings`,       icon: <Settings size={16} aria-hidden="true" />,      isActive: active(`/${tenantSlug}/admin/settings`) },
+        { key: '2fa',            label: 'Two-factor security', href: `/${tenantSlug}/settings/2fa`,     icon: <ShieldCheck size={16} aria-hidden="true" />,   isActive: active(`/${tenantSlug}/settings/2fa`), arrow: true as const },
       );
     }
     if (canIntake) {
       adminItems.push({ key: 'import', label: 'Import', href: `/${tenantSlug}/intake`, icon: <Download size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/intake`), arrow: true as const });
     }
+    if (canReports) {
+      const href = `/${tenantSlug}/reports`;
+      adminItems.push({ key: 'reports', label: 'Reports', href, icon: <BarChart2 size={16} aria-hidden="true" />, isActive: active(href), arrow: true as const });
+    }
     sections.push({ key: 'admin', label: 'Admin', items: adminItems });
   }
-
-  sections.push({
-    key: 'security',
-    label: 'Security',
-    items: [{
-      key: '2fa', label: 'Two-factor security',
-      href: `/${tenantSlug}/settings/2fa`,
-      icon: <ShieldCheck size={16} aria-hidden="true" />,
-      isActive: active(`/${tenantSlug}/settings/2fa`),
-      arrow: true,
-    }],
-  });
 
   if (session.user.is_platform_admin) {
     sections.push({
@@ -176,7 +160,7 @@ export function HubSidebar({ apps, records }: Props) {
   return (
     <AppSidebar
       homeHref={`/${tenantSlug}`}
-      logo={<EqLogo size={28} />}
+      logo={<EqLogo size={36} />}
       brandLabel="CORE"
       live
       tenantSwitcher={session.memberships && session.memberships.length > 1 ? <TenantSwitcher /> : undefined}
