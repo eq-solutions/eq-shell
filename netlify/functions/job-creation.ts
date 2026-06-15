@@ -88,6 +88,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const { data: jobData, error: rpcErr } = await rpcClient.rpc('eq_get_job_creation', {
     p_quote_id: quoteId,
+    p_tenant_id: session.tenant_id,
   });
   if (rpcErr) return jsonErr(500, rpcErr.message);
   const d = jobData as JobCreationData;
