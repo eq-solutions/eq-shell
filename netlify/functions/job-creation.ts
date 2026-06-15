@@ -124,7 +124,15 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   b17.style = { ...b17.style };     // detach shared style reference
   // B18: ABN
   jc.getCell('B18').value = d.customer_abn ?? '';
-  // B27/B28/B29: Client ID / Market Segment / Market Vertical — add dropdowns from Extention Column Tabs
+  // Dropdowns from "Data (do not use)" sheet — matches Ramsay V7 template
+  const dataSheet = "'Data (do not use)'";
+  jc.getCell('B6').dataValidation  = { type: 'list', allowBlank: true, formulae: [`${dataSheet}!$A$1:$A$2`] };   // Job Type
+  jc.getCell('B9').dataValidation  = { type: 'list', allowBlank: true, formulae: [`${dataSheet}!$A$8:$A$15`] };  // State
+  jc.getCell('B10').dataValidation = { type: 'list', allowBlank: true, formulae: [`${dataSheet}!$A$17:$A$18`] }; // Billing Type
+  jc.getCell('B15').dataValidation = { type: 'list', allowBlank: true, formulae: [`${dataSheet}!$A$4:$A$6`] };   // Job Group
+  jc.getCell('B16').dataValidation = { type: 'list', allowBlank: true, formulae: [`${dataSheet}!$A$24:$A$25`] }; // Payapps
+  jc.getCell('B20').dataValidation = { type: 'list', allowBlank: true, formulae: [`${dataSheet}!$A$20:$A$21`] }; // Retention
+  // B27/B28/B29: Client ID / Market Segment / Market Vertical — from Extention Column Tabs
   const extSheet = "'Extention Column Tabs'";
   jc.getCell('B27').dataValidation = { type: 'list', allowBlank: true, formulae: [`${extSheet}!$A$2:$A$7`] };
   jc.getCell('B28').dataValidation = { type: 'list', allowBlank: true, formulae: [`${extSheet}!$B$2:$B$7`] };
