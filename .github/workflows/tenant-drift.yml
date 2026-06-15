@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0   # need history to diff added files against the base
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Lint newly-added migrations for ledger self-inserts
         run: node scripts/check-migration-hygiene.mjs
         env:
@@ -51,7 +51,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Install packages

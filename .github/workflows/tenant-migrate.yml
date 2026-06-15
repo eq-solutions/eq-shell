@@ -71,7 +71,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Compute apply plan
         run: |
           node scripts/migrate-tenants.mjs --plan | tee plan.txt
@@ -97,7 +97,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Reconcile _eq_migrations ledgers
         run: |
           SLUG_FLAG=""
@@ -120,7 +120,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Apply pending migrations
         run: |
           SLUG_FLAG=""
