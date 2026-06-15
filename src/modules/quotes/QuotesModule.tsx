@@ -721,6 +721,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category: "labour" },
   ]);
   const [showDraftBanner, setShowDraftBanner] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [newContactFirst, setNewContactFirst] = useState("");
+  const [newContactLast, setNewContactLast] = useState("");
+  const [newContactPhone, setNewContactPhone] = useState("");
+  const [newContactEmail, setNewContactEmail] = useState("");
+  const [addingContact, setAddingContact] = useState(false);
   const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
 
   // ── Outlet calculator state ───────────────────────────────────────────────
@@ -1221,6 +1227,45 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     createAttnFirstName, createAttnName, createAttnPhone, createAddress,
     createPaymentTerms, createValidityDays, createQuoteNumber, createLineItems,
   ]);
+
+  const handleAddNewContact = async () => {
+    if (!supabase || !createCustomerId || !newContactFirst.trim()) return;
+    setAddingContact(true);
+    const extId = `eq-manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const { data, error } = await supabase.rpc("eq_upsert_contact", {
+      p_external_id: extId,
+      p_customer_id: createCustomerId,
+      p_first_name: newContactFirst.trim() || null,
+      p_last_name: newContactLast.trim() || null,
+      p_mobile_phone: newContactPhone.trim() || null,
+      p_email: newContactEmail.trim() || null,
+    });
+    setAddingContact(false);
+    if (error || !data) return;
+    const newId = data as string;
+    const newContact: ContactRow = {
+      contact_id: newId,
+      first_name: newContactFirst.trim() || null,
+      last_name: newContactLast.trim() || null,
+      email: newContactEmail.trim() || null,
+      mobile_phone: newContactPhone.trim() || null,
+      work_phone: null,
+      contact_position: null,
+      is_default_quote_contact: false,
+    };
+    setCreateContacts((prev) => [...prev, newContact]);
+    // Auto-fill attention from new contact
+    setSelectedContactId(newId);
+    setCreateAttnFirstName(newContact.first_name ?? "");
+    setCreateAttnName(newContact.last_name ?? "");
+    setCreateAttnPhone(newContact.mobile_phone ?? "");
+    // Reset add form
+    setNewContactFirst("");
+    setNewContactLast("");
+    setNewContactPhone("");
+    setNewContactEmail("");
+    setShowAddContact(false);
+  };
 
   const openEditForm = useCallback((d: QuoteDetail) => {
     setEditingQuoteId(d.quote_id);
@@ -3975,6 +4020,105 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                   </>
                 )}
               </div>
+              {/* Site contact slicer — shown when a customer (and optionally site) is selected */}
+              {createCustomerId && (() => {
+                const siteIds = new Set(siteContactsForForm.map((c) => c.contact_id));
+                const allContacts = [
+                  ...siteContactsForForm,
+                  ...createContacts.filter((c) => !siteIds.has(c.contact_id)),
+                ];
+                return (
+                  <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                    <span className="eq-quotes__info-label" style={{ marginBottom: 6, display: "block" }}>
+                      {createSiteId ? "Site & Customer Contacts" : "Customer Contacts"}
+                    </span>
+                    {allContacts.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginBottom: 8 }}>
+                        {allContacts.map((ct) => {
+                          const name = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unknown";
+                          const isSelected = selectedContactId === ct.contact_id;
+                          const isSiteContact = siteIds.has(ct.contact_id);
+                          return (
+                            <button
+                              key={ct.contact_id}
+                              type="button"
+                              style={{
+                                fontSize: "0.82rem",
+                                padding: "4px 12px",
+                                borderRadius: "20px",
+                                border: `1px solid ${isSelected ? "var(--eq-deep, #2986B4)" : "var(--eq-border, #ddd)"}`,
+                                background: isSelected ? "var(--eq-ice, #EAF5FB)" : "#fff",
+                                color: isSelected ? "var(--eq-ink, #1A1A2E)" : "var(--eq-muted, #666)",
+                                cursor: "pointer",
+                                fontWeight: isSelected ? 600 : undefined,
+                              }}
+                              onClick={() => {
+                                setSelectedContactId(ct.contact_id);
+                                setCreateAttnFirstName(ct.first_name ?? "");
+                                setCreateAttnName(ct.last_name ?? "");
+                                setCreateAttnPhone(ct.mobile_phone ?? ct.work_phone ?? "");
+                              }}
+                              title={isSiteContact ? "Site contact" : "Customer contact"}
+                            >
+                              {name}
+                              {isSiteContact && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>📍</span>}
+                              {ct.is_default_quote_contact && <span style={{ marginLeft: 4, color: "var(--eq-sky, #3DA8D8)" }}>★</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {showAddContact ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end", padding: "10px 12px", background: "var(--eq-ice, #EAF5FB)", borderRadius: 8, border: "1px solid var(--eq-border, #ddd)" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span className="eq-quotes__info-label" style={{ marginBottom: 2 }}>First Name *</span>
+                          <input className="eq-quotes__input eq-quotes__input--sm" style={{ minWidth: 120 }} value={newContactFirst} onChange={(e) => setNewContactFirst(e.target.value)} placeholder="First" autoFocus />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span className="eq-quotes__info-label" style={{ marginBottom: 2 }}>Last Name</span>
+                          <input className="eq-quotes__input eq-quotes__input--sm" style={{ minWidth: 120 }} value={newContactLast} onChange={(e) => setNewContactLast(e.target.value)} placeholder="Last" />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span className="eq-quotes__info-label" style={{ marginBottom: 2 }}>Phone</span>
+                          <input className="eq-quotes__input eq-quotes__input--sm" style={{ minWidth: 130 }} value={newContactPhone} onChange={(e) => setNewContactPhone(e.target.value)} placeholder="0400 000 000" />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <span className="eq-quotes__info-label" style={{ marginBottom: 2 }}>Email</span>
+                          <input className="eq-quotes__input eq-quotes__input--sm" style={{ minWidth: 180 }} value={newContactEmail} onChange={(e) => setNewContactEmail(e.target.value)} placeholder="email@example.com" />
+                        </div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "flex-end", paddingBottom: 1 }}>
+                          <button
+                            type="button"
+                            className="eq-quotes__btn eq-quotes__btn--primary"
+                            style={{ height: 32, fontSize: 13 }}
+                            disabled={addingContact || !newContactFirst.trim()}
+                            onClick={() => void handleAddNewContact()}
+                          >
+                            {addingContact ? "Adding…" : "Add"}
+                          </button>
+                          <button
+                            type="button"
+                            className="eq-quotes__btn eq-quotes__btn--outline"
+                            style={{ height: 32, fontSize: 13 }}
+                            onClick={() => { setShowAddContact(false); setNewContactFirst(""); setNewContactLast(""); setNewContactPhone(""); setNewContactEmail(""); }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="eq-quotes__btn eq-quotes__btn--outline"
+                        style={{ fontSize: 12, padding: "3px 10px", marginTop: allContacts.length > 0 ? 0 : 0 }}
+                        onClick={() => setShowAddContact(true)}
+                      >
+                        + Add new contact
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="eq-quotes__info-item eq-quotes__info-item--full">
                 <span className="eq-quotes__info-label">Project Name</span>
                 <input
@@ -4118,55 +4262,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               }}>
                 Contact &amp; Address
               </span>
-              {(() => {
-                const siteIds = new Set(siteContactsForForm.map((c) => c.contact_id));
-                const allContacts = [
-                  ...siteContactsForForm,
-                  ...createContacts.filter((c) => !siteIds.has(c.contact_id)),
-                ];
-                if (allContacts.length === 0) return null;
-                return (
-                  <div style={{ marginBottom: 12 }}>
-                    <span className="eq-quotes__info-label" style={{ marginBottom: 6, display: "block" }}>
-                      {createSiteId ? "Site & Customer Contacts" : "Customer Contacts"}
-                    </span>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-                      {allContacts.map((ct) => {
-                        const name = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unknown";
-                        const isSelected = selectedContactId === ct.contact_id;
-                        const isSiteContact = siteIds.has(ct.contact_id);
-                        return (
-                          <button
-                            key={ct.contact_id}
-                            type="button"
-                            style={{
-                              fontSize: "0.82rem",
-                              padding: "4px 12px",
-                              borderRadius: "20px",
-                              border: `1px solid ${isSelected ? "var(--eq-deep, #2986B4)" : "var(--eq-border, #ddd)"}`,
-                              background: isSelected ? "var(--eq-ice, #EAF5FB)" : "#fff",
-                              color: isSelected ? "var(--eq-ink, #1A1A2E)" : "var(--eq-muted, #666)",
-                              cursor: "pointer",
-                              fontWeight: isSelected ? 600 : undefined,
-                            }}
-                            onClick={() => {
-                              setSelectedContactId(ct.contact_id);
-                              setCreateAttnFirstName(ct.first_name ?? "");
-                              setCreateAttnName(ct.last_name ?? "");
-                              setCreateAttnPhone(ct.mobile_phone ?? ct.work_phone ?? "");
-                            }}
-                            title={isSiteContact ? "Site contact" : "Customer contact"}
-                          >
-                            {name}
-                            {isSiteContact && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>📍</span>}
-                            {ct.is_default_quote_contact && <span style={{ marginLeft: 4, color: "var(--eq-sky, #3DA8D8)" }}>★</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
               <div className="eq-quotes__info-grid">
                 <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">First Name</span>
