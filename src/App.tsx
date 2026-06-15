@@ -21,14 +21,13 @@ import ResetPin from './pages/ResetPin';
 import TenantPicker from './pages/TenantPicker';
 import TotpChallenge from './pages/TotpChallenge';
 import EnrollTotp from './pages/EnrollTotp';
+import AdminHub from './pages/AdminHub';
 import AdminInviteUser from './pages/AdminInviteUser';
 import AdminBulkInvite from './pages/AdminBulkInvite';
 import AdminInviteMigratedStaff from './pages/AdminInviteMigratedStaff';
 import AdminUserList from './pages/AdminUserList';
 import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
-import AdminMigrationPage from './pages/AdminMigrationPage';
-import AdminSecurityGroups from './pages/AdminSecurityGroups';
 import AccessControlPage from './pages/AccessControlPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
 import AdminCardsFeed from './pages/AdminCardsFeed';
@@ -37,7 +36,6 @@ import AdminWorkerInviteForm from './pages/AdminWorkerInviteForm';
 import AdminWorkerQR from './pages/AdminWorkerQR';
 import AdminTenantsPage from './pages/AdminTenantsPage';
 import AdminWorkersPage from './pages/AdminWorkersPage';
-import AdminDataActivationPage from './pages/AdminDataActivationPage';
 import EntityBrowserPage from './pages/EntityBrowserPage';
 import FieldRosterPage from './pages/FieldRosterPage';
 import CustomersHubPage from './pages/CustomersHubPage';
@@ -533,34 +531,23 @@ function TenantTree() {
             </Suspense>
           }
         />
-        {/* Phase 1.F: admin user-management routes. Permission checks
-            live in the page components via <Gate perm="..."> — the
-            route is reachable to any signed-in tenant user, but the
-            UI shows "Not allowed" when the role doesn't grant it.
-            Order matters: 'invite' (static) before ':userId' (param). */}
-        {/* Platform-operator console moved to /_platform/tenants. Redirect old
-            in-tenant links/bookmarks so nothing breaks. */}
+        {/* Admin — hub landing + sub-pages. Permission checks live in each page
+            via <Gate perm="...">. Order matters: static paths before :userId. */}
+        <Route path="admin" element={<AdminHub />} />
+        {/* Platform-operator console moved to /_platform/tenants. Redirect old links. */}
         <Route path="admin/tenants" element={<Navigate to="/_platform/tenants" replace />} />
         <Route path="admin/users" element={<AdminUserList />} />
         <Route path="admin/users/invite" element={<AdminInviteUser />} />
         <Route path="admin/users/invite-bulk" element={<AdminBulkInvite />} />
         <Route path="admin/users/migrate" element={<AdminInviteMigratedStaff />} />
         <Route path="admin/users/:userId" element={<AdminEditUser />} />
-        {/* S3 — audit log viewer + entity browser */}
         <Route path="admin/audit" element={<AdminAuditPage />} />
-        {/* Migration reconciliation — expected vs landed counts per entity */}
-        <Route path="admin/migration" element={<AdminMigrationPage />} />
-        {/* Worker invite management — Cards activation links */}
         <Route path="admin/workers" element={<AdminWorkerInvites />} />
         <Route path="admin/workers/invite" element={<AdminWorkerInviteForm />} />
         <Route path="admin/workers/qr" element={<AdminWorkerQR />} />
-        {/* Cards → Field review queue */}
         <Route path="admin/cards-feed" element={<AdminCardsFeed />} />
-        {/* Polish 2026-05-21 — tenant settings */}
         <Route path="admin/settings" element={<AdminTenantSettings />} />
-        <Route path="admin/security-groups" element={<AdminSecurityGroups />} />
         <Route path="admin/access-control" element={<AccessControlPage />} />
-        <Route path="admin/data-activation" element={<AdminDataActivationPage />} />
         {/* Phase 1.G — TOTP 2FA enrollment (any logged-in user) */}
         <Route path="settings/2fa" element={<EnrollTotp />} />
         <Route
