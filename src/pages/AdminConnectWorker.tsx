@@ -37,6 +37,7 @@ const ERR_MAP: Record<string, string> = {
   not_authorized: 'You need manager access to connect workers.',
   already_member: 'That worker is already connected to your team.',
   invalid_phone: 'Enter a valid Australian mobile — e.g. 0412 345 678.',
+  recently_declined: 'This worker declined your request. You can send another after 30 days.',
 };
 
 function mapError(message: string | undefined, hint?: string | null): string {
