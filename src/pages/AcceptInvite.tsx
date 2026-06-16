@@ -1,4 +1,4 @@
-// Public landing page for the invite-accept flow (Phase 1.F).
+﻿// Public landing page for the invite-accept flow (Phase 1.F).
 //
 // Reads `?token=<raw>` from the URL, asks the user for a PIN, posts
 // /.netlify/functions/accept-invite. On success: the function sets
@@ -75,9 +75,11 @@ export default function AcceptInvite() {
         }
         const map: Record<string, string> = {
           'invite-not-found-or-expired':
-            'This invite is no longer valid. Ask your admin for a new one.',
-          'bad-pin': 'PIN must be 4–12 letters or digits.',
+            'This link has already been used or has expired. Ask your admin to send a new invite.',
+          'bad-pin': 'PIN must be 4–12 letters or digits, no spaces.',
           'bad-request': 'Something went wrong with the request — try again.',
+          'phone-already-linked':
+            'The mobile number on your invite is already linked to another account. Contact your admin to update it and resend the invite.',
         };
         setErr(map[body.error ?? ''] ?? 'Could not accept the invite. Try again or ask your admin.');
         setBusy(false);
