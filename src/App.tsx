@@ -21,6 +21,7 @@ import ResetPin from './pages/ResetPin';
 import TenantPicker from './pages/TenantPicker';
 import TotpChallenge from './pages/TotpChallenge';
 import EnrollTotp from './pages/EnrollTotp';
+import ProfileSettings from './pages/ProfileSettings';
 import AdminHub from './pages/AdminHub';
 import AdminInviteUser from './pages/AdminInviteUser';
 import AdminBulkInvite from './pages/AdminBulkInvite';
@@ -579,6 +580,8 @@ function TenantTree() {
         <Route path="admin/security-groups" element={<AdminSecurityGroups />} />
         <Route path="admin/migration" element={<AdminMigrationPage />} />
         <Route path="admin/data-activation" element={<AdminDataActivationPage />} />
+        {/* Self-serve profile edit (any logged-in user) */}
+        <Route path="settings/profile" element={<ProfileSettings />} />
         {/* Phase 1.G — TOTP 2FA enrollment (any logged-in user) */}
         <Route path="settings/2fa" element={<EnrollTotp />} />
         <Route

@@ -253,7 +253,9 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
         role: 'manager',
         is_platform_admin: false,
         active: true,
-        name: '',
+        // No name is captured in the phone-OTP provision flow; leave it null so
+        // the render fallback (email prefix) stays consistent rather than blank.
+        name: null,
       },
       { onConflict: 'id', ignoreDuplicates: true },
     );

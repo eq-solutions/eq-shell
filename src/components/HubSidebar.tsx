@@ -153,6 +153,7 @@ export function HubSidebar({ apps, records }: Props) {
     key: 'account',
     label: 'Account',
     items: [
+      { key: 'profile', label: 'Your profile', href: `/${tenantSlug}/settings/profile`, icon: <User size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/settings/profile`), arrow: true as const },
       { key: '2fa', label: 'Two-factor security', href: `/${tenantSlug}/settings/2fa`, icon: <ShieldCheck size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/settings/2fa`), arrow: true as const },
     ],
   });

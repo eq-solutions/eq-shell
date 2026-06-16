@@ -11,7 +11,7 @@
 // 2026-05-21 — rewrote on the canonical LoginPage aesthetic so the
 // new user's first impression matches the marketing site.
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import './auth.css';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
@@ -24,11 +24,37 @@ export default function AcceptInvite() {
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
 
+  const [name, setName] = useState('');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showSignIn, setShowSignIn] = useState(false);
+
+  // Best-effort pre-fill: if this invite is linked to a known worker, the
+  // accept endpoint returns their name so the user just confirms it. Failure
+  // is silent — the field simply stays empty.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/.netlify/functions/accept-invite?token=${encodeURIComponent(token)}`,
+          { credentials: 'include' },
+        );
+        const body = (await res.json()) as { suggested_name?: string | null };
+        if (!cancelled && body.suggested_name) {
+          setName((prev) => prev || body.suggested_name!);
+        }
+      } catch {
+        /* ignore — pre-fill is a nicety, not required */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   if (!token) {
     return (
@@ -46,6 +72,10 @@ export default function AcceptInvite() {
     e.preventDefault();
     setErr(null);
 
+    if (!name.trim()) {
+      setErr('Enter your full name.');
+      return;
+    }
     if (pin !== pinConfirm) {
       setErr('PINs do not match — re-enter to confirm.');
       return;
@@ -61,7 +91,7 @@ export default function AcceptInvite() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ invite_token: token, pin }),
+        body: JSON.stringify({ invite_token: token, pin, name: name.trim() }),
       });
       const body = (await res.json()) as
         | { valid: true; tenant: { slug: string } }
@@ -77,6 +107,7 @@ export default function AcceptInvite() {
           'invite-not-found-or-expired':
             'This link has already been used or has expired. Ask your admin to send a new invite.',
           'bad-pin': 'PIN must be 4–12 letters or digits, no spaces.',
+          'bad-name': 'Enter your full name (up to 120 characters).',
           'bad-request': 'Something went wrong with the request — try again.',
           'phone-already-linked':
             'The mobile number on your invite is already linked to another account. Contact your admin to update it and resend the invite.',
@@ -101,6 +132,16 @@ export default function AcceptInvite() {
           Pick a PIN you'll use to sign in. 4–12 letters or digits. Don't share
           it.
         </p>
+        <label htmlFor="name">Full name</label>
+        <input
+          id="name"
+          type="text"
+          autoComplete="name"
+          required
+          maxLength={120}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
         <label htmlFor="pin">PIN</label>
         <input
           id="pin"
@@ -128,7 +169,7 @@ export default function AcceptInvite() {
         <Button
           type="submit"
           variant="primary"
-          disabled={busy || !pin || !pinConfirm}
+          disabled={busy || !name.trim() || !pin || !pinConfirm}
           style={{ width: '100%' }}
         >
           {busy ? 'Setting up…' : 'Set PIN and continue →'}
