@@ -111,6 +111,9 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const [showMerge, setShowMerge] = useState(false);
   const [mergeSearch, setMergeSearch] = useState("");
   const [mergeBusy, setMergeBusy] = useState(false);
+  const [confirmDeleteContactId, setConfirmDeleteContactId] = useState<string | null>(null);
+  const [confirmDeleteCustomer, setConfirmDeleteCustomer] = useState(false);
+  const [confirmMergeTarget, setConfirmMergeTarget] = useState<CustomerRow | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -153,8 +156,9 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const saveContact = useCallback(async () => {
     if (!supabase || !selected) return;
     setAddSaving(true);
+    let rpcErr: { message: string } | null = null;
     if (editingContact) {
-      await supabase.rpc("eq_update_contact", {
+      const { error: e } = await supabase.rpc("eq_update_contact", {
         p_contact_id:   editingContact.contact_id,
         p_first_name:   addForm.first_name || null,
         p_last_name:    addForm.last_name  || null,
@@ -162,9 +166,10 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
         p_mobile_phone: addForm.mobile_phone || null,
         p_position:     addForm.position   || null,
       });
+      rpcErr = e;
     } else {
       const extId = `EQ-${crypto.randomUUID()}`;
-      await supabase.rpc("eq_upsert_contact", {
+      const { error: e } = await supabase.rpc("eq_upsert_contact", {
         p_external_id:  extId,
         p_customer_id:  selected.customer_id,
         p_first_name:   addForm.first_name || null,
@@ -173,8 +178,10 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
         p_mobile_phone: addForm.mobile_phone || null,
         p_position:     addForm.position   || null,
       });
+      rpcErr = e;
     }
     setAddSaving(false);
+    if (rpcErr) { setCustActionErr(rpcErr.message); return; }
     setShowAddContact(false);
     setEditingContact(null);
     setAddForm({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
@@ -183,18 +190,22 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
 
   const archiveContact = useCallback(async (ct: ContactRow) => {
     if (!supabase || !selected) return;
-    await supabase.rpc("eq_archive_contact", { p_contact_id: ct.contact_id });
+    const { error: e } = await supabase.rpc("eq_archive_contact", { p_contact_id: ct.contact_id });
+    if (e) { setCustActionErr(e.message); return; }
     await reloadContacts(selected.customer_id);
   }, [supabase, selected, reloadContacts]);
 
   const deleteContact = useCallback(async (ct: ContactRow) => {
     if (!supabase || !selected) return;
-    const name = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "this contact";
-    if (typeof window !== "undefined" && !window.confirm(`Permanently delete ${name}? This cannot be undone — use Archive to keep it recoverable.`)) return;
+    if (confirmDeleteContactId !== ct.contact_id) {
+      setConfirmDeleteContactId(ct.contact_id);
+      return;
+    }
+    setConfirmDeleteContactId(null);
     const { error: e } = await supabase.rpc("eq_delete_contact", { p_contact_id: ct.contact_id });
     if (e) { setCustActionErr(e.message); return; }
     await reloadContacts(selected.customer_id);
-  }, [supabase, selected, reloadContacts]);
+  }, [supabase, selected, reloadContacts, confirmDeleteContactId]);
 
   const setPrimaryContact = useCallback(async (ct: ContactRow) => {
     if (!supabase || !selected) return;
@@ -206,7 +217,11 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const deleteCustomer = useCallback(async () => {
     if (!supabase || !selected) return;
     setCustActionErr(null);
-    if (typeof window !== "undefined" && !window.confirm(`Permanently delete ${selected.company_name ?? "this client"}? This cannot be undone — use Archive to keep it recoverable.`)) return;
+    if (!confirmDeleteCustomer) {
+      setConfirmDeleteCustomer(true);
+      return;
+    }
+    setConfirmDeleteCustomer(false);
     const { error: e } = await supabase.rpc("eq_delete_customer", { p_customer_id: selected.customer_id });
     if (e) {
       // FK RESTRICT (23503) on quotes/contacts — guide to Archive/Merge instead of a raw error.
@@ -217,7 +232,7 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     }
     setSelected(null);
     await load();
-  }, [supabase, selected, load]);
+  }, [supabase, selected, load, confirmDeleteCustomer]);
 
   const reloadSites = useCallback(async (customerId: string) => {
     if (!supabase) return;
@@ -279,11 +294,12 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const handleAssignSite = useCallback(async (siteId: string) => {
     if (!supabase || !selected || assignSaving) return;
     setAssignSaving(true);
-    await supabase.rpc("eq_assign_site_to_customer", {
+    const { error: e } = await supabase.rpc("eq_assign_site_to_customer", {
       p_site_id:     siteId,
       p_customer_id: selected.customer_id,
     });
     setAssignSaving(false);
+    if (e) { setCustActionErr(e.message); return; }
     setShowAssignSite(false);
     setAssignSearch("");
     await reloadSites(selected.customer_id);
@@ -291,20 +307,22 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
 
   const handleLinkContact = useCallback(async (siteId: string, contactId: string) => {
     if (!supabase) return;
-    await supabase.rpc("eq_link_contact_to_site", {
+    const { error: e } = await supabase.rpc("eq_link_contact_to_site", {
       p_contact_id: contactId,
       p_site_id:    siteId,
     });
+    if (e) { setCustActionErr(e.message); return; }
     setShowLinkContact((prev) => ({ ...prev, [siteId]: false }));
     await loadSiteContacts(siteId);
   }, [supabase, loadSiteContacts]);
 
   const handleUnlinkContact = useCallback(async (siteId: string, contactId: string) => {
     if (!supabase) return;
-    await supabase.rpc("eq_unlink_contact_from_site", {
+    const { error: e } = await supabase.rpc("eq_unlink_contact_from_site", {
       p_contact_id: contactId,
       p_site_id:    siteId,
     });
+    if (e) { setCustActionErr(e.message); return; }
     await loadSiteContacts(siteId);
   }, [supabase, loadSiteContacts]);
 
@@ -312,8 +330,9 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     if (!supabase) return;
     if (!custForm.company_name.trim()) return;
     setCustSaving(true);
+    let rpcErr: { message: string } | null = null;
     if (custFormMode === "edit" && selected) {
-      await supabase.rpc("eq_update_customer", {
+      const { error: e } = await supabase.rpc("eq_update_customer", {
         p_customer_id:   selected.customer_id,
         p_company_name:  custForm.company_name.trim(),
         p_email:         custForm.email.trim()         || null,
@@ -321,9 +340,10 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
         p_suburb:        custForm.suburb.trim()        || null,
         p_state:         custForm.state.trim()         || null,
       });
+      rpcErr = e;
     } else {
       const extId = `EQ-${crypto.randomUUID()}`;
-      await supabase.rpc("eq_upsert_customer", {
+      const { error: e } = await supabase.rpc("eq_upsert_customer", {
         p_external_id:   extId,
         p_company_name:  custForm.company_name.trim(),
         p_email:         custForm.email.trim()         || null,
@@ -331,8 +351,10 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
         p_suburb:        custForm.suburb.trim()        || null,
         p_state:         custForm.state.trim()         || null,
       });
+      rpcErr = e;
     }
     setCustSaving(false);
+    if (rpcErr) { setCustActionErr(rpcErr.message); return; }
     setShowCustForm(false);
     setCustForm({ company_name: "", email: "", primary_phone: "", suburb: "", state: "" });
     await load();
@@ -398,10 +420,11 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
 
   const mergeInto = useCallback(async (dupe: CustomerRow) => {
     if (!supabase || !selected || mergeBusy) return;
-    if (typeof window !== "undefined" && !window.confirm(
-      `Merge "${dupe.company_name ?? "client"}" into "${selected.company_name ?? "client"}"?\n\n` +
-      `All of its quotes, sites and contacts move to "${selected.company_name ?? "this client"}", and the duplicate is archived (recoverable). This can't be auto-undone.`
-    )) return;
+    if (confirmMergeTarget?.customer_id !== dupe.customer_id) {
+      setConfirmMergeTarget(dupe);
+      return;
+    }
+    setConfirmMergeTarget(null);
     setMergeBusy(true);
     setCustActionErr(null);
     const { error: e } = await supabase.rpc("eq_merge_customers", {
@@ -414,7 +437,7 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     setMergeSearch("");
     await load();
     await loadDetail(selected);
-  }, [supabase, selected, mergeBusy, load, loadDetail]);
+  }, [supabase, selected, mergeBusy, load, loadDetail, confirmMergeTarget]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -428,13 +451,32 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     );
   }, [customers, search]);
 
-  if (loading) return <div className="eq-quotes__empty">Loading clients…</div>;
-  if (error)   return <div className="eq-quotes__empty" style={{ color: "var(--eq-err,#c0392b)" }}>Error: {error}</div>;
+  if (loading) return (
+    <div style={{ padding: '1rem 0' }}>
+      <div style={{ height: 20, background: 'var(--eq-border,#e5e7eb)', borderRadius: 4, marginBottom: 10, width: '70%' }} />
+      <div style={{ height: 20, background: 'var(--eq-border,#e5e7eb)', borderRadius: 4, marginBottom: 10, width: '55%' }} />
+      <div style={{ height: 20, background: 'var(--eq-border,#e5e7eb)', borderRadius: 4, width: '65%' }} />
+    </div>
+  );
+  if (error) return (
+    <div>
+      <p style={{ color: 'var(--eq-err,#c0392b)', marginBottom: 10, fontSize: 14 }}>
+        Couldn’t load clients — check your connection and try again.
+      </p>
+      <button
+        type="button"
+        className="eq-quotes__btn eq-quotes__btn--sm"
+        onClick={() => void load()}
+      >
+        Retry
+      </button>
+    </div>
+  );
 
   return (
-    <div className="eq-quotes__customers" style={{ display: "flex", gap: "1.5rem", alignItems: "flex-start" }}>
+    <div className="eq-quotes__customers" style={{ display: "flex", gap: "1.5rem", alignItems: "flex-start", flexWrap: "wrap" }}>
       {/* ── List pane ── */}
-      <div style={{ flex: "0 0 420px", minWidth: 0 }}>
+      <div style={{ flex: "0 0 420px", minWidth: "min(100%, 420px)", width: "min(100%, 420px)" }}>
         <div style={{ marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <button
             className="eq-quotes__btn eq-quotes__btn--primary"
@@ -445,7 +487,7 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
               setShowCustForm(true);
             }}
           >
-            + New client
+            New client
           </button>
         </div>
 
@@ -504,12 +546,15 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
           </span>
         </div>
 
-        <div style={{ overflowY: "auto", maxHeight: "calc(100vh - 280px)" }}>
+        <div style={{ overflowY: "auto", maxHeight: "calc(100vh - 320px)" }}>
           {filtered.map((c) => (
             <div
               key={c.customer_id}
+              role="button"
+              tabIndex={0}
               className={`eq-quotes__customer-row${selected?.customer_id === c.customer_id ? " eq-quotes__customer-row--active" : ""}`}
               onClick={() => void loadDetail(c)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void loadDetail(c); } }}
               style={{
                 padding: "0.6rem 0.75rem",
                 borderBottom: "1px solid var(--eq-border,#e5e7eb)",
@@ -528,8 +573,23 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
               </div>
             </div>
           ))}
-          {filtered.length === 0 && (
-            <p className="eq-quotes__muted" style={{ padding: "1rem 0" }}>No clients match.</p>
+          {filtered.length === 0 && customers.length > 0 && (
+            <div style={{ padding: "0.75rem 0" }}>
+              <p className="eq-quotes__muted" style={{ marginBottom: 8 }}>No clients match.</p>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--sm"
+                style={{ fontSize: "0.82rem" }}
+                onClick={() => setSearch("")}
+              >
+                Clear search
+              </button>
+            </div>
+          )}
+          {customers.length === 0 && (
+            <p className="eq-quotes__muted" style={{ padding: "1rem 0" }}>
+              No clients yet — add your first client above.
+            </p>
           )}
         </div>
       </div>
@@ -589,13 +649,36 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                     Archive
                   </button>
                 )}
-                <button
-                  className="eq-quotes__btn eq-quotes__btn--sm"
-                  style={{ fontSize: "0.78rem", padding: "3px 10px", color: "var(--eq-err,#c0392b)" }}
-                  onClick={() => { void deleteCustomer(); }}
-                >
-                  Delete
-                </button>
+                {confirmDeleteCustomer ? (
+                  <>
+                    <span style={{ fontSize: "0.78rem", color: "var(--eq-err,#c0392b)" }}>Delete this client?</span>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--sm"
+                      style={{ fontSize: "0.78rem", padding: "3px 10px", color: "var(--eq-err,#c0392b)" }}
+                      onClick={() => { void deleteCustomer(); }}
+                    >
+                      Yes, delete
+                    </button>
+                    <button
+                      type="button"
+                      className="eq-quotes__btn eq-quotes__btn--sm"
+                      style={{ fontSize: "0.78rem", padding: "3px 10px" }}
+                      onClick={() => setConfirmDeleteCustomer(false)}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="eq-quotes__btn eq-quotes__btn--sm"
+                    style={{ fontSize: "0.78rem", padding: "3px 10px", color: "var(--eq-err,#c0392b)" }}
+                    onClick={() => { void deleteCustomer(); }}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
 
@@ -630,13 +713,37 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                     .map((c) => (
                       <div
                         key={c.customer_id}
-                        style={{ padding: "0.45rem 0.5rem", borderBottom: "1px solid var(--eq-border,#e5e7eb)", cursor: mergeBusy ? "default" : "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-                        onClick={() => { void mergeInto(c); }}
+                        style={{ padding: "0.45rem 0.5rem", borderBottom: "1px solid var(--eq-border,#e5e7eb)", display: "flex", flexDirection: "column", gap: "0.3rem" }}
                       >
-                        <span style={{ fontWeight: 500, fontSize: "0.88rem" }}>{c.company_name ?? "(unnamed)"}</span>
-                        <span style={{ fontSize: "0.76rem", color: "var(--eq-muted,#6b7280)" }}>
-                          {c.quote_count > 0 ? `${c.quote_count} quote${c.quote_count !== 1 ? "s" : ""}` : "no quotes"}
-                        </span>
+                        <div
+                          style={{ cursor: mergeBusy ? "default" : "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => { void mergeInto(c); }}
+                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void mergeInto(c); } }}
+                        >
+                          <span style={{ fontWeight: 500, fontSize: "0.88rem" }}>{c.company_name ?? "(unnamed)"}</span>
+                          <span style={{ fontSize: "0.76rem", color: "var(--eq-muted,#6b7280)" }}>
+                            {c.quote_count > 0 ? `${c.quote_count} quote${c.quote_count !== 1 ? "s" : ""}` : "no quotes"}
+                          </span>
+                        </div>
+                        {confirmMergeTarget?.customer_id === c.customer_id && (
+                          <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", paddingTop: "0.2rem" }}>
+                            <span style={{ fontSize: "0.78rem", color: "var(--eq-err,#c0392b)" }}>Move all quotes, sites and contacts?</span>
+                            <button
+                              type="button"
+                              className="eq-quotes__btn eq-quotes__btn--sm"
+                              style={{ fontSize: "0.72rem", padding: "2px 8px", color: "var(--eq-err,#c0392b)" }}
+                              onClick={() => { void mergeInto(c); }}
+                            >Confirm merge</button>
+                            <button
+                              type="button"
+                              className="eq-quotes__btn eq-quotes__btn--sm"
+                              style={{ fontSize: "0.72rem", padding: "2px 8px" }}
+                              onClick={() => setConfirmMergeTarget(null)}
+                            >Cancel</button>
+                          </div>
+                        )}
                       </div>
                     ))}
                 </div>
@@ -875,13 +982,15 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                         <React.Fragment key={s.site_id}>
                           <tr
                             style={{ cursor: "pointer" }}
+                            tabIndex={0}
                             onClick={() => { void toggleSiteExpand(s.site_id); }}
+                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void toggleSiteExpand(s.site_id); } }}
                           >
                             <td style={{ fontWeight: 500 }}>{s.name}</td>
                             <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>{s.code ?? "—"}</td>
                             <td>
                               <span style={{ color: "var(--eq-sky,#3DA8D8)", fontSize: "0.82rem" }}>
-                                {expandedSiteId === s.site_id ? "▲" : "▼"}{" "}
+                                <span aria-hidden="true">{expandedSiteId === s.site_id ? "▲" : "▼"}</span>{" "}
                                 {(siteContacts[s.site_id] ?? []).length > 0
                                   ? `${(siteContacts[s.site_id] ?? []).length} contact${(siteContacts[s.site_id] ?? []).length !== 1 ? "s" : ""}`
                                   : "view contacts"}
@@ -968,7 +1077,7 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                   Recent quotes ({custQuotes.length})
                 </div>
                 {custQuotes.length === 0 && (
-                  <p className="eq-quotes__muted">No quotes yet.</p>
+                  <p className="eq-quotes__muted">No quotes for this client yet.</p>
                 )}
                 {custQuotes.length > 0 && (
                   <table className="eq-quotes__reports-table">

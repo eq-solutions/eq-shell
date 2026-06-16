@@ -238,6 +238,7 @@ export default function TenantHome() {
   const [loading, setLoading] = useState(true);
   // null = not yet loaded (user hasn't requested briefing), undefined = loading, AiData = loaded
   const [aiData, setAiData]             = useState<AiData | null | undefined>(null);
+  const [aiError, setAiError]           = useState(false);
   const [briefingLoading, setBriefingLoading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   // Optimistic local state for dismissed/actioned items
@@ -284,6 +285,7 @@ export default function TenantHome() {
     if (isRegenerate) {
       setRegenerating(true);
     } else {
+      setAiError(false);
       setBriefingLoading(true);
       setAiData(undefined); // undefined = loading
     }
@@ -292,10 +294,11 @@ export default function TenantHome() {
         ? '/.netlify/functions/ai-briefing?refresh=1'
         : '/.netlify/functions/ai-briefing';
       const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) { setAiData(null); return; }
+      if (!res.ok) { setAiData(null); setAiError(true); return; }
       const body = await res.json() as { ok: boolean } & Partial<AiData>;
-      if (!body.ok) { setAiData(null); return; }
+      if (!body.ok) { setAiData(null); setAiError(true); return; }
       setActionedTitles(new Set()); // reset optimistic state on fresh load
+      setAiError(false);
       setAiData({
         brief:                  body.brief                  ?? null,
         actions:                body.actions                ?? [],
@@ -309,6 +312,7 @@ export default function TenantHome() {
       });
     } catch {
       setAiData(null);
+      setAiError(true);
     } finally {
       if (isRegenerate) setRegenerating(false);
       else setBriefingLoading(false);
@@ -584,6 +588,10 @@ export default function TenantHome() {
             {greeting()}, {greetName}.
           </h1>
 
+          {err && (
+            <EqError title="Couldn't load dashboard" message={err} onRetry={loadData} />
+          )}
+
           {/* Cross-app stat cards — each clicks through to the surface it summarises */}
           <div className="eq-hub-stats">
             <Link to={`/${tenantSlug}/field`} className="eq-hub-stat">
@@ -670,11 +678,27 @@ export default function TenantHome() {
             </div>
           )}
 
+          {aiError && aiData === null && (
+            <div style={{ marginBottom: '1rem' }}>
+              <p style={{ fontSize: 13, color: 'var(--eq-mute)', marginBottom: 8 }}>
+                Couldn't load your briefing.
+              </p>
+              <button
+                type="button"
+                className="eq-hub-ai__regen"
+                onClick={() => void loadAiData()}
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
           {/* Ask anything search bar */}
           <div className="eq-hub-ask">
             <input
               className="eq-hub-ask__input"
               placeholder="Ask anything about your operations…"
+              aria-label="Ask anything about your operations"
               readOnly
               onClick={() => { if (aiData === null) void loadAiData(); }}
             />
@@ -724,8 +748,8 @@ export default function TenantHome() {
                         </div>
                       </div>
                       <div className="eq-hub-action__feedback">
-                        <button className="eq-hub-action__btn eq-hub-action__btn--done" onClick={() => void handleAction(action, 'actioned')} title="Mark done" aria-label="Mark done">✓</button>
-                        <button className="eq-hub-action__btn eq-hub-action__btn--dismiss" onClick={() => void handleAction(action, 'dismissed')} title="Dismiss" aria-label="Dismiss">×</button>
+                        <button type="button" className="eq-hub-action__btn eq-hub-action__btn--done" onClick={() => void handleAction(action, 'actioned')} aria-label="Mark done"><span aria-hidden="true">✓</span></button>
+                        <button type="button" className="eq-hub-action__btn eq-hub-action__btn--dismiss" onClick={() => void handleAction(action, 'dismissed')} aria-label="Dismiss"><span aria-hidden="true">×</span></button>
                       </div>
                     </div>
                   );
@@ -754,7 +778,7 @@ export default function TenantHome() {
                   <div key={e.id} className={`eq-hub-activity__item${newFeedIds.has(e.id) ? ' eq-hub-activity__item--new' : ''}`}>
                     <span className={`eq-hub-activity__dot eq-hub-activity__dot--${meta.dot}`} aria-hidden="true" />
                     <div className="eq-hub-activity__name">{detail ? `${meta.label} — ${detail}` : meta.label}</div>
-                    <span className="eq-hub-activity__source">{APP_LABELS[e.app_source] ?? e.app_source}</span>
+                    <span className="eq-hub-activity__source">{APP_LABELS[e.app_source] ?? e.app_source.replace('eq-', 'EQ ').replace('-', ' ')}</span>
                     <span className="eq-hub-activity__time">{relativeTime(e.occurred_at)}</span>
                   </div>
                 );
@@ -831,9 +855,6 @@ export default function TenantHome() {
           </div>
 
 
-          {err && (
-            <EqError title="Couldn't load dashboard" message={err} onRetry={loadData} />
-          )}
 
           {/* ── Mobile apps section (EQ Shell 15 Frame 1) ──
               List rows with ink icon tiles — replaces grid tiles on mobile.
