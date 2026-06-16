@@ -176,14 +176,14 @@ const HUB_APPS: { key: string; label: string; to: string; isBeta: boolean; hideF
   // EQ Ops — the in-shell build that will replace EQ Quotes (route /ops renders the
   // in-shell module). Platform-admin only for now: a debug surface while the team
   // stays on EQ Quotes. Keep this wiring in sync with HubLayout + IconRail.
-  { key: 'ops',       label: 'EQ Ops',     to: 'ops',       isBeta: true,  platformOnly: true, hideForTier: ['trial'] },
+  { key: 'ops',       label: 'EQ Ops',     to: 'ops',       isBeta: false, platformOnly: true, hideForTier: ['trial'] },
   { key: 'comms',     label: 'NSW Comms',  to: 'comms',     isBeta: true  },
 ];
 
 const APP_DESCRIPTIONS: Record<string, string> = {
   field:       'Rosters, staff, licences and availability.',
   service:     'Maintenance, defects and customer reports.',
-  'eq-quotes': 'Your current quoting tool.',
+  'eq-quotes': 'Now opens EQ Ops — your live quoting tool.',
   ops:         'The new build that will replace EQ Quotes.',
   cards:       'Staff profiles and licence cards.',
   comms:       'NSW Comms job pipeline — quotes, POs and invoicing.',

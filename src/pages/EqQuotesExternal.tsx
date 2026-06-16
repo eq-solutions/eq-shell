@@ -1,54 +1,12 @@
-import { useEffect } from 'react';
-import { HubLayout } from '../components/HubLayout';
+import { Navigate, useParams } from 'react-router-dom';
 
-const EQ_QUOTES_URL = 'https://quotes.eq.solutions';
-
+// EQ Quotes (the standalone Flask tool) has been replaced by EQ Ops. The old
+// /<tenant>/eq-quotes door now redirects into /<tenant>/ops so muscle-memory and
+// any saved links land on the live in-shell build. The Flask app stays reachable
+// at quotes.eq.solutions directly for historical reference during the cutover.
 export default function EqQuotesExternal() {
-  useEffect(() => {
-    window.open(EQ_QUOTES_URL, '_blank', 'noopener,noreferrer');
-  }, []);
-
-  return (
-    <HubLayout>
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100%',
-        gap: 16,
-        padding: 40,
-        textAlign: 'center',
-      }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--eq-ink)', margin: 0 }}>
-          EQ Quotes
-        </h2>
-        <p style={{ fontSize: 14, color: 'var(--eq-muted)', margin: 0, maxWidth: 340 }}>
-          EQ Quotes has opened in a new tab. Use it to create and edit quotes —
-          they'll appear in EQ Ops automatically.
-        </p>
-        <a
-          href={EQ_QUOTES_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '9px 18px',
-            background: 'var(--eq-primary)',
-            color: '#fff',
-            borderRadius: 6,
-            fontSize: 14,
-            fontWeight: 600,
-            textDecoration: 'none',
-          }}
-        >
-          Open EQ Quotes ↗
-        </a>
-      </div>
-    </HubLayout>
-  );
+  const { tenantSlug } = useParams<{ tenantSlug: string }>();
+  return <Navigate to={`/${tenantSlug ?? ''}/ops`} replace />;
 }
 
 export { EqQuotesExternal };
