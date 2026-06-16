@@ -3,12 +3,14 @@ import { Check } from 'lucide-react';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { Gate } from '../permissions/Gate';
-import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
+import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { friendlyError } from '../lib/friendlyError';
 import { createSupabaseClient } from '../lib/supabaseJwt';
-import { moduleEnabled } from '../session';
+
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 interface ModuleEntitlement {
   module: string;
@@ -33,13 +35,6 @@ const MODULE_LABELS: Record<string, string> = {
   quotes: 'Quotes',
   service: 'Service',
 };
-
-const HUB_APPS = [
-  { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
-  { key: 'service', label: 'EQ Service', to: 'service', isBeta: false },
-  { key: 'quotes',  label: 'EQ Quotes',  to: 'quotes',  isBeta: false },
-  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: true  },
-];
 
 function AdminTenantSettingsInner() {
   const { session } = useSession();
@@ -244,185 +239,170 @@ function AdminTenantSettingsInner() {
     }
   }
 
-  const sidebarApps: HubApp[] = HUB_APPS
-    .filter((a) => session ? moduleEnabled(session, a.key) : false)
-    .map((a) => ({
-      key: a.key, label: a.label, to: a.to, isBeta: a.isBeta,
-      count: null, hasAlert: false, icon: HUB_APP_ICONS[a.key],
-    }));
-
   return (
-    <div className="eq-hub">
-      <HubSidebar apps={sidebarApps} />
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
+      {err && <EqError title="Couldn't load settings" message={err} onRetry={load} />}
 
-      <div className="eq-hub__content">
-        <div className="eq-hub-content">
+      {!settings && !err && <Skeleton variant="card" />}
 
-          {err && <EqError title="Couldn't load settings" message={err} onRetry={load} />}
+      {settings && (
+        <form onSubmit={onSubmit} style={{ maxWidth: 580 }}>
+          <div style={{ marginBottom: 28 }}>
+            <h1 style={{ fontSize: 26, fontWeight: 700, margin: '0 0 4px' }}>Settings</h1>
+            <p style={{ fontSize: 13, color: 'var(--gray-500)', margin: 0 }}>
+              {settings.name} · {settings.modules.filter((m) => m.enabled).length} apps enabled
+            </p>
+          </div>
 
-          {!settings && !err && <Skeleton variant="card" />}
+          {/* Branding */}
+          <section className="eq-section">
+            <h2 className="eq-section__heading">Branding</h2>
 
-          {settings && (
-            <form onSubmit={onSubmit} style={{ maxWidth: 580 }}>
-              <div style={{ marginBottom: 28 }}>
-                <h1 style={{ fontSize: 26, fontWeight: 700, margin: '0 0 4px' }}>Settings</h1>
-                <p style={{ fontSize: 13, color: 'var(--gray-500)', margin: 0 }}>
-                  {settings.name} · {settings.modules.filter((m) => m.enabled).length} apps enabled
-                </p>
+            <FieldRow label="Business name">
+              <input
+                type="text" value={name} onChange={(e) => setName(e.target.value)}
+                disabled={busy} style={inputStyle} required
+              />
+            </FieldRow>
+
+            <FieldRow label="Brand colour" hint="Hex, e.g. #3DA8D8. Overrides the default sky blue accent throughout the hub.">
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input
+                  type="text" value={brandColor}
+                  onChange={(e) => { setBrandColor(e.target.value); setColorDetected(false); }}
+                  placeholder="#3DA8D8" disabled={busy}
+                  style={{ ...inputStyle, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', flex: 1 }}
+                />
+                <input
+                  type="color"
+                  value={/^#[0-9A-Fa-f]{6}$/.test(brandColor) ? brandColor : '#3DA8D8'}
+                  onChange={(e) => { setBrandColor(e.target.value); setColorDetected(false); }}
+                  disabled={busy}
+                  style={{ width: 40, height: 40, padding: 2, border: '1px solid var(--gray-300)', borderRadius: 6, cursor: 'pointer', background: 'none' }}
+                  title="Pick a colour"
+                />
               </div>
-
-              {/* Branding */}
-              <section className="eq-section">
-                <h2 className="eq-section__heading">Branding</h2>
-
-                <FieldRow label="Business name">
-                  <input
-                    type="text" value={name} onChange={(e) => setName(e.target.value)}
-                    disabled={busy} style={inputStyle} required
-                  />
-                </FieldRow>
-
-                <FieldRow label="Brand colour" hint="Hex, e.g. #3DA8D8. Overrides the default sky blue accent throughout the hub.">
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <input
-                      type="text" value={brandColor}
-                      onChange={(e) => { setBrandColor(e.target.value); setColorDetected(false); }}
-                      placeholder="#3DA8D8" disabled={busy}
-                      style={{ ...inputStyle, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', flex: 1 }}
-                    />
-                    <input
-                      type="color"
-                      value={/^#[0-9A-Fa-f]{6}$/.test(brandColor) ? brandColor : '#3DA8D8'}
-                      onChange={(e) => { setBrandColor(e.target.value); setColorDetected(false); }}
-                      disabled={busy}
-                      style={{ width: 40, height: 40, padding: 2, border: '1px solid var(--gray-300)', borderRadius: 6, cursor: 'pointer', background: 'none' }}
-                      title="Pick a colour"
-                    />
-                  </div>
-                  {colorDetected && (
-                    <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--eq-brand, #3DA8D8)' }}>
-                      Detected from logo — adjust if needed
-                    </p>
-                  )}
-                </FieldRow>
-
-                <FieldRow label="Logo" hint="PNG, JPEG, SVG or WebP · max 512 KB. Brand colour is auto-detected on upload.">
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {brandLogoUrl && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--gray-200)', borderRadius: 6, background: 'var(--gray-50)' }}>
-                        <img src={brandLogoUrl} alt="Logo preview" style={{ height: 32, maxWidth: 120, objectFit: 'contain' }} />
-                        <button type="button" onClick={() => setBrandLogoUrl('')} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--gray-400)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Remove</button>
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <input
-                        ref={logoUploadRef}
-                        type="file"
-                        accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                        style={{ display: 'none' }}
-                        onChange={(e) => void handleLogoUpload(e)}
-                      />
-                      <Button
-                        type="button"
-                        variant="primary"
-                        size="sm"
-                        onClick={() => { setLogoUploadStatus({ kind: 'idle' }); logoUploadRef.current?.click(); }}
-                        disabled={logoUploadStatus.kind === 'uploading' || busy}
-                        style={{ flexShrink: 0 }}
-                      >
-                        {logoUploadStatus.kind === 'uploading' ? 'Uploading…' : 'Upload logo'}
-                      </Button>
-                      <input
-                        type="url" value={brandLogoUrl}
-                        onChange={(e) => setBrandLogoUrl(e.target.value)}
-                        placeholder="or paste a URL…"
-                        disabled={busy}
-                        style={{ ...inputStyle, flex: 1, fontSize: 13 }}
-                      />
-                    </div>
-                    {logoUploadStatus.kind === 'success' && (
-                      <span style={{ fontSize: 13, color: '#15803D', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Check size={14} aria-hidden="true" /> Logo updated</span>
-                    )}
-                    {logoUploadStatus.kind === 'error' && (
-                      <span style={{ fontSize: 13, color: '#B91C1C' }}>{logoUploadStatus.message}</span>
-                    )}
-                  </div>
-                </FieldRow>
-              </section>
-
-              {/* Integrations — Field workspace (platform admin only) */}
-              {isPlatformAdmin && (
-                <section className="eq-section">
-                  <h2 className="eq-section__heading">Integrations</h2>
-                  <FieldRow
-                    label="Field workspace"
-                    hint="Which EQ Field workspace your users open by default."
-                  >
-                    <select
-                      value={fieldTenantSlug}
-                      onChange={(e) => setFieldTenantSlug(e.target.value)}
-                      disabled={busy}
-                      style={{ ...inputStyle, cursor: 'pointer' }}
-                    >
-                      <option value="">None</option>
-                      <option value="sks">SKS Technologies</option>
-                      <option value="eq">EQ Demo</option>
-                      <option value="demo-trades">Demo Trades</option>
-                      <option value="melbourne">Melbourne</option>
-                    </select>
-                  </FieldRow>
-                </section>
+              {colorDetected && (
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--eq-brand, #3DA8D8)' }}>
+                  Detected from logo — adjust if needed
+                </p>
               )}
+            </FieldRow>
 
-              {/* Apps */}
-              <section className="eq-section">
-                <div className="eq-section__head">
-                  <h2 className="eq-section__heading">Apps</h2>
-                  {!isPlatformAdmin && (
-                    <span className="eq-section__hint">Read-only · contact EQ to change</span>
-                  )}
-                </div>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {settings.modules.map((m) => (
-                    <label
-                      key={m.module}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '12px 16px', border: '1px solid var(--eq-border)',
-                        borderRadius: 6, background: 'var(--eq-bg)',
-                        cursor: isPlatformAdmin ? 'pointer' : 'default',
-                        opacity: isPlatformAdmin ? 1 : 0.85,
-                      }}
-                    >
-                      <span>
-                        <strong style={{ display: 'block', fontSize: 14 }}>{MODULE_LABELS[m.module] ?? m.module}</strong>
-                      </span>
-                      <input
-                        type="checkbox"
-                        checked={moduleState[m.module] ?? m.enabled}
-                        disabled={!isPlatformAdmin || busy}
-                        onChange={(e) => setModuleState((prev) => ({ ...prev, [m.module]: e.target.checked }))}
-                      />
-                    </label>
-                  ))}
-                </div>
-              </section>
-
-              <section className="eq-section">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <Button type="submit" variant="primary" disabled={busy} style={{ padding: '0 20px' }}>
-                    {busy ? 'Saving…' : 'Save changes'}
+            <FieldRow label="Logo" hint="PNG, JPEG, SVG or WebP · max 512 KB. Brand colour is auto-detected on upload.">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {brandLogoUrl && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--gray-200)', borderRadius: 6, background: 'var(--gray-50)' }}>
+                    <img src={brandLogoUrl} alt="Logo preview" style={{ height: 32, maxWidth: 120, objectFit: 'contain' }} />
+                    <button type="button" onClick={() => setBrandLogoUrl('')} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--gray-400)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Remove</button>
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, rowGap: 8 }}>
+                  <input
+                    ref={logoUploadRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={(e) => void handleLogoUpload(e)}
+                  />
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={() => { setLogoUploadStatus({ kind: 'idle' }); logoUploadRef.current?.click(); }}
+                    disabled={logoUploadStatus.kind === 'uploading' || busy}
+                    style={{ flexShrink: 0 }}
+                  >
+                    {logoUploadStatus.kind === 'uploading' ? 'Uploading…' : 'Upload logo'}
                   </Button>
-                  {savedAt && !saveErr && <span className="eq-pill eq-pill--ok">Saved</span>}
+                  <input
+                    type="url" value={brandLogoUrl}
+                    onChange={(e) => setBrandLogoUrl(e.target.value)}
+                    placeholder="or paste a URL…"
+                    disabled={busy}
+                    style={{ ...inputStyle, flex: 1, minWidth: 160, fontSize: 13 }}
+                  />
                 </div>
-                {saveErr && <div className="eq-err" role="alert" style={{ marginTop: 16 }}>{saveErr}</div>}
-              </section>
-            </form>
+                {logoUploadStatus.kind === 'success' && (
+                  <span style={{ fontSize: 13, color: '#15803D', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Check size={14} aria-hidden="true" /> Logo updated</span>
+                )}
+                {logoUploadStatus.kind === 'error' && (
+                  <span style={{ fontSize: 13, color: '#B91C1C' }}>{logoUploadStatus.message}</span>
+                )}
+              </div>
+            </FieldRow>
+          </section>
+
+          {/* Integrations — Field workspace (platform admin only) */}
+          {isPlatformAdmin && (
+            <section className="eq-section">
+              <h2 className="eq-section__heading">Integrations</h2>
+              <FieldRow
+                label="Field workspace"
+                hint="Which EQ Field workspace your users open by default."
+              >
+                <select
+                  value={fieldTenantSlug}
+                  onChange={(e) => setFieldTenantSlug(e.target.value)}
+                  disabled={busy}
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                >
+                  <option value="">None</option>
+                  <option value="sks">SKS Technologies (sks)</option>
+                  <option value="eq">EQ Demo (eq)</option>
+                  <option value="demo-trades">Demo Trades (demo-trades)</option>
+                  <option value="melbourne">Melbourne (melbourne)</option>
+                </select>
+              </FieldRow>
+            </section>
           )}
 
-        </div>
-      </div>
-    </div>
+          {/* Apps */}
+          <section className="eq-section">
+            <div className="eq-section__head">
+              <h2 className="eq-section__heading">Apps</h2>
+              {!isPlatformAdmin && (
+                <span className="eq-section__hint">Contact your account manager to enable or disable apps.</span>
+              )}
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {settings.modules.map((m) => (
+                <label
+                  key={m.module}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 16px', border: '1px solid var(--eq-border)',
+                    borderRadius: 6, background: 'var(--eq-bg)',
+                    cursor: isPlatformAdmin ? 'pointer' : 'default',
+                    opacity: isPlatformAdmin ? 1 : 0.85,
+                  }}
+                >
+                  <span>
+                    <strong style={{ display: 'block', fontSize: 14 }}>{MODULE_LABELS[m.module] ?? m.module}</strong>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={moduleState[m.module] ?? m.enabled}
+                    disabled={!isPlatformAdmin || busy}
+                    onChange={(e) => setModuleState((prev) => ({ ...prev, [m.module]: e.target.checked }))}
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="eq-section">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Button type="submit" variant="primary" disabled={busy} style={{ padding: '0 20px' }}>
+                {busy ? 'Saving…' : 'Save changes'}
+              </Button>
+              {savedAt && !saveErr && <span className="eq-pill eq-pill--ok">Saved</span>}
+            </div>
+            {saveErr && <div className="eq-err" role="alert" style={{ marginTop: 16 }}>{saveErr}</div>}
+          </section>
+        </form>
+      )}
+    </HubLayout>
   );
 }
 
@@ -449,10 +429,12 @@ export default function AdminTenantSettings() {
     <Gate
       perm="admin.list_users"
       fallback={
-        <div className="eq-empty">
-          <p className="eq-empty__title">Not allowed</p>
-          <p>Only managers can edit settings.</p>
-        </div>
+        <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
+          <div className="eq-empty">
+            <p className="eq-empty__title">Not allowed</p>
+            <p>Only managers can edit settings.</p>
+          </div>
+        </HubLayout>
       }
     >
       <AdminTenantSettingsInner />

@@ -136,7 +136,6 @@ export function HubSidebar({ apps, records }: Props) {
         { key: 'audit',          label: 'Audit log',       href: `/${tenantSlug}/admin/audit`,          icon: <ClipboardList size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/admin/audit`) },
         { key: 'access-control', label: 'Security groups', href: `/${tenantSlug}/admin/access-control`, icon: <ShieldCheck size={16} aria-hidden="true" />,   isActive: active(`/${tenantSlug}/admin/access-control`) },
         { key: 'settings',       label: 'Settings',        href: `/${tenantSlug}/admin/settings`,       icon: <Settings size={16} aria-hidden="true" />,      isActive: active(`/${tenantSlug}/admin/settings`) },
-        { key: '2fa',            label: 'Two-factor security', href: `/${tenantSlug}/settings/2fa`,     icon: <ShieldCheck size={16} aria-hidden="true" />,   isActive: active(`/${tenantSlug}/settings/2fa`), arrow: true as const },
       );
     }
     if (canIntake) {
@@ -148,6 +147,15 @@ export function HubSidebar({ apps, records }: Props) {
     }
     sections.push({ key: 'admin', label: 'Admin', items: adminItems });
   }
+
+  // Two-factor security is always available to any signed-in user (not admin-only)
+  sections.push({
+    key: 'account',
+    label: 'Account',
+    items: [
+      { key: '2fa', label: 'Two-factor security', href: `/${tenantSlug}/settings/2fa`, icon: <ShieldCheck size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/settings/2fa`), arrow: true as const },
+    ],
+  });
 
   if (session.user.is_platform_admin) {
     sections.push({
