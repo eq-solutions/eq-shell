@@ -54,7 +54,7 @@ import {
 } from './_shared/tenant-routing.js';
 import { verifySupabaseJwt, readBearerJwt } from './_shared/supabase-jwt.js';
 import { getServiceClient } from './_shared/supabase.js';
-import { withSentry } from './_shared/sentry.js';
+import { withSentry, captureGatewayBlock } from './_shared/sentry.js';
 
 type Op =
   | 'current_staff'
@@ -67,8 +67,12 @@ type Op =
   | 'has_pin'
   | 'set_pin'
   | 'verify_pin'
-  // Anon onboarding op — no JWT; handled before the auth gate below.
-  | 'lookup_invite_by_phone';
+  // Anon onboarding ops — no JWT; handled before the auth gate below.
+  | 'lookup_invite_by_phone'
+  | 'preview_invite'
+  // JWT required but tenant_id not yet set (claim establishes it); handled
+  // after JWT verification but before the tenant-id gate.
+  | 'claim_invite';
 
 const READ_OPS:  ReadonlySet<Op> = new Set<Op>(['current_staff', 'list_my_licences', 'list_licence_types', 'has_pin']);
 const WRITE_OPS: ReadonlySet<Op> = new Set<Op>(['upsert_my_licence', 'soft_delete_my_licence', 'upsert_my_profile', 'set_pin', 'verify_pin']);
@@ -76,7 +80,7 @@ const WRITE_OPS: ReadonlySet<Op> = new Set<Op>(['upsert_my_licence', 'soft_delet
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface OkBody { ok: true; [k: string]: unknown }
-interface ErrBody { ok: false; error: string; detail?: string }
+interface ErrBody { ok: false; error: string; detail?: string; retry_after_seconds?: number | null }
 
 // Cards Flutter web lives at cards.eq.solutions and calls this function
 // on core.eq.solutions — cross-origin. Native iOS/Android builds don't
@@ -178,6 +182,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       }
       if (rl?.blocked === true) {
         const retryAfter = Number(rl.retry_after_seconds);
+        captureGatewayBlock('ip_throttle', { ip, slug, retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : null });
         return json(429, {
           ok: false,
           error: 'rate_limited',
@@ -199,6 +204,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         const pgErr = error as { hint?: string; details?: string; message?: string };
         if (pgErr.hint === 'rate_limited') {
           const retryAfter = Number.parseInt(pgErr.details ?? '', 10);
+          captureGatewayBlock('slug_throttle', { ip, slug, retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : null });
           return json(429, {
             ok: false,
             error: 'rate_limited',
@@ -218,9 +224,73 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     }
   }
 
+  // ─── preview_invite: anon pre-gate ────────────────────────────────
+  // No JWT needed. Returns org name, worker first name, credential count,
+  // and expiry from the invite token so the worker sees their data before
+  // authenticating. eq_cards_preview_invite is SECURITY DEFINER and has
+  // anon EXECUTE (migration grant_anon_preview_invite).
+  if (op === 'preview_invite') {
+    if (req.method !== 'POST') {
+      return json(405, { ok: false, error: 'method_not_allowed', detail: 'preview_invite requires POST' });
+    }
+    let body: { token?: string };
+    try { body = (await req.json()) as { token?: string }; }
+    catch { return json(400, { ok: false, error: 'invalid_body' }); }
+    const token = typeof body.token === 'string' ? body.token.trim() : '';
+    if (!token || !UUID_RE.test(token)) {
+      return json(400, { ok: false, error: 'invalid_token' });
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctrl = getServiceClient() as any;
+    const { data, error } = await ctrl
+      .schema('public')
+      .rpc('eq_cards_preview_invite', { p_token: token });
+    if (error) {
+      console.error('[cards-api] preview_invite rpc failed', { error: error.message });
+      return json(500, { ok: false, error: 'preview_failed', detail: error.message });
+    }
+    const preview = Array.isArray(data) && data.length > 0 ? data[0] : null;
+    if (!preview) return json(404, { ok: false, error: 'invite_not_found' });
+    return json(200, { ok: true, preview });
+  }
+
   // ─── auth ──────────────────────────────────────────────────────────
   const jwt = verifySupabaseJwt(readBearerJwt(req));
   if (!jwt) return json(401, { ok: false, error: 'not_signed_in' });
+
+  // ─── claim_invite: JWT required, tenant_id not yet set ─────────────
+  // Claiming is what creates the shell_control.users row and establishes
+  // tenant_id — so it must bypass the tenant-id gate below.
+  if (op === 'claim_invite') {
+    if (req.method !== 'POST') {
+      return json(405, { ok: false, error: 'method_not_allowed', detail: 'claim_invite requires POST' });
+    }
+    let body: { token?: string };
+    try { body = (await req.json()) as { token?: string }; }
+    catch { return json(400, { ok: false, error: 'invalid_body' }); }
+    const token = typeof body.token === 'string' ? body.token.trim() : '';
+    if (!token || !UUID_RE.test(token)) {
+      return json(400, { ok: false, error: 'invalid_token' });
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctrl = getServiceClient() as any;
+    const { data, error } = await ctrl
+      .schema('public')
+      .rpc('eq_cards_claim_invite', { p_token: token, p_user_id: jwt.sub });
+    if (error) {
+      const msg = (error as { message?: string }).message ?? '';
+      if (msg.includes('invite_not_found'))                  return json(404, { ok: false, error: 'invite_not_found' });
+      if (msg.includes('invite_already_claimed'))            return json(409, { ok: false, error: 'invite_already_claimed' });
+      if (msg.includes('invite_expired'))                    return json(410, { ok: false, error: 'invite_expired' });
+      if (msg.includes('worker_already_claimed_by_another')) return json(409, { ok: false, error: 'invite_claimed_by_other' });
+      console.error('[cards-api] claim_invite rpc failed', { error: error.message });
+      return json(500, { ok: false, error: 'claim_failed', detail: error.message });
+    }
+    const worker = Array.isArray(data) && data.length > 0 ? data[0] : null;
+    if (!worker) return json(500, { ok: false, error: 'claim_rpc_returned_empty' });
+    return json(200, { ok: true, worker });
+  }
+
   const tenantId = jwt.app_metadata.tenant_id;
   const userId   = jwt.sub;
   if (!tenantId || !userId) return json(401, { ok: false, error: 'jwt_missing_tenant_or_user' });
