@@ -76,7 +76,7 @@ const WRITE_OPS: ReadonlySet<Op> = new Set<Op>(['upsert_my_licence', 'soft_delet
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface OkBody { ok: true; [k: string]: unknown }
-interface ErrBody { ok: false; error: string; detail?: string }
+interface ErrBody { ok: false; error: string; detail?: string; retry_after_seconds?: number | null }
 
 // Cards Flutter web lives at cards.eq.solutions and calls this function
 // on core.eq.solutions — cross-origin. Native iOS/Android builds don't
