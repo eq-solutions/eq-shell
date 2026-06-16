@@ -353,7 +353,13 @@ const KNOWN_LEGACY_ANON = {
     // base app_data tables have RLS on with tenant_id policies, so invoker-rights
     // reads/writes are tenant-gated — the view object reporting rls=off is not a
     // real exposure (same pattern as the field_* views above).
+    // service.contract_scopes (0123 canonical read-bridge): same pattern —
+    // security_invoker view over app_data.contract_scopes (RLS-on, tenant SELECT
+    // policy); anon has no privileges, and the base table grants authenticated
+    // SELECT-only, so the view's residual INSERT/UPDATE/DELETE grants are inert
+    // (the base table denies writes). Verified live on ehow 2026-06-16.
     'service.assets', 'service.contacts', 'service.customers', 'service.sites',
+    'service.contract_scopes',
     // pass-through views on public.* (views cannot have RLS enabled — tracked debt)
     'app_data.field_audit_log', 'app_data.field_leave_requests', 'app_data.field_prestarts',
     'app_data.field_schedule', 'app_data.field_site_diaries', 'app_data.field_timesheets',
