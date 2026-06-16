@@ -11,15 +11,15 @@
 // /<tenant>/admin/users/invite.
 
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { UsersRound } from 'lucide-react';
+import { Table, type TableColumn } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
-import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { createSupabaseClient } from '../lib/supabaseJwt';
 import type { EqRole } from '../session';
@@ -58,9 +58,62 @@ function formatLastLogin(iso: string | null): string {
 
 function AdminUserListInner() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
+  const navigate = useNavigate();
   const { session } = useSession();
   const [users, setUsers] = useState<UserRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  const columns: TableColumn<UserRow>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      sortAccessor: (u) => (u.name ?? u.email ?? '').toLowerCase(),
+      render: (u) => (
+        <>
+          <span style={{ fontWeight: 500 }}>{displayName(u)}</span>
+          <span className="eq-table__mute" style={{ display: 'block', fontSize: 12 }}>
+            {u.email ?? '—'}
+          </span>
+          {u.is_platform_admin && (
+            <span
+              className="eq-pill eq-pill--info"
+              style={{ marginLeft: 0, marginTop: 4, display: 'inline-block' }}
+              title="EQ Solutions internal cross-tenant access"
+            >
+              Platform admin
+            </span>
+          )}
+          {u.id === session?.user.id && (
+            <span className="eq-table__mute" style={{ marginLeft: 4 }}>
+              (you)
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      sortAccessor: (u) => u.role,
+      render: (u) => roleLabel(u.role),
+    },
+    {
+      key: 'active',
+      header: 'Status',
+      sortAccessor: (u) => (u.active ? 1 : 0),
+      render: (u) => (
+        <span className={`eq-pill ${u.active ? 'eq-pill--ok' : 'eq-pill--mute'}`}>
+          {u.active ? 'Active' : 'Deactivated'}
+        </span>
+      ),
+    },
+    {
+      key: 'last_login_at',
+      header: 'Last login',
+      sortAccessor: (u) => (u.last_login_at ? new Date(u.last_login_at).getTime() : 0),
+      render: (u) => <span className="eq-table__mute">{formatLastLogin(u.last_login_at)}</span>,
+    },
+  ];
 
   const load = async () => {
     setErr(null);
@@ -118,78 +171,19 @@ function AdminUserListInner() {
 
         {err && <EqError title="Couldn't load users" message={err} onRetry={load} />}
 
-        <div className="eq-table-wrap">
-          <table className="eq-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Last login</th>
-                <th style={{ width: 80 }} />
-              </tr>
-            </thead>
-            <tbody>
-              {users === null ? (
-                <tr>
-                  <td colSpan={5}>
-                    <Skeleton variant="row" count={4} />
-                  </td>
-                </tr>
-              ) : users.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: 32, color: 'var(--eq-grey)' }}>
-                    No users yet. Invite the first one.
-                  </td>
-                </tr>
-              ) : (
-                users.map((u) => (
-                  <tr key={u.id}>
-                    <td>
-                      <span style={{ fontWeight: 500 }}>
-                        {displayName(u)}
-                      </span>
-                      <span className="eq-table__mute" style={{ display: 'block', fontSize: 12 }}>
-                        {u.email ?? '—'}
-                      </span>
-                      {u.is_platform_admin && (
-                        <span
-                          className="eq-pill eq-pill--info"
-                          style={{ marginLeft: 0, marginTop: 4, display: 'inline-block' }}
-                          title="EQ Solutions internal cross-tenant access"
-                        >
-                          Platform admin
-                        </span>
-                      )}
-                      {u.id === session?.user.id && (
-                        <span className="eq-table__mute" style={{ marginLeft: 4 }}>
-                          (you)
-                        </span>
-                      )}
-                    </td>
-                    <td>{roleLabel(u.role)}</td>
-                    <td>
-                      <span className={`eq-pill ${u.active ? 'eq-pill--ok' : 'eq-pill--mute'}`}>
-                        {u.active ? 'Active' : 'Deactivated'}
-                      </span>
-                    </td>
-                    <td className="eq-table__mute">{formatLastLogin(u.last_login_at)}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      {u.id !== session?.user.id && (
-                        <Link
-                          to={`/${tenantSlug}/admin/users/${u.id}`}
-                          style={{ color: 'var(--eq-deep)', fontSize: 13 }}
-                        >
-                          Edit
-                        </Link>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <Table<UserRow>
+          columns={columns}
+          rows={users ?? []}
+          getRowId={(u) => u.id}
+          loading={users === null}
+          loadingRows={4}
+          defaultSort={{ key: 'name', dir: 'asc' }}
+          emptyMessage="No users yet. Invite the first one."
+          globalSearch={{ placeholder: 'Search users…' }}
+          onRowClick={(u) => {
+            if (u.id !== session?.user.id) navigate(`/${tenantSlug}/admin/users/${u.id}`);
+          }}
+        />
     </HubLayout>
   );
 }
