@@ -54,7 +54,7 @@ import {
 } from './_shared/tenant-routing.js';
 import { verifySupabaseJwt, readBearerJwt } from './_shared/supabase-jwt.js';
 import { getServiceClient } from './_shared/supabase.js';
-import { withSentry } from './_shared/sentry.js';
+import { withSentry, captureGatewayBlock } from './_shared/sentry.js';
 
 type Op =
   | 'current_staff'
@@ -179,6 +179,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       }
       if (rl?.blocked === true) {
         const retryAfter = Number(rl.retry_after_seconds);
+        captureGatewayBlock('ip_throttle', {
+          ip,
+          slug,
+          retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : null,
+        });
         return json(429, {
           ok: false,
           error: 'rate_limited',
@@ -201,6 +206,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         const pgErr = error as { hint?: string; details?: string; message?: string };
         if (pgErr.hint === 'rate_limited') {
           const retryAfter = Number.parseInt(pgErr.details ?? '', 10);
+          captureGatewayBlock('slug_throttle', {
+            ip,
+            slug,
+            retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : null,
+          });
           return json(429, {
             ok: false,
             error: 'rate_limited',
