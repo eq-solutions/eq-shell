@@ -4,7 +4,8 @@
 // Gated by admin.review_cards — manager + platform_admin only.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { UserPlus, X } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { UserPlus } from 'lucide-react';
 import { Button } from '@eq-solutions/ui';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
@@ -84,8 +85,6 @@ const PILL_STYLE: Record<CredStatus, React.CSSProperties> = {
   'no-expiry': { background: '#F1F5F9', color: '#64748B' },
 };
 
-const E164_RE = /^\+[1-9]\d{6,14}$/;
-
 // ─── Credential pill ──────────────────────────────────────────────────────────
 
 function CredPill({ cred }: { cred: Credential }) {
@@ -107,101 +106,6 @@ function CredPill({ cred }: { cred: Credential }) {
     >
       {cred.credential_type} {expLabel}
     </span>
-  );
-}
-
-// ─── Invite modal ─────────────────────────────────────────────────────────────
-
-function InviteModal({ onClose, onInvited }: { onClose: () => void; onInvited: () => void }) {
-  const [phone, setPhone] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  const submit = async () => {
-    setErr(null);
-    if (!E164_RE.test(phone.trim())) {
-      setErr('Enter a valid mobile number in international format, e.g. +61412345678');
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetch('/.netlify/functions/cards-invite-worker', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phone.trim() }),
-      });
-      const body = (await res.json()) as { error?: string };
-      if (!res.ok) { setErr(body.error ?? 'Something went wrong'); return; }
-      setOk(true);
-      setTimeout(() => { onInvited(); onClose(); }, 1200);
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(26,26,46,0.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 380 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#1A1A2E' }}>Invite worker</h2>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#94A3B8', lineHeight: 1 }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <p style={{ margin: '0 0 16px', fontSize: 13, color: '#64748B', lineHeight: 1.5 }}>
-          Enter the worker's mobile number. They'll see the invite when they next open Cards.
-        </p>
-
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#475569', marginBottom: 6 }}>
-          Mobile number
-        </label>
-        <input
-          ref={inputRef}
-          type="tel"
-          placeholder="+61412345678"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void submit();
-            if (e.key === 'Escape') onClose();
-          }}
-          disabled={busy || ok}
-          style={{
-            width: '100%', padding: '8px 12px', fontSize: 14, boxSizing: 'border-box',
-            border: `1px solid ${err ? '#FCA5A5' : 'var(--eq-border, #E2E8F0)'}`,
-            borderRadius: 6, outline: 'none', color: '#1A1A2E',
-          }}
-        />
-
-        {err && <p style={{ margin: '8px 0 0', fontSize: 12, color: '#B91C1C' }}>{err}</p>}
-        {ok  && <p style={{ margin: '8px 0 0', fontSize: 12, color: '#15803D' }}>Invite created.</p>}
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="primary" size="sm" onClick={() => void submit()} disabled={busy || ok}>
-            {busy ? 'Sending…' : 'Send invite'}
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -438,7 +342,8 @@ function ConnectedTab({
 
 function AdminCardsFeedInner() {
   const [tab, setTab] = useState<'pending' | 'connected'>('pending');
-  const [showInvite, setShowInvite] = useState(false);
+  const navigate = useNavigate();
+  const { tenantSlug } = useParams<{ tenantSlug: string }>();
 
   // Pending
   const [pending, setPending] = useState<PendingStaff[] | null>(null);
@@ -536,7 +441,7 @@ function AdminCardsFeedInner() {
           <p className="eq-page__lede">Review and manage worker connections via EQ Cards.</p>
         </div>
         <button
-          onClick={() => setShowInvite(true)}
+          onClick={() => navigate(`/${tenantSlug}/admin/workers/invite`)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '7px 14px', borderRadius: 6, fontSize: 13, fontWeight: 500,
@@ -581,16 +486,6 @@ function AdminCardsFeedInner() {
           connected={connected}
           err={connErr}
           reload={loadConnected}
-        />
-      )}
-
-      {showInvite && (
-        <InviteModal
-          onClose={() => setShowInvite(false)}
-          onInvited={() => {
-            connLoaded.current = false;
-            setConnected(null);
-          }}
         />
       )}
     </HubLayout>
