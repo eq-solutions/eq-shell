@@ -83,22 +83,24 @@ function AdminUserListInner() {
 
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
-      <div className="eq-page__header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+      <div className="eq-page__header eq-admin-header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
           <div>
             <h1 className="eq-page__title">Users</h1>
             <p className="eq-page__lede">
               Your team members and their roles.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div className="eq-admin-header-actions" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <Link
               to={`/${tenantSlug}/admin/workers`}
+              className="eq-admin-action--secondary"
               style={{ width: 'auto', padding: '0 16px', display: 'inline-flex', alignItems: 'center', gap: 7, textDecoration: 'none', height: 40, background: 'transparent', color: 'var(--eq-deep)', borderRadius: 6, fontWeight: 600, fontSize: 14, border: '1px solid var(--eq-border)' }}
             >
               Worker invites (Cards)
             </Link>
             <Link
               to={`/${tenantSlug}/admin/users/migrate`}
+              className="eq-admin-action--secondary"
               style={{ width: 'auto', padding: '0 16px', display: 'inline-flex', alignItems: 'center', gap: 7, textDecoration: 'none', height: 40, background: 'transparent', color: 'var(--eq-deep)', borderRadius: 6, fontWeight: 600, fontSize: 14, border: '1px solid var(--eq-border)' }}
             >
               <UsersRound size={16} aria-hidden="true" />
@@ -106,6 +108,7 @@ function AdminUserListInner() {
             </Link>
             <Link
               to={`/${tenantSlug}/admin/users/invite`}
+              className="eq-admin-action--primary"
               style={{ width: 'auto', padding: '0 16px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none', height: 40, background: 'var(--eq-sky)', color: '#fff', borderRadius: 6, fontWeight: 600, fontSize: 14, border: 'none' }}
             >
               + Invite user
