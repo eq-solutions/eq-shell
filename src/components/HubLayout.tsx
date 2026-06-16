@@ -32,7 +32,7 @@ const HUB_APPS: Array<{ key: string; label: string; to: string; isBeta: boolean;
   // EQ Quotes — the standalone tool the team uses today (external redirect).
   { key: 'eq-quotes', label: 'EQ Quotes',  to: 'eq-quotes', isBeta: false, alwaysShow: true },
   // EQ Ops — in-shell replacement; gated on the `ops` module entitlement (per-tenant) + platform admins.
-  { key: 'ops',       label: 'EQ Ops',     to: 'ops',       isBeta: true,  platformOnly: true },
+  { key: 'ops',       label: 'EQ Ops',     to: 'ops',       isBeta: false, platformOnly: true },
   { key: 'cards',     label: 'EQ Cards',   to: 'cards',     isBeta: true  },
   { key: 'comms',     label: 'NSW Comms',  to: 'comms',     isBeta: true  },
 ];

@@ -653,7 +653,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
 
-  // Customisable pipeline columns — persisted hidden set; Margin hidden by default.
+  // Customisable pipeline columns — localStorage for instant render, DB for cross-device persistence.
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(() => {
     try {
@@ -662,14 +662,42 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     } catch { /* ignore */ }
     return new Set(["margin_pct"]);
   });
+  const colsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveHiddenColsToDb = (next: Set<string>) => {
+    if (colsSaveTimer.current) clearTimeout(colsSaveTimer.current);
+    colsSaveTimer.current = setTimeout(() => {
+      fetch("/.netlify/functions/user-preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ key: "ops:hidden_cols", value: [...next] }),
+      }).catch(() => { /* non-fatal */ });
+    }, 800);
+  };
   const toggleCol = (key: string) => {
     setHiddenCols((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       try { localStorage.setItem("eq-quotes-hidden-cols", JSON.stringify([...next])); } catch { /* ignore */ }
+      saveHiddenColsToDb(next);
       return next;
     });
   };
+  // Load column prefs from DB on mount — overrides localStorage if user has a saved value.
+  useEffect(() => {
+    fetch("/.netlify/functions/user-preferences", { credentials: "include" })
+      .then((r) => r.ok ? r.json() as Promise<{ ok: boolean; preferences?: Record<string, unknown> }> : null)
+      .then((data) => {
+        if (!data?.ok || !data.preferences) return;
+        const saved = data.preferences["ops:hidden_cols"];
+        if (Array.isArray(saved)) {
+          const next = new Set(saved as string[]);
+          setHiddenCols(next);
+          try { localStorage.setItem("eq-quotes-hidden-cols", JSON.stringify([...next])); } catch { /* ignore */ }
+        }
+      })
+      .catch(() => { /* non-fatal — localStorage value stays */ });
+  }, []);
 
   // Payment terms / validity days inline edit
   const [termsEditing, setTermsEditing] = useState(false);
