@@ -46,11 +46,11 @@ export default function NotFound() {
               </div>
               <p>Your dashboard with the snapshot grid and your apps.</p>
             </Link>
-            <Link to={`/${tenantSlug}/intake`} className="eq-module-card">
+            <Link to={`/${tenantSlug}/admin`} className="eq-module-card">
               <div className="eq-module-card__head">
-                <h3>Intake</h3>
+                <h3>Admin</h3>
               </div>
-              <p>Import your rosters, staff and customers from a spreadsheet.</p>
+              <p>Manage users, settings, and audit logs for your workspace.</p>
             </Link>
             <Link to={`/${tenantSlug}/admin/audit`} className="eq-module-card">
               <div className="eq-module-card__head">

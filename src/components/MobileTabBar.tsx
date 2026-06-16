@@ -8,15 +8,15 @@ import {
 import { useSession, moduleEnabled } from '../session';
 import './MobileTabBar.css';
 
-// Iframe modules (Field / Service / Cards / Quotes) embed a full app that owns
+// Iframe modules (Field / Service / Cards) embed a full app that owns
 // its own bottom controls. On mobile, Shell's fixed bottom tab bar would sit on
 // top of those controls and trap the user. For these modules Shell "yields the
 // bottom bar": it hides the bottom tabs and surfaces an Apps / app-name control
 // in a slim top bar instead, leaving the bottom of the screen to the embedded app.
+// Note: /quotes and /ops are native React pages, not iframes, so they are NOT listed here.
 const IFRAME_MODULES: Record<string, string> = {
   field: 'EQ Field',
   service: 'EQ Service',
-  quotes: 'EQ Quotes',
   cards: 'EQ Cards',
 };
 
@@ -26,7 +26,7 @@ const ALL_TABS = [
   { key: 'home',    label: 'Home',    Icon: House,      to: '' },
   { key: 'field',   label: 'Field',   Icon: Users,      to: 'field'   },
   { key: 'service', label: 'Service', Icon: Wrench,     to: 'service' },
-  { key: 'quotes',  label: 'Quotes',  Icon: FileText,   to: 'quotes'  },
+  { key: 'ops',     label: 'Ops',     Icon: FileText,   to: 'ops'     },
   { key: 'cards',   label: 'Cards',   Icon: CreditCard, to: 'cards'   },
 ];
 
@@ -117,7 +117,7 @@ export function MobileTabBar() {
         )}
 
         <NavLink
-          to={`/${tenantSlug}/admin/security-groups`}
+          to={`/${tenantSlug}/admin/access-control`}
           className="eq-mob-sheet__row"
           role="menuitem"
           onClick={closeAll}
@@ -248,7 +248,7 @@ export function MobileTabBar() {
         </NavLink>
 
         <NavLink
-          to={`/${tenantSlug}/admin/security-groups`}
+          to={`/${tenantSlug}/admin/access-control`}
           className="eq-mob-sheet__row"
           role="menuitem"
           onClick={closeAll}

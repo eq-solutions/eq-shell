@@ -37,9 +37,11 @@ import AdminConnectWorker from './pages/AdminConnectWorker';
 import AdminWorkerQR from './pages/AdminWorkerQR';
 import AdminTenantsPage from './pages/AdminTenantsPage';
 import AdminWorkersPage from './pages/AdminWorkersPage';
+import AdminMigrationPage from './pages/AdminMigrationPage';
+import AdminSecurityGroups from './pages/AdminSecurityGroups';
+import AdminDataActivationPage from './pages/AdminDataActivationPage';
 import EntityBrowserPage from './pages/EntityBrowserPage';
 import FieldRosterPage from './pages/FieldRosterPage';
-import CustomersHubPage from './pages/CustomersHubPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { StaffPage } from './pages/StaffPage';
 import ServiceIframe from './pages/ServiceIframe';
@@ -574,6 +576,9 @@ function TenantTree() {
         <Route path="admin/cards-feed" element={<AdminCardsFeed />} />
         <Route path="admin/settings" element={<AdminTenantSettings />} />
         <Route path="admin/access-control" element={<AccessControlPage />} />
+        <Route path="admin/security-groups" element={<AdminSecurityGroups />} />
+        <Route path="admin/migration" element={<AdminMigrationPage />} />
+        <Route path="admin/data-activation" element={<AdminDataActivationPage />} />
         {/* Phase 1.G — TOTP 2FA enrollment (any logged-in user) */}
         <Route path="settings/2fa" element={<EnrollTotp />} />
         <Route
@@ -608,8 +613,8 @@ function TenantTree() {
         />
         {/* Customers — tabbed Customers / Sites / Contacts view. */}
         <Route path="customers" element={<CustomersPage />} />
-        {/* Legacy CRM tree — kept for deep links, accessible via /crm */}
-        <Route path="crm" element={<CustomersHubPage />} />
+        {/* Legacy CRM tree — redirect to the new Customers page */}
+        <Route path="crm" element={<Navigate to="../customers" replace />} />
         {/* Staff — list + training matrix view with licence summary. */}
         <Route path="staff" element={<StaffPage />} />
         <Route path="data/:entity" element={<EntityBrowserPage />} />

@@ -68,6 +68,9 @@ function AdminEditUserInner() {
   const [userGroupIds, setUserGroupIds] = useState<Set<string>>(new Set());
   const [groupBusy, setGroupBusy] = useState<string | null>(null);
   const [groupErr, setGroupErr] = useState<string | null>(null);
+  const [groupLoading, setGroupLoading] = useState(true);
+
+  const isPlatformAdmin = session?.user.is_platform_admin ?? false;
 
   const load = async () => {
     if (!userId) return;
@@ -99,15 +102,27 @@ function AdminEditUserInner() {
 
   useEffect(() => {
     if (!userId) return;
+    setGroupLoading(true);
+    setGroupErr(null);
     void (async () => {
-      const [allRes, userRes] = await Promise.all([
-        fetch('/.netlify/functions/security-groups?action=list', { credentials: 'include' }),
-        fetch(`/.netlify/functions/security-groups?action=user_groups&user_id=${userId}`, { credentials: 'include' }),
-      ]);
-      const allBody = (await allRes.json()) as { ok: boolean; groups?: SecurityGroup[] };
-      const userBody = (await userRes.json()) as { ok: boolean; groups?: SecurityGroup[] };
-      if (allBody.ok) setAllGroups(allBody.groups ?? []);
-      if (userBody.ok) setUserGroupIds(new Set((userBody.groups ?? []).map((g) => g.id)));
+      try {
+        const [allRes, userRes] = await Promise.all([
+          fetch('/.netlify/functions/security-groups?action=list', { credentials: 'include' }),
+          fetch(`/.netlify/functions/security-groups?action=user_groups&user_id=${userId}`, { credentials: 'include' }),
+        ]);
+        const allBody = (await allRes.json()) as { ok: boolean; groups?: SecurityGroup[] };
+        const userBody = (await userRes.json()) as { ok: boolean; groups?: SecurityGroup[] };
+        if (!allBody.ok || !userBody.ok) {
+          setGroupErr('Could not load security groups. Try refreshing.');
+        } else {
+          setAllGroups(allBody.groups ?? []);
+          setUserGroupIds(new Set((userBody.groups ?? []).map((g) => g.id)));
+        }
+      } catch {
+        setGroupErr('Could not load security groups. Try refreshing.');
+      } finally {
+        setGroupLoading(false);
+      }
     })();
   }, [userId]);
 
@@ -174,7 +189,7 @@ function AdminEditUserInner() {
           'unauthorized':              'Sign in again to edit users.',
           'forbidden':                 'Only managers can edit users.',
           'self-edit-forbidden':       'Can\'t edit yourself.',
-          'cannot-edit-platform-admin':'Can\'t edit a platform admin.',
+          'cannot-edit-platform-admin': 'This account can\'t be edited here. Contact EQ support if you need to make changes.',
           'user-not-found':            'User not found.',
           'bad-role':                  'Pick a valid role.',
           'server-error':              'Something went wrong server-side — try again.',
@@ -198,9 +213,9 @@ function AdminEditUserInner() {
         </h1>
         <p className="eq-page__lede">
           {target.email}
-          {target.is_platform_admin && (
+          {target.is_platform_admin && isPlatformAdmin && (
             <span className="eq-pill eq-pill--info" style={{ marginLeft: 8 }}>
-              Platform admin
+              Managed by EQ
             </span>
           )}
         </p>
@@ -249,7 +264,7 @@ function AdminEditUserInner() {
           Active (uncheck to deactivate)
         </label>
 
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', rowGap: 8 }}>
           <Button
             type="submit"
             variant="primary"
@@ -350,20 +365,29 @@ function AdminEditUserInner() {
           </div>
         )}
       </section>
-      {allGroups.length > 0 && (
-        <section className="eq-section" style={{ marginTop: 40, maxWidth: 480 }}>
-          <h2 className="eq-section__heading">Security groups</h2>
-          <p style={{ fontSize: 14, color: 'var(--eq-grey)', marginBottom: 16 }}>
-            Extra permissions granted on top of this user's role. Changes take
-            effect on their next page load.
+
+      <section className="eq-section" style={{ marginTop: 40, maxWidth: 480 }}>
+        <h2 className="eq-section__heading">Security groups</h2>
+        <p style={{ fontSize: 14, color: 'var(--eq-grey)', marginBottom: 16 }}>
+          Extra permissions granted on top of this user's role. Changes take
+          effect on their next page load.
+        </p>
+
+        {groupErr && (
+          <div className="eq-err" role="alert" style={{ marginBottom: 12 }}>
+            {groupErr}
+          </div>
+        )}
+
+        {groupLoading ? (
+          <Skeleton variant="row" count={2} />
+        ) : allGroups.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--eq-grey)' }}>
+            No security groups set up yet.{' '}
+            <Link to={`/${tenantSlug}/admin/access-control`}>Go to Security groups</Link>{' '}
+            to create one.
           </p>
-
-          {groupErr && (
-            <div className="eq-err" role="alert" style={{ marginBottom: 12 }}>
-              {groupErr}
-            </div>
-          )}
-
+        ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {allGroups.map((group) => {
               const isMember = userGroupIds.has(group.id);
@@ -428,8 +452,8 @@ function AdminEditUserInner() {
               );
             })}
           </div>
-        </section>
-      )}
+        )}
+      </section>
     </HubLayout>
   );
 }

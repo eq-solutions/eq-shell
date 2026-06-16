@@ -31,6 +31,8 @@ interface AuthEvent {
   at: string;
   event: string;
   actor_id: string | null;
+  actor_email: string | null;
+  actor_name: string | null;
   ip: string | null;
   detail: Record<string, unknown> | null;
 }
@@ -44,6 +46,62 @@ interface IntakeRow {
   flags: unknown;
   source_app: string | null;
 }
+
+// Human-readable labels for auth event keys
+const AUTH_EVENT_LABELS: Record<string, string> = {
+  'login.success': 'Signed in',
+  'login.failed': 'Sign-in failed',
+  'login.failed.bad_pin': 'Wrong PIN',
+  'login.failed.user_inactive': 'Account inactive',
+  'login.failed.no_user': 'Unknown account',
+  'logout': 'Signed out',
+  'invite.accepted': 'Invite accepted',
+  'pin.reset.accepted': 'PIN reset',
+  'totp.enrolled': '2FA enrolled',
+  'totp.verified': '2FA verified',
+  'totp.failed': '2FA failed',
+};
+
+function authEventLabel(event: string): string {
+  if (AUTH_EVENT_LABELS[event]) return AUTH_EVENT_LABELS[event];
+  // Prettify unknown keys: replace dots/underscores with spaces, title-case
+  return event.replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Human-readable detail summary — extract meaningful fields from the detail object
+function authDetailSummary(detail: Record<string, unknown> | null): string {
+  if (!detail || Object.keys(detail).length === 0) return '—';
+  const useful = detail.reason ?? detail.email ?? detail.message;
+  if (typeof useful === 'string') return useful;
+  return '—';
+}
+
+// Human-readable status labels for intake events
+const STATUS_LABELS: Record<string, string> = {
+  complete: 'Complete',
+  approved: 'Approved',
+  committing: 'Saving…',
+  pending: 'Pending',
+  failed: 'Failed',
+  rolled_back: 'Rolled back',
+};
+
+// Human-readable entity labels for intake drilldown
+const ENTITY_LABELS: Record<string, string> = {
+  staff: 'People',
+  equipment: 'Equipment',
+  customers: 'Customers',
+  sites: 'Sites',
+  contacts: 'Contacts',
+  workers: 'Workers',
+};
+
+// Human-readable outcome labels for intake rows
+const OUTCOME_LABELS: Record<string, string> = {
+  committed: 'Saved',
+  flagged: 'Flagged',
+  rejected: 'Rejected',
+};
 
 function relTime(iso: string | null): string {
   if (!iso) return '—';
@@ -81,6 +139,7 @@ function AdminAuditInner() {
     intake: IntakeEvent;
     rows: IntakeRow[] | null;
     loading: boolean;
+    err: string | null;
   } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -110,7 +169,7 @@ function AdminAuditInner() {
   }, []);
 
   const openDrilldown = async (intake: IntakeEvent) => {
-    setDrilldown({ intake, rows: null, loading: true });
+    setDrilldown({ intake, rows: null, loading: true, err: null });
     try {
       const sb = await createSupabaseClient();
       const { data, error } = await sb.rpc('eq_intake_event_rows', {
@@ -118,10 +177,9 @@ function AdminAuditInner() {
         p_limit: 100,
       });
       if (error) throw new Error(error.message);
-      setDrilldown({ intake, rows: data as IntakeRow[], loading: false });
+      setDrilldown({ intake, rows: data as IntakeRow[], loading: false, err: null });
     } catch (e) {
-      setDrilldown({ intake, rows: [], loading: false });
-      setErr(friendlyError(e, "We couldn't open this import's details. Please try again."));
+      setDrilldown({ intake, rows: [], loading: false, err: friendlyError(e, "We couldn't open this import's details. Please try again.") });
     }
   };
 
@@ -160,7 +218,7 @@ function AdminAuditInner() {
       <div className="eq-page__header">
           <h1 className="eq-page__title">Audit log</h1>
           <p className="eq-page__lede">
-            Every data write and every sign-in token, scoped to your tenant.
+            Every data write and every sign-in, scoped to your workspace.
           </p>
         </div>
 
@@ -211,11 +269,13 @@ function AdminAuditInner() {
                 ) : (
                   authEvents.map((e) => (
                     <tr key={e.id}>
-                      <td><span className={eventPill(e.event)}>{e.event.replace('.', ' ')}</span></td>
-                      <td className="eq-table__mono">{e.actor_id ? e.actor_id.slice(0, 8) + '…' : <span className="eq-table__mute">—</span>}</td>
+                      <td><span className={eventPill(e.event)}>{authEventLabel(e.event)}</span></td>
+                      <td className="eq-table__mono">
+                        {e.actor_email ?? e.actor_name ?? (e.actor_id ? e.actor_id.slice(0, 8) + '…' : <span className="eq-table__mute">—</span>)}
+                      </td>
                       <td className="eq-table__mono">{e.ip ?? <span className="eq-table__mute">—</span>}</td>
                       <td className="eq-table__mute" style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {e.detail && Object.keys(e.detail).length > 0 ? JSON.stringify(e.detail) : '—'}
+                        {authDetailSummary(e.detail)}
                       </td>
                       <td className="eq-table__mute">{relTime(e.at)}</td>
                     </tr>
@@ -252,17 +312,17 @@ function AdminAuditInner() {
                 ) : !intakes || intakes.length === 0 ? (
                   <tr>
                     <td colSpan={9} style={{ textAlign: 'center', padding: 28 }}>
-                      No intake events yet.
+                      No imports yet.
                     </td>
                   </tr>
                 ) : (
                   intakes.map((e) => (
                     <tr key={e.intake_id}>
-                      <td>{e.entity}</td>
+                      <td>{ENTITY_LABELS[e.entity] ?? e.entity}</td>
                       <td className="eq-table__mute">{e.source_filename ?? '—'}</td>
                       <td className="eq-table__mute">{e.source_app ?? '—'}</td>
                       <td>
-                        <span className={pillFor(e.status)}>{e.status}</span>
+                        <span className={pillFor(e.status)}>{STATUS_LABELS[e.status] ?? e.status}</span>
                       </td>
                       <td style={{ textAlign: 'right' }}>{e.rows_committed.toLocaleString()}</td>
                       <td style={{ textAlign: 'right' }}>{e.rows_flagged.toLocaleString()}</td>
@@ -294,6 +354,9 @@ function AdminAuditInner() {
             onClick={() => setDrilldown(null)}
           >
             <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Import details"
               style={{
                 width: 'min(720px, 92vw)',
                 background: 'var(--eq-bg)',
@@ -306,19 +369,23 @@ function AdminAuditInner() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <h2 style={{ margin: '0 0 6px', fontSize: 20 }}>
-                    {drilldown.intake.entity} · intake
+                    {ENTITY_LABELS[drilldown.intake.entity] ?? drilldown.intake.entity} import
                   </h2>
                   <p style={{ margin: 0, color: 'var(--eq-mute)', fontSize: 13 }}>
-                    {drilldown.intake.source_filename ?? '—'} · {drilldown.intake.source_app ?? '—'}
-                  </p>
-                  <p style={{ margin: '8px 0 0', fontSize: 12, fontFamily: 'monospace', color: 'var(--eq-mute)' }}>
-                    Import ID: {drilldown.intake.intake_id}
+                    {drilldown.intake.source_filename ?? '—'} · {relTime(drilldown.intake.started_at)}
                   </p>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => setDrilldown(null)}>
                   Close
                 </Button>
               </div>
+
+              {drilldown.err && (
+                <div className="eq-err" role="alert" style={{ marginTop: 16 }}>
+                  {drilldown.err}
+                </div>
+              )}
+
               <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
                 {drilldown.intake.status !== 'rolled_back' && (
                   <Button
@@ -326,7 +393,7 @@ function AdminAuditInner() {
                     size="sm"
                     onClick={() => openRollback(drilldown.intake.intake_id)}
                   >
-                    Roll back this intake
+                    Roll back this import
                   </Button>
                 )}
               </div>
@@ -351,7 +418,7 @@ function AdminAuditInner() {
                           <td>{r.source_row_index}</td>
                           <td>
                             <span className={r.outcome === 'committed' ? 'eq-pill eq-pill--ok' : 'eq-pill eq-pill--warn'}>
-                              {r.outcome}
+                              {OUTCOME_LABELS[r.outcome] ?? r.outcome}
                             </span>
                           </td>
                           <td className="eq-table__mute" style={{ maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -391,9 +458,9 @@ function AdminAuditInner() {
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>Roll back intake</h2>
+              <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>Roll back import</h2>
               <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--eq-grey)' }}>
-                This deletes every row committed in this intake event. It cannot be undone. Describe why.
+                This deletes every row committed in this import. It cannot be undone. Describe why.
               </p>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--eq-grey)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
                 Reason

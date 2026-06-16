@@ -293,7 +293,7 @@ function AccessControlInner() {
       <div className="eq-page__header">
         <h1 className="eq-page__title">Access control</h1>
         <p className="eq-page__lede">
-          Set what each role can do in each app. Changes take effect on next sign-in.
+          Set what each role can do in each app. Changes take effect on the user's next page load.
         </p>
       </div>
 
@@ -521,7 +521,6 @@ function CellDetailPanel({
               />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--eq-ink)' }}>{perm.label}</div>
-                <div style={{ fontSize: 11, color: 'var(--eq-grey)', fontFamily: 'monospace' }}>{perm.key}</div>
               </div>
               {overridden && (
                 <span style={{
@@ -529,7 +528,7 @@ function CellDetailPanel({
                   background: enabled !== defaultVal ? (enabled ? '#dcfce7' : '#fee2e2') : '#fef3c7',
                   color: enabled !== defaultVal ? (enabled ? '#166534' : '#991b1b') : '#92400e',
                 }}>
-                  {enabled ? 'GRANTED' : 'DENIED'}
+                  {enabled ? 'Granted' : 'Denied'}
                 </span>
               )}
               {!overridden && (
