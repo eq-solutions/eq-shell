@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState, lazy, Suspense, type ReactNode, type CSSProperties } from 'react';
+﻿import { useCallback, useEffect, useRef, useState, lazy, Suspense, Component, type ReactNode, type CSSProperties } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -60,6 +60,30 @@ function PageLoadingFallback() {
       <Skeleton variant="row" width="60%" />
     </div>
   );
+}
+
+// Catches "Failed to fetch dynamically imported module" errors that occur when
+// a user has a cached HTML shell pointing at chunk hashes that no longer exist
+// after a new deploy. A full reload fetches the current HTML + new chunks.
+class ChunkErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError(error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes('dynamically imported module') || msg.includes('Failed to fetch')) {
+      window.location.reload();
+    }
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) return <PageLoadingFallback />;
+    return this.props.children;
+  }
 }
 
 // Q5 lock: each module is its own lazy chunk so disabled tenants
@@ -601,6 +625,7 @@ function TenantTree() {
 
 function App() {
   return (
+    <ChunkErrorBoundary>
     <SessionProvider>
       <BrowserRouter>
         <RouteProgressBar />
@@ -641,6 +666,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </SessionProvider>
+    </ChunkErrorBoundary>
   );
 }
 
