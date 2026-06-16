@@ -166,6 +166,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     const ip = clientIp(req);
     if (ip) {
       const { data: rl, error: rlErr } = await ctrl
+        .schema('public')
         .rpc('check_and_increment_rate_limit', {
           p_key:          'invite_lookup_ip:' + ip,
           p_window_secs:  600,
@@ -191,6 +192,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
     try {
       const { data, error } = await ctrl
+        .schema('public')
         .rpc('eq_cards_lookup_invite_by_phone', { p_phone: phone, p_slug: slug });
       if (error) {
         // The per-slug DB guard (migration 0034) raises with hint='rate_limited'
