@@ -788,8 +788,10 @@
 .eq-table-wrap {
   border: 1px solid var(--gray-200);
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: var(--eq-bg);
+  -webkit-overflow-scrolling: touch;
 }
 
 .eq-table {
@@ -3705,3 +3707,22 @@ button.eq-hub-stat:focus-visible {
 
 @keyframes eq-spin { to { transform: rotate(360deg); } }
 .eq-spin { animation: eq-spin 0.8s linear infinite; }
+
+/* ── Admin pages — mobile ───────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .eq-admin-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+  .eq-admin-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+  .eq-admin-action--secondary { display: none !important; }
+  .eq-admin-action--primary {
+    width: 100%;
+    justify-content: center !important;
+  }
+}

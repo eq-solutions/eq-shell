@@ -134,7 +134,7 @@ function AdminInviteUserForm() {
           </Link>
         </p>
       </div>
-      <form onSubmit={onSubmit} style={{ maxWidth: 520 }}>
+      <form onSubmit={onSubmit} style={{ maxWidth: 520, width: '100%', boxSizing: 'border-box' }}>
 
         <div style={{ marginBottom: 20 }}>
           <label htmlFor="invite-email" style={labelStyle}>Email</label>
@@ -241,12 +241,12 @@ function AdminInviteUserForm() {
                 ? 'Email delivered — the recipient should see it within a minute.'
                 : 'Email not configured yet. Copy this link and send it manually:'}
             </p>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <input
                 readOnly
                 value={success.invite_url}
                 style={{
-                  flex: 1, padding: '6px 10px', border: '1px solid var(--eq-border)',
+                  flex: 1, minWidth: 0, padding: '6px 10px', border: '1px solid var(--eq-border)',
                   borderRadius: 4, fontSize: 12,
                   fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
                   background: 'var(--eq-bg)',
