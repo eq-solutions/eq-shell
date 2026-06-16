@@ -1,4 +1,4 @@
-// Admin form: invite a user to the current tenant.
+﻿// Admin form: invite a user to the current tenant.
 //
 // Gated by useCan('admin.invite_user') — visible only to managers +
 // platform admins. The Netlify function enforces the same check
@@ -20,11 +20,11 @@ const SIDEBAR_RECORDS = defaultSidebarRecords();
 import type { EqRole } from '../session';
 
 const ROLE_OPTIONS: { value: EqRole; label: string; helper: string }[] = [
-  { value: 'manager',     label: 'Manager',     helper: 'Business owner. Full control.' },
+  { value: 'manager',     label: 'Manager',     helper: 'Full access — can invite users, manage settings, and see all data.' },
   { value: 'supervisor',  label: 'Supervisor',  helper: 'Approves work, manages a team.' },
   { value: 'employee',    label: 'Employee',    helper: 'Default working role.' },
   { value: 'apprentice',  label: 'Apprentice',  helper: 'Trainee with mentor visibility.' },
-  { value: 'labour_hire', label: 'Labour Hire', helper: 'Minimal access — roster + own timesheet.' },
+  { value: 'labour_hire', label: 'Contractor',  helper: 'For contractors or agency workers — read-only access to their own roster and timesheet.' },
 ];
 
 // Phase 1.F seed: the 6 modules currently surfaced in TenantHome.
@@ -47,10 +47,12 @@ function AdminInviteUserForm() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<EqRole>('employee');
-  const [entitlements, setEntitlements] = useState<Set<string>>(new Set(['intake']));
+  const [entitlements, setEntitlements] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [success, setSuccess] = useState<InviteSuccess | null>(null);
+  const [addedMsg, setAddedMsg] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   function toggleEntitlement(key: string) {
     setEntitlements((prev) => {
@@ -67,8 +69,10 @@ function AdminInviteUserForm() {
   async function copyInviteUrl(url: string) {
     try {
       await navigator.clipboard.writeText(url);
+      setCopyStatus('copied');
+      setTimeout(() => setCopyStatus('idle'), 2000);
     } catch {
-      // Fallback — just leave the URL visible; user copies manually.
+      setCopyStatus('failed');
     }
   }
 
@@ -76,6 +80,8 @@ function AdminInviteUserForm() {
     e.preventDefault();
     setErr(null);
     setSuccess(null);
+    setAddedMsg(null);
+    setCopyStatus('idle');
     setBusy(true);
     try {
       const res = await fetch('/.netlify/functions/invite-user', {
@@ -90,30 +96,42 @@ function AdminInviteUserForm() {
         }),
       });
       const body = (await res.json()) as
+        | { ok: true; added_to_tenant: true; user_id: string; email_delivered: boolean }
         | { ok: true; invite_id: string; invite_url: string; email_delivered: boolean }
         | { ok: false; error?: string };
       if (!body.ok) {
         const map: Record<string, string> = {
-          'unauthorized':     'Sign in again to invite users.',
-          'forbidden':        'Only managers can invite users.',
-          'bad-email':        'That email doesn\'t look right.',
-          'bad-phone':        'That mobile doesn\'t look like an Australian number.',
-          'bad-role':         'Pick a role from the list.',
-          'user-exists':      'A user with that email already exists.',
-          'already-invited':  'An open invite for that email already exists.',
-          'server-error':     'Something went wrong server-side — try again.',
+          'unauthorized':      'Sign in again to invite users.',
+          'forbidden':         'Only managers can invite users.',
+          'bad-email':         "That email doesn't look right.",
+          'bad-phone':         "That mobile doesn't look like an Australian number.",
+          'bad-role':          'Pick a role from the list.',
+          'bad-request':       'The request was invalid — refresh and try again.',
+          'user-exists':       'A user with that email already exists.',
+          'already-invited':   'An open invite for that email already exists.',
+          'already-a-member':  'That person is already part of this workspace.',
+          'server-error':      'Something went wrong server-side — try again.',
         };
         setErr(map[body.error ?? ''] ?? 'Could not send the invite. Try again.');
         setBusy(false);
         return;
       }
-      setSuccess({
-        invite_id: body.invite_id,
-        invite_url: body.invite_url,
-        email_delivered: body.email_delivered,
-      });
-      setEmail('');
-      setPhone('');
+      if ('added_to_tenant' in body && body.added_to_tenant) {
+        setAddedMsg("That person already has an EQ account — they've been added to this workspace.");
+        setEmail('');
+        setPhone('');
+        setBusy(false);
+        return;
+      }
+      if ('invite_id' in body) {
+        setSuccess({
+          invite_id: body.invite_id,
+          invite_url: body.invite_url,
+          email_delivered: body.email_delivered,
+        });
+        setEmail('');
+        setPhone('');
+      }
       setBusy(false);
     } catch {
       setErr('Network error — please try again.');
@@ -185,7 +203,10 @@ function AdminInviteUserForm() {
         </div>
 
         <div style={{ marginBottom: 24 }}>
-          <p style={labelStyle}>App access</p>
+          <p style={labelStyle}>Workspace apps</p>
+          <p style={{ fontSize: 12, color: 'var(--gray-500)', margin: '-4px 0 10px' }}>
+            Turning these on makes them available to everyone in this workspace, not just this person.
+          </p>
           <div style={{ display: 'grid', gap: 8 }}>
             {MODULE_OPTIONS.map((m) => (
               <label
@@ -212,7 +233,8 @@ function AdminInviteUserForm() {
           <Button
             type="submit"
             variant="primary"
-            disabled={busy || !email}
+            disabled={busy || !email.trim()}
+            aria-busy={busy}
             style={{ padding: '0 20px' }}
           >
             {busy ? 'Sending…' : 'Send invite'}
@@ -222,6 +244,23 @@ function AdminInviteUserForm() {
         {err && (
           <div className="eq-err" role="alert" style={{ marginTop: 16 }}>
             {err}
+          </div>
+        )}
+
+        {addedMsg && (
+          <div
+            role="status"
+            style={{
+              marginTop: 16,
+              padding: '12px 14px',
+              border: '1px solid var(--eq-border)',
+              borderRadius: 6,
+              background: 'var(--eq-ice)',
+              fontSize: 14,
+              color: 'var(--eq-ink)',
+            }}
+          >
+            {addedMsg}
           </div>
         )}
 
@@ -236,33 +275,44 @@ function AdminInviteUserForm() {
             }}
           >
             <p style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>Invite sent</p>
-            <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--gray-500)' }}>
-              {success.email_delivered
-                ? 'Email delivered — the recipient should see it within a minute.'
-                : 'Email not configured yet. Copy this link and send it manually:'}
-            </p>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                readOnly
-                value={success.invite_url}
-                style={{
-                  flex: 1, minWidth: 0, padding: '6px 10px', border: '1px solid var(--eq-border)',
-                  borderRadius: 4, fontSize: 12,
-                  fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
-                  background: 'var(--eq-bg)',
-                }}
-                onFocus={(e) => e.target.select()}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                style={{ whiteSpace: 'nowrap' }}
-                onClick={() => copyInviteUrl(success.invite_url)}
-              >
-                Copy
-              </Button>
-            </div>
+            {success.email_delivered ? (
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--gray-500)' }}>
+                Email delivered — the recipient should see it within a minute.
+              </p>
+            ) : (
+              <>
+                <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--gray-500)' }}>
+                  Email not configured yet. Copy this link and send it manually:
+                </p>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    readOnly
+                    value={success.invite_url}
+                    style={{
+                      flex: 1, minWidth: 0, padding: '6px 10px', border: '1px solid var(--eq-border)',
+                      borderRadius: 4, fontSize: 12,
+                      fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+                      background: 'var(--eq-bg)',
+                    }}
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    style={{ whiteSpace: 'nowrap' }}
+                    onClick={() => copyInviteUrl(success.invite_url)}
+                  >
+                    {copyStatus === 'copied' ? 'Copied!' : 'Copy'}
+                  </Button>
+                </div>
+                {copyStatus === 'failed' && (
+                  <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--eq-err, #c0392b)' }}>
+                    Copy failed — select and copy the link above.
+                  </p>
+                )}
+              </>
+            )}
           </div>
         )}
       </form>

@@ -1,4 +1,4 @@
-// POST /.netlify/functions/invite-user
+﻿// POST /.netlify/functions/invite-user
 //
 // Phase 1.F — admin invite flow.
 //
@@ -119,7 +119,9 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   try {
     sb = getServiceClient();
   } catch (e) {
-    return jsonResponse(500, { ok: false, error: (e as Error).message });
+    // eslint-disable-next-line no-console
+    console.error('[invite-user] getServiceClient failed:', (e as Error).message);
+    return jsonResponse(500, { ok: false, error: 'server-error' });
   }
 
   const { data: existingUser } = await sb
@@ -163,9 +165,13 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
         module: mod,
         enabled: true,
       }));
-      void sb
+      const { error: entErr } = await sb
         .from('module_entitlements')
         .upsert(rows, { onConflict: 'tenant_id,module', ignoreDuplicates: true });
+      if (entErr) {
+        // eslint-disable-next-line no-console
+        console.warn('[invite-user] entitlement upsert failed (non-fatal):', entErr.message);
+      }
     }
 
     const { data: tenantRow } = await sb

@@ -1,4 +1,4 @@
-// POST /.netlify/functions/accept-invite
+﻿// POST /.netlify/functions/accept-invite
 //
 // Phase 1.F — invite acceptance + first-login.
 //
@@ -103,7 +103,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(400, { valid: false, error: 'bad-request' });
   }
   if (!isValidPin(pin)) {
-    return jsonResponse(400, { valid: false, error: 'bad-pin' });
+    return jsonResponse(400, { valid: false, error: 'bad-pin', hint: 'PIN must be 4–12 letters or numbers, no spaces.' });
   }
 
   const tokenHash = createHash('sha256').update(rawToken).digest('hex');
@@ -112,7 +112,9 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   try {
     sb = getServiceClient();
   } catch (e) {
-    return jsonResponse(500, { valid: false, error: (e as Error).message });
+    // eslint-disable-next-line no-console
+    console.error('[accept-invite] getServiceClient failed:', (e as Error).message);
+    return jsonResponse(500, { valid: false, error: 'server-error' });
   }
 
   const { data: invite } = await sb
@@ -219,12 +221,6 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     }
   }
 
-  // Mark the invite accepted.
-  await sb
-    .from('user_invites')
-    .update({ accepted_at: new Date().toISOString() })
-    .eq('id', invite.id);
-
   // Link canonical worker to the new shell user so Cards can pre-populate
   // the profile on first open. Best-effort — never blocks the accept flow.
   // Note: workers + worker_invites are in the public schema; the service
@@ -267,8 +263,13 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   if (!tenant || !tenant.active) {
     // Pathological: tenant disappeared between invite + accept. The
-    // user is created but they have nowhere to go. Surface as 500;
-    // ops cleans up.
+    // user is created but they have nowhere to go. Log the orphaned
+    // user_id so ops can recover, then surface as 500.
+    // eslint-disable-next-line no-console
+    console.error('[accept-invite] tenant missing or inactive after user creation', {
+      user_id: created.id,
+      tenant_id: invite.tenant_id,
+    });
     return jsonResponse(500, { valid: false, error: 'tenant-missing-or-inactive' });
   }
 
@@ -302,6 +303,13 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     created.role,
     created.is_platform_admin,
   );
+
+  // Mark the invite accepted — done last so a crash before the cookie is sent
+  // leaves the invite still claimable rather than permanently consumed.
+  await sb
+    .from('user_invites')
+    .update({ accepted_at: new Date().toISOString() })
+    .eq('id', invite.id);
 
   return jsonResponse(
     200,
