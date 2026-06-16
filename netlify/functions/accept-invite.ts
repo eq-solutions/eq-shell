@@ -6,7 +6,11 @@
 // the authentication. The user sets their PIN here and lands signed
 // in.
 //
-// Body: { invite_token: string, pin: string }
+// Body: { invite_token: string, pin: string, name: string }
+//
+// Also handles GET ?token=<raw> — returns { suggested_name } derived
+// from the linked canonical worker (if any) so the accept page can
+// pre-fill the name field. This read does NOT consume the invite.
 //
 // Effect:
 //   1. SHA-256 the incoming token, look up an unaccepted, unexpired
@@ -48,6 +52,8 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — matches shell-logi
 const MIN_PIN_LENGTH = 4;
 const MAX_PIN_LENGTH = 12;
 
+const MAX_NAME_LENGTH = 120;
+
 interface InviteRow {
   id: string;
   tenant_id: string;
@@ -78,7 +84,62 @@ function isValidPin(pin: string): boolean {
   return /^[A-Za-z0-9]+$/.test(pin);
 }
 
+// GET handler: resolve a suggested display name for the accept page to
+// pre-fill. Returns { suggested_name: string | null }. Best-effort — any
+// failure resolves to null so the page just shows an empty name field.
+// Never mutates the invite, never reveals more than a name.
+async function handleSuggestName(req: Request): Promise<Response> {
+  const rawToken = (new URL(req.url).searchParams.get('token') ?? '').trim();
+  if (!rawToken) {
+    return jsonResponse(200, { suggested_name: null });
+  }
+
+  let sb;
+  try {
+    sb = getServiceClient();
+  } catch {
+    return jsonResponse(200, { suggested_name: null });
+  }
+
+  const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+  const { data: invite } = await sb
+    .from('user_invites')
+    .select('worker_id')
+    .eq('invite_token_hash', tokenHash)
+    .is('accepted_at', null)
+    .gte('expires_at', new Date().toISOString())
+    .maybeSingle<{ worker_id: string | null }>();
+
+  if (!invite?.worker_id) {
+    return jsonResponse(200, { suggested_name: null });
+  }
+
+  // workers lives in the public schema; the service client defaults to shell_control.
+  const { data: worker } = await sb
+    .schema('public')
+    .from('workers')
+    .select('first_name, last_name, preferred_name')
+    .eq('id', invite.worker_id)
+    .maybeSingle<{ first_name: string | null; last_name: string | null; preferred_name: string | null }>();
+
+  if (!worker) {
+    return jsonResponse(200, { suggested_name: null });
+  }
+
+  const first = (worker.preferred_name ?? worker.first_name ?? '').trim();
+  const last = (worker.last_name ?? '').trim();
+  const suggested = [first, last].filter(Boolean).join(' ').trim();
+
+  return jsonResponse(200, { suggested_name: suggested || null });
+}
+
 export default withSentry(async (req: Request, _context: Context): Promise<Response> => {
+  // GET ?token= — best-effort name pre-fill for the accept page. Looks up the
+  // invite by token hash and, if it's worker-linked, returns the worker's name.
+  // Never consumes the invite and never leaks anything beyond a display name.
+  if (req.method === 'GET') {
+    return handleSuggestName(req);
+  }
   if (req.method !== 'POST') {
     return jsonResponse(405, { valid: false, error: 'method-not-allowed' });
   }
@@ -89,7 +150,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(500, { valid: false, error: 'server-misconfigured' });
   }
 
-  let body: { invite_token?: string; pin?: string };
+  let body: { invite_token?: string; pin?: string; name?: string };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -98,12 +159,16 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const rawToken = (body.invite_token ?? '').trim();
   const pin = (body.pin ?? '').trim();
+  const name = (body.name ?? '').trim();
 
   if (!rawToken) {
     return jsonResponse(400, { valid: false, error: 'bad-request' });
   }
   if (!isValidPin(pin)) {
     return jsonResponse(400, { valid: false, error: 'bad-pin', hint: 'PIN must be 4–12 letters or numbers, no spaces.' });
+  }
+  if (!name || name.length > MAX_NAME_LENGTH) {
+    return jsonResponse(400, { valid: false, error: 'bad-name', hint: 'Enter your full name (up to 120 characters).' });
   }
 
   const tokenHash = createHash('sha256').update(rawToken).digest('hex');
@@ -154,10 +219,11 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       active: true,
       pin_hash: pinHash,
       phone: invite.phone,
+      name,
       last_active_tenant_id: invite.tenant_id,
     })
-    .select('id, email, tenant_id, role, is_platform_admin, active, last_login_at')
-    .single<Omit<CanonicalUser, 'pin_hash' | 'phone' | 'name' | 'last_active_tenant_id'>>();
+    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at')
+    .single<Omit<CanonicalUser, 'pin_hash' | 'phone' | 'last_active_tenant_id'>>();
 
   if (insertErr || !created) {
     // 23505 = unique_violation. Email collision is already ruled out above,

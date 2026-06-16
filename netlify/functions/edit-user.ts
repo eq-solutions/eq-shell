@@ -10,6 +10,7 @@
 // Body: {
 //   user_id: string,
 //   patch: {
+//     name?: string,           // display name (trimmed, non-empty if provided)
 //     role?: EqRole,
 //     active?: boolean,        // false = deactivate, true = reactivate
 //     entitlements?: string[]  // modules to ENABLE for the tenant
@@ -66,7 +67,10 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+const MAX_NAME_LENGTH = 120;
+
 interface EditPatch {
+  name?: string;
   role?: EqRole;
   active?: boolean;
   entitlements?: string[];
@@ -111,6 +115,16 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(400, { ok: false, error: 'bad-role' });
   }
 
+  // If a name is provided it must be a non-empty, sane-length string. (Absent
+  // = leave unchanged; the admin form only sends it when it differs.)
+  let nextName: string | undefined;
+  if (patch.name !== undefined) {
+    nextName = String(patch.name).trim();
+    if (!nextName || nextName.length > MAX_NAME_LENGTH) {
+      return jsonResponse(400, { ok: false, error: 'bad-name' });
+    }
+  }
+
   let sb;
   try {
     sb = getServiceClient();
@@ -122,7 +136,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // the platform-admin defence.
   const { data: target, error: targetErr } = await sb
     .from('users')
-    .select('id, email, tenant_id, role, is_platform_admin, active, last_login_at')
+    .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at')
     .eq('id', targetId)
     .maybeSingle<Omit<CanonicalUser, 'pin_hash'>>();
 
@@ -144,7 +158,8 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   // Build the actual UPDATE patch. Only the three fields are mutable;
   // everything else (tenant_id, email, is_platform_admin, etc.) is
   // immutable via this endpoint.
-  const updateRow: Partial<Pick<CanonicalUser, 'role' | 'active'>> = {};
+  const updateRow: Partial<Pick<CanonicalUser, 'name' | 'role' | 'active'>> = {};
+  if (nextName !== undefined) updateRow.name = nextName;
   if (patch.role !== undefined) updateRow.role = patch.role;
   if (patch.active !== undefined) updateRow.active = patch.active;
 
@@ -154,7 +169,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       .from('users')
       .update(updateRow)
       .eq('id', targetId)
-      .select('id, email, tenant_id, role, is_platform_admin, active, last_login_at')
+      .select('id, email, name, tenant_id, role, is_platform_admin, active, last_login_at')
       .single<Omit<CanonicalUser, 'pin_hash'>>();
     if (updErr || !data) {
       // eslint-disable-next-line no-console

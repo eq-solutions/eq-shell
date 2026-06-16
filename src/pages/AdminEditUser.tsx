@@ -56,6 +56,7 @@ function AdminEditUserInner() {
   const [target, setTarget] = useState<UserRow | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
+  const [name, setName] = useState('');
   const [role, setRole] = useState<EqRole>('employee');
   const [active, setActive] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -89,6 +90,7 @@ function AdminEditUserInner() {
       }
       const row = rows[0];
       setTarget(row);
+      setName(row.name ?? '');
       setRole(row.role);
       setActive(row.active);
     } catch (e) {
@@ -168,7 +170,9 @@ function AdminEditUserInner() {
     setSaveErr(null);
     setBusy(true);
     try {
-      const patch: { role?: EqRole; active?: boolean } = {};
+      const patch: { name?: string; role?: EqRole; active?: boolean } = {};
+      const trimmedName = name.trim();
+      if (trimmedName && trimmedName !== (target.name ?? '')) patch.name = trimmedName;
       if (role !== target.role) patch.role = role;
       if (active !== target.active) patch.active = active;
       if (Object.keys(patch).length === 0) {
@@ -191,6 +195,7 @@ function AdminEditUserInner() {
           'self-edit-forbidden':       'Can\'t edit yourself.',
           'cannot-edit-platform-admin': 'This account can\'t be edited here. Contact EQ support if you need to make changes.',
           'user-not-found':            'User not found.',
+          'bad-name':                  'Enter a name (up to 120 characters).',
           'bad-role':                  'Pick a valid role.',
           'server-error':              'Something went wrong server-side — try again.',
         };
@@ -222,6 +227,29 @@ function AdminEditUserInner() {
       </div>
 
       <form onSubmit={onSubmit} style={{ maxWidth: 480 }}>
+        <label htmlFor="edit-name" style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--eq-grey)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+          Display name
+        </label>
+        <input
+          id="edit-name"
+          type="text"
+          autoComplete="off"
+          maxLength={120}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={busy}
+          style={{
+            width: '100%',
+            height: 40,
+            padding: '0 12px',
+            border: '1px solid var(--gray-300)',
+            borderRadius: 6,
+            marginBottom: 20,
+            background: 'var(--eq-bg)',
+            color: 'var(--eq-ink)',
+          }}
+        />
+
         <label htmlFor="edit-role" style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--eq-grey)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
           Role
         </label>
