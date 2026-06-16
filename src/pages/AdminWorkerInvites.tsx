@@ -148,6 +148,17 @@ function AdminWorkerInvitesInner() {
           >
             QR code
           </Link>
+          <Link
+            to={`/${tenantSlug}/admin/workers/connect`}
+            style={{
+              display: 'inline-flex', alignItems: 'center', height: 36,
+              padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+              border: '1px solid var(--eq-border)', color: 'var(--eq-deep)',
+              textDecoration: 'none', background: 'transparent',
+            }}
+          >
+            Connect existing
+          </Link>
           <Link to={`/${tenantSlug}/admin/workers/invite`}>
             <Button variant="primary" size="sm">Invite worker</Button>
           </Link>
