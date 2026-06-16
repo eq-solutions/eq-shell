@@ -16,7 +16,7 @@ import { captureRpcError } from "./quoteTelemetry";
 import { Table, type TableColumn, DropdownMenu, type DropdownMenuEntry } from "@eq-solutions/ui";
 import {
   MoreHorizontal, Copy, Trash2, FileUp, Users, BarChart2, Settings,
-  Clock, Briefcase, CalendarClock, AlarmClock, LayoutGrid, List, SlidersHorizontal, X, Archive,
+  Clock, Briefcase, CalendarClock, AlarmClock, LayoutGrid, List, SlidersHorizontal, X, Archive, Columns3,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -652,6 +652,24 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   );
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+
+  // Customisable pipeline columns — persisted hidden set; Margin hidden by default.
+  const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(() => {
+    try {
+      const raw = typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-hidden-cols") : null;
+      if (raw) return new Set(JSON.parse(raw) as string[]);
+    } catch { /* ignore */ }
+    return new Set(["margin_pct"]);
+  });
+  const toggleCol = (key: string) => {
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      try { localStorage.setItem("eq-quotes-hidden-cols", JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   // Payment terms / validity days inline edit
   const [termsEditing, setTermsEditing] = useState(false);
@@ -2770,6 +2788,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       },
     },
   ];
+
+  // Quote # and the actions column are always shown; everything else is toggleable.
+  const LOCKED_COLS = new Set(["quote_number", "_actions"]);
+  const visiblePipelineColumns = pipelineColumns.filter((c) => !hiddenCols.has(c.key));
 
   // ── Render detail view ────────────────────────────────────────────────────
 
@@ -5361,6 +5383,38 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 <LayoutGrid size={14} /> Board
               </button>
             </div>
+            {/* Columns picker */}
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                className="eq-quotes__btn eq-quotes__btn--outline"
+                style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+                onClick={() => setColsMenuOpen((v) => !v)}
+                title="Show or hide columns"
+              >
+                <Columns3 size={14} /> Columns
+              </button>
+              {colsMenuOpen && (
+                <>
+                  <div onClick={() => setColsMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                  <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 41, background: "var(--eq-surface, #fff)", border: "1px solid var(--eq-border, #e0e0e0)", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.10)", padding: 10, width: 200 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--eq-muted, #6b7280)", marginBottom: 6 }}>Columns</div>
+                    {pipelineColumns
+                      .filter((c) => !LOCKED_COLS.has(c.key) && c.header)
+                      .map((c) => (
+                        <label key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 2px", fontSize: 13, cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={!hiddenCols.has(c.key)}
+                            onChange={() => toggleCol(c.key)}
+                          />
+                          {c.header}
+                        </label>
+                      ))}
+                  </div>
+                </>
+              )}
+            </div>
             {!pipelineLoading && displayedQuotes.length > 0 && (
               <button
                 type="button"
@@ -5537,7 +5591,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             <Table
               className="eq-quotes__pipeline-table"
               rows={displayedQuotes}
-              columns={pipelineColumns}
+              columns={visiblePipelineColumns}
               getRowId={(q) => q.quote_id}
               onRowClick={(q) => void openDetail(q.quote_id)}
               loading={pipelineLoading}
