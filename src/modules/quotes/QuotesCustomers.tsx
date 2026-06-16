@@ -107,6 +107,10 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const [assignSearch, setAssignSearch] = useState("");
   const [assignSaving, setAssignSaving] = useState(false);
   const [showLinkContact, setShowLinkContact] = useState<Record<string, boolean>>({});
+  const [custActionErr, setCustActionErr] = useState<string | null>(null);
+  const [showMerge, setShowMerge] = useState(false);
+  const [mergeSearch, setMergeSearch] = useState("");
+  const [mergeBusy, setMergeBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -182,6 +186,38 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     await supabase.rpc("eq_archive_contact", { p_contact_id: ct.contact_id });
     await reloadContacts(selected.customer_id);
   }, [supabase, selected, reloadContacts]);
+
+  const deleteContact = useCallback(async (ct: ContactRow) => {
+    if (!supabase || !selected) return;
+    const name = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "this contact";
+    if (typeof window !== "undefined" && !window.confirm(`Permanently delete ${name}? This cannot be undone — use Archive to keep it recoverable.`)) return;
+    const { error: e } = await supabase.rpc("eq_delete_contact", { p_contact_id: ct.contact_id });
+    if (e) { setCustActionErr(e.message); return; }
+    await reloadContacts(selected.customer_id);
+  }, [supabase, selected, reloadContacts]);
+
+  const setPrimaryContact = useCallback(async (ct: ContactRow) => {
+    if (!supabase || !selected) return;
+    const { error: e } = await supabase.rpc("eq_set_default_contact", { p_contact_id: ct.contact_id });
+    if (e) { setCustActionErr(e.message); return; }
+    await reloadContacts(selected.customer_id);
+  }, [supabase, selected, reloadContacts]);
+
+  const deleteCustomer = useCallback(async () => {
+    if (!supabase || !selected) return;
+    setCustActionErr(null);
+    if (typeof window !== "undefined" && !window.confirm(`Permanently delete ${selected.company_name ?? "this client"}? This cannot be undone — use Archive to keep it recoverable.`)) return;
+    const { error: e } = await supabase.rpc("eq_delete_customer", { p_customer_id: selected.customer_id });
+    if (e) {
+      // FK RESTRICT (23503) on quotes/contacts — guide to Archive/Merge instead of a raw error.
+      setCustActionErr((e as { code?: string }).code === "23503"
+        ? "This client still has quotes or contacts, so it can't be deleted. Archive it instead, or merge it into another client."
+        : e.message);
+      return;
+    }
+    setSelected(null);
+    await load();
+  }, [supabase, selected, load]);
 
   const reloadSites = useCallback(async (customerId: string) => {
     if (!supabase) return;
@@ -316,6 +352,9 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     setShowAddContact(false);
     setEditingContact(null);
     setAddForm({ first_name: "", last_name: "", email: "", mobile_phone: "", position: "" });
+    setShowMerge(false);
+    setMergeSearch("");
+    setCustActionErr(null);
     setDetailLoading(true);
     const [ctRes, qRes, sitesRes] = await Promise.all([
       supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: c.customer_id }),
@@ -356,6 +395,26 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
       })));
     }
   }, [supabase]);
+
+  const mergeInto = useCallback(async (dupe: CustomerRow) => {
+    if (!supabase || !selected || mergeBusy) return;
+    if (typeof window !== "undefined" && !window.confirm(
+      `Merge "${dupe.company_name ?? "client"}" into "${selected.company_name ?? "client"}"?\n\n` +
+      `All of its quotes, sites and contacts move to "${selected.company_name ?? "this client"}", and the duplicate is archived (recoverable). This can't be auto-undone.`
+    )) return;
+    setMergeBusy(true);
+    setCustActionErr(null);
+    const { error: e } = await supabase.rpc("eq_merge_customers", {
+      p_keep_customer_id: selected.customer_id,
+      p_dupe_customer_id: dupe.customer_id,
+    });
+    setMergeBusy(false);
+    if (e) { setCustActionErr(e.message); return; }
+    setShowMerge(false);
+    setMergeSearch("");
+    await load();
+    await loadDetail(selected);
+  }, [supabase, selected, mergeBusy, load, loadDetail]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -509,6 +568,13 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                 >
                   Edit
                 </button>
+                <button
+                  className="eq-quotes__btn eq-quotes__btn--sm"
+                  style={{ fontSize: "0.78rem", padding: "3px 10px" }}
+                  onClick={() => { setCustActionErr(null); setMergeSearch(""); setShowMerge((v) => !v); }}
+                >
+                  {showMerge ? "Cancel merge" : "Merge…"}
+                </button>
                 {selected.active && (
                   <button
                     className="eq-quotes__btn eq-quotes__btn--sm"
@@ -523,8 +589,60 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                     Archive
                   </button>
                 )}
+                <button
+                  className="eq-quotes__btn eq-quotes__btn--sm"
+                  style={{ fontSize: "0.78rem", padding: "3px 10px", color: "var(--eq-err,#c0392b)" }}
+                  onClick={() => { void deleteCustomer(); }}
+                >
+                  Delete
+                </button>
               </div>
             </div>
+
+            {custActionErr && (
+              <div style={{ background: "var(--eq-err-bg,#fdf1f1)", border: "1px solid var(--eq-err,#c0392b)33", borderRadius: "6px", padding: "0.5rem 0.75rem", marginBottom: "0.75rem", fontSize: "0.82rem", color: "var(--eq-err,#c0392b)" }}>
+                {custActionErr}
+              </div>
+            )}
+
+            {showMerge && (
+              <div style={{ background: "var(--eq-ice,#EAF5FB)", border: "1px solid var(--eq-border,#e5e7eb)", borderRadius: "6px", padding: "0.75rem", marginBottom: "1rem" }}>
+                <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: "0.4rem" }}>
+                  Merge a duplicate into <span style={{ color: "var(--eq-deep,#2986B4)" }}>{selected.company_name}</span>
+                </div>
+                <input
+                  className="eq-quotes__input"
+                  placeholder="Search the duplicate client…"
+                  value={mergeSearch}
+                  autoFocus
+                  style={{ width: "100%", marginBottom: "0.5rem" }}
+                  onChange={(e) => setMergeSearch(e.target.value)}
+                />
+                <div style={{ maxHeight: "220px", overflowY: "auto" }}>
+                  {customers
+                    .filter((c) => c.customer_id !== selected.customer_id && c.active)
+                    .filter((c) => {
+                      if (!mergeSearch.trim()) return true;
+                      const q = mergeSearch.toLowerCase();
+                      return (c.company_name ?? "").toLowerCase().includes(q);
+                    })
+                    .slice(0, 50)
+                    .map((c) => (
+                      <div
+                        key={c.customer_id}
+                        style={{ padding: "0.45rem 0.5rem", borderBottom: "1px solid var(--eq-border,#e5e7eb)", cursor: mergeBusy ? "default" : "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                        onClick={() => { void mergeInto(c); }}
+                      >
+                        <span style={{ fontWeight: 500, fontSize: "0.88rem" }}>{c.company_name ?? "(unnamed)"}</span>
+                        <span style={{ fontSize: "0.76rem", color: "var(--eq-muted,#6b7280)" }}>
+                          {c.quote_count > 0 ? `${c.quote_count} quote${c.quote_count !== 1 ? "s" : ""}` : "no quotes"}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+                {mergeBusy && <p className="eq-quotes__muted" style={{ marginTop: "0.4rem" }}>Merging…</p>}
+              </div>
+            )}
 
             {detailLoading && <p className="eq-quotes__muted">Loading…</p>}
 
@@ -641,6 +759,14 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                           <td>{ct.email ?? "—"}</td>
                           <td>{ct.mobile_phone ?? ct.work_phone ?? "—"}</td>
                           <td style={{ whiteSpace: "nowrap" }}>
+                            {!ct.is_default_quote_contact && (
+                              <button
+                                className="eq-quotes__btn eq-quotes__btn--sm"
+                                style={{ fontSize: "0.72rem", padding: "2px 7px", marginRight: "4px" }}
+                                title="Make this the default quote contact"
+                                onClick={() => { void setPrimaryContact(ct); }}
+                              >Set primary</button>
+                            )}
                             <button
                               className="eq-quotes__btn eq-quotes__btn--sm"
                               style={{ fontSize: "0.72rem", padding: "2px 7px", marginRight: "4px" }}
@@ -658,9 +784,14 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                             >Edit</button>
                             <button
                               className="eq-quotes__btn eq-quotes__btn--sm"
-                              style={{ fontSize: "0.72rem", padding: "2px 7px", color: "var(--eq-muted,#6b7280)" }}
+                              style={{ fontSize: "0.72rem", padding: "2px 7px", marginRight: "4px", color: "var(--eq-muted,#6b7280)" }}
                               onClick={() => { void archiveContact(ct); }}
                             >Archive</button>
+                            <button
+                              className="eq-quotes__btn eq-quotes__btn--sm"
+                              style={{ fontSize: "0.72rem", padding: "2px 7px", color: "var(--eq-err,#c0392b)" }}
+                              onClick={() => { void deleteContact(ct); }}
+                            >Delete</button>
                           </td>
                         </tr>
                       ))}
