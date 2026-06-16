@@ -1,42 +1,47 @@
 // @ts-nocheck
-// DEAD CODE — nspbmirochztcjijmcrx ABANDONED 2026-06-13. Do not activate.
-// Types intentionally suppressed: schema evolved past this file's type assumptions.
-//
 // netlify/functions/sync-quotes-nightly.ts
 //
-// Nightly ETL: eq-quotes (nspbmirochztcjijmcrx) → sks-canonical (ehowgjardagevnrluult)
+// ETL: sks-quotes (nspbmirochztcjijmcrx) → sks-canonical (ehowgjardagevnrluult)
 //
-// Runs 09:00 AEST (23:00 UTC) each night. Idempotent — safe to re-run.
-// Syncs customers → quotes → line items, writes canonical_id back to Flask.
+// Runs every 4 hours. Also callable manually via POST to /.netlify/functions/sync-quotes-nightly.
+// Idempotent — safe to re-run at any time.
 //
-// Required Netlify env vars (add via Netlify UI → Site vars):
-//   NSPBMIR_SUPABASE_URL       https://nspbmirochztcjijmcrx.supabase.co
-//   NSPBMIR_SERVICE_KEY        service_role key from Supabase dashboard
-//   EHOW_SERVICE_KEY           service_role key for ehowgjardagevnrluult
+// Sync rules:
+//   - Flask wins on: status, financials, line items, core metadata
+//   - EQ Ops wins on: po_number, workbench_job_no (take non-null; EQ Ops value kept if set)
+//   - follow_up_at is never touched (EQ Ops only)
+//   - A quote is "Flask newer" when Flask updated_at > EQ Ops imported_at
+//   - Quotes with no EQ Ops imported_at are always synced (new or previously untracked)
+//   - Soft-deletes in Flask (deleted_at set) are mirrored to EQ Ops
 //
-// Already in Netlify (no action needed):
-//   CANONICAL_SUPABASE_URL     https://ehowgjardagevnrluult.supabase.co
+// Required Netlify env vars:
+//   NSPBMIR_SUPABASE_URL    https://nspbmirochztcjijmcrx.supabase.co
+//   NSPBMIR_SERVICE_KEY     service_role key for nspbmirochztcjijmcrx
+//   CANONICAL_SUPABASE_URL  https://ehowgjardagevnrluult.supabase.co
+//   EHOW_SERVICE_KEY        service_role key for ehowgjardagevnrluult
 
 import type { Config } from '@netlify/functions';
 import { createClient } from '@supabase/supabase-js';
 
 export const config: Config = {
-  schedule: '0 23 * * *',
+  schedule: '0 */4 * * *', // every 4 hours
 };
 
-const SKS_ORG_ID   = '1eb831f9-aeae-4e57-b49e-9681e8f51e15';
-const TENANT_ID    = '7dee117c-98bd-4d39-af8c-2c81d02a1e85';
+const SKS_ORG_ID = '1eb831f9-aeae-4e57-b49e-9681e8f51e15';
+const TENANT_ID  = '7dee117c-98bd-4d39-af8c-2c81d02a1e85';
 
+// Matches taxonomy.ts FLASK_STATUS_TO_EQ exactly.
 const STATUS_MAP: Record<string, string> = {
   'Draft':               'draft',
   'Submitted':           'submitted',
-  'Client Reviewing':    'submitted',
+  'Sent':                'submitted',
+  'Client Reviewing':    'client-reviewing',
   'Verbal Win':          'verbal-win',
   'Won-Awaiting Job No': 'won-awaiting-job-no',
   'Won-Job Created':     'won-job-created',
   'Lost':                'lost',
-  'On Hold':             'draft',
-  'Withdrawn':           'superseded',
+  'On Hold':             'on-hold',
+  'Withdrawn':           'cancelled',
 };
 
 const LINE_CATS = [
@@ -72,36 +77,37 @@ export default async function handler(): Promise<Response> {
     return new Response(JSON.stringify({ ok: false, missing }), { status: 500 });
   }
 
-  const source = createClient(nspbmirUrl, nspbmirKey, {
+  const flask = createClient(nspbmirUrl, nspbmirKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const canonical = createClient(ehowUrl, ehowKey, {
+  const ops = createClient(ehowUrl, ehowKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const result = { customers: 0, quotes: 0, lineItems: 0, errors: 0 };
+  const result = { customers: 0, inserted: 0, updated: 0, skipped: 0, lineItems: 0, errors: 0 };
 
   try {
-    // Step 1: Sync customers
-    const { data: customers, error: custErr } = await source
+    // ── Step 1: Sync customers ────────────────────────────────────────────────
+    const { data: customers, error: custErr } = await flask
       .from('sks_quotes_customers')
       .select('id, name')
       .eq('archived', false);
     if (custErr) throw new Error(`fetch customers: ${custErr.message}`);
 
-    const custRows = customers!.map(r => ({
-      tenant_id:      TENANT_ID,
-      external_id:    r.id,
-      type:           'company',
-      company_name:   r.name,
-      imported_from:  'eq-quotes',
-      schema_version: '1.0.0',
-    }));
-
-    const { data: upsertedCusts, error: uCustErr } = await canonical
+    const { data: upsertedCusts, error: uCustErr } = await ops
       .schema('app_data')
       .from('customers')
-      .upsert(custRows, { onConflict: 'tenant_id,external_id', ignoreDuplicates: false })
+      .upsert(
+        customers!.map(r => ({
+          tenant_id:      TENANT_ID,
+          external_id:    r.id,
+          type:           'company',
+          company_name:   r.name,
+          imported_from:  'eq-quotes',
+          schema_version: '1.0.0',
+        })),
+        { onConflict: 'tenant_id,external_id', ignoreDuplicates: false }
+      )
       .select('customer_id, external_id');
     if (uCustErr) throw new Error(`upsert customers: ${uCustErr.message}`);
 
@@ -109,19 +115,19 @@ export default async function handler(): Promise<Response> {
     (upsertedCusts ?? []).forEach(r => { custIdMap[r.external_id] = r.customer_id; });
     result.customers = upsertedCusts?.length ?? 0;
 
-    // Step 2: Load canonical sites for matching
-    const { data: sites, error: sitesErr } = await canonical
+    // ── Step 2: Load canonical sites for matching ─────────────────────────────
+    const { data: sites, error: sitesErr } = await ops
       .schema('app_data')
       .from('sites')
       .select('site_id, name, code')
       .eq('tenant_id', TENANT_ID);
     if (sitesErr) throw new Error(`fetch sites: ${sitesErr.message}`);
 
-    const siteByName: Record<string, string> = {};
     const siteByCode: Record<string, string> = {};
+    const siteByName: Record<string, string> = {};
     (sites ?? []).forEach(s => {
-      if (s.name) siteByName[s.name.toLowerCase().trim()] = s.site_id;
       if (s.code) siteByCode[s.code.toLowerCase().trim()] = s.site_id;
+      if (s.name) siteByName[s.name.toLowerCase().trim()] = s.site_id;
     });
 
     function resolveSiteId(siteText: string | null): string | null {
@@ -135,29 +141,70 @@ export default async function handler(): Promise<Response> {
       return null;
     }
 
-    // Step 3: Sync quotes
-    const { data: quotes, error: quotesErr } = await source
+    // ── Step 3: Fetch all Flask quotes ────────────────────────────────────────
+    const { data: flaskQuotes, error: quotesErr } = await flask
       .from('sks_quotes')
       .select([
         'id', 'number', 'status', 'customer_id', 'site', 'project_name',
         'attn_name', 'attn_first_name', 'attn_phone', 'address', 'scope_of_works',
-        'estimator_name', 'estimator_initials', 'margin_pct', 'sent_at',
-        'sent_by_initials', 'validity_days', 'payment_terms', 'expires_at',
-        'workbench_job_no', 'client_accepted_at', 'client_accepted_by',
-        'client_declined_at', 'loss_reason', 'canonical_id', 'created_at',
+        'estimator_name', 'estimator_initials', 'margin_pct',
+        'sent_at', 'sent_by_initials', 'validity_days', 'payment_terms', 'expires_at',
+        'workbench_job_no', 'po_number', 'coupa_entity',
+        'client_accepted_at', 'client_accepted_by',
+        'client_declined_at', 'loss_reason',
+        'canonical_id', 'created_at', 'updated_at', 'deleted_at',
         'labour', 'materials', 'subcon', 'prelims', 'inclusions',
       ].join(','))
-      .eq('org_id', SKS_ORG_ID)
-      .is('deleted_at', null);
-    if (quotesErr) throw new Error(`fetch quotes: ${quotesErr.message}`);
+      .eq('org_id', SKS_ORG_ID);
+    if (quotesErr) throw new Error(`fetch Flask quotes: ${quotesErr.message}`);
 
-    for (const q of quotes ?? []) {
+    // ── Step 4: Fetch existing EQ Ops quote metadata for comparison ───────────
+    const flaskIds = (flaskQuotes ?? []).map(q => q.id);
+    const { data: existingOps } = await ops
+      .schema('app_data')
+      .from('quote')
+      .select('quote_id, external_id, imported_at, po_number, workbench_job_no')
+      .eq('tenant_id', TENANT_ID)
+      .in('external_id', flaskIds);
+
+    const opsMap: Record<string, {
+      quote_id: string;
+      imported_at: string | null;
+      po_number: string | null;
+      workbench_job_no: string | null;
+    }> = {};
+    (existingOps ?? []).forEach(r => { opsMap[r.external_id] = r; });
+
+    // ── Step 5: Upsert each quote ─────────────────────────────────────────────
+    const now = new Date().toISOString();
+
+    for (const q of flaskQuotes ?? []) {
       const canonicalCustomerId = custIdMap[q.customer_id];
       if (!canonicalCustomerId) {
-        console.warn(`[sync-quotes-nightly] no canonical customer for ${q.number}`);
+        console.warn(`[sync-quotes-nightly] no canonical customer for ${q.number} (Flask customer ${q.customer_id})`);
+        result.errors++;
         continue;
       }
 
+      const existing = opsMap[q.id];
+      const isNew    = !existing;
+
+      // Only re-sync if Flask has changed since our last import stamp.
+      // imported_at = null means we've never tracked this quote properly — always sync.
+      const flaskTs    = q.updated_at ? new Date(q.updated_at).getTime() : 0;
+      const importedTs = existing?.imported_at ? new Date(existing.imported_at).getTime() : 0;
+      const flaskNewer = flaskTs > importedTs;
+
+      if (!isNew && !flaskNewer) {
+        result.skipped++;
+        continue;
+      }
+
+      // EQ Ops wins when it already has a value; Flask fills in if EQ Ops is empty.
+      const jobNo   = existing?.workbench_job_no ?? q.workbench_job_no ?? null;
+      const poNum   = existing?.po_number        ?? q.po_number        ?? null;
+
+      // Build line items and recalculate totals from Flask JSONB arrays.
       let subtotal = 0;
       const lineItems: object[] = [];
       let lineNum = 1;
@@ -185,12 +232,12 @@ export default async function handler(): Promise<Response> {
       const gst   = Math.round(subtotal * 0.1);
       const total = subtotal + gst;
 
-      const quoteRow = {
+      const quoteRow: Record<string, unknown> = {
         tenant_id:          TENANT_ID,
+        external_id:        q.id,
         customer_id:        canonicalCustomerId,
         site_id:            resolveSiteId(q.site),
         quote_number:       q.number ?? null,
-        external_id:        q.id,
         project_name:       q.project_name ?? null,
         attn_name:          q.attn_name ?? null,
         attn_first_name:    q.attn_first_name ?? null,
@@ -209,43 +256,48 @@ export default async function handler(): Promise<Response> {
         validity_days:      q.validity_days ?? 30,
         payment_terms:      q.payment_terms ?? null,
         expires_at:         q.expires_at ?? null,
-        workbench_job_no:   q.workbench_job_no ?? null,
+        workbench_job_no:   jobNo,
+        po_number:          poNum,
+        coupa_entity:       q.coupa_entity ?? null,
         client_accepted_at: q.client_accepted_at ?? null,
         client_accepted_by: q.client_accepted_by ?? null,
         client_declined_at: q.client_declined_at ?? null,
         loss_reason:        q.loss_reason ?? null,
+        deleted_at:         q.deleted_at ?? null,
         imported_from:      'eq-quotes',
         schema_version:     '1.0.0',
-        imported_at:        new Date().toISOString(),
+        imported_at:        now,
+        // follow_up_at intentionally omitted — EQ Ops only, never sourced from Flask
       };
 
-      // Upsert by quote_id PK using canonical_id if known, else gen new
-      const quoteId = q.canonical_id ?? undefined;
-      const upsertRow = quoteId ? { ...quoteRow, quote_id: quoteId } : quoteRow;
+      // Preserve the canonical quote_id for existing rows so the PK doesn't change.
+      if (existing?.quote_id) quoteRow.quote_id = existing.quote_id;
+      // Preserve original created_at on insert.
+      if (isNew && q.created_at) quoteRow.created_at = q.created_at;
 
-      const { data: upserted, error: uQuoteErr } = await canonical
+      const { data: upserted, error: uQuoteErr } = await ops
         .schema('app_data')
         .from('quote')
-        .upsert(upsertRow, { onConflict: 'quote_id', ignoreDuplicates: false })
+        .upsert(quoteRow, { onConflict: 'tenant_id,external_id', ignoreDuplicates: false })
         .select('quote_id')
         .single();
 
       if (uQuoteErr || !upserted) {
-        console.error(`[sync-quotes-nightly] upsert quote ${q.number}:`, uQuoteErr?.message);
+        console.error(`[sync-quotes-nightly] upsert ${q.number}:`, uQuoteErr?.message);
         result.errors++;
         continue;
       }
 
-      // Write canonical_id back to Flask if new
+      // Write canonical_id back to Flask so it knows this quote's EQ Ops UUID.
       if (!q.canonical_id) {
-        await source
+        await flask
           .from('sks_quotes')
-          .update({ canonical_id: upserted.quote_id, updated_at: new Date().toISOString() })
+          .update({ canonical_id: upserted.quote_id })
           .eq('id', q.id);
       }
 
-      // Replace line items
-      await canonical
+      // Replace line items (Flask is authoritative on line item content).
+      await ops
         .schema('app_data')
         .from('quote_line_item')
         .delete()
@@ -253,7 +305,7 @@ export default async function handler(): Promise<Response> {
 
       if (lineItems.length > 0) {
         const rows = lineItems.map(li => ({ ...li, quote_id: upserted.quote_id }));
-        const { error: liErr } = await canonical
+        const { error: liErr } = await ops
           .schema('app_data')
           .from('quote_line_item')
           .insert(rows);
@@ -264,14 +316,14 @@ export default async function handler(): Promise<Response> {
         }
       }
 
-      result.quotes++;
+      if (isNew) result.inserted++;
+      else result.updated++;
     }
 
     console.info('[sync-quotes-nightly] complete', result);
     return new Response(JSON.stringify({ ok: true, ...result }), { status: 200 });
 
   } catch (err) {
-    result.errors++;
     console.error('[sync-quotes-nightly] fatal:', err);
     return new Response(JSON.stringify({ ok: false, error: String(err), ...result }), { status: 500 });
   }

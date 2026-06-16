@@ -13,7 +13,7 @@
 export const QUOTE_STATUSES = [
   "draft", "submitted", "client-reviewing", "on-hold",
   "verbal-win", "won-awaiting-job-no", "won-job-created", "po-matched",
-  "active", "complete", "ready-to-invoice",
+  "active", "complete", "ready-to-invoice", "invoiced",
   "lost", "cancelled", "expired", "superseded",
 ] as const;
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
@@ -32,6 +32,7 @@ export const STATUS_LABELS: Record<string, string> = {
   active: "Active",
   complete: "Complete",
   "ready-to-invoice": "Ready to Invoice",
+  invoiced: "Invoiced",
   lost: "Lost",
   cancelled: "Cancelled",
   expired: "Expired",
@@ -52,7 +53,7 @@ export const ACTIVE_JOB_STATUSES: ReadonlySet<string> = new Set<string>([
 
 /** Ever-accepted, including finished jobs — the reports win-rate numerator. */
 export const WON_EVER_STATUSES: ReadonlySet<string> = new Set<string>([
-  ...ACTIVE_JOB_STATUSES, "complete", "ready-to-invoice",
+  ...ACTIVE_JOB_STATUSES, "complete", "ready-to-invoice", "invoiced",
 ]);
 
 /** End-of-life, not won — the reports loss bucket. */

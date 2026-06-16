@@ -418,6 +418,8 @@ const STATUS_FILTERS = [
   { key: "po-matched", label: "PO Matched" },
   { key: "active", label: "Active" },
   { key: "complete", label: "Complete" },
+  { key: "ready-to-invoice", label: "Ready to Invoice" },
+  { key: "invoiced", label: "Invoiced" },
   { key: "lost", label: "Lost" },
   { key: "closed", label: "Closed" },
 ];
@@ -432,7 +434,7 @@ const NEXT_STATUSES: Record<string, string[]> = {
   "po-matched": ["active"],
   active: ["complete"],
   complete: ["ready-to-invoice"],
-  "ready-to-invoice": [],
+  "ready-to-invoice": ["invoiced"],
   "on-hold": ["submitted", "verbal-win", "lost", "cancelled"],
 };
 
@@ -443,7 +445,7 @@ const NEXT_STATUSES: Record<string, string[]> = {
 const STAGES: Array<{ key: string; label: string; match: (s: string) => boolean }> = [
   { key: "active-jobs", label: "Active jobs", match: (s) => ACTIVE_JOB_STATUSES.has(s) },
   { key: "open",        label: "Open",        match: (s) => OPEN_PIPELINE_STATUSES.has(s) },
-  { key: "closed",      label: "Closed",      match: (s) => CLOSED_STATUSES.has(s) || s === "complete" || s === "ready-to-invoice" },
+  { key: "closed",      label: "Closed",      match: (s) => CLOSED_STATUSES.has(s) || s === "complete" || s === "ready-to-invoice" || s === "invoiced" },
   { key: "all",         label: "All",         match: () => true },
 ];
 const STAGE_KEYS = new Set(STAGES.map((s) => s.key));
@@ -522,7 +524,7 @@ function statusClass(status: string): string {
     return "eq-quotes__badge eq-quotes__badge--blue";
   if (status === "on-hold")
     return "eq-quotes__badge eq-quotes__badge--amber";
-  if (["complete", "ready-to-invoice"].includes(status))
+  if (["complete", "ready-to-invoice", "invoiced"].includes(status))
     return "eq-quotes__badge eq-quotes__badge--teal";
   if (["lost", "expired"].includes(status))
     return "eq-quotes__badge eq-quotes__badge--red";
@@ -641,6 +643,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // Inline follow-up edit from pipeline table
   const [pipelineFupEdit, setPipelineFupEdit] = useState<{ quoteId: string; value: string } | null>(null);
+  const [pipelinePoEdit, setPipelinePoEdit] = useState<{ quoteId: string; value: string } | null>(null);
 
   // Inline status + job-no edit from pipeline table
   const [pipelineStatusEdit, setPipelineStatusEdit] = useState<string | null>(null);
@@ -2161,6 +2164,27 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  const savePipelinePoNo = async (q: Quote, value: string) => {
+    setPipelinePoEdit(null);
+    const trimmed = value.trim();
+    if (!supabase || !trimmed || trimmed === (q.po_number ?? "")) return;
+    const { error } = await supabase.rpc("eq_set_po_number", {
+      p_quote_id: q.quote_id,
+      p_po_number: trimmed,
+      p_initials: initials.trim() || null,
+    });
+    if (error) { captureRpcError("eq_set_po_number", error, { quote_id: q.quote_id }); return; }
+    if (q.status === "won-job-created") {
+      await supabase.rpc("eq_update_quote_status", {
+        p_quote_id: q.quote_id,
+        p_new_status: "po-matched",
+        p_note: null,
+        p_initials: initials.trim() || null,
+      });
+    }
+    void loadQuotes(statusFilter, search);
+  };
+
   const resetSmartFilters = () => {
     setExpiringOnly(false); setUnsentOnly(false); setNeedsJobNoOnly(false);
     setOverdueFupOnly(false); setStaleOnly(false);
@@ -2696,6 +2720,50 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             onClick={(e) => { e.stopPropagation(); setPipelineJobNoEdit({ quoteId: q.quote_id, value: "" }); }}
           >
             {ACTIVE_JOB_STATUSES.has(q.status) ? "Needs no." : "—"}
+          </span>
+        );
+      },
+    },
+    {
+      key: "po_number", header: "PO",
+      sortAccessor: (q) => q.po_number ?? "",
+      render: (q) => {
+        if (pipelinePoEdit?.quoteId === q.quote_id) {
+          return (
+            <input
+              type="text"
+              autoFocus
+              value={pipelinePoEdit.value}
+              placeholder="PO number"
+              style={{ fontSize: 12, padding: "2px 4px", border: "1px solid var(--eq-primary, #3DA8D8)", borderRadius: 4, width: 110, fontFamily: "ui-monospace, 'Cascadia Code', monospace" }}
+              onChange={(e) => setPipelinePoEdit({ quoteId: q.quote_id, value: e.target.value })}
+              onBlur={(e) => { void savePipelinePoNo(q, e.target.value); }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { e.stopPropagation(); setPipelinePoEdit(null); }
+                if (e.key === "Enter") { void savePipelinePoNo(q, pipelinePoEdit.value); }
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          );
+        }
+        if (q.po_number) {
+          return (
+            <span
+              className="eq-quotes__td--mono eq-quotes__filter-link"
+              title="Click to change PO number"
+              onClick={(e) => { e.stopPropagation(); setPipelinePoEdit({ quoteId: q.quote_id, value: q.po_number ?? "" }); }}
+            >
+              {q.po_number}
+            </span>
+          );
+        }
+        return (
+          <span
+            className="eq-quotes__muted eq-quotes__filter-link"
+            title="Click to add PO number"
+            onClick={(e) => { e.stopPropagation(); setPipelinePoEdit({ quoteId: q.quote_id, value: "" }); }}
+          >
+            —
           </span>
         );
       },
@@ -5621,7 +5689,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               rows={displayedQuotes}
               columns={visiblePipelineColumns}
               getRowId={(q) => q.quote_id}
-              onRowClick={(q) => void openDetail(q.quote_id)}
               loading={pipelineLoading}
               selectable
               selectedIds={selectedIds}
