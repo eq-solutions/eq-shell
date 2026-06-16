@@ -123,6 +123,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     aud === 'field' ? `field:${tenantSlug ?? 'eq'}` : 'service',
     user.email,
     serviceTenantSlug,
+    user.name, // name → greeting in embedded apps (EQ Service reads app_metadata.name)
   );
 
   // Log for parity analysis — helps Phase 2 parity check compare

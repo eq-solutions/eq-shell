@@ -80,6 +80,10 @@ export interface SupabaseJwtClaims {
     // not this. EQ Service's shell-auth reads it on the JWT path to upsert the
     // tenant_members row; omitted for mints that don't need it.
     tenant_slug?: string;
+    // Human-readable display name (e.g. 'Royce Milmlow'). Additive — purely for
+    // greeting in embedded apps (EQ Service reads app_metadata.name); not used
+    // for any security decision. Omitted for mints that don't carry a name.
+    name?: string;
   };
   iat: number;
   exp: number;
@@ -120,6 +124,7 @@ export function signJwtWithSecret(
   sourceApp: string = 'shell',
   email?: string,
   tenantSlug?: string,
+  name?: string | null,
 ): MintedJwt {
   const now = Math.floor(Date.now() / 1000);
   const jti = randomUUID();
@@ -135,6 +140,7 @@ export function signJwtWithSecret(
       source_app: sourceApp,
       ...(email ? { email } : {}),
       ...(tenantSlug ? { tenant_slug: tenantSlug } : {}),
+      ...(name ? { name } : {}),
     },
     iat: now,
     exp: now + ttlSeconds,
@@ -159,6 +165,7 @@ export function signSupabaseJwt(
   sourceApp: string = 'shell',
   email?: string,
   tenantSlug?: string,
+  name?: string | null,
 ): MintedJwt {
   if (!JWT_SECRET) {
     throw new Error(
@@ -166,7 +173,7 @@ export function signSupabaseJwt(
         'Find it in the Supabase dashboard under Settings → API → JWT Settings → JWT Secret.',
     );
   }
-  return signJwtWithSecret(JWT_SECRET, userId, tenantId, eqRole, isPlatformAdmin, ttlSeconds, sourceApp, email, tenantSlug);
+  return signJwtWithSecret(JWT_SECRET, userId, tenantId, eqRole, isPlatformAdmin, ttlSeconds, sourceApp, email, tenantSlug, name);
 }
 
 export function hasSupabaseJwtSecret(): boolean {
