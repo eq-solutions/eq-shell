@@ -26,10 +26,15 @@ interface ContactRow {
 }
 
 interface SiteRow {
-  site_id:     string;
-  name:        string;
-  code:        string | null;
-  customer_id: string | null;
+  site_id:             string;
+  name:                string;
+  code:                string | null;
+  customer_id:         string | null;
+  suburb:              string | null;
+  state:               string | null;
+  site_contact_name:   string | null;
+  site_contact_phone:  string | null;
+  site_contact_email:  string | null;
 }
 
 interface ContactForSiteRow {
@@ -71,6 +76,30 @@ const STATUS_LABELS: Record<string, string> = {
   "expired":             "Expired",
   "superseded":          "Superseded",
 };
+
+function mapSiteRows(rows: Record<string, unknown>[]): SiteRow[] {
+  return rows.map((r) => ({
+    site_id:            String(r.site_id),
+    name:               String(r.name ?? ""),
+    code:               r.code              ? String(r.code)              : null,
+    customer_id:        r.customer_id       ? String(r.customer_id)       : null,
+    suburb:             r.suburb            ? String(r.suburb)            : null,
+    state:              r.state             ? String(r.state)             : null,
+    site_contact_name:  r.site_contact_name  ? String(r.site_contact_name)  : null,
+    site_contact_phone: r.site_contact_phone ? String(r.site_contact_phone) : null,
+    site_contact_email: r.site_contact_email ? String(r.site_contact_email) : null,
+  }));
+}
+
+async function crmWrite(body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/.netlify/functions/crm-write", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.json() as Promise<{ ok: boolean; error?: string }>;
+}
 
 function fmtMoney(cents: number): string {
   if (cents === 0) return "—";
@@ -114,6 +143,9 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const [confirmDeleteContactId, setConfirmDeleteContactId] = useState<string | null>(null);
   const [confirmDeleteCustomer, setConfirmDeleteCustomer] = useState(false);
   const [confirmMergeTarget, setConfirmMergeTarget] = useState<CustomerRow | null>(null);
+  const [editingSite, setEditingSite]   = useState<SiteRow | null>(null);
+  const [siteForm, setSiteForm] = useState({ name: "", code: "", suburb: "", state: "", site_contact_name: "", site_contact_phone: "", site_contact_email: "" });
+  const [siteSaving, setSiteSaving]     = useState(false);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -237,14 +269,7 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const reloadSites = useCallback(async (customerId: string) => {
     if (!supabase) return;
     const { data } = await supabase.rpc("eq_list_sites", { p_customer_id: customerId });
-    if (data) {
-      setSites((data as Record<string, unknown>[]).map((r) => ({
-        site_id:     String(r.site_id),
-        name:        String(r.name ?? ""),
-        code:        r.code ? String(r.code) : null,
-        customer_id: r.customer_id ? String(r.customer_id) : null,
-      })));
-    }
+    if (data) setSites(mapSiteRows(data as Record<string, unknown>[]));
   }, [supabase]);
 
   const loadSiteContacts = useCallback(async (siteId: string) => {
@@ -396,14 +421,7 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
         is_default_quote_contact: Boolean(r.is_default_quote_contact),
       })));
     }
-    if (sitesRes.data) {
-      setSites(((sitesRes.data ?? []) as Record<string, unknown>[]).map((r) => ({
-        site_id:     String(r.site_id),
-        name:        String(r.name ?? ""),
-        code:        r.code ? String(r.code) : null,
-        customer_id: r.customer_id ? String(r.customer_id) : null,
-      })));
-    }
+    if (sitesRes.data) setSites(mapSiteRows((sitesRes.data ?? []) as Record<string, unknown>[]));
     if (qRes.data) {
       setCustQuotes(((qRes.data ?? []) as Record<string, unknown>[]).map((r) => ({
         quote_id:          String(r.quote_id),
@@ -438,6 +456,19 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
     await load();
     await loadDetail(selected);
   }, [supabase, selected, mergeBusy, load, loadDetail, confirmMergeTarget]);
+
+  const saveSite = useCallback(async () => {
+    if (!editingSite) return;
+    if (!siteForm.name.trim()) { setCustActionErr("Site name is required"); return; }
+    setSiteSaving(true);
+    setCustActionErr(null);
+    const res = await crmWrite({ action: "update_site", id: editingSite.site_id, ...siteForm });
+    setSiteSaving(false);
+    if (!res.ok) { setCustActionErr(res.error ?? "Save failed"); return; }
+    setEditingSite(null);
+    setSiteForm({ name: "", code: "", suburb: "", state: "", site_contact_name: "", site_contact_phone: "", site_contact_email: "" });
+    if (selected) await reloadSites(selected.customer_id);
+  }, [editingSite, siteForm, selected, reloadSites]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -963,6 +994,43 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                   </div>
                 )}
 
+                {editingSite && (
+                  <div style={{ background: "var(--eq-ice,#EAF5FB)", border: "1px solid var(--eq-border,#e5e7eb)", borderRadius: "6px", padding: "0.75rem", marginBottom: "1rem" }}>
+                    <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: "0.5rem", color: "var(--eq-ink,#1A1A2E)" }}>
+                      Edit site — {editingSite.name}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem", marginBottom: "0.4rem" }}>
+                      <input className="eq-quotes__input" placeholder="Site name *" value={siteForm.name}
+                        onChange={(e) => setSiteForm((f) => ({ ...f, name: e.target.value }))} />
+                      <input className="eq-quotes__input" placeholder="Code" value={siteForm.code}
+                        onChange={(e) => setSiteForm((f) => ({ ...f, code: e.target.value }))} />
+                      <input className="eq-quotes__input" placeholder="Suburb" value={siteForm.suburb}
+                        onChange={(e) => setSiteForm((f) => ({ ...f, suburb: e.target.value }))} />
+                      <input className="eq-quotes__input" placeholder="State (e.g. NSW)" value={siteForm.state}
+                        onChange={(e) => setSiteForm((f) => ({ ...f, state: e.target.value }))} />
+                    </div>
+                    <div style={{ fontSize: "0.78rem", color: "var(--eq-muted,#6b7280)", marginBottom: "0.35rem", fontWeight: 600 }}>Site contact</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.4rem", marginBottom: "0.5rem" }}>
+                      <input className="eq-quotes__input" placeholder="Name" value={siteForm.site_contact_name}
+                        onChange={(e) => setSiteForm((f) => ({ ...f, site_contact_name: e.target.value }))} />
+                      <input className="eq-quotes__input" placeholder="Phone" value={siteForm.site_contact_phone}
+                        onChange={(e) => setSiteForm((f) => ({ ...f, site_contact_phone: e.target.value }))} />
+                      <input className="eq-quotes__input" placeholder="Email" type="email" value={siteForm.site_contact_email}
+                        onChange={(e) => setSiteForm((f) => ({ ...f, site_contact_email: e.target.value }))} />
+                    </div>
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <button className="eq-quotes__btn eq-quotes__btn--primary" disabled={siteSaving}
+                        onClick={() => { void saveSite(); }} style={{ fontSize: "0.82rem" }}>
+                        {siteSaving ? "Saving…" : "Update site"}
+                      </button>
+                      <button className="eq-quotes__btn eq-quotes__btn--sm"
+                        onClick={() => { setEditingSite(null); setCustActionErr(null); }} style={{ fontSize: "0.82rem" }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {sites.length === 0 && !showAssignSite && (
                   <p className="eq-quotes__muted" style={{ marginBottom: "1rem" }}>No sites linked. Use "Assign existing" to link a site.</p>
                 )}
@@ -986,7 +1054,14 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                             onClick={() => { void toggleSiteExpand(s.site_id); }}
                             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void toggleSiteExpand(s.site_id); } }}
                           >
-                            <td style={{ fontWeight: 500 }}>{s.name}</td>
+                            <td style={{ fontWeight: 500 }}>
+                              {s.name}
+                              {(s.suburb || s.state) && (
+                                <span style={{ fontWeight: 400, color: "var(--eq-muted,#6b7280)", fontSize: "0.8em", marginLeft: "0.4rem" }}>
+                                  {[s.suburb, s.state].filter(Boolean).join(", ")}
+                                </span>
+                              )}
+                            </td>
                             <td style={{ fontFamily: "monospace", fontSize: "0.85em" }}>{s.code ?? "—"}</td>
                             <td>
                               <span style={{ color: "var(--eq-sky,#3DA8D8)", fontSize: "0.82rem" }}>
@@ -996,7 +1071,28 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
                                   : "view contacts"}
                               </span>
                             </td>
-                            <td></td>
+                            <td>
+                              <button
+                                className="eq-quotes__btn eq-quotes__btn--sm"
+                                style={{ fontSize: "0.72rem", padding: "2px 7px" }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingSite(s);
+                                  setSiteForm({
+                                    name:               s.name               ?? "",
+                                    code:               s.code               ?? "",
+                                    suburb:             s.suburb             ?? "",
+                                    state:              s.state              ?? "",
+                                    site_contact_name:  s.site_contact_name  ?? "",
+                                    site_contact_phone: s.site_contact_phone ?? "",
+                                    site_contact_email: s.site_contact_email ?? "",
+                                  });
+                                  setCustActionErr(null);
+                                }}
+                              >
+                                Edit
+                              </button>
+                            </td>
                           </tr>
                           {expandedSiteId === s.site_id && (
                             <tr>
