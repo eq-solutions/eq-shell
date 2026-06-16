@@ -54,7 +54,7 @@ import {
 } from './_shared/tenant-routing.js';
 import { verifySupabaseJwt, readBearerJwt } from './_shared/supabase-jwt.js';
 import { getServiceClient } from './_shared/supabase.js';
-import { withSentry } from './_shared/sentry.js';
+import { withSentry, captureGatewayBlock } from './_shared/sentry.js';
 
 type Op =
   | 'current_staff'
@@ -76,7 +76,7 @@ const WRITE_OPS: ReadonlySet<Op> = new Set<Op>(['upsert_my_licence', 'soft_delet
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface OkBody { ok: true; [k: string]: unknown }
-interface ErrBody { ok: false; error: string; detail?: string }
+interface ErrBody { ok: false; error: string; detail?: string; retry_after_seconds?: number | null }
 
 // Cards Flutter web lives at cards.eq.solutions and calls this function
 // on core.eq.solutions — cross-origin. Native iOS/Android builds don't
@@ -166,6 +166,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     const ip = clientIp(req);
     if (ip) {
       const { data: rl, error: rlErr } = await ctrl
+        .schema('public')
         .rpc('check_and_increment_rate_limit', {
           p_key:          'invite_lookup_ip:' + ip,
           p_window_secs:  600,
@@ -178,6 +179,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       }
       if (rl?.blocked === true) {
         const retryAfter = Number(rl.retry_after_seconds);
+        captureGatewayBlock('ip_throttle', {
+          ip,
+          slug,
+          retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : null,
+        });
         return json(429, {
           ok: false,
           error: 'rate_limited',
@@ -191,6 +197,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
     try {
       const { data, error } = await ctrl
+        .schema('public')
         .rpc('eq_cards_lookup_invite_by_phone', { p_phone: phone, p_slug: slug });
       if (error) {
         // The per-slug DB guard (migration 0034) raises with hint='rate_limited'
@@ -199,6 +206,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         const pgErr = error as { hint?: string; details?: string; message?: string };
         if (pgErr.hint === 'rate_limited') {
           const retryAfter = Number.parseInt(pgErr.details ?? '', 10);
+          captureGatewayBlock('slug_throttle', {
+            ip,
+            slug,
+            retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : null,
+          });
           return json(429, {
             ok: false,
             error: 'rate_limited',

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
+import { createTenantDataClient } from '../lib/tenantDataClient';
 import { createSKSSupabaseClient } from '../lib/sksSupabaseClient';
 import { QuotesModule } from '../modules/quotes/QuotesModule';
 
@@ -13,12 +14,27 @@ export default function QuotesNative() {
   const [connecting, setConnecting] = useState(true);
 
   useEffect(() => {
-    createSKSSupabaseClient()
-      .then((c) => { setClient(c); setConnecting(false); })
-      .catch((e: unknown) => {
-        setClientError(e instanceof Error ? e.message : 'Failed to connect to sks-canonical.');
-        setConnecting(false);
-      });
+    // Connect to the session tenant's data plane via the routed client. Fall
+    // back to the legacy SKS-hardcoded client so live SKS testers can't be
+    // broken by a routed-mint hiccup during the canonical cutover.
+    let cancelled = false;
+    (async () => {
+      try {
+        const c = await createTenantDataClient();
+        if (!cancelled) { setClient(c); setConnecting(false); }
+      } catch (routedErr) {
+        try {
+          const c = await createSKSSupabaseClient();
+          if (!cancelled) { setClient(c); setConnecting(false); }
+        } catch {
+          if (!cancelled) {
+            setClientError(routedErr instanceof Error ? routedErr.message : 'Failed to connect to the tenant database.');
+            setConnecting(false);
+          }
+        }
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   return (
