@@ -128,3 +128,29 @@ export function captureServerError(err: unknown, extra?: Record<string, unknown>
     // swallow
   }
 }
+
+/**
+ * Record a gateway-level 429 as a Sentry warning so rate-limit / abuse
+ * patterns are visible in the dashboard. Call immediately before returning
+ * a 429 from cards-api. Never throws.
+ */
+export function captureGatewayBlock(
+  kind: 'ip_throttle' | 'slug_throttle',
+  context: { ip: string | null; slug: string; retryAfterSeconds: number | null },
+): void {
+  ensureInitialised();
+  if (!enabled) return;
+  try {
+    Sentry.captureMessage(`cards-api: 429 ${kind}`, {
+      level: 'warning',
+      tags: { block_kind: kind },
+      extra: {
+        ip: context.ip ?? '(unavailable)',
+        slug: context.slug,
+        retry_after_seconds: context.retryAfterSeconds,
+      },
+    });
+  } catch {
+    // swallow
+  }
+}
