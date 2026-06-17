@@ -1851,16 +1851,15 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
     if (!supabase || selectedIds.size === 0) return;
     setBulkBusy(true);
     const ids = new Set(selectedIds);
-    const { error } = await supabase.rpc("eq_bulk_update_quote_status", {
-      p_quote_ids: Array.from(ids),
-      p_new_status: "archived",
-      p_initials: initials.trim() || null,
-    });
+    const results = await Promise.all(
+      Array.from(ids).map((id) => supabase!.rpc("eq_trash_quote", { p_quote_id: id }))
+    );
     setBulkBusy(false);
-    if (error) { captureRpcError("eq_bulk_update_quote_status", error, { count: ids.size }); setPipelineError(error.message); return; }
+    const firstErr = results.find((r) => r.error)?.error;
+    if (firstErr) { captureRpcError("eq_trash_quote", firstErr, { count: ids.size }); setPipelineError(firstErr.message); return; }
     setSelectedIds(new Set());
     setBulkStatus("");
-    setQuotes((prev) => prev.map((q) => ids.has(q.quote_id) ? { ...q, status: "archived" } : q));
+    setQuotes((prev) => prev.filter((q) => !ids.has(q.quote_id)));
   };
 
   const handleBulkFollowUp = async () => {
@@ -2564,7 +2563,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
   const siteOptions = Array.from(
     new Set(quotes.map((q) => q.site_code).filter((s): s is string => s !== null && s !== ""))
   ).sort();
-  const visibleTotal = displayedQuotes.reduce((s, q) => s + q.total_cents, 0);
+  const visibleTotal = displayedQuotes.reduce((s, q) => s + q.subtotal_cents, 0);
   const activeFilterCount =
     (dateFrom || dateTo ? 1 : 0) + (estFilter ? 1 : 0) + (customerFilter ? 1 : 0) + (siteFilter ? 1 : 0) +
     (expiringOnly ? 1 : 0) + (unsentOnly ? 1 : 0) + (needsJobNoOnly ? 1 : 0) + (overdueFupOnly ? 1 : 0) + (staleOnly ? 1 : 0);
@@ -2576,10 +2575,10 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
   handleDuplicateRef.current = handleDuplicate;
   const wonTotal = displayedQuotes
     .filter((q) => ACTIVE_JOB_STATUSES.has(q.status))
-    .reduce((s, q) => s + q.total_cents, 0);
+    .reduce((s, q) => s + q.subtotal_cents, 0);
   const atRiskTotal = displayedQuotes
     .filter((q) => ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status))
-    .reduce((s, q) => s + q.total_cents, 0);
+    .reduce((s, q) => s + q.subtotal_cents, 0);
   const winRateDisplayed = (() => {
     const won  = displayedQuotes.filter((q) => ACTIVE_JOB_STATUSES.has(q.status)).length;
     const lost = displayedQuotes.filter((q) => CLOSED_STATUSES.has(q.status)).length;
@@ -2663,9 +2662,9 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
         : <span className="eq-quotes__muted">—</span>,
     },
     {
-      key: "total_cents", header: "Total", align: "right",
-      sortAccessor: (q) => q.total_cents,
-      render: (q) => <span className="eq-quotes__td--bold">{aud(q.total_cents)}</span>,
+      key: "total_cents", header: "Total (ex GST)", align: "right",
+      sortAccessor: (q) => q.subtotal_cents,
+      render: (q) => <span className="eq-quotes__td--bold">{aud(q.subtotal_cents)}</span>,
     },
     {
       key: "status", header: "Status", filterable: "select",
@@ -5519,7 +5518,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                     q.quote_number, q.customer_name ?? "", q.site_code ?? "", q.project_name ?? "",
                     q.estimator_initials ?? "", STATUS_LABELS[q.status] ?? q.status, q.workbench_job_no ?? "",
                     q.po_number ?? "",
-                    (q.total_cents / 100).toFixed(2),
+                    (q.subtotal_cents / 100).toFixed(2),
                     q.margin_pct !== null ? Number(q.margin_pct).toFixed(1) : "",
                     fmtDate(q.sent_at),
                     fmtDate(q.expires_at),
@@ -5572,7 +5571,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
               <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
                 {BOARD_COLUMNS.map((st) => {
                   const colQuotes = displayedQuotes.filter((q) => q.status === st);
-                  const colTotal = colQuotes.reduce((s, q) => s + q.total_cents, 0);
+                  const colTotal = colQuotes.reduce((s, q) => s + q.subtotal_cents, 0);
                   const isOver = dragOverStatus === st;
                   return (
                     <div
@@ -5608,7 +5607,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                             <span style={{ fontSize: 12, color: "var(--eq-ink, #1A1A2E)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.customer_name ?? "—"}</span>
                             {q.project_name && <span style={{ fontSize: 11, color: "var(--eq-muted, #6b7280)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.project_name}</span>}
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                              <span style={{ fontSize: 12, fontWeight: 700 }}>{aud(q.total_cents)}</span>
+                              <span style={{ fontSize: 12, fontWeight: 700 }}>{aud(q.subtotal_cents)}</span>
                               {ACTIVE_JOB_STATUSES.has(q.status) && !q.workbench_job_no && (
                                 <span className="eq-quotes__badge eq-quotes__badge--amber eq-quotes__badge--xs">Needs no.</span>
                               )}
@@ -5678,7 +5677,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                 const searchLower = accordionSearch.toLowerCase().trim();
                 if (searchLower && !group.name.toLowerCase().includes(searchLower) &&
                   ![...memberNames].some((n) => n.toLowerCase().includes(searchLower))) return null;
-                const groupTotal = groupQuotes.reduce((s, q) => s + q.total_cents, 0);
+                const groupTotal = groupQuotes.reduce((s, q) => s + q.subtotal_cents, 0);
                 const isOpen = expandedGroups.has(group.slug);
                 return (
                   <div key={groupId} className="eq-quotes__group">
@@ -5699,7 +5698,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                           const memberQuotes = groupQuotes.filter(
                             (q) => q.customer_name === member.customer_name,
                           );
-                          const memberTotal = memberQuotes.reduce((s, q) => s + q.total_cents, 0);
+                          const memberTotal = memberQuotes.reduce((s, q) => s + q.subtotal_cents, 0);
                           return (
                             <div key={member.customer_id} className="eq-quotes__member">
                               <div className="eq-quotes__member-header">
@@ -5732,7 +5731,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                                         >
                                           <td className="eq-quotes__td--mono">{q.quote_number}</td>
                                           <td>{q.project_name ?? <span className="eq-quotes__muted">—</span>}</td>
-                                          <td className="eq-quotes__td--right">{aud(q.total_cents)}</td>
+                                          <td className="eq-quotes__td--right">{aud(q.subtotal_cents)}</td>
                                           <td>
                                             <span className={statusClass(q.status)}>
                                               {STATUS_LABELS[q.status] ?? q.status}
@@ -5812,7 +5811,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                                     >
                                       <td className="eq-quotes__td--mono">{q.quote_number}</td>
                                       <td>{q.project_name ?? <span className="eq-quotes__muted">—</span>}</td>
-                                      <td className="eq-quotes__td--right">{aud(q.total_cents)}</td>
+                                      <td className="eq-quotes__td--right">{aud(q.subtotal_cents)}</td>
                                       <td>
                                         <span className={statusClass(q.status)}>
                                           {STATUS_LABELS[q.status] ?? q.status}
