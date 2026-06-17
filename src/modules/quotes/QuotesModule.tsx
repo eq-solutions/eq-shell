@@ -7,15 +7,14 @@ import {
   STATUS_LABELS,
   ACTIVE_JOB_STATUSES,
   CLOSED_LOST_STATUSES as CLOSED_STATUSES,
-  OPEN_PIPELINE_STATUSES,
 } from "./taxonomy";
 import { QuotesSetup } from "./QuotesSetup";
 import { QuotesReports } from "./QuotesReports";
 import { QuotesCustomers } from "./QuotesCustomers";
 import { captureRpcError } from "./quoteTelemetry";
-import { Table, type TableColumn, DropdownMenu, type DropdownMenuEntry } from "@eq-solutions/ui";
+import { Table, type TableColumn, DropdownMenu } from "@eq-solutions/ui";
 import {
-  MoreHorizontal, Copy, Trash2, FileUp, Users, BarChart2, Settings,
+  MoreHorizontal, Trash2, FileUp, Users, BarChart2, Settings,
   Clock, Briefcase, CalendarClock, AlarmClock, LayoutGrid, List, SlidersHorizontal, X, Archive, Columns3,
 } from "lucide-react";
 
@@ -408,10 +407,10 @@ const DRAFT_KEY = "eq-quotes-draft-new";
 // Simplified 5-stage pipeline view. Each stage covers one or more internal statuses.
 // internalStatus = the value written to DB when the user picks this stage in a row dropdown.
 const STATUS_FILTERS: Array<{ key: string; label: string; internalStatus?: string; match: (s: string) => boolean }> = [
-  { key: "quote-sent",  label: "Quote Sent",  internalStatus: "submitted",       match: (s) => ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win", "won-awaiting-job-no"].includes(s) },
-  { key: "job-created", label: "Job Created", internalStatus: "won-job-created", match: (s) => ["won-job-created", "po-matched"].includes(s) },
+  { key: "quote-sent",  label: "Submitted",   internalStatus: "submitted",       match: (s) => ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win", "won-awaiting-job-no"].includes(s) },
+  { key: "job-created", label: "Job created", internalStatus: "won-job-created", match: (s) => ["won-job-created", "po-matched"].includes(s) },
   { key: "in-progress", label: "In Progress", internalStatus: "active",          match: (s) => s === "active" },
-  { key: "completed",   label: "Completed",   internalStatus: "complete",        match: (s) => ["complete", "ready-to-invoice"].includes(s) },
+  { key: "completed",   label: "Complete",    internalStatus: "complete",        match: (s) => ["complete", "ready-to-invoice"].includes(s) },
   { key: "invoiced",    label: "Invoiced",    internalStatus: "invoiced",        match: (s) => s === "invoiced" },
   { key: "all",         label: "All",                                            match: () => true },
 ];
@@ -2805,28 +2804,28 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     },
     {
       key: "_actions", header: "",
-      render: (q) => {
-        const items: DropdownMenuEntry[] = [
-          { key: "dup",     label: "Duplicate", icon: <Copy size={14} />,    onClick: () => void handleDuplicate(q.quote_id) },
-          { key: "archive", label: "Archive",   icon: <Archive size={14} />, onClick: () => void handleTrash(q.quote_id) },
-          { key: "sep",     separator: true },
-          { key: "delete",  label: "Delete permanently", icon: <Trash2 size={14} />, onClick: () => void handleDelete(q.quote_id, q.quote_number), variant: "danger" },
-        ];
-        return (
-          <DropdownMenu
-            trigger={
-              <button
-                type="button"
-                className="eq-quotes__btn eq-quotes__btn--ghost eq-quotes__btn--icon"
-                aria-label="More actions"
-              >
-                <MoreHorizontal size={15} />
-              </button>
-            }
-            items={items}
-          />
-        );
-      },
+      render: (q) => (
+        <div className="eq-quotes__row-actions">
+          <button
+            type="button"
+            className="eq-quotes__row-action"
+            title="Archive"
+            aria-label="Archive quote"
+            onClick={(e) => { e.stopPropagation(); void handleTrash(q.quote_id); }}
+          >
+            <Archive size={13} />
+          </button>
+          <button
+            type="button"
+            className="eq-quotes__row-action eq-quotes__row-action--danger"
+            title="Delete permanently"
+            aria-label="Delete quote permanently"
+            onClick={(e) => { e.stopPropagation(); void handleDelete(q.quote_id, q.quote_number); }}
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ),
     },
     {
       key: "follow_up_at", header: "Follow-up",

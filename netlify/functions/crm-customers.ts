@@ -41,7 +41,7 @@ interface CustomerRow {
 }
 interface SiteRow {
   site_id: string; customer_id: string | null; name: string | null; site_type: string | null;
-  suburb: string | null; state: string | null;
+  code: string | null; suburb: string | null; state: string | null;
   site_contact_name: string | null; site_contact_phone: string | null; site_contact_email: string | null;
 }
 interface ContactRow {
@@ -56,13 +56,13 @@ function personName(p: { first_name: string | null; last_name: string | null }):
   return [p.first_name, p.last_name].filter(Boolean).join(' ') || '—';
 }
 
-const SITE_COLS = 'site_id, customer_id, name, site_type, suburb, state, site_contact_name, site_contact_phone, site_contact_email';
+const SITE_COLS = 'site_id, customer_id, name, site_type, code, suburb, state, site_contact_name, site_contact_phone, site_contact_email';
 const CONTACT_COLS = 'contact_id, customer_id, first_name, last_name, position, email, work_phone, mobile_phone';
 
 function mapSite(s: SiteRow) {
   return {
     id: s.site_id, name: s.name ?? 'Unnamed site', kind: s.site_type ?? null,
-    suburb: s.suburb ?? null, state: s.state ?? null,
+    code: s.code ?? null, suburb: s.suburb ?? null, state: s.state ?? null,
     contact: s.site_contact_name
       ? { name: s.site_contact_name, phone: s.site_contact_phone ?? null, email: s.site_contact_email ?? null }
       : null,
@@ -70,7 +70,9 @@ function mapSite(s: SiteRow) {
 }
 function mapContact(c: ContactRow) {
   return {
-    id: c.contact_id, name: personName(c), role: c.position ?? null,
+    id: c.contact_id, name: personName(c),
+    first_name: c.first_name ?? null, last_name: c.last_name ?? null,
+    role: c.position ?? null,
     email: c.email ?? null, phone: c.mobile_phone ?? c.work_phone ?? null,
   };
 }

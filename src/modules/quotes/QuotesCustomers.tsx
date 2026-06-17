@@ -306,14 +306,7 @@ export function QuotesCustomers({ supabase, onOpenQuote }: Props): React.JSX.Ele
   const loadAllSites = useCallback(async () => {
     if (!supabase) return;
     const { data } = await supabase.rpc("eq_list_sites");
-    if (data) {
-      setAllSites((data as Record<string, unknown>[]).map((r) => ({
-        site_id:     String(r.site_id),
-        name:        String(r.name ?? ""),
-        code:        r.code ? String(r.code) : null,
-        customer_id: r.customer_id ? String(r.customer_id) : null,
-      })));
-    }
+    if (data) setAllSites(mapSiteRows(data as Record<string, unknown>[]));
   }, [supabase]);
 
   const handleAssignSite = useCallback(async (siteId: string) => {
