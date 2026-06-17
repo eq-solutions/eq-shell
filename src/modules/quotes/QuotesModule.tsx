@@ -243,6 +243,7 @@ interface CalcLine {
   unit: string;
   qty_thousandths: number;
   unit_rate_cents: number;
+  cost_rate_cents?: number;
   line_total_cents: number;
 }
 
@@ -424,7 +425,7 @@ const NEXT_STATUSES: Record<string, string[]> = {
   "won-job-created": ["po-matched", "active"],
   "po-matched": ["active"],
   active: ["complete"],
-  complete: ["ready-to-invoice"],
+  complete: ["ready-to-invoice", "invoiced"],
   "ready-to-invoice": ["invoiced"],
   "on-hold": ["submitted", "verbal-win", "lost", "cancelled"],
 };
@@ -1118,7 +1119,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       description: l.description,
       qty: (l.qty_thousandths / 1000).toString(),
       unit: l.unit,
-      cost: "",
+      cost: l.cost_rate_cents ? (l.cost_rate_cents / 100).toFixed(2) : "",
       markup: "",
       rate: (l.unit_rate_cents / 100).toFixed(2),
       category: l.section === "labour" ? "labour" : "material",
@@ -3297,39 +3298,33 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                       if (allCts.length === 0) return null;
                       return (
                         <div className="eq-quotes__info-item eq-quotes__info-item--full">
-                          <span className="eq-quotes__info-label">Site &amp; Customer Contacts</span>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                          <span className="eq-quotes__info-label">Quick-fill recipient</span>
+                          <select
+                            value={contactPickerVal}
+                            onChange={(e) => {
+                              const ct = allCts.find((c) => c.contact_id === e.target.value);
+                              setContactPickerVal(e.target.value);
+                              if (ct) {
+                                setRecipientEditing(true);
+                                setAttnFirstInput(ct.first_name ?? "");
+                                setAttnLastInput(ct.last_name ?? "");
+                                setAttnPhoneInput(ct.mobile_phone ?? ct.work_phone ?? "");
+                              }
+                            }}
+                            style={{ fontSize: 12, padding: "4px 8px", border: "1px solid var(--eq-border, #ddd)", borderRadius: 6, background: "#fff", color: "var(--eq-ink, #1A1A2E)", marginTop: 4, width: "100%" }}
+                          >
+                            <option value="">— Select to fill recipient —</option>
                             {allCts.map((ct) => {
                               const name = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "—";
                               const isSite = siteIds.has(ct.contact_id);
-                              const isSelected = contactPickerVal === ct.contact_id;
+                              const role = ct.contact_position ? ` — ${ct.contact_position}` : "";
                               return (
-                                <button
-                                  key={ct.contact_id}
-                                  type="button"
-                                  style={{
-                                    borderRadius: 20, padding: "4px 12px", fontSize: 12,
-                                    border: `1px solid ${isSelected ? "var(--eq-sky, #2986B4)" : "var(--eq-border, #ddd)"}`,
-                                    background: isSelected ? "var(--eq-ice, #EAF5FB)" : "#fff",
-                                    color: "var(--eq-ink, #1A1A2E)", cursor: "pointer",
-                                    display: "flex", alignItems: "center", gap: 4,
-                                  }}
-                                  onClick={() => {
-                                    setContactPickerVal(ct.contact_id);
-                                    setRecipientEditing(true);
-                                    setAttnFirstInput(ct.first_name ?? "");
-                                    setAttnLastInput(ct.last_name ?? "");
-                                    setAttnPhoneInput(ct.mobile_phone ?? ct.work_phone ?? "");
-                                  }}
-                                  title={ct.email ?? undefined}
-                                >
-                                  {name}
-                                  {isSite && <span title="Site contact" style={{ fontSize: 10 }}>📍</span>}
-                                  {ct.is_default_quote_contact && <span title="Default" style={{ fontSize: 10 }}>★</span>}
-                                </button>
+                                <option key={ct.contact_id} value={ct.contact_id} title={ct.email ?? undefined}>
+                                  {isSite ? "📍 " : ""}{name}{role}{ct.is_default_quote_contact ? " ★" : ""}
+                                </option>
                               );
                             })}
-                          </div>
+                          </select>
                         </div>
                       );
                     })()}
@@ -3408,36 +3403,27 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 )}
                 {detailContacts.length > 0 && (
                   <div className="eq-quotes__info-item eq-quotes__info-item--full">
-                    <span className="eq-quotes__info-label">Contact</span>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: 4 }}>
-                      {[{ contact_id: "", first_name: "None", last_name: null, email: null, is_default_quote_contact: false, mobile_phone: null, work_phone: null, contact_position: null } as ContactRow,
-                        ...detailContacts].map((c) => {
-                        const name = c.contact_id === "" ? "None" : ([c.first_name, c.last_name].filter(Boolean).join(" ") || c.email || "Unknown");
-                        const isSelected = contactPickerVal === c.contact_id;
+                    <span className="eq-quotes__info-label">Linked contact</span>
+                    <select
+                      value={contactPickerVal}
+                      disabled={linkingContact}
+                      onChange={(e) => {
+                        setContactPickerVal(e.target.value);
+                        void handleLinkContact(e.target.value);
+                      }}
+                      style={{ fontSize: 12, padding: "4px 8px", border: "1px solid var(--eq-border, #ddd)", borderRadius: 6, background: "#fff", color: "var(--eq-ink, #1A1A2E)", marginTop: 4, width: "100%", cursor: linkingContact ? "wait" : "pointer" }}
+                    >
+                      <option value="">None</option>
+                      {detailContacts.map((c) => {
+                        const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || c.email || "Unknown";
+                        const role = c.contact_position ? ` — ${c.contact_position}` : "";
                         return (
-                          <button
-                            key={c.contact_id || "none"}
-                            type="button"
-                            disabled={linkingContact}
-                            onClick={() => {
-                              setContactPickerVal(c.contact_id);
-                              void handleLinkContact(c.contact_id);
-                            }}
-                            style={{
-                              fontSize: "0.82rem", padding: "4px 12px", borderRadius: "20px",
-                              border: `1px solid ${isSelected ? "var(--eq-deep, #2986B4)" : "var(--eq-border, #ddd)"}`,
-                              background: isSelected ? "var(--eq-ice, #EAF5FB)" : "#fff",
-                              color: isSelected ? "var(--eq-ink, #1A1A2E)" : "var(--eq-muted, #666)",
-                              cursor: linkingContact ? "wait" : "pointer",
-                              fontWeight: isSelected ? 600 : undefined,
-                            }}
-                          >
-                            {name}
-                            {c.is_default_quote_contact && <span style={{ marginLeft: 4, color: "var(--eq-sky, #3DA8D8)" }}>★</span>}
-                          </button>
+                          <option key={c.contact_id} value={c.contact_id}>
+                            {name}{role}{c.is_default_quote_contact ? " ★" : ""}
+                          </option>
                         );
                       })}
-                    </div>
+                    </select>
                     {linkContactErr && <span className="eq-quotes__err">{linkContactErr}</span>}
                   </div>
                 )}
