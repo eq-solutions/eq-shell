@@ -47,3 +47,6 @@ scripts/auth-templates/backup-*.json
 
 # Supabase CLI temp artifacts
 supabase/.temp/
+
+# Working session notes (sprint docs, specs, context files)
+sessions/
