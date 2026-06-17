@@ -775,7 +775,6 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
   const [sites, setSites] = useState<Site[]>([]);
   const [sitesLoading, setSitesLoading] = useState(false);
   const [presets, setPresets] = useState<RatePreset[]>([]);
-  const [presetsLoading, setPresetsLoading] = useState(false);
   const [createCustomerId, setCreateCustomerId] = useState("");
   const [createCustomerSearch, setCreateCustomerSearch] = useState("");
   const [createSiteId, setCreateSiteId] = useState("");
@@ -821,8 +820,6 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
   const [calcResult, setCalcResult] = useState<CalcResult | RemovalResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
-  const [presetPanelOpen, setPresetPanelOpen] = useState(false);
-  const [presetPanelCat, setPresetPanelCat] = useState("labour");
   interface CalcMatrixRow { product_id: string; name: string; band_label: string; min_qty: number; computed_price: number; }
   const [calcMatrix, setCalcMatrix] = useState<CalcMatrixRow[]>([]);
   const [creating, setCreating] = useState(false);
@@ -1048,9 +1045,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
 
   const loadPresets = useCallback(async () => {
     if (!supabase) return;
-    setPresetsLoading(true);
     const { data, error } = await supabase.rpc("eq_list_rate_presets");
-    setPresetsLoading(false);
     if (!error) setPresets((data as RatePreset[]) ?? []);
   }, [supabase]);
 
@@ -2360,7 +2355,9 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `SKS Quote - ${detail.project_name || detail.quote_number}.pdf`;
+      a.download = detail.project_name
+        ? `${detail.quote_number} - ${detail.project_name}.pdf`
+        : `${detail.quote_number}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -3348,10 +3345,14 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                             {allCts.map((ct) => {
                               const name = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "—";
                               const isSite = siteIds.has(ct.contact_id);
-                              const role = ct.contact_position ? ` — ${ct.contact_position}` : "";
+                              const parts = [
+                                (isSite ? "📍 " : "") + name + (ct.is_default_quote_contact ? " ★" : ""),
+                                ct.email,
+                                ct.mobile_phone ?? ct.work_phone,
+                              ].filter(Boolean);
                               return (
-                                <option key={ct.contact_id} value={ct.contact_id} title={ct.email ?? undefined}>
-                                  {isSite ? "📍 " : ""}{name}{role}{ct.is_default_quote_contact ? " ★" : ""}
+                                <option key={ct.contact_id} value={ct.contact_id}>
+                                  {parts.join(" · ")}
                                 </option>
                               );
                             })}
@@ -3446,11 +3447,15 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                     >
                       <option value="">None</option>
                       {detailContacts.map((c) => {
-                        const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || c.email || "Unknown";
-                        const role = c.contact_position ? ` — ${c.contact_position}` : "";
+                        const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unknown";
+                        const parts = [
+                          name + (c.is_default_quote_contact ? " ★" : ""),
+                          c.email,
+                          c.mobile_phone ?? c.work_phone,
+                        ].filter(Boolean);
                         return (
                           <option key={c.contact_id} value={c.contact_id}>
-                            {name}{role}{c.is_default_quote_contact ? " ★" : ""}
+                            {parts.join(" · ")}
                           </option>
                         );
                       })}
@@ -4405,23 +4410,26 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                           <>
                             <optgroup label="Site contacts">
                               {siteContactsForForm.map((ct) => {
-                                const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unnamed";
-                                return <option key={ct.contact_id} value={ct.contact_id}>{n}{ct.is_default_quote_contact ? " ★" : ""}</option>;
+                                const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "Unnamed";
+                                const parts = [n + (ct.is_default_quote_contact ? " ★" : ""), ct.email, ct.mobile_phone ?? ct.work_phone].filter(Boolean);
+                                return <option key={ct.contact_id} value={ct.contact_id}>{parts.join(" · ")}</option>;
                               })}
                             </optgroup>
                             {createContacts.filter((c) => !siteIds.has(c.contact_id)).length > 0 && (
                               <optgroup label="Customer contacts">
                                 {createContacts.filter((c) => !siteIds.has(c.contact_id)).map((ct) => {
-                                  const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unnamed";
-                                  return <option key={ct.contact_id} value={ct.contact_id}>{n}{ct.is_default_quote_contact ? " ★" : ""}</option>;
+                                  const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "Unnamed";
+                                  const parts = [n + (ct.is_default_quote_contact ? " ★" : ""), ct.email, ct.mobile_phone ?? ct.work_phone].filter(Boolean);
+                                  return <option key={ct.contact_id} value={ct.contact_id}>{parts.join(" · ")}</option>;
                                 })}
                               </optgroup>
                             )}
                           </>
                         ) : (
                           allContacts.map((ct) => {
-                            const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unnamed";
-                            return <option key={ct.contact_id} value={ct.contact_id}>{n}{ct.is_default_quote_contact ? " ★" : ""}</option>;
+                            const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "Unnamed";
+                            const parts = [n + (ct.is_default_quote_contact ? " ★" : ""), ct.email, ct.mobile_phone ?? ct.work_phone].filter(Boolean);
+                            return <option key={ct.contact_id} value={ct.contact_id}>{parts.join(" · ")}</option>;
                           })
                         )}
                       </select>
@@ -4694,17 +4702,43 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                         </tr>
                         {secRows.map(({ li, i }) => renderLineRow(li, i))}
                         <tr>
-                          <td colSpan={8} style={{ padding: "4px 8px" }}>
-                            <button
-                              type="button"
-                              style={{
-                                background: "none", border: "none", color: "var(--eq-sky, #3DA8D8)",
-                                cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "2px 0",
-                              }}
-                              onClick={() => addLineItem(sec.value)}
-                            >
-                              + Add {sec.label.toLowerCase()} line
-                            </button>
+                          <td colSpan={8} style={{ padding: "4px 8px 8px" }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                              <button
+                                type="button"
+                                style={{
+                                  background: "none", border: "none", color: "var(--eq-sky, #3DA8D8)",
+                                  cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "2px 0",
+                                  whiteSpace: "nowrap",
+                                }}
+                                onClick={() => addLineItem(sec.value)}
+                              >
+                                + Add {sec.label.toLowerCase()} line
+                              </button>
+                              {presets
+                                .filter((p) => (p.category ?? "") === sec.value)
+                                .map((p) => (
+                                  <button
+                                    key={p.preset_id}
+                                    type="button"
+                                    onClick={() => applyPreset(p)}
+                                    title={p.unit_rate_cents > 0 ? `${aud(p.unit_rate_cents)}${p.unit ? ` / ${p.unit}` : ""}` : undefined}
+                                    style={{
+                                      display: "inline-flex", alignItems: "center", gap: 4,
+                                      padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 500,
+                                      border: "1px solid var(--eq-border)", background: "var(--eq-surface)",
+                                      color: "var(--eq-text)", cursor: "pointer", whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {p.description}
+                                    {p.unit_rate_cents > 0 && (
+                                      <span style={{ color: "var(--eq-muted)", fontSize: 10 }}>
+                                        {aud(p.unit_rate_cents)}{p.unit ? `/${p.unit}` : ""}
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                            </div>
                           </td>
                         </tr>
                         {secTotal > 0 && (
@@ -4744,74 +4778,6 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                 </tbody>
               </table>
             </div>
-            {/* Quick-add preset panel */}
-            {!presetsLoading && presets.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => setPresetPanelOpen((o) => !o)}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    background: "none", border: "none", cursor: "pointer",
-                    fontSize: 12, color: "var(--eq-muted)", fontWeight: 600,
-                    textTransform: "uppercase", letterSpacing: "0.06em", padding: 0,
-                  }}
-                >
-                  <span style={{ fontSize: 14 }}>{presetPanelOpen ? "▾" : "▸"}</span>
-                  Quick add from library
-                </button>
-                {presetPanelOpen && (
-                  <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--eq-surface-alt, var(--eq-surface))", borderRadius: 8, border: "1px solid var(--eq-border)" }}>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                      {QUOTE_SECTIONS.map((s) => (
-                        <button
-                          key={s.value}
-                          type="button"
-                          onClick={() => setPresetPanelCat(s.value)}
-                          style={{
-                            padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-                            cursor: "pointer", border: "1px solid var(--eq-border)",
-                            background: presetPanelCat === s.value ? "var(--eq-sky, #3DA8D8)" : "var(--eq-surface)",
-                            color: presetPanelCat === s.value ? "#fff" : "var(--eq-text)",
-                          }}
-                        >
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {presets
-                        .filter((p) => (p.category ?? "") === presetPanelCat)
-                        .map((p) => (
-                          <button
-                            key={p.preset_id}
-                            type="button"
-                            onClick={() => applyPreset(p)}
-                            style={{
-                              display: "flex", flexDirection: "column", alignItems: "flex-start",
-                              padding: "5px 10px", borderRadius: 8, minWidth: 140,
-                              border: "1px solid var(--eq-border)",
-                              background: "var(--eq-surface)",
-                              cursor: "pointer", textAlign: "left",
-                              transition: "border-color 0.1s",
-                            }}
-                          >
-                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--eq-text)" }}>{p.description}</span>
-                            {p.unit_rate_cents > 0 && (
-                              <span style={{ fontSize: 11, color: "var(--eq-muted)", marginTop: 1 }}>
-                                {aud(p.unit_rate_cents)}{p.unit ? ` / ${p.unit}` : ""}
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                      {presets.filter((p) => (p.category ?? "") === presetPanelCat).length === 0 && (
-                        <span className="eq-quotes__muted" style={{ fontSize: 12 }}>No presets in this section yet.</span>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Outlet pricing calculator */}
             <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--eq-border)" }}>
