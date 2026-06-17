@@ -7,6 +7,9 @@
 -- The (p_search, p_show_archived) overload from 0022 is unaffected.
 -- Only the (p_customer_id uuid) overload introduced in 0072 is extended.
 
+-- DROP required before CREATE OR REPLACE when return type changes (PG error 42P13)
+DROP FUNCTION IF EXISTS public.eq_list_sites(uuid);
+
 CREATE OR REPLACE FUNCTION public.eq_list_sites(
   p_customer_id uuid DEFAULT NULL
 )
