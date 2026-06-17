@@ -217,5 +217,36 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(200, { ok: true });
   }
 
+  // ── archive_customer ───────────────────────────────────────────────────────
+  if (action === 'archive_customer') {
+    const { error } = await sb.from('customers')
+      .update({ active: false, updated_at: now })
+      .eq('customer_id', id).eq('tenant_id', tid);
+    if (error) return json(500, { ok: false, error: error.message });
+    return json(200, { ok: true });
+  }
+
+  // ── add_contact ────────────────────────────────────────────────────────────
+  if (action === 'add_contact') {
+    const customerId = str(body.customer_id);
+    if (!customerId) return json(400, { ok: false, error: 'customer_id_required' });
+    const firstName = str(body.first_name);
+    const lastName  = str(body.last_name);
+    if (!firstName && !lastName) return json(400, { ok: false, error: 'name_required' });
+    const { error } = await sb.from('contacts').insert({
+      customer_id:  customerId,
+      tenant_id:    tid,
+      first_name:   firstName,
+      last_name:    lastName,
+      position:     str(body.role),
+      email:        str(body.email),
+      mobile_phone: str(body.phone),
+      created_at:   now,
+      updated_at:   now,
+    });
+    if (error) return json(500, { ok: false, error: error.message });
+    return json(200, { ok: true });
+  }
+
   return json(400, { ok: false, error: 'unknown_action' });
 });
