@@ -1,8 +1,8 @@
-// CustomersPage — 3-column Finder-style view
+// CustomersPage — rich list + detail panel
 // Route: /:tenant/customers
 
 import { useCallback, useEffect, useState } from 'react';
-import { Pencil, X, ChevronRight, Search, Building2, GitMerge, Link, Archive, UserPlus, Phone, Mail, AlertTriangle, Trash2 } from 'lucide-react';
+import { Pencil, X, Search, Building2, GitMerge, Link, Archive, UserPlus, Phone, Mail, AlertTriangle, Trash2 } from 'lucide-react';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 
@@ -144,17 +144,17 @@ export function CustomersPage() {
   const [editSite,     setEditSite]     = useState<DetailSite | null>(null);
   const [editContact,  setEditContact]  = useState<DetailContact | null>(null);
 
-  // Multi-select + merge + bulk archive
-  const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set());
-  const [mergeOpen,    setMergeOpen]    = useState(false);
+  const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set());
+  const [mergeOpen,     setMergeOpen]     = useState(false);
   const [archivingBulk, setArchivingBulk] = useState(false);
 
-  // Contact add modal
   const [addContactOpen, setAddContactOpen] = useState(false);
 
-  // Duplicate detection
   const [dupGroups, setDupGroups] = useState<CustomerItem[][]>([]);
   const [dupIdx,    setDupIdx]    = useState(0);
+
+  const [linkContactId, setLinkContactId] = useState<string | null>(null);
+  const [contactSearch, setContactSearch] = useState('');
 
   const toggleSelected = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -164,12 +164,6 @@ export function CustomersPage() {
       return next;
     });
   }, []);
-
-  // Contact cross-link picker
-  const [linkContactId,  setLinkContactId]  = useState<string | null>(null);
-
-  // Contact column search
-  const [contactSearch, setContactSearch] = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -232,9 +226,6 @@ export function CustomersPage() {
     ? customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
     : customers;
 
-  const selSite   = selSiteId ? (detail?.sites.find((s) => s.id === selSiteId) ?? null) : null;
-  const col2Open  = selCustomerId !== null;
-
   const allContacts = detail?.contacts ?? [];
   const filteredContacts = contactSearch.trim()
     ? allContacts.filter((c) => {
@@ -244,7 +235,7 @@ export function CustomersPage() {
           || (c.email ?? '').toLowerCase().includes(q);
       })
     : allContacts;
-  // Group by first letter of last_name (fallback to name)
+
   const contactGroups: Record<string, typeof allContacts> = {};
   for (const c of filteredContacts) {
     const letter = ((c.last_name ?? c.name)?.[0] ?? '#').toUpperCase();
@@ -253,98 +244,103 @@ export function CustomersPage() {
   }
   const contactLetters = Object.keys(contactGroups).sort();
 
+  // selSiteId kept in state for future use but not currently used in the new layout
+  void selSiteId;
+
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
       <div style={s.page}>
+        <div style={s.layout}>
 
-        {/* Header */}
-        <div style={s.ph}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <h1 style={{ ...s.title, flex: 1 }}>Customers</h1>
-            {dupGroups.length > 0 && selectedIds.size === 0 && (
-              <button
-                type="button"
-                title={`${dupGroups.length} possible duplicate group${dupGroups.length === 1 ? '' : 's'} — click to review`}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #FED7AA', background: '#FFF7ED', color: '#D97706', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-                onClick={jumpToDupGroup}
-              >
-                <AlertTriangle size={12} />
-                {dupGroups.length} duplicate{dupGroups.length === 1 ? '' : 's'}
-              </button>
-            )}
-            {selectedIds.size >= 1 && (
-              <button
-                type="button"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #FECACA', background: 'white', color: '#EF4444', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: archivingBulk ? 0.6 : 1 }}
-                onClick={handleBulkArchive}
-                disabled={archivingBulk}
-              >
-                <Archive size={12} />
-                {archivingBulk ? 'Archiving…' : `Archive ${selectedIds.size}`}
-              </button>
-            )}
-            {selectedIds.size >= 2 && (
-              <button
-                type="button"
-                style={{ ...s.btnPrimary, fontSize: 11, padding: '5px 10px', gap: 5 }}
-                onClick={() => setMergeOpen(true)}
-              >
-                <GitMerge size={12} />
-                Merge {selectedIds.size}
-              </button>
-            )}
-          </div>
-          <p style={s.subtitle}>
-            {loading ? 'Loading…' : `${customers.length} customer${customers.length === 1 ? '' : 's'}`}
-            {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
-          </p>
-        </div>
-
-        {error ? (
-          <div style={s.empty}><p style={{ color: '#EF4444' }}>{error}</p></div>
-        ) : (
-          <div style={s.cols}>
-
-            {/* ── Column 1: Customer list ──────────────────────────────── */}
-            <div style={s.col1}>
-              <div style={s.colSearch}>
+          {/* ── Left panel: customer list ─────────────────────────────── */}
+          <div style={s.listPanel}>
+            <div style={s.listHead}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <h1 style={s.title}>Customers</h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {dupGroups.length > 0 && selectedIds.size === 0 && (
+                    <button
+                      type="button"
+                      title={`${dupGroups.length} possible duplicate group${dupGroups.length === 1 ? '' : 's'}`}
+                      style={s.warnChip}
+                      onClick={jumpToDupGroup}
+                    >
+                      <AlertTriangle size={11} />
+                      {dupGroups.length} dup{dupGroups.length === 1 ? '' : 's'}
+                    </button>
+                  )}
+                  {selectedIds.size >= 2 && (
+                    <button type="button" style={s.chipBtn} onClick={() => setMergeOpen(true)}>
+                      <GitMerge size={11} />Merge
+                    </button>
+                  )}
+                  {selectedIds.size >= 1 && (
+                    <button
+                      type="button"
+                      style={{ ...s.chipBtn, color: '#EF4444', borderColor: '#FECACA' }}
+                      onClick={handleBulkArchive}
+                      disabled={archivingBulk}
+                    >
+                      <Archive size={11} />
+                      {archivingBulk ? 'Archiving…' : `Archive ${selectedIds.size}`}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p style={s.subtitle}>
+                {loading ? 'Loading…' : `${customers.length} customer${customers.length === 1 ? '' : 's'}`}
+                {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
+              </p>
+              <div style={s.searchWrap}>
                 <Search size={13} style={{ color: '#94A3B8', flexShrink: 0 }} aria-hidden />
                 <input
                   type="text"
-                  placeholder="Search…"
+                  placeholder="Search customers…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   style={s.searchInput}
                   aria-label="Search customers"
                 />
                 {search && (
-                  <button type="button" style={s.clearBtn} onClick={() => setSearch('')} aria-label="Clear search">
+                  <button type="button" style={s.clearBtn} onClick={() => setSearch('')} aria-label="Clear">
                     <X size={11} />
                   </button>
                 )}
               </div>
-              <div style={s.colBody}>
-                {loading ? (
-                  <div style={s.colEmpty}>Loading…</div>
-                ) : filtered.length === 0 ? (
-                  <div style={s.colEmpty}>No customers found</div>
-                ) : (
-                  filtered.map((c) => (
-                    <div key={c.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            </div>
+
+            <div style={s.listBody}>
+              {error ? (
+                <p style={{ padding: '20px 16px', fontSize: 12, color: '#EF4444' }}>{error}</p>
+              ) : loading ? (
+                <p style={{ padding: '20px 16px', fontSize: 12, color: '#94A3B8' }}>Loading…</p>
+              ) : filtered.length === 0 ? (
+                <p style={{ padding: '20px 16px', fontSize: 12, color: '#94A3B8' }}>No customers found</p>
+              ) : (
+                filtered.map((c) => {
+                  const isSel = selCustomerId === c.id;
+                  const isChk = selectedIds.has(c.id);
+                  return (
+                    <div key={c.id} style={{ position: 'relative' }}>
                       <input
                         type="checkbox"
-                        checked={selectedIds.has(c.id)}
-                        onChange={() => {}} // controlled via onClick
+                        checked={isChk}
+                        onChange={() => {}}
                         onClick={(e) => toggleSelected(c.id, e)}
-                        style={{ position: 'absolute', left: 8, zIndex: 1, cursor: 'pointer', flexShrink: 0 }}
+                        style={{ position: 'absolute', left: 14, top: 18, zIndex: 1, cursor: 'pointer', accentColor: '#3DA8D8' }}
                         aria-label={`Select ${c.name}`}
                       />
                       <button
                         type="button"
-                        style={{ ...s.custRow, paddingLeft: 30, ...(selCustomerId === c.id ? s.custRowSel : {}), ...(selectedIds.has(c.id) ? { background: '#F0F9FF' } : {}), opacity: c.active ? 1 : 0.5 }}
+                        style={{
+                          ...s.custRow,
+                          ...(isSel ? s.custRowSel : {}),
+                          ...(isChk && !isSel ? { background: '#F0F9FF' } : {}),
+                          opacity: c.active ? 1 : 0.45,
+                        }}
                         onClick={() => {
-                          if (selCustomerId === c.id) { setSelCustomerId(null); setSelSiteId(null); }
-                          else { setSelCustomerId(c.id); setSelSiteId(null); }
+                          setSelCustomerId(isSel ? null : c.id);
+                          setSelSiteId(null);
                         }}
                       >
                         <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>
@@ -352,254 +348,266 @@ export function CustomersPage() {
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={s.custName}>{c.name}</div>
-                          <div style={s.custMeta}>
-                            {[
-                              c.site_count    > 0 ? `${c.site_count} site${c.site_count === 1 ? '' : 's'}` : null,
-                              c.contact_count > 0 ? `${c.contact_count} contact${c.contact_count === 1 ? '' : 's'}` : null,
-                              c.group,
-                            ].filter(Boolean).join(' · ')}
-                          </div>
-                        </div>
-                        {selCustomerId === c.id && (
-                          <ChevronRight size={13} style={{ color: '#3DA8D8', flexShrink: 0 }} aria-hidden />
-                        )}
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* ── Right area: columns 2 + 3 ───────────────────────────── */}
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-
-              {/* Column 2: Sites */}
-              <div style={{ ...s.col2, ...(col2Open ? s.col2Open : {}) }}>
-                <div style={s.col2Inner}>
-                  <div style={s.colHead}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={s.col2Title}>{detail?.name ?? ' '}</div>
-                      <div style={s.col2Sub}>
-                        {detailLoading ? 'Loading…'
-                          : detail ? `${detail.sites.length} site${detail.sites.length === 1 ? '' : 's'}`
-                          : ''}
-                      </div>
-                    </div>
-                    {detail && (
-                      <button
-                        type="button"
-                        style={s.editBtn}
-                        onClick={() => setEditCustomer(detail)}
-                        aria-label="Edit customer"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                    )}
-                  </div>
-                  <div style={s.colBody}>
-                    {detailLoading ? (
-                      <div style={s.colEmpty}>Loading…</div>
-                    ) : !detail ? null : detail.sites.length === 0 ? (
-                      <div style={s.colEmpty}>No sites on file</div>
-                    ) : (
-                      detail.sites.map((site) => (
-                        <button
-                          key={site.id}
-                          type="button"
-                          style={{ ...s.siteRow, ...(selSiteId === site.id ? s.siteRowSel : {}) }}
-                          onClick={() => setSelSiteId((prev) => (prev === site.id ? null : site.id))}
-                        >
-                          <Building2
-                            size={13}
-                            style={{ color: selSiteId === site.id ? '#3DA8D8' : '#94A3B8', flexShrink: 0, marginTop: 1 }}
-                            aria-hidden
-                          />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={s.siteName}>{site.name}</div>
-                            {(site.suburb || site.state) && (
-                              <div style={s.siteMeta}>{[site.suburb, site.state].filter(Boolean).join(', ')}</div>
+                          {(c.group || c.state) && (
+                            <div style={s.custMeta}>{[c.group, c.state].filter(Boolean).join(' · ')}</div>
+                          )}
+                          <div style={s.custCounts}>
+                            {c.site_count > 0 && (
+                              <span style={s.countPill}>
+                                <Building2 size={9} aria-hidden style={{ display: 'inline', verticalAlign: 'middle' }} />
+                                {' '}{c.site_count}
+                              </span>
                             )}
+                            {c.contact_count > 0 && (
+                              <span style={s.countPill}>
+                                <UserPlus size={9} aria-hidden style={{ display: 'inline', verticalAlign: 'middle' }} />
+                                {' '}{c.contact_count}
+                              </span>
+                            )}
+                            {!c.active && <span style={{ ...s.countPill, color: '#94A3B8' }}>archived</span>}
                           </div>
-                          <button
-                            type="button"
-                            style={s.editBtnSm}
-                            onClick={(e) => { e.stopPropagation(); setEditSite(site); }}
-                            aria-label={`Edit ${site.name}`}
-                          >
-                            <Pencil size={11} />
-                          </button>
-                          {selSiteId === site.id && (
-                            <ChevronRight size={12} style={{ color: '#3DA8D8', flexShrink: 0 }} aria-hidden />
-                          )}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Column 3: Contacts */}
-              <div style={s.col3}>
-                {!selCustomerId ? (
-                  <div style={s.col3Empty}>
-                    <p style={{ color: '#94A3B8', fontSize: 13 }}>Select a customer to view sites and contacts</p>
-                  </div>
-                ) : (
-                  <>
-                    <div style={s.colHead}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={s.col2Title}>
-                          {selSite ? selSite.name : 'Contacts'}
                         </div>
-                        {selSite && (
-                          <div style={s.col2Sub}>
-                            {detail ? `${allContacts.length} customer contact${allContacts.length === 1 ? '' : 's'}` : ''}
-                          </div>
+                        {isSel && (
+                          <div style={{ width: 3, height: 36, background: '#3DA8D8', borderRadius: 2, flexShrink: 0 }} aria-hidden />
                         )}
-                      </div>
-                      {detail && (
-                        <button
-                          type="button"
-                          style={s.editBtn}
-                          title="Add contact"
-                          onClick={() => setAddContactOpen(true)}
-                          aria-label="Add contact"
-                        >
-                          <UserPlus size={12} />
-                        </button>
-                      )}
+                      </button>
                     </div>
-                    {/* Contact search bar */}
-                    {detail && allContacts.length > 4 && (
-                      <div style={{ ...s.colSearch, borderTop: 'none' }}>
-                        <Search size={11} style={{ color: '#94A3B8', flexShrink: 0 }} aria-hidden />
-                        <input
-                          type="text"
-                          placeholder="Filter contacts…"
-                          value={contactSearch}
-                          onChange={(e) => setContactSearch(e.target.value)}
-                          style={{ ...s.searchInput, fontSize: 11 }}
-                          aria-label="Filter contacts"
-                        />
-                        {contactSearch && (
-                          <button type="button" style={s.clearBtn} onClick={() => setContactSearch('')} aria-label="Clear filter">
-                            <X size={11} />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    <div style={s.colBody}>
-                      {detailLoading ? (
-                        <div style={s.colEmpty}>Loading…</div>
-                      ) : !detail ? null : (
-                        <>
-                          {selSite?.contact && (
-                            <>
-                              <div style={s.sectionLabel}>Site contact</div>
-                              <div style={s.contactRow}>
-                                <div style={{ ...s.av, background: '#3DA8D8', flexShrink: 0 }}>
-                                  {initials(selSite.contact.name)}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={s.contactName}>{selSite.contact.name}</div>
-                                  {selSite.contact.phone && (
-                                    <div style={s.contactMeta}>
-                                      <Phone size={9} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3, color: '#94A3B8' }} />
-                                      <a href={`tel:${selSite.contact.phone}`} style={s.contactLink}>{selSite.contact.phone}</a>
-                                    </div>
-                                  )}
-                                  {selSite.contact.email && (
-                                    <div style={s.contactMeta}>
-                                      <Mail size={9} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3, color: '#94A3B8' }} />
-                                      <a href={`mailto:${selSite.contact.email}`} style={s.contactLink}>{selSite.contact.email}</a>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              <div style={s.sectionLabel}>Customer contacts</div>
-                            </>
-                          )}
-
-                          {allContacts.length === 0 ? (
-                            <div style={s.colEmpty}>No contacts on file</div>
-                          ) : filteredContacts.length === 0 ? (
-                            <div style={s.colEmpty}>No contacts match "{contactSearch}"</div>
-                          ) : (
-                            contactLetters.map((letter) => (
-                              <div key={letter}>
-                                <div style={s.alphaHeader}>{letter}</div>
-                                {contactGroups[letter].map((c) => (
-                                  <div key={c.id} style={s.contactRow}>
-                                    <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>
-                                      {initials(c.name)}
-                                    </div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={s.contactName}>{c.name}</div>
-                                      {c.role  && <div style={s.contactRole}>{c.role}</div>}
-                                      {c.phone && (
-                                        <div style={s.contactMeta}>
-                                          <Phone size={9} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3, color: '#94A3B8' }} />
-                                          <a href={`tel:${c.phone}`} style={s.contactLink}>{c.phone}</a>
-                                        </div>
-                                      )}
-                                      {c.email && (
-                                        <div style={s.contactMeta}>
-                                          <Mail size={9} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3, color: '#94A3B8' }} />
-                                          <a href={`mailto:${c.email}`} style={s.contactLink}>{c.email}</a>
-                                        </div>
-                                      )}
-                                      {(c.extra_customers ?? []).length > 0 && (
-                                        <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                          {(c.extra_customers ?? []).map((ec) => (
-                                            <span key={ec.id} style={s.linkChip}>
-                                              {ec.name}
-                                              <button
-                                                type="button"
-                                                style={s.chipX}
-                                                title="Remove link"
-                                                onClick={async () => {
-                                                  await crmWrite({ action: 'unlink_contact_customer', id: c.id, customer_id: ec.id });
-                                                  handleMutated();
-                                                }}
-                                              >
-                                                <X size={9} />
-                                              </button>
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      style={s.editBtnSm}
-                                      title="Link to another customer"
-                                      onClick={() => setLinkContactId(c.id)}
-                                      aria-label={`Link ${c.name} to another customer`}
-                                    >
-                                      <Link size={11} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      style={s.editBtnSm}
-                                      onClick={() => setEditContact(c)}
-                                      aria-label={`Edit ${c.name}`}
-                                    >
-                                      <Pencil size={11} />
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            ))
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
+                  );
+                })
+              )}
             </div>
           </div>
-        )}
+
+          {/* ── Right panel: detail ───────────────────────────────────── */}
+          <div style={s.detailPanel}>
+            {!selCustomerId ? (
+              <div style={s.emptyState}>
+                <div style={s.emptyIcon}><Building2 size={32} style={{ color: '#CBD5E1' }} aria-hidden /></div>
+                <p style={s.emptyTitle}>No customer selected</p>
+                <p style={s.emptyHint}>Pick a customer from the list to view their profile, sites, and contacts.</p>
+              </div>
+            ) : detailLoading ? (
+              <div style={s.emptyState}>
+                <p style={{ fontSize: 13, color: '#94A3B8' }}>Loading…</p>
+              </div>
+            ) : !detail ? null : (
+              <div style={s.detailScroll}>
+
+                {/* ── Customer header ── */}
+                <div style={s.custHeader}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{ ...s.avLg, background: avatarColour(detail.id) }}>
+                        {initials(detail.name)}
+                      </div>
+                      <div>
+                        <h2 style={s.detailName}>{detail.name}</h2>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7, flexWrap: 'wrap' }}>
+                          {detail.group && <span style={s.pill}>{detail.group}</span>}
+                          {detail.state && <span style={s.pill}>{detail.state}</span>}
+                          {!detail.active && <span style={{ ...s.pill, background: '#FEF2F2', color: '#B91C1C', borderColor: '#FECACA' }}>Archived</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <button type="button" style={s.editBtn} onClick={() => setEditCustomer(detail)} aria-label="Edit customer">
+                      <Pencil size={13} />
+                    </button>
+                  </div>
+
+                  {(detail.phone || detail.email || detail.suburb || detail.state) && (
+                    <div style={s.contactLines}>
+                      {detail.phone && (
+                        <a href={`tel:${detail.phone}`} style={s.contactLine}>
+                          <Phone size={12} style={{ color: '#94A3B8', flexShrink: 0 }} aria-hidden />
+                          {detail.phone}
+                        </a>
+                      )}
+                      {detail.email && (
+                        <a href={`mailto:${detail.email}`} style={s.contactLine}>
+                          <Mail size={12} style={{ color: '#94A3B8', flexShrink: 0 }} aria-hidden />
+                          {detail.email}
+                        </a>
+                      )}
+                      {(detail.suburb || detail.state) && (
+                        <span style={{ ...s.contactLine, textDecoration: 'none', color: '#64748B' }}>
+                          <Building2 size={12} style={{ color: '#CBD5E1', flexShrink: 0 }} aria-hidden />
+                          {[detail.suburb, detail.state].filter(Boolean).join(', ')}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Sites ── */}
+                <div style={s.section}>
+                  <div style={s.sectionHead}>
+                    <span style={s.sectionLabel}>Sites</span>
+                    <span style={s.sectionCount}>{detail.sites.length}</span>
+                  </div>
+                  {detail.sites.length === 0 ? (
+                    <p style={s.sectionEmpty}>No sites on file</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {detail.sites.map((site) => (
+                        <div key={site.id} style={s.siteCard}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                <span style={s.siteName}>{site.name}</span>
+                                {site.code && <span style={s.siteCode}>{site.code}</span>}
+                                {site.kind && <span style={s.siteKind}>{site.kind}</span>}
+                              </div>
+                              {(site.suburb || site.state) && (
+                                <p style={s.siteLoc}>{[site.suburb, site.state].filter(Boolean).join(', ')}</p>
+                              )}
+                              {site.contact && (
+                                <div style={s.siteContactRow}>
+                                  <div style={{ ...s.avSm, background: '#3DA8D8', flexShrink: 0 }}>
+                                    {initials(site.contact.name)}
+                                  </div>
+                                  <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#475569' }}>{site.contact.name}</span>
+                                  {site.contact.phone && (
+                                    <a href={`tel:${site.contact.phone}`} style={s.inlineLink}>
+                                      <Phone size={10} aria-hidden />{site.contact.phone}
+                                    </a>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              style={s.editBtnSm}
+                              onClick={() => setEditSite(site)}
+                              aria-label={`Edit ${site.name}`}
+                            >
+                              <Pencil size={11} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Contacts ── */}
+                <div style={s.section}>
+                  <div style={s.sectionHead}>
+                    <span style={s.sectionLabel}>Contacts</span>
+                    <span style={s.sectionCount}>{allContacts.length}</span>
+                    <button
+                      type="button"
+                      style={{ ...s.editBtnSm, marginLeft: 'auto' }}
+                      title="Add contact"
+                      onClick={() => setAddContactOpen(true)}
+                      aria-label="Add contact"
+                    >
+                      <UserPlus size={11} />
+                    </button>
+                  </div>
+
+                  {allContacts.length > 4 && (
+                    <div style={{ ...s.searchWrap, marginBottom: 12 }}>
+                      <Search size={12} style={{ color: '#94A3B8', flexShrink: 0 }} aria-hidden />
+                      <input
+                        type="text"
+                        placeholder="Filter contacts…"
+                        value={contactSearch}
+                        onChange={(e) => setContactSearch(e.target.value)}
+                        style={{ ...s.searchInput, fontSize: 12 }}
+                        aria-label="Filter contacts"
+                      />
+                      {contactSearch && (
+                        <button type="button" style={s.clearBtn} onClick={() => setContactSearch('')} aria-label="Clear">
+                          <X size={11} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {allContacts.length === 0 ? (
+                    <p style={s.sectionEmpty}>No contacts on file</p>
+                  ) : filteredContacts.length === 0 ? (
+                    <p style={s.sectionEmpty}>No contacts match &ldquo;{contactSearch}&rdquo;</p>
+                  ) : (
+                    <div>
+                      {contactLetters.map((letter) => (
+                        <div key={letter}>
+                          <div style={s.alphaHeader}>{letter}</div>
+                          {contactGroups[letter].map((c) => (
+                            <div key={c.id} style={s.contactRow}>
+                              <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>
+                                {initials(c.name)}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={s.contactName}>{c.name}</div>
+                                {c.role && <div style={s.contactRole}>{c.role}</div>}
+                                <div style={{ display: 'flex', gap: 14, marginTop: 4, flexWrap: 'wrap' }}>
+                                  {c.phone && (
+                                    <a href={`tel:${c.phone}`} style={s.contactLink}>
+                                      <Phone size={10} aria-hidden style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />
+                                      {c.phone}
+                                    </a>
+                                  )}
+                                  {c.email && (
+                                    <a href={`mailto:${c.email}`} style={s.contactLink}>
+                                      <Mail size={10} aria-hidden style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />
+                                      {c.email}
+                                    </a>
+                                  )}
+                                </div>
+                                {(c.extra_customers ?? []).length > 0 && (
+                                  <div style={{ marginTop: 5, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                    {(c.extra_customers ?? []).map((ec) => (
+                                      <span key={ec.id} style={s.linkChip}>
+                                        {ec.name}
+                                        <button
+                                          type="button"
+                                          style={s.chipX}
+                                          title="Remove link"
+                                          onClick={async () => {
+                                            await crmWrite({ action: 'unlink_contact_customer', id: c.id, customer_id: ec.id });
+                                            handleMutated();
+                                          }}
+                                        >
+                                          <X size={9} />
+                                        </button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                                <button
+                                  type="button"
+                                  style={s.editBtnSm}
+                                  title="Link to another customer"
+                                  onClick={() => setLinkContactId(c.id)}
+                                  aria-label={`Link ${c.name}`}
+                                >
+                                  <Link size={11} />
+                                </button>
+                                <button
+                                  type="button"
+                                  style={s.editBtnSm}
+                                  onClick={() => setEditContact(c)}
+                                  aria-label={`Edit ${c.name}`}
+                                >
+                                  <Pencil size={11} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
 
       {editCustomer && (
@@ -747,7 +755,7 @@ function LinkContactModal({ contactId, currentCustomerId, customers, onClose, on
         </div>
         <div style={s.modalBody}>
           <p style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
-            The contact will appear in both customers' contact lists.
+            The contact will appear in both customers&rsquo; contact lists.
           </p>
           {options.length === 0 ? (
             <p style={{ fontSize: 12, color: '#94A3B8' }}>No other customers available.</p>
@@ -897,14 +905,13 @@ function EditSiteModal({ site, onClose, onSaved, onArchived, onDeleted }: {
             <FormField label="Phone" value={form.site_contact_phone} onChange={set('site_contact_phone')} />
             <FormField label="Email" value={form.site_contact_email} onChange={set('site_contact_email')} type="email" />
           </div>
-          {/* Danger zone */}
           <div style={{ borderTop: '1px solid #FEE2E2', marginTop: 16, paddingTop: 12 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: '#EF4444', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
               Danger zone
             </div>
             {danger === 'archive' ? (
               <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: '10px 12px' }}>
-                <p style={{ fontSize: 12, color: '#92400E', marginBottom: 8, margin: '0 0 8px' }}>
+                <p style={{ fontSize: 12, color: '#92400E', margin: '0 0 8px' }}>
                   Archive this site? It will be hidden from all lists but service history is preserved.
                 </p>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -916,7 +923,7 @@ function EditSiteModal({ site, onClose, onSaved, onArchived, onDeleted }: {
               </div>
             ) : danger === 'delete' ? (
               <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 12px' }}>
-                <p style={{ fontSize: 12, color: '#7F1D1D', marginBottom: 8, margin: '0 0 8px' }}>
+                <p style={{ fontSize: 12, color: '#7F1D1D', margin: '0 0 8px' }}>
                   Permanently delete this site? This cannot be undone.
                 </p>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -1056,65 +1063,94 @@ function AddContactModal({ customerId, onClose, onSaved }: {
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  page:        { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: 'inherit' },
-  ph:          { padding: '16px 24px 12px', flexShrink: 0, borderBottom: '1px solid #E2E8F0' },
-  title:       { fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A2E', margin: 0 },
-  subtitle:    { fontSize: 11, color: '#94A3B8', marginTop: 3, marginBottom: 0 },
-  empty:       { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  // Layout
+  page:         { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' },
+  layout:       { flex: 1, display: 'flex', overflow: 'hidden' },
 
-  cols:        { flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden' },
+  // List panel
+  listPanel:    { width: 300, flexShrink: 0, borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#FAFBFC' },
+  listHead:     { padding: '18px 16px 12px', borderBottom: '1px solid #E2E8F0', flexShrink: 0 },
+  title:        { fontSize: 16, fontWeight: 700, color: '#1A1A2E', margin: 0, letterSpacing: '-0.01em' },
+  subtitle:     { fontSize: 11, color: '#94A3B8', marginTop: 2, marginBottom: 10 },
+  searchWrap:   { display: 'flex', alignItems: 'center', gap: 7, background: 'white', border: '1px solid #E2E8F0', borderRadius: 8, padding: '7px 10px' },
+  searchInput:  { flex: 1, fontSize: 12, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit', color: '#1A1A2E' },
+  clearBtn:     { width: 18, height: 18, borderRadius: 4, border: 'none', background: '#F1F5F9', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 0 },
+  listBody:     { flex: 1, overflowY: 'auto' },
 
-  col1:        { width: 260, flexShrink: 0, borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-  colSearch:   { padding: '9px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 },
-  searchInput: { flex: 1, fontSize: 12, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit', color: '#1A1A2E' },
-  clearBtn:    { width: 18, height: 18, borderRadius: 4, border: 'none', background: '#F1F5F9', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  colBody:     { flex: 1, overflowY: 'auto', padding: '4px 0' },
-  colEmpty:    { padding: '20px 14px', fontSize: 12, color: '#94A3B8' },
+  // Customer rows
+  custRow:      { width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px 11px 34px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', borderBottom: '1px solid #F1F5F9' },
+  custRowSel:   { background: '#EAF5FB', borderLeft: '3px solid #3DA8D8', paddingLeft: 31 },
+  custName:     { fontSize: 13, fontWeight: 600, color: '#1A1A2E', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  custMeta:     { fontSize: 11, color: '#64748B', marginTop: 2 },
+  custCounts:   { display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 },
+  countPill:    { display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#94A3B8', background: '#F1F5F9', borderRadius: 4, padding: '1px 5px' },
 
-  custRow:     { width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' },
-  custRowSel:  { background: '#EAF5FB' },
-  custName:    { fontSize: 12, fontWeight: 700, color: '#1A1A2E', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  custMeta:    { fontSize: 10, color: '#94A3B8', marginTop: 1 },
+  // Avatar
+  av:           { width: 30, height: 30, borderRadius: 8, color: 'white', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  avLg:         { width: 44, height: 44, borderRadius: 10, color: 'white', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avSm:         { width: 20, height: 20, borderRadius: 5, color: 'white', fontSize: 8, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' },
 
-  av:          { width: 28, height: 28, borderRadius: 7, color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  // Action chips
+  chipBtn:      { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+  warnChip:     { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 9px', borderRadius: 6, border: '1px solid #FED7AA', background: '#FFF7ED', color: '#D97706', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
 
-  col2:        { width: 0, flexShrink: 0, overflow: 'hidden', transition: 'width .2s cubic-bezier(.4,0,.2,1)' },
-  col2Open:    { width: 240, borderRight: '1px solid #E2E8F0' },
-  col2Inner:   { width: 240, height: '100%', display: 'flex', flexDirection: 'column' },
-  colHead:     { padding: '9px 12px 8px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
-  col2Title:   { fontSize: 12, fontWeight: 700, color: '#1A1A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  col2Sub:     { fontSize: 10, color: '#94A3B8', marginTop: 1 },
+  // Detail panel
+  detailPanel:  { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'white' },
+  detailScroll: { flex: 1, overflowY: 'auto', padding: '0 0 40px' },
 
-  siteRow:     { width: '100%', display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 10px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' },
-  siteRowSel:  { background: '#EAF5FB' },
-  siteName:    { fontSize: 12, fontWeight: 600, color: '#1A1A2E', lineHeight: 1.3 },
-  siteMeta:    { fontSize: 10, color: '#94A3B8', marginTop: 1 },
+  // Empty state
+  emptyState:   { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 24px' },
+  emptyIcon:    { width: 56, height: 56, borderRadius: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  emptyTitle:   { fontSize: 14, fontWeight: 600, color: '#64748B', margin: 0 },
+  emptyHint:    { fontSize: 12, color: '#94A3B8', textAlign: 'center', maxWidth: 280, margin: 0, lineHeight: 1.6 },
 
-  editBtn:     { width: 26, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  editBtnSm:   { width: 22, height: 22, borderRadius: 5, border: '1px solid #E2E8F0', background: 'white', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  // Customer header in detail
+  custHeader:   { padding: '24px 28px 20px', borderBottom: '1px solid #F1F5F9' },
+  detailName:   { fontSize: 18, fontWeight: 700, color: '#1A1A2E', margin: 0, letterSpacing: '-0.02em' },
+  pill:         { display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 500, color: '#475569', background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 5, padding: '2px 8px' },
+  contactLines: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14 },
+  contactLine:  { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#3DA8D8', textDecoration: 'none' },
 
-  col3:        { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-  col3Empty:   { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' },
+  // Sections
+  section:      { padding: '20px 28px' },
+  sectionHead:  { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 },
+  sectionLabel: { fontSize: 11, fontWeight: 700, color: '#94A3B8', letterSpacing: '.06em', textTransform: 'uppercase' },
+  sectionCount: { fontSize: 11, fontWeight: 600, color: '#CBD5E1', background: '#F8FAFC', borderRadius: 4, padding: '1px 6px' },
+  sectionEmpty: { fontSize: 12, color: '#94A3B8', margin: 0 },
 
-  sectionLabel: { fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '10px 14px 4px' },
-  alphaHeader:  { fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#CBD5E1', padding: '8px 12px 2px', position: 'sticky' as const, top: 0, background: 'white', zIndex: 1, borderBottom: '1px solid #F1F5F9' },
-  contactRow:   { display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', borderBottom: '1px solid #F1F5F9' },
-  contactName:  { fontSize: 12, fontWeight: 700, color: '#1A1A2E' },
+  // Site cards
+  siteCard:     { background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '12px 14px' },
+  siteName:     { fontSize: 13, fontWeight: 600, color: '#1A1A2E' },
+  siteCode:     { fontSize: 10, fontWeight: 600, color: '#2986B4', background: '#EAF5FB', border: '1px solid #BAE4F7', borderRadius: 4, padding: '1px 6px' },
+  siteKind:     { fontSize: 10, color: '#64748B', background: '#F1F5F9', borderRadius: 4, padding: '1px 6px' },
+  siteLoc:      { fontSize: 11, color: '#64748B', margin: '2px 0 6px' },
+  siteContactRow: { display: 'flex', alignItems: 'center', gap: 7, marginTop: 6, padding: '5px 8px', background: 'white', border: '1px solid #E2E8F0', borderRadius: 6 },
+  inlineLink:   { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#3DA8D8', textDecoration: 'none' },
+
+  // Contact rows
+  alphaHeader:  { fontSize: 10, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#CBD5E1', padding: '8px 0 4px', borderBottom: '1px solid #F1F5F9', marginBottom: 2 },
+  contactRow:   { display: 'flex', alignItems: 'flex-start', gap: 12, padding: '11px 0', borderBottom: '1px solid #F8FAFC' },
+  contactName:  { fontSize: 13, fontWeight: 600, color: '#1A1A2E' },
   contactRole:  { fontSize: 11, color: '#64748B', marginTop: 1 },
-  contactMeta:  { fontSize: 11, color: '#94A3B8', marginTop: 1 },
+  contactLink:  { fontSize: 11, color: '#2986B4', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' },
 
-  overlay:     { position: 'fixed', inset: 0, background: 'rgba(15,20,40,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  modal:       { background: 'white', borderRadius: 12, width: 420, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' },
-  modalHead:   { padding: '14px 16px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
-  modalTitle:  { fontSize: 14, fontWeight: 700, color: '#1A1A2E' },
-  modalBody:   { flex: 1, overflowY: 'auto', padding: '16px' },
-  modalErr:    { padding: '0 16px 8px', color: '#EF4444', fontSize: 12 },
-  modalFoot:   { padding: '10px 16px 14px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 },
-  pcls:        { width: 26, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  btnPrimary:  { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
-  btnSecondary:{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+  // Edit buttons
+  editBtn:      { width: 30, height: 30, borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  editBtnSm:    { width: 24, height: 24, borderRadius: 5, border: '1px solid #E2E8F0', background: 'white', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 0 },
 
-  linkChip:    { display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 600, color: '#2986B4', background: '#EAF5FB', border: '1px solid #BAE4F7', borderRadius: 5, padding: '1px 5px 1px 6px' },
-  chipX:       { width: 13, height: 13, border: 'none', background: 'transparent', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, borderRadius: 3 },
-  contactLink: { color: '#2986B4', textDecoration: 'none' },
+  // Chips
+  linkChip:     { display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 600, color: '#2986B4', background: '#EAF5FB', border: '1px solid #BAE4F7', borderRadius: 5, padding: '1px 5px 1px 6px' },
+  chipX:        { width: 13, height: 13, border: 'none', background: 'transparent', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, borderRadius: 3 },
+
+  // Modals
+  overlay:      { position: 'fixed', inset: 0, background: 'rgba(15,20,40,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  modal:        { background: 'white', borderRadius: 12, width: 420, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' },
+  modalHead:    { padding: '14px 16px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
+  modalTitle:   { fontSize: 14, fontWeight: 700, color: '#1A1A2E' },
+  modalBody:    { flex: 1, overflowY: 'auto', padding: '16px' },
+  modalErr:     { padding: '0 16px 8px', color: '#EF4444', fontSize: 12 },
+  modalFoot:    { padding: '10px 16px 14px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 },
+  pcls:         { width: 26, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 },
+  btnPrimary:   { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
+  btnSecondary: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
 };

@@ -43,6 +43,7 @@ interface Quote {
   site_name: string | null;
   site_code: string | null;
   line_item_count: number;
+  source_quote_number: string | null;
 }
 
 interface LineItem {
@@ -123,6 +124,7 @@ interface QuoteDetail {
   contact_email: string | null;
   line_items: LineItem[];
   notes: QuoteNote[];
+  source_quote_number: string | null;
 }
 
 interface ContactRow {
@@ -1724,7 +1726,36 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     if (error) { captureRpcError("eq_duplicate_quote", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
     const row = (data as Array<{ quote_id: string; quote_number: string }>)[0];
     if (!row) { setDetailError("Revise failed: no quote returned."); return; }
-    void loadQuotes(statusFilter, search);
+    // Optimistic: mark original as superseded; insert new draft at top of list
+    setQuotes((prev) => {
+      const updated = prev.map((q) =>
+        q.quote_id === detail.quote_id ? { ...q, status: "superseded" } : q
+      );
+      const stub: Quote = {
+        quote_id: row.quote_id,
+        quote_number: row.quote_number,
+        status: "draft",
+        project_name: detail.project_name,
+        estimator_name: detail.estimator_name,
+        estimator_initials: detail.estimator_initials,
+        subtotal_cents: detail.subtotal_cents,
+        gst_cents: detail.gst_cents,
+        total_cents: detail.total_cents,
+        margin_pct: detail.margin_pct,
+        sent_at: null,
+        expires_at: detail.expires_at,
+        follow_up_at: null,
+        workbench_job_no: null,
+        po_number: null,
+        created_at: new Date().toISOString(),
+        customer_name: detail.customer_name,
+        site_name: detail.site_name,
+        site_code: detail.site_code,
+        line_item_count: detail.line_items.length,
+        source_quote_number: detail.quote_number,
+      };
+      return [stub, ...updated];
+    });
     void openDetail(row.quote_id);
   };
 
@@ -2594,17 +2625,34 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       sortAccessor: (q) => q.quote_number,
       className: "eq-quotes__td--mono eq-quotes__td--bold",
       render: (q) => (
-        <span
-          className="eq-quotes__filter-link"
-          title="Open quote"
-          style={{ fontFamily: "ui-monospace, 'Cascadia Code', monospace", fontWeight: 600 }}
-          onClick={(e) => {
-            e.stopPropagation();
-            void openDetail(q.quote_id);
-          }}
-        >
-          {q.quote_number}
-        </span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span
+            className="eq-quotes__filter-link"
+            title="Open quote"
+            style={{ fontFamily: "ui-monospace, 'Cascadia Code', monospace", fontWeight: 600 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              void openDetail(q.quote_id);
+            }}
+          >
+            {q.quote_number}
+          </span>
+          {q.source_quote_number && (
+            <span
+              className="eq-quotes__filter-link"
+              title={`Revised from ${q.source_quote_number} — click to open source`}
+              style={{ fontSize: 10, fontFamily: "ui-monospace, 'Cascadia Code', monospace", fontWeight: 400, color: "var(--eq-muted, #64748B)", letterSpacing: 0 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                const src = quotes.find((x) => x.quote_number === q.source_quote_number);
+                if (src) void openDetail(src.quote_id);
+                else setSearch(q.source_quote_number ?? "");
+              }}
+            >
+              ↻ {q.source_quote_number}
+            </span>
+          )}
+        </div>
       ),
     },
     {
@@ -3762,14 +3810,35 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                   <span className="eq-quotes__info-val">{fmtDate(detail.created_at)}</span>
                 </div>
                 {(() => {
-                  const dupEntry = audit.find((a) => a.action === "duplicate" && a.changes?.source_quote_number);
-                  if (!dupEntry) return null;
+                  const src = detail.source_quote_number
+                    ?? (audit.find((a) => a.action === "duplicate" && a.changes?.source_quote_number)
+                        ? String(audit.find((a) => a.action === "duplicate" && a.changes?.source_quote_number)!.changes!.source_quote_number)
+                        : null);
+                  if (!src) return null;
+                  const srcQuote = quotes.find((q) => q.quote_number === src);
                   return (
                     <div className="eq-quotes__info-item eq-quotes__info-item--full">
                       <span className="eq-quotes__info-label">Based on</span>
-                      <span className="eq-quotes__info-val eq-quotes__td--mono" style={{ fontSize: 13 }}>
-                        {String(dupEntry.changes!.source_quote_number)}
-                      </span>
+                      {srcQuote ? (
+                        <button
+                          type="button"
+                          className="eq-quotes__filter-link"
+                          style={{ fontSize: 13, fontFamily: "ui-monospace, 'Cascadia Code', monospace", background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--eq-sky, #2986B4)" }}
+                          onClick={() => void openDetail(srcQuote.quote_id)}
+                        >
+                          {src}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="eq-quotes__filter-link"
+                          style={{ fontSize: 13, fontFamily: "ui-monospace, 'Cascadia Code', monospace", background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--eq-muted, #64748B)" }}
+                          title="Click to search for source quote"
+                          onClick={() => { setDetailId(null); setDetail(null); setSearch(src); }}
+                        >
+                          {src}
+                        </button>
+                      )}
                     </div>
                   );
                 })()}
