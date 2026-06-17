@@ -134,8 +134,8 @@ export function CustomersPage() {
   const [search,        setSearch]        = useState('');
   const [reload,        setReload]        = useState(0);
 
+  const [showArchived,  setShowArchived]  = useState(false);
   const [selCustomerId, setSelCustomerId] = useState<string | null>(null);
-  const [selSiteId,     setSelSiteId]     = useState<string | null>(null);
   const [detail,        setDetail]        = useState<CustomerDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailReload,  setDetailReload]  = useState(0);
@@ -149,6 +149,7 @@ export function CustomersPage() {
   const [archivingBulk, setArchivingBulk] = useState(false);
 
   const [addContactOpen, setAddContactOpen] = useState(false);
+  const [addSiteOpen,    setAddSiteOpen]    = useState(false);
 
   const [dupGroups, setDupGroups] = useState<CustomerItem[][]>([]);
   const [dupIdx,    setDupIdx]    = useState(0);
@@ -210,7 +211,7 @@ export function CustomersPage() {
     await Promise.all(ids.map((id) => crmWrite({ action: 'archive_customer', id })));
     setArchivingBulk(false);
     setSelectedIds(new Set());
-    if (selCustomerId && ids.includes(selCustomerId)) { setSelCustomerId(null); setSelSiteId(null); }
+    if (selCustomerId && ids.includes(selCustomerId)) setSelCustomerId(null);
     setReload((n) => n + 1);
   }, [archivingBulk, selectedIds, selCustomerId]);
 
@@ -222,9 +223,14 @@ export function CustomersPage() {
     setMergeOpen(true);
   }, [dupGroups, dupIdx]);
 
-  const filtered = search
-    ? customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
-    : customers;
+  const activeCount   = customers.filter((c) => c.active).length;
+  const archivedCount = customers.length - activeCount;
+
+  const filtered = customers.filter((c) => {
+    if (!showArchived && !c.active) return false;
+    if (search && !c.name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
   const allContacts = detail?.contacts ?? [];
   const filteredContacts = contactSearch.trim()
@@ -243,9 +249,6 @@ export function CustomersPage() {
     contactGroups[letter].push(c);
   }
   const contactLetters = Object.keys(contactGroups).sort();
-
-  // selSiteId kept in state for future use but not currently used in the new layout
-  void selSiteId;
 
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
@@ -287,10 +290,21 @@ export function CustomersPage() {
                   )}
                 </div>
               </div>
-              <p style={s.subtitle}>
-                {loading ? 'Loading…' : `${customers.length} customer${customers.length === 1 ? '' : 's'}`}
-                {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <p style={{ ...s.subtitle, marginBottom: 0 }}>
+                  {loading ? 'Loading…' : `${filtered.length} customer${filtered.length === 1 ? '' : 's'}`}
+                  {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
+                </p>
+                {!loading && archivedCount > 0 && (
+                  <button
+                    type="button"
+                    style={{ fontSize: 10, fontWeight: 600, color: showArchived ? '#2986B4' : '#94A3B8', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+                    onClick={() => setShowArchived((v) => !v)}
+                  >
+                    {showArchived ? `Hide archived` : `+${archivedCount} archived`}
+                  </button>
+                )}
+              </div>
               <div style={s.searchWrap}>
                 <Search size={13} style={{ color: '#94A3B8', flexShrink: 0 }} aria-hidden />
                 <input
@@ -340,7 +354,6 @@ export function CustomersPage() {
                         }}
                         onClick={() => {
                           setSelCustomerId(isSel ? null : c.id);
-                          setSelSiteId(null);
                         }}
                       >
                         <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>
@@ -443,6 +456,15 @@ export function CustomersPage() {
                   <div style={s.sectionHead}>
                     <span style={s.sectionLabel}>Sites</span>
                     <span style={s.sectionCount}>{detail.sites.length}</span>
+                    <button
+                      type="button"
+                      style={{ ...s.editBtnSm, marginLeft: 'auto' }}
+                      title="Add site"
+                      onClick={() => setAddSiteOpen(true)}
+                      aria-label="Add site"
+                    >
+                      <Building2 size={11} />
+                    </button>
                   </div>
                   {detail.sites.length === 0 ? (
                     <p style={s.sectionEmpty}>No sites on file</p>
@@ -624,7 +646,6 @@ export function CustomersPage() {
           onSaved={() => { setEditSite(null); handleMutated(); }}
           onArchived={() => { setEditSite(null); handleMutated(); }}
           onDeleted={() => {
-            if (selSiteId === editSite.id) setSelSiteId(null);
             setEditSite(null);
             handleMutated();
           }}
@@ -645,7 +666,6 @@ export function CustomersPage() {
             setMergeOpen(false);
             setSelectedIds(new Set());
             setSelCustomerId(null);
-            setSelSiteId(null);
             setReload((n) => n + 1);
           }}
         />
@@ -664,6 +684,13 @@ export function CustomersPage() {
           customerId={selCustomerId}
           onClose={() => setAddContactOpen(false)}
           onSaved={() => { setAddContactOpen(false); handleMutated(); }}
+        />
+      )}
+      {addSiteOpen && selCustomerId && (
+        <AddSiteModal
+          customerId={selCustomerId}
+          onClose={() => setAddSiteOpen(false)}
+          onSaved={() => { setAddSiteOpen(false); handleMutated(); }}
         />
       )}
     </HubLayout>
@@ -1053,6 +1080,61 @@ function AddContactModal({ customerId, onClose, onSaved }: {
           <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
           <button type="button" style={{ ...s.btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
             {saving ? 'Adding…' : 'Add contact'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ADD SITE MODAL ───────────────────────────────────────────────────────────
+
+function AddSiteModal({ customerId, onClose, onSaved }: {
+  customerId: string; onClose: () => void; onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    name: '', code: '', suburb: '', state: '',
+    site_contact_name: '', site_contact_phone: '', site_contact_email: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [err,    setErr]    = useState<string | null>(null);
+  const set = (f: keyof typeof form) => (v: string) => setForm((p) => ({ ...p, [f]: v }));
+
+  const save = async () => {
+    if (!form.name.trim()) { setErr('Site name is required'); return; }
+    setSaving(true); setErr(null);
+    const res = await crmWrite({ action: 'add_site', id: customerId, ...form });
+    setSaving(false);
+    if (!res.ok) { setErr(res.error ?? 'Save failed'); return; }
+    onSaved();
+  };
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={{ ...s.modal, width: 380 }} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHead}>
+          <span style={s.modalTitle}>Add site</span>
+          <button type="button" style={s.pcls} onClick={onClose} aria-label="Close"><X size={14} /></button>
+        </div>
+        <div style={s.modalBody}>
+          <FormField label="Site name *" value={form.name}   onChange={set('name')} />
+          <FormField label="Code"        value={form.code}   onChange={set('code')} />
+          <FormField label="Suburb"      value={form.suburb} onChange={set('suburb')} />
+          <FormField label="State"       value={form.state}  onChange={set('state')} />
+          <div style={{ borderTop: '1px solid #E2E8F0', margin: '12px 0', paddingTop: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+              Site contact (optional)
+            </div>
+            <FormField label="Name"  value={form.site_contact_name}  onChange={set('site_contact_name')} />
+            <FormField label="Phone" value={form.site_contact_phone} onChange={set('site_contact_phone')} />
+            <FormField label="Email" value={form.site_contact_email} onChange={set('site_contact_email')} type="email" />
+          </div>
+        </div>
+        {err && <div style={s.modalErr}>{err}</div>}
+        <div style={s.modalFoot}>
+          <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" style={{ ...s.btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+            {saving ? 'Adding…' : 'Add site'}
           </button>
         </div>
       </div>
