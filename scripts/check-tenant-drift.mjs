@@ -344,6 +344,10 @@ const KNOWN_LEGACY_ANON = {
     'public.timesheet_locks', 'public.timesheets', 'public.toolbox_talks',
     // security_invoker views — RLS enforced on underlying tables (see comment above)
     'app_data.field_managers', 'app_data.field_people', 'app_data.field_sites',
+    // EQ Service security_invoker=on views (0127 — SELECT FROM app_data.<table>): the
+    // base app_data tables have RLS on with tenant_id policies; invoker-rights reads are
+    // tenant-gated. Views can never have relrowsecurity=true — this is not a real exposure.
+    'service.assets', 'service.customers', 'service.sites',
   ]),
   ehowgjardagevnrluult: new Set([
     // security_invoker views — RLS enforced on underlying tables (see comment above)
