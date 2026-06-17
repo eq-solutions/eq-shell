@@ -1,18 +1,14 @@
-// CustomersPage — Tabbed Customers / Sites / Contacts view
+// CustomersPage — 3-column Finder-style view
 // Route: /:tenant/customers
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pencil, X } from 'lucide-react';
-import { Table, type TableColumn } from '@eq-solutions/ui';
+import { useCallback, useEffect, useState } from 'react';
+import { Pencil, X, ChevronRight, Search, Building2 } from 'lucide-react';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
-import { entityActions } from '../lib/entityActions';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
-
-type Tab = 'customers' | 'sites' | 'contacts';
 
 interface CustomerItem {
   id: string;
@@ -24,29 +20,24 @@ interface CustomerItem {
   contact_count: number;
 }
 
-interface SiteItem {
+interface DetailSite {
   id: string;
   name: string;
   kind: string | null;
   code: string | null;
   suburb: string | null;
   state: string | null;
-  customer_id: string | null;
   contact: { name: string; phone: string | null; email: string | null } | null;
-  site_contact_name: string | null;
-  site_contact_phone: string | null;
-  site_contact_email: string | null;
 }
 
-interface ContactItem {
+interface DetailContact {
   id: string;
   name: string;
   first_name: string | null;
   last_name: string | null;
-  position: string | null;
+  role: string | null;
   email: string | null;
   phone: string | null;
-  customer_id: string | null;
 }
 
 interface CustomerDetail {
@@ -58,14 +49,13 @@ interface CustomerDetail {
   active: boolean;
   phone: string | null;
   email: string | null;
-  sites: { id: string; name: string; kind: string | null; suburb: string | null; state: string | null; contact: { name: string; phone: string | null; email: string | null } | null }[];
-  contacts: { id: string; name: string; role: string | null; email: string | null; phone: string | null }[];
+  sites: DetailSite[];
+  contacts: DetailContact[];
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 const AV_COLOURS = ['#3DA8D8','#8B5CF6','#F59E0B','#10B981','#EF4444','#6366F1','#EC4899','#14B8A6'];
-
 function avatarColour(id: string): string {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
@@ -74,33 +64,14 @@ function avatarColour(id: string): string {
 function initials(name: string): string {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 }
-function personName(first: string | null, last: string | null): string {
-  return [first, last].filter(Boolean).join(' ') || 'Unnamed';
-}
 
 // ─── API ─────────────────────────────────────────────────────────────────────
-
-interface CrmListResp {
-  ok: boolean;
-  customers?: CustomerItem[];
-  unassigned?: { sites: number; contacts: number };
-  error?: string;
-}
-interface EntityResp {
-  ok: boolean;
-  rows?: Record<string, unknown>[];
-  error?: string;
-}
 
 async function crmFetch(params: Record<string, string>): Promise<Response> {
   const qs = new URLSearchParams(params);
   return fetch(`/.netlify/functions/crm-customers?${qs}`, { credentials: 'include' });
 }
-async function entityFetch(entity: string, extra: Record<string, string> = {}): Promise<EntityResp> {
-  const qs = new URLSearchParams({ entity, limit: '1000', offset: '0', ...extra });
-  const res = await fetch(`/.netlify/functions/entity-rows?${qs}`, { credentials: 'include' });
-  return res.json() as Promise<EntityResp>;
-}
+
 async function crmWrite(body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch('/.netlify/functions/crm-write', {
     method: 'POST',
@@ -111,46 +82,10 @@ async function crmWrite(body: Record<string, unknown>): Promise<{ ok: boolean; e
   return res.json() as Promise<{ ok: boolean; error?: string }>;
 }
 
-function mapSite(row: Record<string, unknown>): SiteItem {
-  const contactName = (row['site_contact_name'] as string | null) ?? null;
-  return {
-    id:                 String(row['site_id'] ?? row['id'] ?? ''),
-    name:               (row['name']          as string | null) ?? 'Unnamed site',
-    kind:               (row['site_type']      as string | null) ?? null,
-    code:               (row['code']           as string | null) ?? null,
-    suburb:             (row['suburb']         as string | null) ?? null,
-    state:              (row['state']          as string | null) ?? null,
-    customer_id:        (row['customer_id']    as string | null) ?? null,
-    site_contact_name:  contactName,
-    site_contact_phone: (row['site_contact_phone'] as string | null) ?? null,
-    site_contact_email: (row['site_contact_email'] as string | null) ?? null,
-    contact: contactName
-      ? { name: contactName, phone: (row['site_contact_phone'] as string | null) ?? null, email: (row['site_contact_email'] as string | null) ?? null }
-      : null,
-  };
-}
-function mapContact(row: Record<string, unknown>): ContactItem {
-  const first = (row['first_name'] as string | null) ?? null;
-  const last  = (row['last_name']  as string | null) ?? null;
-  return {
-    id:          String(row['contact_id'] ?? row['id'] ?? ''),
-    name:        [first, last].filter(Boolean).join(' ') || 'Unnamed',
-    first_name:  first,
-    last_name:   last,
-    position:    (row['position']     as string | null) ?? null,
-    email:       (row['email']        as string | null) ?? null,
-    phone:       ((row['mobile_phone'] ?? row['work_phone']) as string | null) ?? null,
-    customer_id: (row['customer_id']  as string | null) ?? null,
-  };
-}
-
 // ─── SHARED FORM FIELD ────────────────────────────────────────────────────────
 
 function FormField({ label, value, onChange, type = 'text' }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
+  label: string; value: string; onChange: (v: string) => void; type?: string;
 }) {
   return (
     <div style={{ marginBottom: 12 }}>
@@ -165,171 +100,42 @@ function FormField({ label, value, onChange, type = 'text' }: {
   );
 }
 
-// ─── COLUMN DEFINITIONS ───────────────────────────────────────────────────────
-
-const CUSTOMER_COLS: TableColumn<CustomerItem>[] = [
-  {
-    key: 'name',
-    header: 'Company',
-    sortAccessor: (c) => c.name,
-    render: (c) => (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 7, background: avatarColour(c.id), color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          {initials(c.name)}
-        </div>
-        <span style={{ fontWeight: 700, color: '#1A1A2E', fontSize: 13 }}>{c.name}</span>
-      </div>
-    ),
-  },
-  {
-    key: 'group',
-    header: 'Group',
-    sortAccessor: (c) => c.group,
-    render: (c) => <span style={{ color: '#64748B' }}>{c.group ?? '—'}</span>,
-  },
-  {
-    key: 'state',
-    header: 'State',
-    sortAccessor: (c) => c.state,
-    render: (c) => <span style={{ color: '#64748B' }}>{c.state ?? '—'}</span>,
-  },
-  {
-    key: 'site_count',
-    header: 'Sites',
-    align: 'center',
-    sortAccessor: (c) => c.site_count,
-    render: (c) =>
-      c.site_count > 0
-        ? <span style={{ background: 'rgba(61,168,216,0.1)', color: '#2986B4', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, display: 'inline-block' }}>{c.site_count}</span>
-        : <span style={{ color: '#CBD5E1' }}>—</span>,
-  },
-  {
-    key: 'contact_count',
-    header: 'Contacts',
-    align: 'center',
-    sortAccessor: (c) => c.contact_count,
-    render: (c) =>
-      c.contact_count > 0
-        ? <span style={{ background: 'rgba(61,168,216,0.1)', color: '#2986B4', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, display: 'inline-block' }}>{c.contact_count}</span>
-        : <span style={{ color: '#CBD5E1' }}>—</span>,
-  },
-  {
-    key: 'status',
-    header: 'Status',
-    sortAccessor: (c) => (c.active ? 'Active' : 'Inactive'),
-    render: (c) => (
-      <span style={c.active
-        ? { background: '#DCFCE7', color: '#15803D', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, display: 'inline-block' }
-        : { background: '#F1F5F9', color: '#64748B', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, display: 'inline-block' }}>
-        {c.active ? 'Active' : 'Inactive'}
-      </span>
-    ),
-  },
-];
-
-const SITE_COLS_BASE: TableColumn<SiteItem>[] = [
-  {
-    key: 'name',
-    header: 'Site name',
-    sortAccessor: (site) => site.name,
-    render: (site) => <span style={{ fontWeight: 700, color: '#1A1A2E', fontSize: 13 }}>{site.name}</span>,
-  },
-  {
-    key: 'kind',
-    header: 'Type',
-    sortAccessor: (site) => site.kind,
-    render: (site) => <span style={{ color: '#64748B' }}>{site.kind ?? '—'}</span>,
-  },
-  {
-    key: 'suburb',
-    header: 'Suburb',
-    sortAccessor: (site) => site.suburb,
-    render: (site) => <span style={{ color: '#64748B' }}>{site.suburb ?? '—'}</span>,
-  },
-  {
-    key: 'state',
-    header: 'State',
-    sortAccessor: (site) => site.state,
-    render: (site) => <span style={{ color: '#64748B' }}>{site.state ?? '—'}</span>,
-  },
-];
-
-const CONTACT_COLS_BASE: TableColumn<ContactItem>[] = [
-  {
-    key: 'name',
-    header: 'Name',
-    sortAccessor: (c) => personName(c.first_name, c.last_name),
-    render: (c) => {
-      const name = personName(c.first_name, c.last_name);
-      return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 28, height: 28, borderRadius: '50%', background: avatarColour(c.id), color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {initials(name)}
-          </div>
-          <span style={{ fontWeight: 700, color: '#1A1A2E', fontSize: 13 }}>{name}</span>
-        </div>
-      );
-    },
-  },
-  {
-    key: 'position',
-    header: 'Role',
-    sortAccessor: (c) => c.position,
-    render: (c) => <span style={{ color: '#64748B' }}>{c.position ?? '—'}</span>,
-  },
-  {
-    key: 'phone',
-    header: 'Phone',
-    render: (c) => <span style={{ color: '#475569', fontFamily: 'monospace', fontSize: 11 }}>{c.phone ?? '—'}</span>,
-  },
-  {
-    key: 'email',
-    header: 'Email',
-    render: (c) => <span style={{ color: '#94A3B8', fontSize: 11 }}>{c.email ?? '—'}</span>,
-  },
-];
-
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 
 export function CustomersPage() {
-  const [tab,       setTab]       = useState<Tab>('customers');
-  const [customers, setCustomers] = useState<CustomerItem[]>([]);
-  const [sites,     setSites]     = useState<SiteItem[]>([]);
-  const [contacts,  setContacts]  = useState<ContactItem[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState<string | null>(null);
-  const [selId,     setSelId]     = useState<string | null>(null);
-  const [detail,    setDetail]    = useState<CustomerDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [reload,    setReload]    = useState(0);
+  const [customers,     setCustomers]     = useState<CustomerItem[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [error,         setError]         = useState<string | null>(null);
+  const [search,        setSearch]        = useState('');
+  const [reload,        setReload]        = useState(0);
 
-  const [editContact, setEditContact] = useState<ContactItem | null>(null);
-  const [editSite,    setEditSite]    = useState<SiteItem | null>(null);
+  const [selCustomerId, setSelCustomerId] = useState<string | null>(null);
+  const [selSiteId,     setSelSiteId]     = useState<string | null>(null);
+  const [detail,        setDetail]        = useState<CustomerDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailReload,  setDetailReload]  = useState(0);
+
+  const [editCustomer, setEditCustomer] = useState<CustomerDetail | null>(null);
+  const [editSite,     setEditSite]     = useState<DetailSite | null>(null);
+  const [editContact,  setEditContact]  = useState<DetailContact | null>(null);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([
-      crmFetch({ action: 'list' }).then((r) => r.json() as Promise<CrmListResp>),
-      entityFetch('site'),
-      entityFetch('contact'),
-    ])
-      .then(([custResp, siteResp, contResp]) => {
-        if (!custResp.ok) { setError(custResp.error ?? 'Failed to load customers'); return; }
-        setCustomers(custResp.customers ?? []);
-        if (siteResp.ok) setSites((siteResp.rows ?? []).map(mapSite));
-        if (contResp.ok) setContacts((contResp.rows ?? []).map(mapContact));
+    crmFetch({ action: 'list' })
+      .then((r) => r.json() as Promise<{ ok: boolean; customers?: CustomerItem[]; error?: string }>)
+      .then((r) => {
+        if (!r.ok) { setError(r.error ?? 'Failed to load'); return; }
+        setCustomers(r.customers ?? []);
       })
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
   }, [reload]);
 
-  const handleMutated = useCallback(() => setReload((n) => n + 1), []);
-
   useEffect(() => {
-    if (!selId || tab !== 'customers') { setDetail(null); return; }
+    if (!selCustomerId) { setDetail(null); return; }
     setDetailLoading(true);
-    crmFetch({ action: 'detail', id: selId })
-      .then((r) => r.json() as Promise<{ ok: boolean; customer?: CustomerDetail; sites?: CustomerDetail['sites']; contacts?: CustomerDetail['contacts'] }>)
+    crmFetch({ action: 'detail', id: selCustomerId })
+      .then((r) => r.json() as Promise<{ ok: boolean; customer?: CustomerDetail; sites?: DetailSite[]; contacts?: DetailContact[] }>)
       .then((r) => {
         if (r.ok && r.customer) {
           setDetail({ ...r.customer, sites: r.sites ?? [], contacts: r.contacts ?? [] });
@@ -337,97 +143,232 @@ export function CustomersPage() {
       })
       .catch(() => {})
       .finally(() => setDetailLoading(false));
-  }, [selId, tab]);
+  }, [selCustomerId, detailReload]);
 
-  const selectRow = useCallback((id: string) => {
-    setSelId((prev) => (prev === id ? null : id));
+  const handleMutated = useCallback(() => {
+    setReload((n) => n + 1);
+    setDetailReload((n) => n + 1);
   }, []);
 
-  const switchTab = useCallback((t: Tab) => {
-    setTab(t);
-    setSelId(null);
-    setDetail(null);
-  }, []);
+  const filtered = search
+    ? customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
+    : customers;
 
-  const panelOpen = selId !== null && tab === 'customers';
+  const selSite   = selSiteId ? (detail?.sites.find((s) => s.id === selSiteId) ?? null) : null;
+  const col2Open  = selCustomerId !== null;
 
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
       <div style={s.page}>
 
-        {/* Zone A — header */}
+        {/* Header */}
         <div style={s.ph}>
-          <div>
-            <h1 style={s.title}>Customers</h1>
-            <p style={s.subtitle}>
-              {loading ? 'Loading…' : `${customers.length} customers · ${sites.length} sites · ${contacts.length} contacts`}
-            </p>
-          </div>
+          <h1 style={s.title}>Customers</h1>
+          <p style={s.subtitle}>
+            {loading ? 'Loading…' : `${customers.length} customer${customers.length === 1 ? '' : 's'}`}
+          </p>
         </div>
 
-        {/* Zone B — tab bar */}
-        <div style={s.tabBar}>
-          {([
-            { key: 'customers' as Tab, label: 'Customers', count: customers.length },
-            { key: 'sites'     as Tab, label: 'Sites',     count: sites.length     },
-            { key: 'contacts'  as Tab, label: 'Contacts',  count: contacts.length  },
-          ]).map(({ key, label, count }) => (
-            <button
-              key={key}
-              type="button"
-              style={{ ...s.tab, ...(tab === key ? s.tabOn : {}) }}
-              onClick={() => switchTab(key)}
-            >
-              {label}
-              <span style={{ ...s.tabCount, ...(tab === key ? s.tabCountOn : {}) }}>{count}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
         {error ? (
-          <div style={s.empty}>
-            <p style={{ fontWeight: 700, color: '#EF4444' }}>{error}</p>
-          </div>
+          <div style={s.empty}><p style={{ color: '#EF4444' }}>{error}</p></div>
         ) : (
-          <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-            <div style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
-              {tab === 'customers' && (
-                <CustomersTab
-                  rows={customers}
-                  loading={loading}
-                  selId={selId}
-                  onSelect={selectRow}
-                  onMutated={handleMutated}
+          <div style={s.cols}>
+
+            {/* ── Column 1: Customer list ──────────────────────────────── */}
+            <div style={s.col1}>
+              <div style={s.colSearch}>
+                <Search size={13} style={{ color: '#94A3B8', flexShrink: 0 }} aria-hidden />
+                <input
+                  type="text"
+                  placeholder="Search…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={s.searchInput}
+                  aria-label="Search customers"
                 />
-              )}
-              {tab === 'sites' && (
-                <SitesTab
-                  rows={sites}
-                  loading={loading}
-                  onMutated={handleMutated}
-                  onEdit={setEditSite}
-                />
-              )}
-              {tab === 'contacts' && (
-                <ContactsTab
-                  rows={contacts}
-                  loading={loading}
-                  onMutated={handleMutated}
-                  onEdit={setEditContact}
-                />
-              )}
+                {search && (
+                  <button type="button" style={s.clearBtn} onClick={() => setSearch('')} aria-label="Clear search">
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+              <div style={s.colBody}>
+                {loading ? (
+                  <div style={s.colEmpty}>Loading…</div>
+                ) : filtered.length === 0 ? (
+                  <div style={s.colEmpty}>No customers found</div>
+                ) : (
+                  filtered.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      style={{ ...s.custRow, ...(selCustomerId === c.id ? s.custRowSel : {}), opacity: c.active ? 1 : 0.5 }}
+                      onClick={() => {
+                        if (selCustomerId === c.id) { setSelCustomerId(null); setSelSiteId(null); }
+                        else { setSelCustomerId(c.id); setSelSiteId(null); }
+                      }}
+                    >
+                      <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>
+                        {initials(c.name)}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={s.custName}>{c.name}</div>
+                        <div style={s.custMeta}>
+                          {[
+                            c.site_count    > 0 ? `${c.site_count} site${c.site_count === 1 ? '' : 's'}` : null,
+                            c.contact_count > 0 ? `${c.contact_count} contact${c.contact_count === 1 ? '' : 's'}` : null,
+                            c.group,
+                          ].filter(Boolean).join(' · ')}
+                        </div>
+                      </div>
+                      {selCustomerId === c.id && (
+                        <ChevronRight size={13} style={{ color: '#3DA8D8', flexShrink: 0 }} aria-hidden />
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
-            {/* Split panel — customers tab only */}
-            <div style={{ ...s.pw, ...(panelOpen ? s.pwOpen : {}) }}>
-              <div style={s.pi}>
-                {selId && (
-                  <CustomerPanel
-                    detail={detail}
-                    loading={detailLoading}
-                    onClose={() => setSelId(null)}
-                    onSaved={handleMutated}
-                  />
+
+            {/* ── Right area: columns 2 + 3 ───────────────────────────── */}
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+
+              {/* Column 2: Sites */}
+              <div style={{ ...s.col2, ...(col2Open ? s.col2Open : {}) }}>
+                <div style={s.col2Inner}>
+                  <div style={s.colHead}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={s.col2Title}>{detail?.name ?? ' '}</div>
+                      <div style={s.col2Sub}>
+                        {detailLoading ? 'Loading…'
+                          : detail ? `${detail.sites.length} site${detail.sites.length === 1 ? '' : 's'}`
+                          : ''}
+                      </div>
+                    </div>
+                    {detail && (
+                      <button
+                        type="button"
+                        style={s.editBtn}
+                        onClick={() => setEditCustomer(detail)}
+                        aria-label="Edit customer"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                    )}
+                  </div>
+                  <div style={s.colBody}>
+                    {detailLoading ? (
+                      <div style={s.colEmpty}>Loading…</div>
+                    ) : !detail ? null : detail.sites.length === 0 ? (
+                      <div style={s.colEmpty}>No sites on file</div>
+                    ) : (
+                      detail.sites.map((site) => (
+                        <button
+                          key={site.id}
+                          type="button"
+                          style={{ ...s.siteRow, ...(selSiteId === site.id ? s.siteRowSel : {}) }}
+                          onClick={() => setSelSiteId((prev) => (prev === site.id ? null : site.id))}
+                        >
+                          <Building2
+                            size={13}
+                            style={{ color: selSiteId === site.id ? '#3DA8D8' : '#94A3B8', flexShrink: 0, marginTop: 1 }}
+                            aria-hidden
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={s.siteName}>{site.name}</div>
+                            {(site.suburb || site.state) && (
+                              <div style={s.siteMeta}>{[site.suburb, site.state].filter(Boolean).join(', ')}</div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            style={s.editBtnSm}
+                            onClick={(e) => { e.stopPropagation(); setEditSite(site); }}
+                            aria-label={`Edit ${site.name}`}
+                          >
+                            <Pencil size={11} />
+                          </button>
+                          {selSiteId === site.id && (
+                            <ChevronRight size={12} style={{ color: '#3DA8D8', flexShrink: 0 }} aria-hidden />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Column 3: Contacts */}
+              <div style={s.col3}>
+                {!selCustomerId ? (
+                  <div style={s.col3Empty}>
+                    <p style={{ color: '#94A3B8', fontSize: 13 }}>Select a customer to view sites and contacts</p>
+                  </div>
+                ) : (
+                  <>
+                    <div style={s.colHead}>
+                      <div>
+                        <div style={s.col2Title}>
+                          {selSite ? selSite.name : 'Contacts'}
+                        </div>
+                        {selSite && (
+                          <div style={s.col2Sub}>
+                            {detail ? `${detail.contacts.length} customer contact${detail.contacts.length === 1 ? '' : 's'}` : ''}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={s.colBody}>
+                      {detailLoading ? (
+                        <div style={s.colEmpty}>Loading…</div>
+                      ) : !detail ? null : (
+                        <>
+                          {selSite?.contact && (
+                            <>
+                              <div style={s.sectionLabel}>Site contact</div>
+                              <div style={s.contactRow}>
+                                <div style={{ ...s.av, background: '#3DA8D8', flexShrink: 0 }}>
+                                  {initials(selSite.contact.name)}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={s.contactName}>{selSite.contact.name}</div>
+                                  {selSite.contact.phone && <div style={s.contactMeta}>{selSite.contact.phone}</div>}
+                                  {selSite.contact.email && <div style={s.contactMeta}>{selSite.contact.email}</div>}
+                                </div>
+                              </div>
+                              <div style={s.sectionLabel}>Customer contacts</div>
+                            </>
+                          )}
+
+                          {detail.contacts.length === 0 ? (
+                            <div style={s.colEmpty}>No contacts on file</div>
+                          ) : (
+                            detail.contacts.map((c) => (
+                              <div key={c.id} style={s.contactRow}>
+                                <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>
+                                  {initials(c.name)}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={s.contactName}>{c.name}</div>
+                                  {c.role  && <div style={s.contactRole}>{c.role}</div>}
+                                  {c.phone && <div style={s.contactMeta}>{c.phone}</div>}
+                                  {c.email && <div style={s.contactMeta}>{c.email}</div>}
+                                </div>
+                                <button
+                                  type="button"
+                                  style={s.editBtnSm}
+                                  onClick={() => setEditContact(c)}
+                                  aria-label={`Edit ${c.name}`}
+                                >
+                                  <Pencil size={11} />
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -435,12 +376,11 @@ export function CustomersPage() {
         )}
       </div>
 
-      {/* Edit modals — rendered outside the scroll container */}
-      {editContact && (
-        <EditContactModal
-          contact={editContact}
-          onClose={() => setEditContact(null)}
-          onSaved={() => { setEditContact(null); handleMutated(); }}
+      {editCustomer && (
+        <EditCustomerModal
+          customer={editCustomer}
+          onClose={() => setEditCustomer(null)}
+          onSaved={() => { setEditCustomer(null); handleMutated(); }}
         />
       )}
       {editSite && (
@@ -450,318 +390,148 @@ export function CustomersPage() {
           onSaved={() => { setEditSite(null); handleMutated(); }}
         />
       )}
+      {editContact && (
+        <EditContactModal
+          contact={editContact}
+          onClose={() => setEditContact(null)}
+          onSaved={() => { setEditContact(null); handleMutated(); }}
+        />
+      )}
     </HubLayout>
   );
 }
 
-// ─── CUSTOMERS TAB ───────────────────────────────────────────────────────────
+// ─── EDIT CUSTOMER MODAL ─────────────────────────────────────────────────────
 
-function CustomersTab({ rows, loading, selId, onSelect, onMutated }: {
-  rows: CustomerItem[];
-  loading: boolean;
-  selId: string | null;
-  onSelect: (id: string) => void;
-  onMutated: () => void;
+function EditCustomerModal({ customer, onClose, onSaved }: {
+  customer: CustomerDetail; onClose: () => void; onSaved: () => void;
 }) {
-  return (
-    <Table
-      columns={CUSTOMER_COLS}
-      rows={rows}
-      getRowId={(c) => c.id}
-      slicers={[
-        { key: 'all',    label: 'All' },
-        { key: 'active', label: 'Active only', filter: (c) => c.active },
-      ]}
-      globalSearch={{ placeholder: 'Search customers…' }}
-      columnToggle
-      exportable={{ filename: 'customers.csv' }}
-      rowIndicator={(c) => c.active ? null : { color: 'var(--eq-gray-400)' }}
-      loading={loading}
-      emptyMessage="No customers found"
-      onRowClick={(c) => onSelect(c.id)}
-      rowStyle={(c) => c.id === selId ? { background: '#e1f1fb' } : undefined}
-      pagination={{ pageSize: 50 }}
-      summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
-      onArchive={async (rows) => { await entityActions('customer', rows.map((c) => c.id), 'archive'); onMutated(); }}
-      archiveConfirm={{ description: (n) => `${n} customer${n === 1 ? '' : 's'} will be set to inactive.` }}
-      onDelete={async (rows) => { await entityActions('customer', rows.map((c) => c.id), 'delete'); onMutated(); }}
-      deleteConfirm={{ description: (n) => `${n} customer${n === 1 ? '' : 's'} and all linked contacts will be permanently removed.` }}
-      onActionError={(action, err) => console.error(`[customers] bulk ${action} failed`, err)}
-    />
-  );
-}
-
-// ─── SITES TAB ───────────────────────────────────────────────────────────────
-
-function SitesTab({ rows, loading, onMutated, onEdit }: {
-  rows: SiteItem[];
-  loading: boolean;
-  onMutated: () => void;
-  onEdit: (site: SiteItem) => void;
-}) {
-  const columns: TableColumn<SiteItem>[] = [
-    ...SITE_COLS_BASE,
-    {
-      key: 'actions',
-      header: '',
-      render: (site) => (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onEdit(site); }}
-          style={s.editBtn}
-          aria-label={`Edit ${site.name}`}
-        >
-          <Pencil size={13} />
-        </button>
-      ),
-    },
-  ];
-  return (
-    <Table
-      columns={columns}
-      rows={rows}
-      getRowId={(site) => site.id}
-      globalSearch={{ placeholder: 'Search sites…' }}
-      columnToggle
-      exportable={{ filename: 'sites.csv' }}
-      loading={loading}
-      emptyMessage="No sites found"
-      onArchive={async (rows) => { await entityActions('site', rows.map((s) => s.id), 'archive'); onMutated(); }}
-      archiveConfirm={{ description: (n) => `${n} site${n === 1 ? '' : 's'} will be set to inactive.` }}
-      onDelete={async (rows) => { await entityActions('site', rows.map((s) => s.id), 'delete'); onMutated(); }}
-      deleteConfirm={{ description: (n) => `${n} site${n === 1 ? '' : 's'} will be permanently removed.` }}
-      onActionError={(action, err) => console.error(`[sites] bulk ${action} failed`, err)}
-    />
-  );
-}
-
-// ─── CONTACTS TAB ─────────────────────────────────────────────────────────────
-
-function ContactsTab({ rows, loading, onMutated, onEdit }: {
-  rows: ContactItem[];
-  loading: boolean;
-  onMutated: () => void;
-  onEdit: (contact: ContactItem) => void;
-}) {
-  const columns: TableColumn<ContactItem>[] = [
-    ...CONTACT_COLS_BASE,
-    {
-      key: 'actions',
-      header: '',
-      render: (c) => (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onEdit(c); }}
-          style={s.editBtn}
-          aria-label={`Edit ${c.name}`}
-        >
-          <Pencil size={13} />
-        </button>
-      ),
-    },
-  ];
-  return (
-    <Table
-      columns={columns}
-      rows={rows}
-      getRowId={(c) => c.id}
-      globalSearch={{ placeholder: 'Search contacts…' }}
-      columnToggle
-      exportable={{ filename: 'contacts.csv' }}
-      loading={loading}
-      emptyMessage="No contacts found"
-      onArchive={async (rows) => { await entityActions('contact', rows.map((c) => c.id), 'archive'); onMutated(); }}
-      archiveConfirm={{ description: (n) => `${n} contact${n === 1 ? '' : 's'} will be set to inactive.` }}
-      onDelete={async (rows) => { await entityActions('contact', rows.map((c) => c.id), 'delete'); onMutated(); }}
-      deleteConfirm={{ description: (n) => `${n} contact${n === 1 ? '' : 's'} will be permanently removed.` }}
-      onActionError={(action, err) => console.error(`[contacts] bulk ${action} failed`, err)}
-    />
-  );
-}
-
-// ─── CUSTOMER SPLIT PANEL ─────────────────────────────────────────────────────
-
-function CustomerPanel({ detail, loading, onClose, onSaved }: {
-  detail: CustomerDetail | null;
-  loading: boolean;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [form, setForm] = useState({ company_name: '', email: '', primary_phone: '', suburb: '', state: '' });
+  const [form, setForm] = useState({
+    company_name:  customer.name   ?? '',
+    email:         customer.email  ?? '',
+    primary_phone: customer.phone  ?? '',
+    suburb:        customer.suburb ?? '',
+    state:         customer.state  ?? '',
+  });
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const prevId = useRef<string | null>(null);
+  const [err,    setErr]    = useState<string | null>(null);
+  const set = (f: keyof typeof form) => (v: string) => setForm((p) => ({ ...p, [f]: v }));
 
-  useEffect(() => {
-    if (detail && detail.id !== prevId.current) {
-      prevId.current = detail.id;
-      setForm({
-        company_name:  detail.name    ?? '',
-        email:         detail.email   ?? '',
-        primary_phone: detail.phone   ?? '',
-        suburb:        detail.suburb  ?? '',
-        state:         detail.state   ?? '',
-      });
-      setIsEditing(false);
-      setSaveError(null);
-    }
-  }, [detail]);
-
-  const saveCustomer = async () => {
-    if (!detail) return;
-    setSaving(true);
-    setSaveError(null);
-    const res = await crmWrite({
-      action: 'update_customer',
-      id: detail.id,
-      company_name:  form.company_name,
-      email:         form.email,
-      primary_phone: form.primary_phone,
-      suburb:        form.suburb,
-      state:         form.state,
-    });
+  const save = async () => {
+    setSaving(true); setErr(null);
+    const res = await crmWrite({ action: 'update_customer', id: customer.id, ...form });
     setSaving(false);
-    if (!res.ok) { setSaveError(res.error ?? 'Save failed'); return; }
-    setIsEditing(false);
+    if (!res.ok) { setErr(res.error ?? 'Save failed'); return; }
     onSaved();
   };
 
-  const set = (field: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [field]: v }));
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHead}>
+          <span style={s.modalTitle}>Edit customer</span>
+          <button type="button" style={s.pcls} onClick={onClose} aria-label="Close"><X size={14} /></button>
+        </div>
+        <div style={s.modalBody}>
+          <FormField label="Company name"  value={form.company_name}  onChange={set('company_name')} />
+          <FormField label="Email"         value={form.email}         onChange={set('email')}         type="email" />
+          <FormField label="Phone"         value={form.primary_phone} onChange={set('primary_phone')} />
+          <FormField label="Suburb"        value={form.suburb}        onChange={set('suburb')} />
+          <FormField label="State"         value={form.state}         onChange={set('state')} />
+        </div>
+        {err && <div style={s.modalErr}>{err}</div>}
+        <div style={s.modalFoot}>
+          <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" style={{ ...s.btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── EDIT SITE MODAL ──────────────────────────────────────────────────────────
+
+function EditSiteModal({ site, onClose, onSaved }: {
+  site: DetailSite; onClose: () => void; onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    name:               site.name           ?? '',
+    code:               site.code           ?? '',
+    suburb:             site.suburb         ?? '',
+    state:              site.state          ?? '',
+    site_contact_name:  site.contact?.name  ?? '',
+    site_contact_phone: site.contact?.phone ?? '',
+    site_contact_email: site.contact?.email ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [err,    setErr]    = useState<string | null>(null);
+  const set = (f: keyof typeof form) => (v: string) => setForm((p) => ({ ...p, [f]: v }));
+
+  const save = async () => {
+    if (!form.name.trim()) { setErr('Site name is required'); return; }
+    setSaving(true); setErr(null);
+    const res = await crmWrite({ action: 'update_site', id: site.id, ...form });
+    setSaving(false);
+    if (!res.ok) { setErr(res.error ?? 'Save failed'); return; }
+    onSaved();
+  };
 
   return (
-    <>
-      <div style={s.phead}>
-        {detail && (
-          <div style={{ width: 36, height: 36, borderRadius: 8, background: avatarColour(detail.id), color: 'white', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {initials(detail.name)}
-          </div>
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={s.pname}>{detail?.name ?? ' '}</div>
-          <div style={s.prole}>{detail?.group ?? ' '}</div>
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHead}>
+          <span style={s.modalTitle}>Edit site</span>
+          <button type="button" style={s.pcls} onClick={onClose} aria-label="Close"><X size={14} /></button>
         </div>
-        <button type="button" style={s.pcls} onClick={onClose} aria-label="Close panel">
-          <X size={14} />
-        </button>
-      </div>
-
-      <div style={s.pbody}>
-        {loading ? (
-          <div style={{ color: '#94A3B8', fontSize: 12, padding: '12px 0' }}>Loading…</div>
-        ) : detail ? (
-          isEditing ? (
-            <>
-              <FormField label="Company name" value={form.company_name} onChange={set('company_name')} />
-              <FormField label="Email"        value={form.email}        onChange={set('email')}        type="email" />
-              <FormField label="Phone"        value={form.primary_phone} onChange={set('primary_phone')} />
-              <FormField label="Suburb"       value={form.suburb}       onChange={set('suburb')} />
-              <FormField label="State"        value={form.state}        onChange={set('state')} />
-              {saveError && <div style={{ color: '#EF4444', fontSize: 11, marginTop: 4 }}>{saveError}</div>}
-            </>
-          ) : (
-            <>
-              <PField label="Status"    value={detail.active ? 'Active' : 'Inactive'} />
-              {detail.state  && <PField label="State"  value={detail.state} />}
-              {detail.suburb && <PField label="Suburb" value={detail.suburb} />}
-              {detail.phone  && <PField label="Phone"  value={detail.phone} />}
-              {detail.email  && <PField label="Email"  value={detail.email} />}
-
-              <div style={s.psec}>Sites ({detail.sites.length})</div>
-              {detail.sites.length === 0
-                ? <p style={s.emptyNote}>No sites</p>
-                : detail.sites.map((site) => (
-                  <div key={site.id} style={s.detailCard}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1A1A2E' }}>{site.name}</div>
-                    {(site.suburb || site.state) && (
-                      <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
-                        {[site.suburb, site.state].filter(Boolean).join(', ')}
-                      </div>
-                    )}
-                    {site.contact && (
-                      <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>
-                        {site.contact.name}
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-              <div style={s.psec}>Contacts ({detail.contacts.length})</div>
-              {detail.contacts.length === 0
-                ? <p style={s.emptyNote}>No contacts</p>
-                : detail.contacts.map((c) => (
-                  <div key={c.id} style={s.detailCard}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1A1A2E' }}>{c.name}</div>
-                    {c.role  && <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>{c.role}</div>}
-                    {c.phone && <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{c.phone}</div>}
-                    {c.email && <div style={{ fontSize: 11, color: '#94A3B8' }}>{c.email}</div>}
-                  </div>
-                ))}
-            </>
-          )
-        ) : null}
-      </div>
-
-      <div style={s.pfoot}>
-        {isEditing ? (
-          <>
-            <button
-              type="button"
-              style={{ ...s.btnSecondary, flex: 1, justifyContent: 'center' }}
-              onClick={() => { setIsEditing(false); setSaveError(null); }}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center', opacity: saving ? 0.6 : 1 }}
-              onClick={saveCustomer}
-              disabled={saving}
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center' }}
-            onClick={() => setIsEditing(true)}
-            disabled={!detail || loading}
-          >
-            Edit customer
+        <div style={s.modalBody}>
+          <FormField label="Site name" value={form.name}   onChange={set('name')} />
+          <FormField label="Code"      value={form.code}   onChange={set('code')} />
+          <FormField label="Suburb"    value={form.suburb} onChange={set('suburb')} />
+          <FormField label="State"     value={form.state}  onChange={set('state')} />
+          <div style={{ borderTop: '1px solid #E2E8F0', margin: '12px 0', paddingTop: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+              Site contact
+            </div>
+            <FormField label="Name"  value={form.site_contact_name}  onChange={set('site_contact_name')} />
+            <FormField label="Phone" value={form.site_contact_phone} onChange={set('site_contact_phone')} />
+            <FormField label="Email" value={form.site_contact_email} onChange={set('site_contact_email')} type="email" />
+          </div>
+        </div>
+        {err && <div style={s.modalErr}>{err}</div>}
+        <div style={s.modalFoot}>
+          <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" style={{ ...s.btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
           </button>
-        )}
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 
 // ─── EDIT CONTACT MODAL ───────────────────────────────────────────────────────
 
 function EditContactModal({ contact, onClose, onSaved }: {
-  contact: ContactItem;
-  onClose: () => void;
-  onSaved: () => void;
+  contact: DetailContact; onClose: () => void; onSaved: () => void;
 }) {
   const [form, setForm] = useState({
-    first_name:   contact.first_name  ?? '',
-    last_name:    contact.last_name   ?? '',
-    email:        contact.email       ?? '',
-    mobile_phone: contact.phone       ?? '',
-    position:     contact.position    ?? '',
+    first_name:   contact.first_name ?? '',
+    last_name:    contact.last_name  ?? '',
+    position:     contact.role       ?? '',
+    email:        contact.email      ?? '',
+    mobile_phone: contact.phone      ?? '',
   });
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const set = (field: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [field]: v }));
+  const [err,    setErr]    = useState<string | null>(null);
+  const set = (f: keyof typeof form) => (v: string) => setForm((p) => ({ ...p, [f]: v }));
 
   const save = async () => {
-    setSaving(true);
-    setSaveError(null);
+    setSaving(true); setErr(null);
     const res = await crmWrite({ action: 'update_contact', id: contact.id, ...form });
     setSaving(false);
-    if (!res.ok) { setSaveError(res.error ?? 'Save failed'); return; }
+    if (!res.ok) { setErr(res.error ?? 'Save failed'); return; }
     onSaved();
   };
 
@@ -779,7 +549,7 @@ function EditContactModal({ contact, onClose, onSaved }: {
           <FormField label="Email"       value={form.email}        onChange={set('email')}        type="email" />
           <FormField label="Mobile"      value={form.mobile_phone} onChange={set('mobile_phone')} />
         </div>
-        {saveError && <div style={{ padding: '0 16px 8px', color: '#EF4444', fontSize: 12 }}>{saveError}</div>}
+        {err && <div style={s.modalErr}>{err}</div>}
         <div style={s.modalFoot}>
           <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
           <button type="button" style={{ ...s.btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
@@ -787,81 +557,6 @@ function EditContactModal({ contact, onClose, onSaved }: {
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── EDIT SITE MODAL ──────────────────────────────────────────────────────────
-
-function EditSiteModal({ site, onClose, onSaved }: {
-  site: SiteItem;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [form, setForm] = useState({
-    name:                site.name               ?? '',
-    code:                site.code               ?? '',
-    suburb:              site.suburb             ?? '',
-    state:               site.state              ?? '',
-    site_contact_name:   site.site_contact_name  ?? '',
-    site_contact_phone:  site.site_contact_phone ?? '',
-    site_contact_email:  site.site_contact_email ?? '',
-  });
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const set = (field: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [field]: v }));
-
-  const save = async () => {
-    if (!form.name.trim()) { setSaveError('Site name is required'); return; }
-    setSaving(true);
-    setSaveError(null);
-    const res = await crmWrite({ action: 'update_site', id: site.id, ...form });
-    setSaving(false);
-    if (!res.ok) { setSaveError(res.error ?? 'Save failed'); return; }
-    onSaved();
-  };
-
-  return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={s.modalHead}>
-          <span style={s.modalTitle}>Edit site</span>
-          <button type="button" style={s.pcls} onClick={onClose} aria-label="Close"><X size={14} /></button>
-        </div>
-        <div style={s.modalBody}>
-          <FormField label="Site name"    value={form.name}   onChange={set('name')} />
-          <FormField label="Code"         value={form.code}   onChange={set('code')} />
-          <FormField label="Suburb"       value={form.suburb} onChange={set('suburb')} />
-          <FormField label="State"        value={form.state}  onChange={set('state')} />
-          <div style={{ borderTop: '1px solid #E2E8F0', margin: '12px 0', paddingTop: 12 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
-              Site contact
-            </div>
-            <FormField label="Name"  value={form.site_contact_name}  onChange={set('site_contact_name')} />
-            <FormField label="Phone" value={form.site_contact_phone} onChange={set('site_contact_phone')} />
-            <FormField label="Email" value={form.site_contact_email} onChange={set('site_contact_email')} type="email" />
-          </div>
-        </div>
-        {saveError && <div style={{ padding: '0 16px 8px', color: '#EF4444', fontSize: 12 }}>{saveError}</div>}
-        <div style={s.modalFoot}>
-          <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
-          <button type="button" style={{ ...s.btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── SHARED SUB-COMPONENTS ────────────────────────────────────────────────────
-
-function PField({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ marginBottom: 9 }}>
-      <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600, marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#1A1A2E' }}>{value}</div>
     </div>
   );
 }
@@ -869,35 +564,60 @@ function PField({ label, value }: { label: string; value: string }) {
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
-  page:       { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: 'inherit' },
-  ph:         { padding: '16px 24px 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0 },
-  title:      { fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A2E' },
-  subtitle:   { fontSize: 11, color: '#94A3B8', marginTop: 2 },
-  tabBar:     { padding: '12px 24px 0', display: 'flex', alignItems: 'flex-end', gap: 2, borderBottom: '1px solid #E2E8F0', flexShrink: 0 },
-  tab:        { padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#64748B', cursor: 'pointer', borderBottom: '2px solid transparent', marginBottom: -1, borderRadius: '5px 5px 0 0', border: 'none', background: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit', userSelect: 'none' },
-  tabOn:      { color: '#3DA8D8', borderBottomColor: '#3DA8D8', fontWeight: 700 },
-  tabCount:   { background: '#F1F5F9', color: '#64748B', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 },
-  tabCountOn: { background: 'rgba(61,168,216,0.12)', color: '#3DA8D8' },
-  empty:      { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#94A3B8' },
-  emptyNote:  { fontSize: 11, color: '#94A3B8', fontStyle: 'italic' },
-  pw:         { width: 0, flexShrink: 0, overflow: 'hidden', transition: 'width .22s cubic-bezier(.4,0,.2,1)', borderLeft: '0px solid #E2E8F0', background: 'white' },
-  pwOpen:     { width: 320, borderLeftWidth: 1 },
-  pi:         { width: 320, height: '100%', display: 'flex', flexDirection: 'column' },
-  phead:      { padding: '14px 16px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'flex-start', gap: 10, flexShrink: 0 },
-  pname:      { fontSize: 14, fontWeight: 800, color: '#1A1A2E', lineHeight: 1.2 },
-  prole:      { fontSize: 11, color: '#64748B', marginTop: 2 },
-  pcls:       { width: 26, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  pbody:      { flex: 1, overflowY: 'auto', padding: '14px 16px' },
-  psec:       { fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '12px 0 6px' },
-  pfoot:      { padding: '10px 16px 14px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, flexShrink: 0 },
-  detailCard: { padding: '8px 10px', borderRadius: 6, border: '1px solid #E2E8F0', marginBottom: 5, background: '#FAFAFA' },
-  btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
-  btnSecondary: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
-  editBtn:    { width: 26, height: 26, borderRadius: 5, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  overlay:    { position: 'fixed', inset: 0, background: 'rgba(15,20,40,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  modal:      { background: 'white', borderRadius: 12, width: 420, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' },
-  modalHead:  { padding: '14px 16px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
-  modalTitle: { fontSize: 14, fontWeight: 700, color: '#1A1A2E' },
-  modalBody:  { flex: 1, overflowY: 'auto', padding: '16px' },
-  modalFoot:  { padding: '10px 16px 14px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 },
+  page:        { display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: 'inherit' },
+  ph:          { padding: '16px 24px 12px', flexShrink: 0, borderBottom: '1px solid #E2E8F0' },
+  title:       { fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A2E', margin: 0 },
+  subtitle:    { fontSize: 11, color: '#94A3B8', marginTop: 3, marginBottom: 0 },
+  empty:       { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+
+  cols:        { flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden' },
+
+  col1:        { width: 260, flexShrink: 0, borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  colSearch:   { padding: '9px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 },
+  searchInput: { flex: 1, fontSize: 12, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit', color: '#1A1A2E' },
+  clearBtn:    { width: 18, height: 18, borderRadius: 4, border: 'none', background: '#F1F5F9', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  colBody:     { flex: 1, overflowY: 'auto', padding: '4px 0' },
+  colEmpty:    { padding: '20px 14px', fontSize: 12, color: '#94A3B8' },
+
+  custRow:     { width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' },
+  custRowSel:  { background: '#EAF5FB' },
+  custName:    { fontSize: 12, fontWeight: 700, color: '#1A1A2E', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  custMeta:    { fontSize: 10, color: '#94A3B8', marginTop: 1 },
+
+  av:          { width: 28, height: 28, borderRadius: 7, color: 'white', fontSize: 10, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+
+  col2:        { width: 0, flexShrink: 0, overflow: 'hidden', transition: 'width .2s cubic-bezier(.4,0,.2,1)' },
+  col2Open:    { width: 240, borderRight: '1px solid #E2E8F0' },
+  col2Inner:   { width: 240, height: '100%', display: 'flex', flexDirection: 'column' },
+  colHead:     { padding: '9px 12px 8px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
+  col2Title:   { fontSize: 12, fontWeight: 700, color: '#1A1A2E', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  col2Sub:     { fontSize: 10, color: '#94A3B8', marginTop: 1 },
+
+  siteRow:     { width: '100%', display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 10px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' },
+  siteRowSel:  { background: '#EAF5FB' },
+  siteName:    { fontSize: 12, fontWeight: 600, color: '#1A1A2E', lineHeight: 1.3 },
+  siteMeta:    { fontSize: 10, color: '#94A3B8', marginTop: 1 },
+
+  editBtn:     { width: 26, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  editBtnSm:   { width: 22, height: 22, borderRadius: 5, border: '1px solid #E2E8F0', background: 'white', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+
+  col3:        { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  col3Empty:   { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' },
+
+  sectionLabel: { fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '10px 14px 4px' },
+  contactRow:   { display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', borderBottom: '1px solid #F1F5F9' },
+  contactName:  { fontSize: 12, fontWeight: 700, color: '#1A1A2E' },
+  contactRole:  { fontSize: 11, color: '#64748B', marginTop: 1 },
+  contactMeta:  { fontSize: 11, color: '#94A3B8', marginTop: 1 },
+
+  overlay:     { position: 'fixed', inset: 0, background: 'rgba(15,20,40,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  modal:       { background: 'white', borderRadius: 12, width: 420, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' },
+  modalHead:   { padding: '14px 16px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
+  modalTitle:  { fontSize: 14, fontWeight: 700, color: '#1A1A2E' },
+  modalBody:   { flex: 1, overflowY: 'auto', padding: '16px' },
+  modalErr:    { padding: '0 16px 8px', color: '#EF4444', fontSize: 12 },
+  modalFoot:   { padding: '10px 16px 14px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 },
+  pcls:        { width: 26, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  btnPrimary:  { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
+  btnSecondary:{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
 };
