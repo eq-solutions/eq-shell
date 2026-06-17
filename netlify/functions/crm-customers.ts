@@ -68,12 +68,13 @@ function mapSite(s: SiteRow) {
       : null,
   };
 }
-function mapContact(c: ContactRow) {
+function mapContact(c: ContactRow, extraCustomers: { id: string; name: string }[] = []) {
   return {
     id: c.contact_id, name: personName(c),
     first_name: c.first_name ?? null, last_name: c.last_name ?? null,
     role: c.position ?? null,
     email: c.email ?? null, phone: c.mobile_phone ?? c.work_phone ?? null,
+    extra_customers: extraCustomers,
   };
 }
 
@@ -97,7 +98,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (action === 'list') {
     const [custRes, siteRes, contactRes] = await Promise.all([
-      sb.from('customers').select('customer_id, company_name, first_name, last_name, customer_group, state, active').order('created_at', { ascending: false }),
+      sb.from('customers').select('customer_id, company_name, first_name, last_name, customer_group, state, active').order('company_name', { ascending: true, nullsFirst: false }).order('first_name', { ascending: true, nullsFirst: false }),
       sb.from('sites').select('customer_id'),
       sb.from('contacts').select('customer_id'),
     ]);
@@ -140,6 +141,32 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     if (custRes.error) return json(500, { ok: false, error: 'db_error', detail: custRes.error.message });
     if (!custRes.data) return json(404, { ok: false, error: 'not_found' });
     const c = custRes.data as CustomerRow;
+    const contactRows = (contactRes.data ?? []) as ContactRow[];
+
+    // Fetch cross-customer links (requires migration 0133 — gracefully degrades if not yet applied)
+    const crossByContact = new Map<string, { id: string; name: string }[]>();
+    try {
+      const contactIds = contactRows.map((r) => r.contact_id);
+      if (contactIds.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const xlRes = await (sb as any).from('contact_customer_links')
+          .select('contact_id, customer_id').in('contact_id', contactIds);
+        if (!xlRes.error && xlRes.data?.length > 0) {
+          const xlCustIds = [...new Set((xlRes.data as { contact_id: string; customer_id: string }[]).map((r) => r.customer_id))];
+          const xlCustRes = await sb.from('customers')
+            .select('customer_id, company_name, first_name, last_name').in('customer_id', xlCustIds as string[]);
+          const custMap = new Map(
+            ((xlCustRes.data ?? []) as CustomerRow[]).map((cr) => [cr.customer_id, customerName(cr)])
+          );
+          for (const row of xlRes.data as { contact_id: string; customer_id: string }[]) {
+            const list = crossByContact.get(row.contact_id) ?? [];
+            list.push({ id: row.customer_id, name: custMap.get(row.customer_id) ?? 'Unknown' });
+            crossByContact.set(row.contact_id, list);
+          }
+        }
+      }
+    } catch { /* migration 0133 not yet applied */ }
+
     return json(200, {
       ok: true,
       customer: {
@@ -148,7 +175,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         phone: c.primary_phone ?? c.mobile_phone ?? null, email: c.email ?? null,
       },
       sites: ((siteRes.data ?? []) as SiteRow[]).map(mapSite),
-      contacts: ((contactRes.data ?? []) as ContactRow[]).map(mapContact),
+      contacts: contactRows.map((ct) => mapContact(ct, crossByContact.get(ct.contact_id))),
     });
   }
 
@@ -160,7 +187,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(200, {
       ok: true,
       sites: ((siteRes.data ?? []) as SiteRow[]).map(mapSite),
-      contacts: ((contactRes.data ?? []) as ContactRow[]).map(mapContact),
+      contacts: ((contactRes.data ?? []) as ContactRow[]).map((c) => mapContact(c)),
     });
   }
 

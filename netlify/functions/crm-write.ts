@@ -1,5 +1,6 @@
 // POST /.netlify/functions/crm-write
-// Body: { action: 'update_customer' | 'update_contact' | 'update_site', id: string, ...fields }
+// Body: { action: 'update_customer' | 'update_contact' | 'update_site' | 'merge_customers' |
+//         'link_contact_customer' | 'unlink_contact_customer', id: string, ...fields }
 //
 // Writes CRM records to app_data via service-role client.
 // Tenant isolation enforced by matching session.tenant_id in the WHERE clause.
@@ -124,6 +125,57 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       console.error('[crm-write] update_site failed', error.message);
       return json(500, { ok: false, error: error.message });
     }
+    return json(200, { ok: true });
+  }
+
+  // ── merge_customers ────────────────────────────────────────────────────────
+  // Moves all sites + contacts from loser customer(s) to the winner, then archives losers.
+  if (action === 'merge_customers') {
+    const rawLosers = body.loser_ids;
+    if (!Array.isArray(rawLosers) || rawLosers.length === 0) {
+      return json(400, { ok: false, error: 'loser_ids_required' });
+    }
+    const losers = rawLosers.filter((x): x is string => typeof x === 'string');
+    if (losers.length === 0) return json(400, { ok: false, error: 'loser_ids_must_be_strings' });
+
+    const { error: e1 } = await sb.from('sites')
+      .update({ customer_id: id, updated_at: now })
+      .in('customer_id', losers).eq('tenant_id', tid);
+    if (e1) return json(500, { ok: false, error: e1.message });
+
+    const { error: e2 } = await sb.from('contacts')
+      .update({ customer_id: id, updated_at: now })
+      .in('customer_id', losers).eq('tenant_id', tid);
+    if (e2) return json(500, { ok: false, error: e2.message });
+
+    const { error: e3 } = await sb.from('customers')
+      .update({ active: false, updated_at: now })
+      .in('customer_id', losers).eq('tenant_id', tid);
+    if (e3) return json(500, { ok: false, error: e3.message });
+
+    return json(200, { ok: true });
+  }
+
+  // ── link_contact_customer ──────────────────────────────────────────────────
+  // Associates a contact with an additional customer (requires migration 0133).
+  if (action === 'link_contact_customer') {
+    const customerId = str(body.customer_id);
+    if (!customerId) return json(400, { ok: false, error: 'customer_id_required' });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (sb as any).from('contact_customer_links')
+      .upsert({ contact_id: id, customer_id: customerId, tenant_id: tid }, { onConflict: 'contact_id,customer_id' });
+    if (error) return json(500, { ok: false, error: error.message });
+    return json(200, { ok: true });
+  }
+
+  // ── unlink_contact_customer ────────────────────────────────────────────────
+  if (action === 'unlink_contact_customer') {
+    const customerId = str(body.customer_id);
+    if (!customerId) return json(400, { ok: false, error: 'customer_id_required' });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (sb as any).from('contact_customer_links')
+      .delete().eq('contact_id', id).eq('customer_id', customerId).eq('tenant_id', tid);
+    if (error) return json(500, { ok: false, error: error.message });
     return json(200, { ok: true });
   }
 

@@ -553,7 +553,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     const stored = typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-tab") : null;
     return (stored && STAGE_KEYS.has(stored)) ? stored : "in-progress";
   });
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => (typeof _sf.search === "string" ? _sf.search : ""));
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   // Pipeline client-side filters persist across reloads (estimator/customer/site +
@@ -890,12 +890,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   useEffect(() => {
     try {
       localStorage.setItem("eq-quotes-pipeline-filters", JSON.stringify({
+        search,
         est: estFilter, customer: customerFilter, site: siteFilter,
         expiring: expiringOnly, unsent: unsentOnly, needsJobNo: needsJobNoOnly,
         overdueFup: overdueFupOnly, stale: staleOnly,
       }));
     } catch { /* ignore */ }
-  }, [estFilter, customerFilter, siteFilter, expiringOnly, unsentOnly, needsJobNoOnly, overdueFupOnly, staleOnly]);
+  }, [search, estFilter, customerFilter, siteFilter, expiringOnly, unsentOnly, needsJobNoOnly, overdueFupOnly, staleOnly]);
 
   const openDetail = useCallback(
     async (quoteId: string) => {
@@ -2803,7 +2804,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       },
     },
     {
-      key: "_actions", header: "",
+      key: "_actions", header: "", width: 64,
       render: (q) => (
         <div className="eq-quotes__row-actions">
           <button
