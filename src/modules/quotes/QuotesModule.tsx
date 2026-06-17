@@ -7,15 +7,14 @@ import {
   STATUS_LABELS,
   ACTIVE_JOB_STATUSES,
   CLOSED_LOST_STATUSES as CLOSED_STATUSES,
-  OPEN_PIPELINE_STATUSES,
 } from "./taxonomy";
 import { QuotesSetup } from "./QuotesSetup";
 import { QuotesReports } from "./QuotesReports";
 import { QuotesCustomers } from "./QuotesCustomers";
 import { captureRpcError } from "./quoteTelemetry";
-import { Table, type TableColumn, DropdownMenu, type DropdownMenuEntry } from "@eq-solutions/ui";
+import { Table, type TableColumn, DropdownMenu } from "@eq-solutions/ui";
 import {
-  MoreHorizontal, Copy, Trash2, FileUp, Users, BarChart2, Settings,
+  MoreHorizontal, Trash2, FileUp, Users, BarChart2, Settings,
   Clock, Briefcase, CalendarClock, AlarmClock, LayoutGrid, List, SlidersHorizontal, X, Archive, Columns3,
 } from "lucide-react";
 
