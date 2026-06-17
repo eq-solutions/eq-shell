@@ -1834,43 +1834,46 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
   const handleBulkStatus = async () => {
     if (!supabase || !bulkStatus || selectedIds.size === 0) return;
     setBulkBusy(true);
+    const ids = new Set(selectedIds);
     const { error } = await supabase.rpc("eq_bulk_update_quote_status", {
-      p_quote_ids: Array.from(selectedIds),
+      p_quote_ids: Array.from(ids),
       p_new_status: bulkStatus,
       p_initials: initials.trim() || null,
     });
     setBulkBusy(false);
-    if (error) { captureRpcError("eq_bulk_update_quote_status", error, { count: selectedIds.size }); setPipelineError(error.message); return; }
+    if (error) { captureRpcError("eq_bulk_update_quote_status", error, { count: ids.size }); setPipelineError(error.message); return; }
     setSelectedIds(new Set());
     setBulkStatus("");
-    void loadQuotes(statusFilter, search);
+    setQuotes((prev) => prev.map((q) => ids.has(q.quote_id) ? { ...q, status: bulkStatus } : q));
   };
 
   const handleBulkArchive = async () => {
     if (!supabase || selectedIds.size === 0) return;
     setBulkBusy(true);
+    const ids = new Set(selectedIds);
     const { error } = await supabase.rpc("eq_bulk_update_quote_status", {
-      p_quote_ids: Array.from(selectedIds),
+      p_quote_ids: Array.from(ids),
       p_new_status: "archived",
       p_initials: initials.trim() || null,
     });
     setBulkBusy(false);
-    if (error) { captureRpcError("eq_bulk_update_quote_status", error, { count: selectedIds.size }); setPipelineError(error.message); return; }
+    if (error) { captureRpcError("eq_bulk_update_quote_status", error, { count: ids.size }); setPipelineError(error.message); return; }
     setSelectedIds(new Set());
     setBulkStatus("");
-    void loadQuotes(statusFilter, search);
+    setQuotes((prev) => prev.map((q) => ids.has(q.quote_id) ? { ...q, status: "archived" } : q));
   };
 
   const handleBulkFollowUp = async () => {
     if (!supabase || !bulkFupDate || selectedIds.size === 0) return;
     setBulkFupBusy(true);
-    await Promise.all(Array.from(selectedIds).map((id) =>
+    const ids = new Set(selectedIds);
+    await Promise.all(Array.from(ids).map((id) =>
       supabase!.rpc("eq_set_follow_up_date", { p_quote_id: id, p_follow_up_at: bulkFupDate, p_initials: initials.trim() || null })
     ));
     setBulkFupBusy(false);
     setBulkFupDate("");
     setSelectedIds(new Set());
-    void loadQuotes(statusFilter, search);
+    setQuotes((prev) => prev.map((q) => ids.has(q.quote_id) ? { ...q, follow_up_at: bulkFupDate } : q));
   };
 
   // ── PDF import ───────────────────────────────────────────────────────────
