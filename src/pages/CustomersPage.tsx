@@ -2,7 +2,7 @@
 // Route: /:tenant/customers
 
 import { useCallback, useEffect, useState } from 'react';
-import { Pencil, X, ChevronRight, Search, Building2, GitMerge, Link } from 'lucide-react';
+import { Pencil, X, ChevronRight, Search, Building2, GitMerge, Link, Trash2, Archive } from 'lucide-react';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 
@@ -136,6 +136,9 @@ export function CustomersPage() {
   // Contact cross-link picker
   const [linkContactId,  setLinkContactId]  = useState<string | null>(null);
 
+  // Contact column search
+  const [contactSearch, setContactSearch] = useState('');
+
   useEffect(() => {
     setLoading(true);
     crmFetch({ action: 'list' })
@@ -147,6 +150,8 @@ export function CustomersPage() {
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
   }, [reload]);
+
+  useEffect(() => { setContactSearch(''); }, [selCustomerId]);
 
   useEffect(() => {
     if (!selCustomerId) { setDetail(null); return; }
@@ -173,6 +178,24 @@ export function CustomersPage() {
 
   const selSite   = selSiteId ? (detail?.sites.find((s) => s.id === selSiteId) ?? null) : null;
   const col2Open  = selCustomerId !== null;
+
+  const allContacts = detail?.contacts ?? [];
+  const filteredContacts = contactSearch.trim()
+    ? allContacts.filter((c) => {
+        const q = contactSearch.toLowerCase();
+        return c.name.toLowerCase().includes(q)
+          || (c.role ?? '').toLowerCase().includes(q)
+          || (c.email ?? '').toLowerCase().includes(q);
+      })
+    : allContacts;
+  // Group by first letter of last_name (fallback to name)
+  const contactGroups: Record<string, typeof allContacts> = {};
+  for (const c of filteredContacts) {
+    const letter = ((c.last_name ?? c.name)?.[0] ?? '#').toUpperCase();
+    if (!contactGroups[letter]) contactGroups[letter] = [];
+    contactGroups[letter].push(c);
+  }
+  const contactLetters = Object.keys(contactGroups).sort();
 
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
@@ -346,17 +369,36 @@ export function CustomersPage() {
                 ) : (
                   <>
                     <div style={s.colHead}>
-                      <div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={s.col2Title}>
                           {selSite ? selSite.name : 'Contacts'}
                         </div>
                         {selSite && (
                           <div style={s.col2Sub}>
-                            {detail ? `${detail.contacts.length} customer contact${detail.contacts.length === 1 ? '' : 's'}` : ''}
+                            {detail ? `${allContacts.length} customer contact${allContacts.length === 1 ? '' : 's'}` : ''}
                           </div>
                         )}
                       </div>
                     </div>
+                    {/* Contact search bar */}
+                    {detail && allContacts.length > 4 && (
+                      <div style={{ ...s.colSearch, borderTop: 'none' }}>
+                        <Search size={11} style={{ color: '#94A3B8', flexShrink: 0 }} aria-hidden />
+                        <input
+                          type="text"
+                          placeholder="Filter contacts…"
+                          value={contactSearch}
+                          onChange={(e) => setContactSearch(e.target.value)}
+                          style={{ ...s.searchInput, fontSize: 11 }}
+                          aria-label="Filter contacts"
+                        />
+                        {contactSearch && (
+                          <button type="button" style={s.clearBtn} onClick={() => setContactSearch('')} aria-label="Clear filter">
+                            <X size={11} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <div style={s.colBody}>
                       {detailLoading ? (
                         <div style={s.colEmpty}>Loading…</div>
@@ -379,57 +421,64 @@ export function CustomersPage() {
                             </>
                           )}
 
-                          {detail.contacts.length === 0 ? (
+                          {allContacts.length === 0 ? (
                             <div style={s.colEmpty}>No contacts on file</div>
+                          ) : filteredContacts.length === 0 ? (
+                            <div style={s.colEmpty}>No contacts match "{contactSearch}"</div>
                           ) : (
-                            detail.contacts.map((c) => (
-                              <div key={c.id} style={s.contactRow}>
-                                <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>
-                                  {initials(c.name)}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={s.contactName}>{c.name}</div>
-                                  {c.role  && <div style={s.contactRole}>{c.role}</div>}
-                                  {c.phone && <div style={s.contactMeta}>{c.phone}</div>}
-                                  {c.email && <div style={s.contactMeta}>{c.email}</div>}
-                                  {(c.extra_customers ?? []).length > 0 && (
-                                    <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                      {(c.extra_customers ?? []).map((ec) => (
-                                        <span key={ec.id} style={s.linkChip}>
-                                          {ec.name}
-                                          <button
-                                            type="button"
-                                            style={s.chipX}
-                                            title="Remove link"
-                                            onClick={async () => {
-                                              await crmWrite({ action: 'unlink_contact_customer', id: c.id, customer_id: ec.id });
-                                              handleMutated();
-                                            }}
-                                          >
-                                            <X size={9} />
-                                          </button>
-                                        </span>
-                                      ))}
+                            contactLetters.map((letter) => (
+                              <div key={letter}>
+                                <div style={s.alphaHeader}>{letter}</div>
+                                {contactGroups[letter].map((c) => (
+                                  <div key={c.id} style={s.contactRow}>
+                                    <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>
+                                      {initials(c.name)}
                                     </div>
-                                  )}
-                                </div>
-                                <button
-                                  type="button"
-                                  style={s.editBtnSm}
-                                  title="Link to another customer"
-                                  onClick={() => setLinkContactId(c.id)}
-                                  aria-label={`Link ${c.name} to another customer`}
-                                >
-                                  <Link size={11} />
-                                </button>
-                                <button
-                                  type="button"
-                                  style={s.editBtnSm}
-                                  onClick={() => setEditContact(c)}
-                                  aria-label={`Edit ${c.name}`}
-                                >
-                                  <Pencil size={11} />
-                                </button>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={s.contactName}>{c.name}</div>
+                                      {c.role  && <div style={s.contactRole}>{c.role}</div>}
+                                      {c.phone && <div style={s.contactMeta}>{c.phone}</div>}
+                                      {c.email && <div style={s.contactMeta}>{c.email}</div>}
+                                      {(c.extra_customers ?? []).length > 0 && (
+                                        <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                          {(c.extra_customers ?? []).map((ec) => (
+                                            <span key={ec.id} style={s.linkChip}>
+                                              {ec.name}
+                                              <button
+                                                type="button"
+                                                style={s.chipX}
+                                                title="Remove link"
+                                                onClick={async () => {
+                                                  await crmWrite({ action: 'unlink_contact_customer', id: c.id, customer_id: ec.id });
+                                                  handleMutated();
+                                                }}
+                                              >
+                                                <X size={9} />
+                                              </button>
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      style={s.editBtnSm}
+                                      title="Link to another customer"
+                                      onClick={() => setLinkContactId(c.id)}
+                                      aria-label={`Link ${c.name} to another customer`}
+                                    >
+                                      <Link size={11} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      style={s.editBtnSm}
+                                      onClick={() => setEditContact(c)}
+                                      aria-label={`Edit ${c.name}`}
+                                    >
+                                      <Pencil size={11} />
+                                    </button>
+                                  </div>
+                                ))}
                               </div>
                             ))
                           )}
@@ -456,6 +505,12 @@ export function CustomersPage() {
           site={editSite}
           onClose={() => setEditSite(null)}
           onSaved={() => { setEditSite(null); handleMutated(); }}
+          onArchived={() => { setEditSite(null); handleMutated(); }}
+          onDeleted={() => {
+            if (selSiteId === editSite.id) setSelSiteId(null);
+            setEditSite(null);
+            handleMutated();
+          }}
         />
       )}
       {editContact && (
@@ -657,8 +712,9 @@ function EditCustomerModal({ customer, onClose, onSaved }: {
 
 // ─── EDIT SITE MODAL ──────────────────────────────────────────────────────────
 
-function EditSiteModal({ site, onClose, onSaved }: {
+function EditSiteModal({ site, onClose, onSaved, onArchived, onDeleted }: {
   site: DetailSite; onClose: () => void; onSaved: () => void;
+  onArchived: () => void; onDeleted: () => void;
 }) {
   const [form, setForm] = useState({
     name:               site.name           ?? '',
@@ -669,8 +725,9 @@ function EditSiteModal({ site, onClose, onSaved }: {
     site_contact_phone: site.contact?.phone ?? '',
     site_contact_email: site.contact?.email ?? '',
   });
-  const [saving, setSaving] = useState(false);
-  const [err,    setErr]    = useState<string | null>(null);
+  const [saving,  setSaving]  = useState(false);
+  const [err,     setErr]     = useState<string | null>(null);
+  const [danger,  setDanger]  = useState<null | 'archive' | 'delete'>(null);
   const set = (f: keyof typeof form) => (v: string) => setForm((p) => ({ ...p, [f]: v }));
 
   const save = async () => {
@@ -680,6 +737,28 @@ function EditSiteModal({ site, onClose, onSaved }: {
     setSaving(false);
     if (!res.ok) { setErr(res.error ?? 'Save failed'); return; }
     onSaved();
+  };
+
+  const archiveSite = async () => {
+    setSaving(true); setErr(null);
+    const res = await crmWrite({ action: 'archive_site', id: site.id });
+    setSaving(false);
+    if (!res.ok) { setErr(res.error ?? 'Archive failed'); setDanger(null); return; }
+    onArchived();
+  };
+
+  const deleteSite = async () => {
+    setSaving(true); setErr(null);
+    const res = await crmWrite({ action: 'delete_site', id: site.id });
+    setSaving(false);
+    if (!res.ok) {
+      setErr(res.error === 'site_has_records'
+        ? 'This site has linked service records and cannot be deleted. Archive it instead.'
+        : (res.error ?? 'Delete failed'));
+      setDanger(null);
+      return;
+    }
+    onDeleted();
   };
 
   return (
@@ -701,6 +780,54 @@ function EditSiteModal({ site, onClose, onSaved }: {
             <FormField label="Name"  value={form.site_contact_name}  onChange={set('site_contact_name')} />
             <FormField label="Phone" value={form.site_contact_phone} onChange={set('site_contact_phone')} />
             <FormField label="Email" value={form.site_contact_email} onChange={set('site_contact_email')} type="email" />
+          </div>
+          {/* Danger zone */}
+          <div style={{ borderTop: '1px solid #FEE2E2', marginTop: 16, paddingTop: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#EF4444', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+              Danger zone
+            </div>
+            {danger === 'archive' ? (
+              <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: '10px 12px' }}>
+                <p style={{ fontSize: 12, color: '#92400E', marginBottom: 8, margin: '0 0 8px' }}>
+                  Archive this site? It will be hidden from all lists but service history is preserved.
+                </p>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" style={s.btnSecondary} onClick={() => setDanger(null)} disabled={saving}>Cancel</button>
+                  <button type="button" style={{ ...s.btnPrimary, background: '#F97316', opacity: saving ? 0.6 : 1 }} onClick={archiveSite} disabled={saving}>
+                    {saving ? 'Archiving…' : 'Archive site'}
+                  </button>
+                </div>
+              </div>
+            ) : danger === 'delete' ? (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 12px' }}>
+                <p style={{ fontSize: 12, color: '#7F1D1D', marginBottom: 8, margin: '0 0 8px' }}>
+                  Permanently delete this site? This cannot be undone.
+                </p>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" style={s.btnSecondary} onClick={() => setDanger(null)} disabled={saving}>Cancel</button>
+                  <button type="button" style={{ ...s.btnPrimary, background: '#EF4444', opacity: saving ? 0.6 : 1 }} onClick={deleteSite} disabled={saving}>
+                    {saving ? 'Deleting…' : 'Delete permanently'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  type="button"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #FED7AA', background: 'white', color: '#F97316', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                  onClick={() => setDanger('archive')}
+                >
+                  <Archive size={11} />Archive
+                </button>
+                <button
+                  type="button"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #FECACA', background: 'white', color: '#EF4444', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                  onClick={() => setDanger('delete')}
+                >
+                  <Trash2 size={11} />Delete
+                </button>
+              </div>
+            )}
           </div>
         </div>
         {err && <div style={s.modalErr}>{err}</div>}
@@ -809,6 +936,7 @@ const s: Record<string, React.CSSProperties> = {
   col3Empty:   { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' },
 
   sectionLabel: { fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '10px 14px 4px' },
+  alphaHeader:  { fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#CBD5E1', padding: '8px 12px 2px', position: 'sticky' as const, top: 0, background: 'white', zIndex: 1, borderBottom: '1px solid #F1F5F9' },
   contactRow:   { display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', borderBottom: '1px solid #F1F5F9' },
   contactName:  { fontSize: 12, fontWeight: 700, color: '#1A1A2E' },
   contactRole:  { fontSize: 11, color: '#64748B', marginTop: 1 },

@@ -104,6 +104,27 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(200, { ok: true });
   }
 
+  // ── archive_site ───────────────────────────────────────────────────────────
+  if (action === 'archive_site') {
+    const { error } = await sb.from('sites')
+      .update({ active: false, updated_at: now })
+      .eq('site_id', id).eq('tenant_id', tid);
+    if (error) return json(500, { ok: false, error: error.message });
+    return json(200, { ok: true });
+  }
+
+  // ── delete_site ────────────────────────────────────────────────────────────
+  // Hard delete — fails with 409 if the site has linked service records.
+  if (action === 'delete_site') {
+    const { error } = await sb.from('sites')
+      .delete().eq('site_id', id).eq('tenant_id', tid);
+    if (error) {
+      if (error.code === '23503') return json(409, { ok: false, error: 'site_has_records' });
+      return json(500, { ok: false, error: error.message });
+    }
+    return json(200, { ok: true });
+  }
+
   // ── update_site ────────────────────────────────────────────────────────────
   if (action === 'update_site') {
     const patch: Record<string, unknown> = { updated_at: now };
@@ -152,6 +173,23 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .update({ active: false, updated_at: now })
       .in('customer_id', losers).eq('tenant_id', tid);
     if (e3) return json(500, { ok: false, error: e3.message });
+
+    // Clean up stale contact_customer_links (graceful — table may not exist pre-0133)
+    try {
+      // a) Cross-links pointing to archived losers are now stale
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (sb as any).from('contact_customer_links')
+        .delete().in('customer_id', losers).eq('tenant_id', tid);
+      // b) Contacts moved to winner may have had a cross-link to winner — now self-referential
+      const { data: wc } = await sb.from('contacts')
+        .select('contact_id').eq('customer_id', id).eq('tenant_id', tid);
+      const wcIds = ((wc ?? []) as { contact_id: string }[]).map((r) => r.contact_id);
+      if (wcIds.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (sb as any).from('contact_customer_links')
+          .delete().in('contact_id', wcIds).eq('customer_id', id).eq('tenant_id', tid);
+      }
+    } catch { /* contact_customer_links table not yet applied (pre-0133) — safe to ignore */ }
 
     return json(200, { ok: true });
   }

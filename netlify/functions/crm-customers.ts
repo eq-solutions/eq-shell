@@ -99,7 +99,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   if (action === 'list') {
     const [custRes, siteRes, contactRes] = await Promise.all([
       sb.from('customers').select('customer_id, company_name, first_name, last_name, customer_group, state, active').order('company_name', { ascending: true, nullsFirst: false }).order('first_name', { ascending: true, nullsFirst: false }),
-      sb.from('sites').select('customer_id'),
+      sb.from('sites').select('customer_id').eq('active', true),
       sb.from('contacts').select('customer_id'),
     ]);
     if (custRes.error) return json(500, { ok: false, error: 'db_error', detail: custRes.error.message });
@@ -135,7 +135,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     if (!id) return json(400, { ok: false, error: 'missing_id' });
     const [custRes, siteRes, contactRes] = await Promise.all([
       sb.from('customers').select('customer_id, company_name, first_name, last_name, customer_group, state, suburb, active, primary_phone, mobile_phone, email').eq('customer_id', id).maybeSingle(),
-      sb.from('sites').select(SITE_COLS).eq('customer_id', id).order('name'),
+      sb.from('sites').select(SITE_COLS).eq('customer_id', id).eq('active', true).order('name'),
       sb.from('contacts').select(CONTACT_COLS).eq('customer_id', id).order('last_name'),
     ]);
     if (custRes.error) return json(500, { ok: false, error: 'db_error', detail: custRes.error.message });
