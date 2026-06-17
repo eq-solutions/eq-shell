@@ -554,11 +554,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     const stored = typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-tab") : null;
     return (stored && STAGE_KEYS.has(stored)) ? stored : "in-progress";
   });
-  const [search, setSearch] = useState(() => (typeof _sf.search === "string" ? _sf.search : ""));
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  // Pipeline client-side filters persist across reloads (estimator/customer/site +
-  // quick toggles). Date range is intentionally NOT persisted (time-sensitive).
+  // savedFiltersRef must be initialised before any useState that reads _sf via a
+  // lazy initialiser — React calls lazy initialisers synchronously on first render,
+  // so referencing _sf before this block would be a TDZ error.
   const savedFiltersRef = useRef<Record<string, unknown> | null>(null);
   if (savedFiltersRef.current === null) {
     try {
@@ -568,6 +566,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     } catch { savedFiltersRef.current = {}; }
   }
   const _sf = savedFiltersRef.current;
+  const [search, setSearch] = useState(() => (typeof _sf.search === "string" ? _sf.search : ""));
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [estFilter, setEstFilter] = useState(() => (typeof _sf.est === "string" ? _sf.est : ""));
   const [customerFilter, setCustomerFilter] = useState(() => (typeof _sf.customer === "string" ? _sf.customer : ""));
   const [siteFilter, setSiteFilter] = useState(() => (typeof _sf.site === "string" ? _sf.site : ""));
