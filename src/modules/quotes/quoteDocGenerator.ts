@@ -37,6 +37,7 @@ export interface QuoteDocData {
   attn_first_name: string | null;
   attn_phone: string | null;
   address: string | null;
+  contact_email?: string | null;
   po_number: string | null;
   workbench_job_no: string | null;
   line_items: DocLineItem[];
@@ -467,7 +468,7 @@ export async function generateQuoteDoc(q: QuoteDocData, mode: "detailed" | "summ
   xml = replaceSdt(xml, "QuoteNumber", simpleRun(q.quote_number, stdRpr));
   xml = replaceSdt(xml, "ContactName", simpleRun(q.attn_first_name ?? q.attn_name ?? "", stdRpr));
   xml = replaceSdt(xml, "ClientAddress", simpleRun(q.address ?? "", stdRpr));
-  xml = replaceSdt(xml, "ClientEmail", simpleRun("", stdRpr));
+  xml = replaceSdt(xml, "ClientEmail", simpleRun(q.contact_email ?? "", stdRpr));
   xml = replaceSdt(xml, "ProjectName", simpleRun(q.project_name ?? "", stdRpr));
   xml = replaceSdt(xml, "DearName", simpleRun(q.attn_name ?? "", stdRpr));
   xml = replaceSdt(xml, "ClientCompany", simpleRun(q.customer_name ?? "", stdRpr));
