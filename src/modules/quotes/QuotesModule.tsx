@@ -15,7 +15,7 @@ import { captureRpcError } from "./quoteTelemetry";
 import { Table, type TableColumn, DropdownMenu } from "@eq-solutions/ui";
 import {
   MoreHorizontal, Trash2, FileUp, Users, BarChart2, Settings,
-  Clock, Briefcase, CalendarClock, AlarmClock, LayoutGrid, List, SlidersHorizontal, X, Archive, Columns3,
+  Clock, Briefcase, CalendarClock, AlarmClock, LayoutGrid, List, SlidersHorizontal, X, Archive, Columns3, Home,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -282,6 +282,7 @@ interface PdfParseResult {
 interface QuotesModuleProps {
   supabase: SupabaseClient | null;
   sessionName?: string | null;
+  homeHref?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -542,7 +543,7 @@ function parseCSV(text: string): CoupaRow[] {
 // Component
 // ---------------------------------------------------------------------------
 
-export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): React.JSX.Element {
+export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModuleProps): React.JSX.Element {
   type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit" | "setup" | "trash" | "reports" | "customers";
 
   // ── Main navigation ──────────────────────────────────────────────────────
@@ -660,7 +661,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
       const raw = typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-hidden-cols") : null;
       if (raw) return new Set(JSON.parse(raw) as string[]);
     } catch { /* ignore */ }
-    return new Set(["margin_pct"]);
+    return new Set(["margin_pct", "sent_at", "po_number", "expires_at"]);
   });
   const colsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveHiddenColsToDb = (next: Set<string>) => {
@@ -5108,7 +5109,17 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
       {/* Module header */}
       <div className="eq-quotes__module-header">
         <h2 className="eq-quotes__title">
-          <EqLogo size={36} />
+          {homeHref && (
+            <a
+              href={homeHref}
+              className="eq-quotes__home-btn"
+              title="Go to home"
+              aria-label="Home"
+            >
+              <Home size={14} />
+            </a>
+          )}
+          <EqLogo size={44} />
           <span className="eq-quotes__title-sep" aria-hidden="true">|</span>
           <span className="eq-quotes__title-label">OPS</span>
         </h2>
