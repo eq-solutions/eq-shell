@@ -2,7 +2,7 @@
 // Route: /:tenant/customers
 
 import { useCallback, useEffect, useState } from 'react';
-import { Pencil, X, ChevronRight, Search, Building2 } from 'lucide-react';
+import { Pencil, X, ChevronRight, Search, Building2, GitMerge, Link } from 'lucide-react';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 
@@ -38,6 +38,7 @@ interface DetailContact {
   role: string | null;
   email: string | null;
   phone: string | null;
+  extra_customers?: { id: string; name: string }[];
 }
 
 interface CustomerDetail {
@@ -119,13 +120,29 @@ export function CustomersPage() {
   const [editSite,     setEditSite]     = useState<DetailSite | null>(null);
   const [editContact,  setEditContact]  = useState<DetailContact | null>(null);
 
+  // Multi-select + merge
+  const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set());
+  const [mergeOpen,    setMergeOpen]    = useState(false);
+
+  const toggleSelected = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Contact cross-link picker
+  const [linkContactId,  setLinkContactId]  = useState<string | null>(null);
+
   useEffect(() => {
     setLoading(true);
     crmFetch({ action: 'list' })
       .then((r) => r.json() as Promise<{ ok: boolean; customers?: CustomerItem[]; error?: string }>)
       .then((r) => {
         if (!r.ok) { setError(r.error ?? 'Failed to load'); return; }
-        setCustomers(r.customers ?? []);
+        setCustomers((r.customers ?? []).sort((a, b) => a.name.localeCompare(b.name)));
       })
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
@@ -163,9 +180,22 @@ export function CustomersPage() {
 
         {/* Header */}
         <div style={s.ph}>
-          <h1 style={s.title}>Customers</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h1 style={{ ...s.title, flex: 1 }}>Customers</h1>
+            {selectedIds.size >= 2 && (
+              <button
+                type="button"
+                style={{ ...s.btnPrimary, fontSize: 11, padding: '5px 10px', gap: 5 }}
+                onClick={() => setMergeOpen(true)}
+              >
+                <GitMerge size={12} />
+                Merge {selectedIds.size}
+              </button>
+            )}
+          </div>
           <p style={s.subtitle}>
             {loading ? 'Loading…' : `${customers.length} customer${customers.length === 1 ? '' : 's'}`}
+            {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
           </p>
         </div>
 
@@ -199,32 +229,41 @@ export function CustomersPage() {
                   <div style={s.colEmpty}>No customers found</div>
                 ) : (
                   filtered.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      style={{ ...s.custRow, ...(selCustomerId === c.id ? s.custRowSel : {}), opacity: c.active ? 1 : 0.5 }}
-                      onClick={() => {
-                        if (selCustomerId === c.id) { setSelCustomerId(null); setSelSiteId(null); }
-                        else { setSelCustomerId(c.id); setSelSiteId(null); }
-                      }}
-                    >
-                      <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>
-                        {initials(c.name)}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={s.custName}>{c.name}</div>
-                        <div style={s.custMeta}>
-                          {[
-                            c.site_count    > 0 ? `${c.site_count} site${c.site_count === 1 ? '' : 's'}` : null,
-                            c.contact_count > 0 ? `${c.contact_count} contact${c.contact_count === 1 ? '' : 's'}` : null,
-                            c.group,
-                          ].filter(Boolean).join(' · ')}
+                    <div key={c.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(c.id)}
+                        onChange={() => {}} // controlled via onClick
+                        onClick={(e) => toggleSelected(c.id, e)}
+                        style={{ position: 'absolute', left: 8, zIndex: 1, cursor: 'pointer', flexShrink: 0 }}
+                        aria-label={`Select ${c.name}`}
+                      />
+                      <button
+                        type="button"
+                        style={{ ...s.custRow, paddingLeft: 30, ...(selCustomerId === c.id ? s.custRowSel : {}), ...(selectedIds.has(c.id) ? { background: '#F0F9FF' } : {}), opacity: c.active ? 1 : 0.5 }}
+                        onClick={() => {
+                          if (selCustomerId === c.id) { setSelCustomerId(null); setSelSiteId(null); }
+                          else { setSelCustomerId(c.id); setSelSiteId(null); }
+                        }}
+                      >
+                        <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>
+                          {initials(c.name)}
                         </div>
-                      </div>
-                      {selCustomerId === c.id && (
-                        <ChevronRight size={13} style={{ color: '#3DA8D8', flexShrink: 0 }} aria-hidden />
-                      )}
-                    </button>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={s.custName}>{c.name}</div>
+                          <div style={s.custMeta}>
+                            {[
+                              c.site_count    > 0 ? `${c.site_count} site${c.site_count === 1 ? '' : 's'}` : null,
+                              c.contact_count > 0 ? `${c.contact_count} contact${c.contact_count === 1 ? '' : 's'}` : null,
+                              c.group,
+                            ].filter(Boolean).join(' · ')}
+                          </div>
+                        </div>
+                        {selCustomerId === c.id && (
+                          <ChevronRight size={13} style={{ color: '#3DA8D8', flexShrink: 0 }} aria-hidden />
+                        )}
+                      </button>
+                    </div>
                   ))
                 )}
               </div>
@@ -353,7 +392,36 @@ export function CustomersPage() {
                                   {c.role  && <div style={s.contactRole}>{c.role}</div>}
                                   {c.phone && <div style={s.contactMeta}>{c.phone}</div>}
                                   {c.email && <div style={s.contactMeta}>{c.email}</div>}
+                                  {(c.extra_customers ?? []).length > 0 && (
+                                    <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                      {(c.extra_customers ?? []).map((ec) => (
+                                        <span key={ec.id} style={s.linkChip}>
+                                          {ec.name}
+                                          <button
+                                            type="button"
+                                            style={s.chipX}
+                                            title="Remove link"
+                                            onClick={async () => {
+                                              await crmWrite({ action: 'unlink_contact_customer', id: c.id, customer_id: ec.id });
+                                              handleMutated();
+                                            }}
+                                          >
+                                            <X size={9} />
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
+                                <button
+                                  type="button"
+                                  style={s.editBtnSm}
+                                  title="Link to another customer"
+                                  onClick={() => setLinkContactId(c.id)}
+                                  aria-label={`Link ${c.name} to another customer`}
+                                >
+                                  <Link size={11} />
+                                </button>
                                 <button
                                   type="button"
                                   style={s.editBtnSm}
@@ -397,7 +465,143 @@ export function CustomersPage() {
           onSaved={() => { setEditContact(null); handleMutated(); }}
         />
       )}
+      {mergeOpen && selectedIds.size >= 2 && (
+        <MergeCustomersModal
+          customers={customers.filter((c) => selectedIds.has(c.id))}
+          onClose={() => setMergeOpen(false)}
+          onMerged={() => {
+            setMergeOpen(false);
+            setSelectedIds(new Set());
+            setSelCustomerId(null);
+            setSelSiteId(null);
+            setReload((n) => n + 1);
+          }}
+        />
+      )}
+      {linkContactId && (
+        <LinkContactModal
+          contactId={linkContactId}
+          currentCustomerId={selCustomerId ?? ''}
+          customers={customers}
+          onClose={() => setLinkContactId(null)}
+          onLinked={() => { setLinkContactId(null); handleMutated(); }}
+        />
+      )}
     </HubLayout>
+  );
+}
+
+// ─── MERGE CUSTOMERS MODAL ───────────────────────────────────────────────────
+
+function MergeCustomersModal({ customers, onClose, onMerged }: {
+  customers: CustomerItem[]; onClose: () => void; onMerged: () => void;
+}) {
+  const [winnerId, setWinnerId] = useState(customers[0].id);
+  const [saving,   setSaving]   = useState(false);
+  const [err,      setErr]      = useState<string | null>(null);
+
+  const merge = async () => {
+    setSaving(true); setErr(null);
+    const loserIds = customers.filter((c) => c.id !== winnerId).map((c) => c.id);
+    const res = await crmWrite({ action: 'merge_customers', id: winnerId, loser_ids: loserIds });
+    setSaving(false);
+    if (!res.ok) { setErr(res.error ?? 'Merge failed'); return; }
+    onMerged();
+  };
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHead}>
+          <span style={s.modalTitle}>Merge customers</span>
+          <button type="button" style={s.pcls} onClick={onClose} aria-label="Close"><X size={14} /></button>
+        </div>
+        <div style={s.modalBody}>
+          <p style={{ fontSize: 12, color: '#64748B', marginBottom: 14 }}>
+            Sites and contacts from the others will move to the selected record. The rest will be archived.
+          </p>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+            Keep this record as master
+          </div>
+          {customers.map((c) => (
+            <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 7, border: `1.5px solid ${winnerId === c.id ? '#3DA8D8' : '#E2E8F0'}`, marginBottom: 6, cursor: 'pointer', background: winnerId === c.id ? '#EAF5FB' : 'white' }}>
+              <input type="radio" name="winner" value={c.id} checked={winnerId === c.id} onChange={() => setWinnerId(c.id)} style={{ accentColor: '#3DA8D8' }} />
+              <div style={{ ...s.av, background: avatarColour(c.id), flexShrink: 0 }}>{initials(c.name)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={s.custName}>{c.name}</div>
+                <div style={s.custMeta}>{[c.site_count > 0 && `${c.site_count} site${c.site_count === 1 ? '' : 's'}`, c.contact_count > 0 && `${c.contact_count} contact${c.contact_count === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}</div>
+              </div>
+              {winnerId !== c.id && <span style={{ fontSize: 10, color: '#EF4444', fontWeight: 600 }}>Will be archived</span>}
+            </label>
+          ))}
+        </div>
+        {err && <div style={s.modalErr}>{err}</div>}
+        <div style={s.modalFoot}>
+          <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" style={{ ...s.btnPrimary, opacity: saving ? 0.6 : 1, background: '#EF4444' }} onClick={merge} disabled={saving}>
+            {saving ? 'Merging…' : 'Merge and archive others'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LINK CONTACT TO CUSTOMER MODAL ──────────────────────────────────────────
+
+function LinkContactModal({ contactId, currentCustomerId, customers, onClose, onLinked }: {
+  contactId: string; currentCustomerId: string; customers: CustomerItem[];
+  onClose: () => void; onLinked: () => void;
+}) {
+  const options = customers.filter((c) => c.id !== currentCustomerId && c.active);
+  const [targetId, setTargetId] = useState(options[0]?.id ?? '');
+  const [saving, setSaving]   = useState(false);
+  const [err,    setErr]      = useState<string | null>(null);
+
+  const save = async () => {
+    if (!targetId) return;
+    setSaving(true); setErr(null);
+    const res = await crmWrite({ action: 'link_contact_customer', id: contactId, customer_id: targetId });
+    setSaving(false);
+    if (!res.ok) { setErr(res.error ?? 'Link failed'); return; }
+    onLinked();
+  };
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={{ ...s.modal, width: 360 }} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHead}>
+          <span style={s.modalTitle}>Link to another customer</span>
+          <button type="button" style={s.pcls} onClick={onClose} aria-label="Close"><X size={14} /></button>
+        </div>
+        <div style={s.modalBody}>
+          <p style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+            The contact will appear in both customers' contact lists.
+          </p>
+          {options.length === 0 ? (
+            <p style={{ fontSize: 12, color: '#94A3B8' }}>No other customers available.</p>
+          ) : (
+            <div>
+              <label style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600, marginBottom: 3, display: 'block' }}>Customer</label>
+              <select
+                value={targetId}
+                onChange={(e) => setTargetId(e.target.value)}
+                style={{ width: '100%', padding: '7px 9px', fontSize: 12, border: '1px solid #E2E8F0', borderRadius: 6, fontFamily: 'inherit', color: '#1A1A2E' }}
+              >
+                {options.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+        {err && <div style={s.modalErr}>{err}</div>}
+        <div style={s.modalFoot}>
+          <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" style={{ ...s.btnPrimary, opacity: (saving || !targetId) ? 0.6 : 1 }} onClick={save} disabled={saving || !targetId}>
+            {saving ? 'Linking…' : 'Link contact'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -620,4 +824,7 @@ const s: Record<string, React.CSSProperties> = {
   pcls:        { width: 26, height: 26, borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   btnPrimary:  { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
   btnSecondary:{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+
+  linkChip:    { display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 600, color: '#2986B4', background: '#EAF5FB', border: '1px solid #BAE4F7', borderRadius: 5, padding: '1px 5px 1px 6px' },
+  chipX:       { width: 13, height: 13, border: 'none', background: 'transparent', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, borderRadius: 3 },
 };
