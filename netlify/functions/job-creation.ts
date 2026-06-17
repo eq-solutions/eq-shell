@@ -110,8 +110,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   jc.getCell('B4').value = d.project_name ?? '';
   jc.getCell('B5').value = d.customer_name ?? '';
-  jc.getCell('B7').value = d.estimator_name ?? 'Royce Milmlow';
-  jc.getCell('B8').value = d.estimator_name ?? 'Royce Milmlow';
+  jc.getCell('B7').value = d.estimator_name ?? session.name ?? '';
+  jc.getCell('B8').value = d.estimator_name ?? session.name ?? '';
   // B11: job value ex GST — stored as a number so Excel's currency format applies
   jc.getCell('B11').value = d.subtotal_cents / 100;
   // B12: PO number if known

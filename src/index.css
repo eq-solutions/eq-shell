@@ -221,7 +221,7 @@ input, button, select, textarea { font-family: inherit; font-size: inherit; }
 .eq-quotes__customers { display: flex; gap: 1.5rem; align-items: flex-start; }
 .eq-quotes__customer-row { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--eq-border); cursor: pointer; }
 .eq-quotes__customer-row--active { background: var(--eq-ice); }
-.eq-quotes__detail-header { display: flex; flex-direction: column; gap: 10px; }
+.eq-quotes__detail-header { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 0; z-index: 20; background: #F6F3EE; padding-bottom: 14px; border-bottom: 1px solid var(--eq-line); margin-bottom: 6px; }
 .eq-quotes__back { background: none; border: none; font-family: inherit; font-size: 13px; color: var(--eq-primary); cursor: pointer; padding: 0; font-weight: 500; align-self: flex-start; }
 .eq-quotes__back:hover { text-decoration: underline; }
 .eq-quotes__detail-title-row { display: flex; align-items: center; gap: 12px; }

@@ -1,8 +1,8 @@
 // CustomersPage — Tabbed Customers / Sites / Contacts view
 // Route: /:tenant/customers
 
-import { useCallback, useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Pencil, X } from 'lucide-react';
 import { Table, type TableColumn } from '@eq-solutions/ui';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
@@ -28,10 +28,14 @@ interface SiteItem {
   id: string;
   name: string;
   kind: string | null;
+  code: string | null;
   suburb: string | null;
   state: string | null;
   customer_id: string | null;
   contact: { name: string; phone: string | null; email: string | null } | null;
+  site_contact_name: string | null;
+  site_contact_phone: string | null;
+  site_contact_email: string | null;
 }
 
 interface ContactItem {
@@ -50,6 +54,7 @@ interface CustomerDetail {
   name: string;
   group: string | null;
   state: string | null;
+  suburb: string | null;
   active: boolean;
   phone: string | null;
   email: string | null;
@@ -96,16 +101,32 @@ async function entityFetch(entity: string, extra: Record<string, string> = {}): 
   const res = await fetch(`/.netlify/functions/entity-rows?${qs}`, { credentials: 'include' });
   return res.json() as Promise<EntityResp>;
 }
+async function crmWrite(body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch('/.netlify/functions/crm-write', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json() as Promise<{ ok: boolean; error?: string }>;
+}
 
 function mapSite(row: Record<string, unknown>): SiteItem {
+  const contactName = (row['site_contact_name'] as string | null) ?? null;
   return {
-    id:          String(row['site_id'] ?? row['id'] ?? ''),
-    name:        (row['name']        as string | null) ?? 'Unnamed site',
-    kind:        (row['site_type']   as string | null) ?? null,
-    suburb:      (row['suburb']      as string | null) ?? null,
-    state:       (row['state']       as string | null) ?? null,
-    customer_id: (row['customer_id'] as string | null) ?? null,
-    contact: null,
+    id:                 String(row['site_id'] ?? row['id'] ?? ''),
+    name:               (row['name']          as string | null) ?? 'Unnamed site',
+    kind:               (row['site_type']      as string | null) ?? null,
+    code:               (row['code']           as string | null) ?? null,
+    suburb:             (row['suburb']         as string | null) ?? null,
+    state:              (row['state']          as string | null) ?? null,
+    customer_id:        (row['customer_id']    as string | null) ?? null,
+    site_contact_name:  contactName,
+    site_contact_phone: (row['site_contact_phone'] as string | null) ?? null,
+    site_contact_email: (row['site_contact_email'] as string | null) ?? null,
+    contact: contactName
+      ? { name: contactName, phone: (row['site_contact_phone'] as string | null) ?? null, email: (row['site_contact_email'] as string | null) ?? null }
+      : null,
   };
 }
 function mapContact(row: Record<string, unknown>): ContactItem {
@@ -121,6 +142,27 @@ function mapContact(row: Record<string, unknown>): ContactItem {
     phone:       ((row['mobile_phone'] ?? row['work_phone']) as string | null) ?? null,
     customer_id: (row['customer_id']  as string | null) ?? null,
   };
+}
+
+// ─── SHARED FORM FIELD ────────────────────────────────────────────────────────
+
+function FormField({ label, value, onChange, type = 'text' }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600, marginBottom: 3, display: 'block' }}>{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ width: '100%', padding: '7px 9px', fontSize: 12, border: '1px solid #E2E8F0', borderRadius: 6, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', color: '#1A1A2E', background: 'white' }}
+      />
+    </div>
+  );
 }
 
 // ─── COLUMN DEFINITIONS ───────────────────────────────────────────────────────
@@ -185,7 +227,7 @@ const CUSTOMER_COLS: TableColumn<CustomerItem>[] = [
   },
 ];
 
-const SITE_COLS: TableColumn<SiteItem>[] = [
+const SITE_COLS_BASE: TableColumn<SiteItem>[] = [
   {
     key: 'name',
     header: 'Site name',
@@ -212,7 +254,7 @@ const SITE_COLS: TableColumn<SiteItem>[] = [
   },
 ];
 
-const CONTACT_COLS: TableColumn<ContactItem>[] = [
+const CONTACT_COLS_BASE: TableColumn<ContactItem>[] = [
   {
     key: 'name',
     header: 'Name',
@@ -261,7 +303,9 @@ export function CustomersPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [reload,    setReload]    = useState(0);
 
-  // Fetch all data on mount and after mutations
+  const [editContact, setEditContact] = useState<ContactItem | null>(null);
+  const [editSite,    setEditSite]    = useState<SiteItem | null>(null);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -281,12 +325,11 @@ export function CustomersPage() {
 
   const handleMutated = useCallback(() => setReload((n) => n + 1), []);
 
-  // Fetch customer detail when selected
   useEffect(() => {
     if (!selId || tab !== 'customers') { setDetail(null); return; }
     setDetailLoading(true);
     crmFetch({ action: 'detail', id: selId })
-      .then((r) => r.json() as Promise<{ ok: boolean; customer?: { id: string; name: string; group: string | null; state: string | null; active: boolean; phone: string | null; email: string | null }; sites?: CustomerDetail['sites']; contacts?: CustomerDetail['contacts'] }>)
+      .then((r) => r.json() as Promise<{ ok: boolean; customer?: CustomerDetail; sites?: CustomerDetail['sites']; contacts?: CustomerDetail['contacts'] }>)
       .then((r) => {
         if (r.ok && r.customer) {
           setDetail({ ...r.customer, sites: r.sites ?? [], contacts: r.contacts ?? [] });
@@ -359,10 +402,20 @@ export function CustomersPage() {
                 />
               )}
               {tab === 'sites' && (
-                <SitesTab rows={sites} loading={loading} onMutated={handleMutated} />
+                <SitesTab
+                  rows={sites}
+                  loading={loading}
+                  onMutated={handleMutated}
+                  onEdit={setEditSite}
+                />
               )}
               {tab === 'contacts' && (
-                <ContactsTab rows={contacts} loading={loading} onMutated={handleMutated} />
+                <ContactsTab
+                  rows={contacts}
+                  loading={loading}
+                  onMutated={handleMutated}
+                  onEdit={setEditContact}
+                />
               )}
             </div>
             {/* Split panel — customers tab only */}
@@ -373,6 +426,7 @@ export function CustomersPage() {
                     detail={detail}
                     loading={detailLoading}
                     onClose={() => setSelId(null)}
+                    onSaved={handleMutated}
                   />
                 )}
               </div>
@@ -380,6 +434,22 @@ export function CustomersPage() {
           </div>
         )}
       </div>
+
+      {/* Edit modals — rendered outside the scroll container */}
+      {editContact && (
+        <EditContactModal
+          contact={editContact}
+          onClose={() => setEditContact(null)}
+          onSaved={() => { setEditContact(null); handleMutated(); }}
+        />
+      )}
+      {editSite && (
+        <EditSiteModal
+          site={editSite}
+          onClose={() => setEditSite(null)}
+          onSaved={() => { setEditSite(null); handleMutated(); }}
+        />
+      )}
     </HubLayout>
   );
 }
@@ -423,10 +493,32 @@ function CustomersTab({ rows, loading, selId, onSelect, onMutated }: {
 
 // ─── SITES TAB ───────────────────────────────────────────────────────────────
 
-function SitesTab({ rows, loading, onMutated }: { rows: SiteItem[]; loading: boolean; onMutated: () => void }) {
+function SitesTab({ rows, loading, onMutated, onEdit }: {
+  rows: SiteItem[];
+  loading: boolean;
+  onMutated: () => void;
+  onEdit: (site: SiteItem) => void;
+}) {
+  const columns: TableColumn<SiteItem>[] = [
+    ...SITE_COLS_BASE,
+    {
+      key: 'actions',
+      header: '',
+      render: (site) => (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onEdit(site); }}
+          style={s.editBtn}
+          aria-label={`Edit ${site.name}`}
+        >
+          <Pencil size={13} />
+        </button>
+      ),
+    },
+  ];
   return (
     <Table
-      columns={SITE_COLS}
+      columns={columns}
       rows={rows}
       getRowId={(site) => site.id}
       globalSearch={{ placeholder: 'Search sites…' }}
@@ -445,10 +537,32 @@ function SitesTab({ rows, loading, onMutated }: { rows: SiteItem[]; loading: boo
 
 // ─── CONTACTS TAB ─────────────────────────────────────────────────────────────
 
-function ContactsTab({ rows, loading, onMutated }: { rows: ContactItem[]; loading: boolean; onMutated: () => void }) {
+function ContactsTab({ rows, loading, onMutated, onEdit }: {
+  rows: ContactItem[];
+  loading: boolean;
+  onMutated: () => void;
+  onEdit: (contact: ContactItem) => void;
+}) {
+  const columns: TableColumn<ContactItem>[] = [
+    ...CONTACT_COLS_BASE,
+    {
+      key: 'actions',
+      header: '',
+      render: (c) => (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onEdit(c); }}
+          style={s.editBtn}
+          aria-label={`Edit ${c.name}`}
+        >
+          <Pencil size={13} />
+        </button>
+      ),
+    },
+  ];
   return (
     <Table
-      columns={CONTACT_COLS}
+      columns={columns}
       rows={rows}
       getRowId={(c) => c.id}
       globalSearch={{ placeholder: 'Search contacts…' }}
@@ -467,11 +581,54 @@ function ContactsTab({ rows, loading, onMutated }: { rows: ContactItem[]; loadin
 
 // ─── CUSTOMER SPLIT PANEL ─────────────────────────────────────────────────────
 
-function CustomerPanel({ detail, loading, onClose }: {
+function CustomerPanel({ detail, loading, onClose, onSaved }: {
   detail: CustomerDetail | null;
   loading: boolean;
   onClose: () => void;
+  onSaved: () => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [form, setForm] = useState({ company_name: '', email: '', primary_phone: '', suburb: '', state: '' });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const prevId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (detail && detail.id !== prevId.current) {
+      prevId.current = detail.id;
+      setForm({
+        company_name:  detail.name    ?? '',
+        email:         detail.email   ?? '',
+        primary_phone: detail.phone   ?? '',
+        suburb:        detail.suburb  ?? '',
+        state:         detail.state   ?? '',
+      });
+      setIsEditing(false);
+      setSaveError(null);
+    }
+  }, [detail]);
+
+  const saveCustomer = async () => {
+    if (!detail) return;
+    setSaving(true);
+    setSaveError(null);
+    const res = await crmWrite({
+      action: 'update_customer',
+      id: detail.id,
+      company_name:  form.company_name,
+      email:         form.email,
+      primary_phone: form.primary_phone,
+      suburb:        form.suburb,
+      state:         form.state,
+    });
+    setSaving(false);
+    if (!res.ok) { setSaveError(res.error ?? 'Save failed'); return; }
+    setIsEditing(false);
+    onSaved();
+  };
+
+  const set = (field: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [field]: v }));
+
   return (
     <>
       <div style={s.phead}>
@@ -488,53 +645,213 @@ function CustomerPanel({ detail, loading, onClose }: {
           <X size={14} />
         </button>
       </div>
+
       <div style={s.pbody}>
         {loading ? (
           <div style={{ color: '#94A3B8', fontSize: 12, padding: '12px 0' }}>Loading…</div>
         ) : detail ? (
-          <>
-            <PField label="Status"    value={detail.active ? 'Active' : 'Inactive'} />
-            {detail.state && <PField label="State" value={detail.state} />}
-            {detail.phone && <PField label="Phone" value={detail.phone} />}
-            {detail.email && <PField label="Email" value={detail.email} />}
+          isEditing ? (
+            <>
+              <FormField label="Company name" value={form.company_name} onChange={set('company_name')} />
+              <FormField label="Email"        value={form.email}        onChange={set('email')}        type="email" />
+              <FormField label="Phone"        value={form.primary_phone} onChange={set('primary_phone')} />
+              <FormField label="Suburb"       value={form.suburb}       onChange={set('suburb')} />
+              <FormField label="State"        value={form.state}        onChange={set('state')} />
+              {saveError && <div style={{ color: '#EF4444', fontSize: 11, marginTop: 4 }}>{saveError}</div>}
+            </>
+          ) : (
+            <>
+              <PField label="Status"    value={detail.active ? 'Active' : 'Inactive'} />
+              {detail.state  && <PField label="State"  value={detail.state} />}
+              {detail.suburb && <PField label="Suburb" value={detail.suburb} />}
+              {detail.phone  && <PField label="Phone"  value={detail.phone} />}
+              {detail.email  && <PField label="Email"  value={detail.email} />}
 
-            <div style={s.psec}>Sites ({detail.sites.length})</div>
-            {detail.sites.length === 0
-              ? <p style={s.emptyNote}>No sites</p>
-              : detail.sites.map((site) => (
-                <div key={site.id} style={s.detailCard}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1A1A2E' }}>{site.name}</div>
-                  {(site.suburb || site.state) && (
-                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
-                      {[site.suburb, site.state].filter(Boolean).join(', ')}
-                    </div>
-                  )}
-                  {site.contact && (
-                    <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>
-                      {site.contact.name}
-                    </div>
-                  )}
-                </div>
-              ))}
+              <div style={s.psec}>Sites ({detail.sites.length})</div>
+              {detail.sites.length === 0
+                ? <p style={s.emptyNote}>No sites</p>
+                : detail.sites.map((site) => (
+                  <div key={site.id} style={s.detailCard}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1A1A2E' }}>{site.name}</div>
+                    {(site.suburb || site.state) && (
+                      <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+                        {[site.suburb, site.state].filter(Boolean).join(', ')}
+                      </div>
+                    )}
+                    {site.contact && (
+                      <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>
+                        {site.contact.name}
+                      </div>
+                    )}
+                  </div>
+                ))}
 
-            <div style={s.psec}>Contacts ({detail.contacts.length})</div>
-            {detail.contacts.length === 0
-              ? <p style={s.emptyNote}>No contacts</p>
-              : detail.contacts.map((c) => (
-                <div key={c.id} style={s.detailCard}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1A1A2E' }}>{c.name}</div>
-                  {c.role && <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>{c.role}</div>}
-                  {c.phone && <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{c.phone}</div>}
-                  {c.email && <div style={{ fontSize: 11, color: '#94A3B8' }}>{c.email}</div>}
-                </div>
-              ))}
-          </>
+              <div style={s.psec}>Contacts ({detail.contacts.length})</div>
+              {detail.contacts.length === 0
+                ? <p style={s.emptyNote}>No contacts</p>
+                : detail.contacts.map((c) => (
+                  <div key={c.id} style={s.detailCard}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1A1A2E' }}>{c.name}</div>
+                    {c.role  && <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>{c.role}</div>}
+                    {c.phone && <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{c.phone}</div>}
+                    {c.email && <div style={{ fontSize: 11, color: '#94A3B8' }}>{c.email}</div>}
+                  </div>
+                ))}
+            </>
+          )
         ) : null}
       </div>
+
       <div style={s.pfoot}>
-        <button type="button" style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center' }}>Edit customer</button>
+        {isEditing ? (
+          <>
+            <button
+              type="button"
+              style={{ ...s.btnSecondary, flex: 1, justifyContent: 'center' }}
+              onClick={() => { setIsEditing(false); setSaveError(null); }}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center', opacity: saving ? 0.6 : 1 }}
+              onClick={saveCustomer}
+              disabled={saving}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center' }}
+            onClick={() => setIsEditing(true)}
+            disabled={!detail || loading}
+          >
+            Edit customer
+          </button>
+        )}
       </div>
     </>
+  );
+}
+
+// ─── EDIT CONTACT MODAL ───────────────────────────────────────────────────────
+
+function EditContactModal({ contact, onClose, onSaved }: {
+  contact: ContactItem;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    first_name:   contact.first_name  ?? '',
+    last_name:    contact.last_name   ?? '',
+    email:        contact.email       ?? '',
+    mobile_phone: contact.phone       ?? '',
+    position:     contact.position    ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const set = (field: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [field]: v }));
+
+  const save = async () => {
+    setSaving(true);
+    setSaveError(null);
+    const res = await crmWrite({ action: 'update_contact', id: contact.id, ...form });
+    setSaving(false);
+    if (!res.ok) { setSaveError(res.error ?? 'Save failed'); return; }
+    onSaved();
+  };
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHead}>
+          <span style={s.modalTitle}>Edit contact</span>
+          <button type="button" style={s.pcls} onClick={onClose} aria-label="Close"><X size={14} /></button>
+        </div>
+        <div style={s.modalBody}>
+          <FormField label="First name"  value={form.first_name}   onChange={set('first_name')} />
+          <FormField label="Last name"   value={form.last_name}    onChange={set('last_name')} />
+          <FormField label="Position"    value={form.position}     onChange={set('position')} />
+          <FormField label="Email"       value={form.email}        onChange={set('email')}        type="email" />
+          <FormField label="Mobile"      value={form.mobile_phone} onChange={set('mobile_phone')} />
+        </div>
+        {saveError && <div style={{ padding: '0 16px 8px', color: '#EF4444', fontSize: 12 }}>{saveError}</div>}
+        <div style={s.modalFoot}>
+          <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" style={{ ...s.btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── EDIT SITE MODAL ──────────────────────────────────────────────────────────
+
+function EditSiteModal({ site, onClose, onSaved }: {
+  site: SiteItem;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    name:                site.name               ?? '',
+    code:                site.code               ?? '',
+    suburb:              site.suburb             ?? '',
+    state:               site.state              ?? '',
+    site_contact_name:   site.site_contact_name  ?? '',
+    site_contact_phone:  site.site_contact_phone ?? '',
+    site_contact_email:  site.site_contact_email ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const set = (field: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [field]: v }));
+
+  const save = async () => {
+    if (!form.name.trim()) { setSaveError('Site name is required'); return; }
+    setSaving(true);
+    setSaveError(null);
+    const res = await crmWrite({ action: 'update_site', id: site.id, ...form });
+    setSaving(false);
+    if (!res.ok) { setSaveError(res.error ?? 'Save failed'); return; }
+    onSaved();
+  };
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHead}>
+          <span style={s.modalTitle}>Edit site</span>
+          <button type="button" style={s.pcls} onClick={onClose} aria-label="Close"><X size={14} /></button>
+        </div>
+        <div style={s.modalBody}>
+          <FormField label="Site name"    value={form.name}   onChange={set('name')} />
+          <FormField label="Code"         value={form.code}   onChange={set('code')} />
+          <FormField label="Suburb"       value={form.suburb} onChange={set('suburb')} />
+          <FormField label="State"        value={form.state}  onChange={set('state')} />
+          <div style={{ borderTop: '1px solid #E2E8F0', margin: '12px 0', paddingTop: 12 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+              Site contact
+            </div>
+            <FormField label="Name"  value={form.site_contact_name}  onChange={set('site_contact_name')} />
+            <FormField label="Phone" value={form.site_contact_phone} onChange={set('site_contact_phone')} />
+            <FormField label="Email" value={form.site_contact_email} onChange={set('site_contact_email')} type="email" />
+          </div>
+        </div>
+        {saveError && <div style={{ padding: '0 16px 8px', color: '#EF4444', fontSize: 12 }}>{saveError}</div>}
+        <div style={s.modalFoot}>
+          <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" style={{ ...s.btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -575,4 +892,12 @@ const s: Record<string, React.CSSProperties> = {
   pfoot:      { padding: '10px 16px 14px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, flexShrink: 0 },
   detailCard: { padding: '8px 10px', borderRadius: 6, border: '1px solid #E2E8F0', marginBottom: 5, background: '#FAFAFA' },
   btnPrimary: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
+  btnSecondary: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' },
+  editBtn:    { width: 26, height: 26, borderRadius: 5, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  overlay:    { position: 'fixed', inset: 0, background: 'rgba(15,20,40,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  modal:      { background: 'white', borderRadius: 12, width: 420, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' },
+  modalHead:  { padding: '14px 16px 12px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
+  modalTitle: { fontSize: 14, fontWeight: 700, color: '#1A1A2E' },
+  modalBody:  { flex: 1, overflowY: 'auto', padding: '16px' },
+  modalFoot:  { padding: '10px 16px 14px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 },
 };

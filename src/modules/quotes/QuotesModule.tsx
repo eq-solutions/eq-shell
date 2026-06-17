@@ -405,23 +405,15 @@ const ACCORDION_ACTIVE = new Set([...ACTIVE_JOB_STATUSES, "sent"]);
 
 const DRAFT_KEY = "eq-quotes-draft-new";
 
-const STATUS_FILTERS = [
-  { key: "active-jobs", label: "Active Jobs" },
-  { key: "all", label: "All" },
-  { key: "draft", label: "Draft" },
-  { key: "submitted", label: "Submitted" },
-  { key: "client-reviewing", label: "Client Reviewing" },
-  { key: "on-hold", label: "On Hold" },
-  { key: "verbal-win", label: "Verbal Win" },
-  { key: "won-awaiting-job-no", label: "Won — No Job No." },
-  { key: "won-job-created", label: "Won — Job Created" },
-  { key: "po-matched", label: "PO Matched" },
-  { key: "active", label: "Active" },
-  { key: "complete", label: "Complete" },
-  { key: "ready-to-invoice", label: "Ready to Invoice" },
-  { key: "invoiced", label: "Invoiced" },
-  { key: "lost", label: "Lost" },
-  { key: "closed", label: "Closed" },
+// Simplified 5-stage pipeline view. Each stage covers one or more internal statuses.
+// internalStatus = the value written to DB when the user picks this stage in a row dropdown.
+const STATUS_FILTERS: Array<{ key: string; label: string; internalStatus?: string; match: (s: string) => boolean }> = [
+  { key: "quote-sent",  label: "Quote Sent",  internalStatus: "submitted",       match: (s) => ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win", "won-awaiting-job-no"].includes(s) },
+  { key: "job-created", label: "Job Created", internalStatus: "won-job-created", match: (s) => ["won-job-created", "po-matched"].includes(s) },
+  { key: "in-progress", label: "In Progress", internalStatus: "active",          match: (s) => s === "active" },
+  { key: "completed",   label: "Completed",   internalStatus: "complete",        match: (s) => ["complete", "ready-to-invoice"].includes(s) },
+  { key: "invoiced",    label: "Invoiced",    internalStatus: "invoiced",        match: (s) => s === "invoiced" },
+  { key: "all",         label: "All",                                            match: () => true },
 ];
 
 const NEXT_STATUSES: Record<string, string[]> = {
@@ -438,16 +430,9 @@ const NEXT_STATUSES: Record<string, string[]> = {
   "on-hold": ["submitted", "verbal-win", "lost", "cancelled"],
 };
 
-// Lifecycle stages — the compact replacement for the 14 granular status tabs.
-// Granular status stays reachable via the inline cell editor, the column-header
-// select filter, and the board columns; the chips only carry the four buckets
-// the business actually triages by. `match` partitions every quote.status.
-const STAGES: Array<{ key: string; label: string; match: (s: string) => boolean }> = [
-  { key: "active-jobs", label: "Active jobs", match: (s) => ACTIVE_JOB_STATUSES.has(s) },
-  { key: "open",        label: "Open",        match: (s) => OPEN_PIPELINE_STATUSES.has(s) },
-  { key: "closed",      label: "Closed",      match: (s) => CLOSED_STATUSES.has(s) || s === "complete" || s === "ready-to-invoice" || s === "invoiced" },
-  { key: "all",         label: "All",         match: () => true },
-];
+// STAGES is an alias for STATUS_FILTERS — both the top chips and the column
+// header filter use the same 5-stage list.
+const STAGES = STATUS_FILTERS;
 const STAGE_KEYS = new Set(STAGES.map((s) => s.key));
 
 // Board columns — one status per column so a drag-drop is an unambiguous status
@@ -515,6 +500,12 @@ function qty(thousandths: number): string {
   });
 }
 
+function toSimpleLabel(status: string): string {
+  return STATUS_FILTERS.find((s) => s.key !== "all" && s.match(status))?.label
+    ?? STATUS_LABELS[status]
+    ?? status;
+}
+
 function statusClass(status: string): string {
   if (["active", "po-matched", "won-job-created"].includes(status))
     return "eq-quotes__badge eq-quotes__badge--green";
@@ -559,9 +550,10 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
 
   // ── Pipeline state ────────────────────────────────────────────────────────
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [statusFilter, setStatusFilter] = useState(() =>
-    (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-tab") : null) ?? "active-jobs"
-  );
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const stored = typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-tab") : null;
+    return (stored && STAGE_KEYS.has(stored)) ? stored : "in-progress";
+  });
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -2646,24 +2638,28 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     {
       key: "status", header: "Status", filterable: "select",
       filterOptions: STATUS_FILTERS
-        .filter((f) => f.key !== "active-jobs" && f.key !== "all")
+        .filter((f) => f.key !== "all")
         .map((f) => ({ value: f.key, label: f.label })),
-      sortAccessor: (q) => STATUS_LABELS[q.status] ?? q.status,
+      sortAccessor: (q) => toSimpleLabel(q.status),
       render: (q) => {
         if (pipelineStatusEdit === q.quote_id) {
-          const nexts = NEXT_STATUSES[q.status] ?? [];
+          const currentStage = STATUS_FILTERS.find((s) => s.key !== "all" && s.match(q.status));
           return (
             <select
               autoFocus
-              value={q.status}
+              value={currentStage?.key ?? ""}
               style={{ fontSize: 12, padding: "2px 4px", border: "1px solid var(--eq-primary, #3DA8D8)", borderRadius: 4 }}
-              onChange={(e) => { void savePipelineStatus(q, e.target.value); }}
+              onChange={(e) => {
+                const stage = STATUS_FILTERS.find((s) => s.key === e.target.value);
+                if (stage?.internalStatus) void savePipelineStatus(q, stage.internalStatus);
+              }}
               onBlur={() => setPipelineStatusEdit(null)}
               onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setPipelineStatusEdit(null); } }}
               onClick={(e) => e.stopPropagation()}
             >
-              <option value={q.status}>{STATUS_LABELS[q.status] ?? q.status}</option>
-              {nexts.map((s) => <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>)}
+              {STATUS_FILTERS.filter((s) => s.key !== "all").map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
             </select>
           );
         }
@@ -2673,7 +2669,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             title="Click to change status"
             onClick={(e) => { e.stopPropagation(); setPipelineStatusEdit(q.quote_id); }}
           >
-            {STATUS_LABELS[q.status] ?? q.status}
+            {toSimpleLabel(q.status)}
           </span>
         );
       },
@@ -4363,41 +4359,55 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     <span className="eq-quotes__info-label" style={{ marginBottom: 6, display: "block" }}>
                       {createSiteId ? "Site & Customer Contacts" : "Customer Contacts"}
                     </span>
-                    {allContacts.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginBottom: 8 }}>
-                        {allContacts.map((ct) => {
-                          const name = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unknown";
-                          const isSelected = selectedContactId === ct.contact_id;
-                          const isSiteContact = siteIds.has(ct.contact_id);
-                          return (
-                            <button
-                              key={ct.contact_id}
-                              type="button"
-                              style={{
-                                fontSize: "0.82rem",
-                                padding: "4px 12px",
-                                borderRadius: "20px",
-                                border: `1px solid ${isSelected ? "var(--eq-deep, #2986B4)" : "var(--eq-border, #ddd)"}`,
-                                background: isSelected ? "var(--eq-ice, #EAF5FB)" : "#fff",
-                                color: isSelected ? "var(--eq-ink, #1A1A2E)" : "var(--eq-muted, #666)",
-                                cursor: "pointer",
-                                fontWeight: isSelected ? 600 : undefined,
-                              }}
-                              onClick={() => {
-                                setSelectedContactId(ct.contact_id);
-                                setCreateAttnFirstName(ct.first_name ?? "");
-                                setCreateAttnName(ct.last_name ?? "");
-                                setCreateAttnPhone(ct.mobile_phone ?? ct.work_phone ?? "");
-                              }}
-                              title={isSiteContact ? "Site contact" : "Customer contact"}
-                            >
-                              {name}
-                              {isSiteContact && <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>📍</span>}
-                              {ct.is_default_quote_contact && <span style={{ marginLeft: 4, color: "var(--eq-sky, #3DA8D8)" }}>★</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
+                    {allContacts.length === 0 ? (
+                      <p style={{ fontSize: 13, color: "var(--eq-muted, #888)", margin: "0 0 8px" }}>
+                        No contacts on file for this customer.
+                      </p>
+                    ) : (
+                      <select
+                        className="eq-quotes__select"
+                        style={{ width: "100%", maxWidth: 360, marginBottom: 8 }}
+                        value={selectedContactId ?? ""}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          if (!id) {
+                            setSelectedContactId(null);
+                            setCreateAttnFirstName(""); setCreateAttnName(""); setCreateAttnPhone("");
+                            return;
+                          }
+                          const ct = allContacts.find((c) => c.contact_id === id);
+                          if (!ct) return;
+                          setSelectedContactId(id);
+                          setCreateAttnFirstName(ct.first_name ?? "");
+                          setCreateAttnName(ct.last_name ?? "");
+                          setCreateAttnPhone(ct.mobile_phone ?? ct.work_phone ?? "");
+                        }}
+                      >
+                        <option value="">— Select contact —</option>
+                        {siteIds.size > 0 ? (
+                          <>
+                            <optgroup label="Site contacts">
+                              {siteContactsForForm.map((ct) => {
+                                const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unnamed";
+                                return <option key={ct.contact_id} value={ct.contact_id}>{n}{ct.is_default_quote_contact ? " ★" : ""}</option>;
+                              })}
+                            </optgroup>
+                            {createContacts.filter((c) => !siteIds.has(c.contact_id)).length > 0 && (
+                              <optgroup label="Customer contacts">
+                                {createContacts.filter((c) => !siteIds.has(c.contact_id)).map((ct) => {
+                                  const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unnamed";
+                                  return <option key={ct.contact_id} value={ct.contact_id}>{n}{ct.is_default_quote_contact ? " ★" : ""}</option>;
+                                })}
+                              </optgroup>
+                            )}
+                          </>
+                        ) : (
+                          allContacts.map((ct) => {
+                            const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unnamed";
+                            return <option key={ct.contact_id} value={ct.contact_id}>{n}{ct.is_default_quote_contact ? " ★" : ""}</option>;
+                          })
+                        )}
+                      </select>
                     )}
                     {showAddContact ? (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-end", padding: "10px 12px", background: "var(--eq-ice, #EAF5FB)", borderRadius: 8, border: "1px solid var(--eq-border, #ddd)" }}>

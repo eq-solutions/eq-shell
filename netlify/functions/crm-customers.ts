@@ -33,6 +33,7 @@ interface CustomerRow {
   last_name: string | null;
   customer_group: string | null;
   state: string | null;
+  suburb?: string | null;
   active: boolean | null;
   primary_phone?: string | null;
   mobile_phone?: string | null;
@@ -130,7 +131,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     const id = url.searchParams.get('id');
     if (!id) return json(400, { ok: false, error: 'missing_id' });
     const [custRes, siteRes, contactRes] = await Promise.all([
-      sb.from('customers').select('customer_id, company_name, first_name, last_name, customer_group, state, active, primary_phone, mobile_phone, email').eq('customer_id', id).maybeSingle(),
+      sb.from('customers').select('customer_id, company_name, first_name, last_name, customer_group, state, suburb, active, primary_phone, mobile_phone, email').eq('customer_id', id).maybeSingle(),
       sb.from('sites').select(SITE_COLS).eq('customer_id', id).order('name'),
       sb.from('contacts').select(CONTACT_COLS).eq('customer_id', id).order('last_name'),
     ]);
@@ -141,7 +142,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       ok: true,
       customer: {
         id: c.customer_id, name: customerName(c), group: c.customer_group ?? null,
-        state: c.state ?? null, active: c.active !== false,
+        state: c.state ?? null, suburb: c.suburb ?? null, active: c.active !== false,
         phone: c.primary_phone ?? c.mobile_phone ?? null, email: c.email ?? null,
       },
       sites: ((siteRes.data ?? []) as SiteRow[]).map(mapSite),
