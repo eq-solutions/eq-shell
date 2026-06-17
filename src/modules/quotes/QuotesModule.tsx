@@ -281,6 +281,7 @@ interface PdfParseResult {
 
 interface QuotesModuleProps {
   supabase: SupabaseClient | null;
+  sessionName?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -541,7 +542,7 @@ function parseCSV(text: string): CoupaRow[] {
 // Component
 // ---------------------------------------------------------------------------
 
-export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element {
+export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): React.JSX.Element {
   type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit" | "setup" | "trash" | "reports" | "customers";
 
   // ── Main navigation ──────────────────────────────────────────────────────
@@ -598,9 +599,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // Status update
   const [advanceStatus, setAdvanceStatus] = useState("");
   const [statusNote, setStatusNote] = useState("");
-  const [initials, setInitials] = useState(() =>
-    (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? ""
-  );
+  const [initials, setInitials] = useState(() => {
+    const stored = typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null;
+    if (stored) return stored;
+    if (sessionName) return sessionName.split(" ").map((w) => w[0] ?? "").join("").toUpperCase().slice(0, 4);
+    return "";
+  });
   const updateInitials = (v: string) => {
     const upper = v.toUpperCase();
     setInitials(upper);
@@ -771,7 +775,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [sites, setSites] = useState<Site[]>([]);
   const [sitesLoading, setSitesLoading] = useState(false);
   const [presets, setPresets] = useState<RatePreset[]>([]);
-  const [presetsLoading, setPresetsLoading] = useState(false);
   const [createCustomerId, setCreateCustomerId] = useState("");
   const [createCustomerSearch, setCreateCustomerSearch] = useState("");
   const [createSiteId, setCreateSiteId] = useState("");
@@ -817,8 +820,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   const [calcResult, setCalcResult] = useState<CalcResult | RemovalResult | null>(null);
   const [calcLoading, setCalcLoading] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
-  const [presetPanelOpen, setPresetPanelOpen] = useState(false);
-  const [presetPanelCat, setPresetPanelCat] = useState("labour");
   interface CalcMatrixRow { product_id: string; name: string; band_label: string; min_qty: number; computed_price: number; }
   const [calcMatrix, setCalcMatrix] = useState<CalcMatrixRow[]>([]);
   const [creating, setCreating] = useState(false);
@@ -900,6 +901,13 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     } catch { /* ignore */ }
   }, [search, estFilter, customerFilter, siteFilter, expiringOnly, unsentOnly, needsJobNoOnly, overdueFupOnly, staleOnly]);
 
+  const sortContacts = (rows: ContactRow[]) =>
+    rows.slice().sort((a, b) => {
+      const la = (a.last_name ?? a.first_name ?? "").toLowerCase();
+      const lb = (b.last_name ?? b.first_name ?? "").toLowerCase();
+      return la.localeCompare(lb);
+    });
+
   const openDetail = useCallback(
     async (quoteId: string) => {
       if (!supabase) return;
@@ -962,7 +970,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           const { data: contactsData } = await supabase.rpc("eq_list_contacts_for_customer", {
             p_customer_id: row.customer_id,
           });
-          setDetailContacts((contactsData as ContactRow[]) ?? []);
+          setDetailContacts(sortContacts((contactsData as ContactRow[]) ?? []));
         } else {
           setDetailContacts([]);
         }
@@ -1024,7 +1032,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setCustomersLoading(true);
     const { data, error } = await supabase.rpc("eq_list_customers");
     setCustomersLoading(false);
-    if (!error) setCustomers((data as Customer[]) ?? []);
+    if (!error) setCustomers(((data as Customer[]) ?? []).sort((a, b) => a.company_name.localeCompare(b.company_name)));
   }, [supabase]);
 
   const loadSites = useCallback(async (customerId: string) => {
@@ -1032,33 +1040,31 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setSitesLoading(true);
     const { data, error } = await supabase.rpc("eq_list_sites", { p_customer_id: customerId });
     setSitesLoading(false);
-    if (!error) setSites((data as Site[]) ?? []);
+    if (!error) setSites(((data as Site[]) ?? []).sort((a, b) => a.name.localeCompare(b.name)));
   }, [supabase]);
 
   const loadPresets = useCallback(async () => {
     if (!supabase) return;
-    setPresetsLoading(true);
     const { data, error } = await supabase.rpc("eq_list_rate_presets");
-    setPresetsLoading(false);
     if (!error) setPresets((data as RatePreset[]) ?? []);
   }, [supabase]);
 
   const loadTemplates = useCallback(async () => {
     if (!supabase) return;
     const { data, error } = await supabase.rpc("eq_list_quote_templates");
-    if (!error) setTemplates((data as QuoteTemplate[]) ?? []);
+    if (!error) setTemplates(((data as QuoteTemplate[]) ?? []).sort((a, b) => a.name.localeCompare(b.name)));
   }, [supabase]);
 
   const loadEstimators = useCallback(async () => {
     if (!supabase) return;
     const { data, error } = await supabase.rpc("eq_list_estimators");
-    if (!error) setEstimators((data as EstimatorRow[]) ?? []);
+    if (!error) setEstimators(((data as EstimatorRow[]) ?? []).sort((a, b) => a.name.localeCompare(b.name)));
   }, [supabase]);
 
   const loadSiteContactsForForm = useCallback(async (siteId: string) => {
     if (!supabase || !siteId) { setSiteContactsForForm([]); return; }
     const { data, error } = await supabase.rpc("eq_list_contacts_for_site", { p_site_id: siteId });
-    if (!error) setSiteContactsForForm((data as ContactRow[]) ?? []);
+    if (!error) setSiteContactsForForm(sortContacts((data as ContactRow[]) ?? []));
   }, [supabase]);
 
   const loadCalcProducts = useCallback(async () => {
@@ -1066,8 +1072,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     const { data, error } = await supabase.rpc("eq_list_pricing_products");
     if (!error && data) {
       const prods = data as PricingProduct[];
-      setCalcProducts(prods);
-      if (prods.length > 0 && !calcProductId) setCalcProductId(prods[0].product_id);
+      const sorted = prods.slice().sort((a, b) => a.name.localeCompare(b.name));
+      setCalcProducts(sorted);
+      if (sorted.length > 0 && !calcProductId) setCalcProductId(sorted[0].product_id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
@@ -1210,8 +1217,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setPdfParsing(false);
     setPdfParseErr(null);
     setCreateProjectName("");
-    const savedEstName = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-estimator-name") : null) ?? "";
-    const savedEstInitials = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? "";
+    const savedEstName = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-estimator-name") : null) ?? sessionName ?? "";
+    const savedEstInitials = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null)
+      ?? (sessionName ? sessionName.split(" ").map((w) => w[0] ?? "").join("").toUpperCase().slice(0, 4) : "");
     setCreateEstimatorName(savedEstName);
     setCreateEstimatorInitials(savedEstInitials);
     const savedTerms = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-payment-terms") : null) ?? "";
@@ -1411,7 +1419,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadSites(d.customer_id);
     if (supabase && d.customer_id) {
       void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: d.customer_id }).then(({ data }) => {
-        setCreateContacts((data as ContactRow[]) ?? []);
+        setCreateContacts(sortContacts((data as ContactRow[]) ?? []));
       });
     } else {
       setCreateContacts([]);
@@ -1528,7 +1536,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
           void loadSites(match.customer_id);
           if (supabase) {
             void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: match.customer_id }).then(({ data }) => {
-              setCreateContacts((data as ContactRow[]) ?? []);
+              setCreateContacts(sortContacts((data as ContactRow[]) ?? []));
             });
           }
         }
@@ -1838,6 +1846,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  const handleBulkArchive = async () => {
+    if (!supabase || selectedIds.size === 0) return;
+    setBulkBusy(true);
+    const { error } = await supabase.rpc("eq_bulk_update_quote_status", {
+      p_quote_ids: Array.from(selectedIds),
+      p_new_status: "archived",
+      p_initials: initials.trim() || null,
+    });
+    setBulkBusy(false);
+    if (error) { captureRpcError("eq_bulk_update_quote_status", error, { count: selectedIds.size }); setPipelineError(error.message); return; }
+    setSelectedIds(new Set());
+    setBulkStatus("");
+    void loadQuotes(statusFilter, search);
+  };
+
   const handleBulkFollowUp = async () => {
     if (!supabase || !bulkFupDate || selectedIds.size === 0) return;
     setBulkFupBusy(true);
@@ -2133,7 +2156,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_initials: initials.trim() || null,
     });
     if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: q.quote_id, new_status: newStatus }); return; }
-    void loadQuotes(statusFilter, search);
+    // Optimistic in-place update — avoids full refetch so the table keeps its scroll position.
+    // displayedQuotes filtering handles showing/hiding based on the current statusFilter.
+    setQuotes((prev) => prev.map((item) => item.quote_id === q.quote_id ? { ...item, status: newStatus } : item));
   };
 
   const savePipelineJobNo = async (q: Quote, value: string) => {
@@ -2330,7 +2355,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `SKS Quote - ${detail.project_name || detail.quote_number}.pdf`;
+      a.download = detail.project_name
+        ? `${detail.quote_number} - ${detail.project_name}.pdf`
+        : `${detail.quote_number}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -3145,14 +3172,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <label className="eq-quotes__info-label">Loss reason (optional)</label>
                   <datalist id="eq-loss-reasons">
-                    <option value="Price" />
-                    <option value="Timeline" />
-                    <option value="No response" />
-                    <option value="Competitor" />
-                    <option value="Scope change" />
                     <option value="Budget cut" />
+                    <option value="Competitor" />
                     <option value="Deferred" />
                     <option value="Internal — not proceeding" />
+                    <option value="No response" />
+                    <option value="Price" />
+                    <option value="Scope change" />
+                    <option value="Timeline" />
                   </datalist>
                   <input
                     className="eq-quotes__input"
@@ -3318,10 +3345,14 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                             {allCts.map((ct) => {
                               const name = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "—";
                               const isSite = siteIds.has(ct.contact_id);
-                              const role = ct.contact_position ? ` — ${ct.contact_position}` : "";
+                              const parts = [
+                                (isSite ? "📍 " : "") + name + (ct.is_default_quote_contact ? " ★" : ""),
+                                ct.email,
+                                ct.mobile_phone ?? ct.work_phone,
+                              ].filter(Boolean);
                               return (
-                                <option key={ct.contact_id} value={ct.contact_id} title={ct.email ?? undefined}>
-                                  {isSite ? "📍 " : ""}{name}{role}{ct.is_default_quote_contact ? " ★" : ""}
+                                <option key={ct.contact_id} value={ct.contact_id}>
+                                  {parts.join(" · ")}
                                 </option>
                               );
                             })}
@@ -3416,11 +3447,15 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                     >
                       <option value="">None</option>
                       {detailContacts.map((c) => {
-                        const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || c.email || "Unknown";
-                        const role = c.contact_position ? ` — ${c.contact_position}` : "";
+                        const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unknown";
+                        const parts = [
+                          name + (c.is_default_quote_contact ? " ★" : ""),
+                          c.email,
+                          c.mobile_phone ?? c.work_phone,
+                        ].filter(Boolean);
                         return (
                           <option key={c.contact_id} value={c.contact_id}>
-                            {name}{role}{c.is_default_quote_contact ? " ★" : ""}
+                            {parts.join(" · ")}
                           </option>
                         );
                       })}
@@ -4283,7 +4318,7 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                             void loadSites(match.customer_id);
                             if (supabase) {
                               void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: match.customer_id }).then(({ data }) => {
-                                setCreateContacts((data as ContactRow[]) ?? []);
+                                setCreateContacts(sortContacts((data as ContactRow[]) ?? []));
                               });
                             }
                           }
@@ -4375,23 +4410,26 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                           <>
                             <optgroup label="Site contacts">
                               {siteContactsForForm.map((ct) => {
-                                const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unnamed";
-                                return <option key={ct.contact_id} value={ct.contact_id}>{n}{ct.is_default_quote_contact ? " ★" : ""}</option>;
+                                const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "Unnamed";
+                                const parts = [n + (ct.is_default_quote_contact ? " ★" : ""), ct.email, ct.mobile_phone ?? ct.work_phone].filter(Boolean);
+                                return <option key={ct.contact_id} value={ct.contact_id}>{parts.join(" · ")}</option>;
                               })}
                             </optgroup>
                             {createContacts.filter((c) => !siteIds.has(c.contact_id)).length > 0 && (
                               <optgroup label="Customer contacts">
                                 {createContacts.filter((c) => !siteIds.has(c.contact_id)).map((ct) => {
-                                  const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unnamed";
-                                  return <option key={ct.contact_id} value={ct.contact_id}>{n}{ct.is_default_quote_contact ? " ★" : ""}</option>;
+                                  const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "Unnamed";
+                                  const parts = [n + (ct.is_default_quote_contact ? " ★" : ""), ct.email, ct.mobile_phone ?? ct.work_phone].filter(Boolean);
+                                  return <option key={ct.contact_id} value={ct.contact_id}>{parts.join(" · ")}</option>;
                                 })}
                               </optgroup>
                             )}
                           </>
                         ) : (
                           allContacts.map((ct) => {
-                            const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.email || "Unnamed";
-                            return <option key={ct.contact_id} value={ct.contact_id}>{n}{ct.is_default_quote_contact ? " ★" : ""}</option>;
+                            const n = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || "Unnamed";
+                            const parts = [n + (ct.is_default_quote_contact ? " ★" : ""), ct.email, ct.mobile_phone ?? ct.work_phone].filter(Boolean);
+                            return <option key={ct.contact_id} value={ct.contact_id}>{parts.join(" · ")}</option>;
                           })
                         )}
                       </select>
@@ -4664,17 +4702,43 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                         </tr>
                         {secRows.map(({ li, i }) => renderLineRow(li, i))}
                         <tr>
-                          <td colSpan={8} style={{ padding: "4px 8px" }}>
-                            <button
-                              type="button"
-                              style={{
-                                background: "none", border: "none", color: "var(--eq-sky, #3DA8D8)",
-                                cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "2px 0",
-                              }}
-                              onClick={() => addLineItem(sec.value)}
-                            >
-                              + Add {sec.label.toLowerCase()} line
-                            </button>
+                          <td colSpan={8} style={{ padding: "4px 8px 8px" }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                              <button
+                                type="button"
+                                style={{
+                                  background: "none", border: "none", color: "var(--eq-sky, #3DA8D8)",
+                                  cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "2px 0",
+                                  whiteSpace: "nowrap",
+                                }}
+                                onClick={() => addLineItem(sec.value)}
+                              >
+                                + Add {sec.label.toLowerCase()} line
+                              </button>
+                              {presets
+                                .filter((p) => (p.category ?? "") === sec.value)
+                                .map((p) => (
+                                  <button
+                                    key={p.preset_id}
+                                    type="button"
+                                    onClick={() => applyPreset(p)}
+                                    title={p.unit_rate_cents > 0 ? `${aud(p.unit_rate_cents)}${p.unit ? ` / ${p.unit}` : ""}` : undefined}
+                                    style={{
+                                      display: "inline-flex", alignItems: "center", gap: 4,
+                                      padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 500,
+                                      border: "1px solid var(--eq-border)", background: "var(--eq-surface)",
+                                      color: "var(--eq-text)", cursor: "pointer", whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {p.description}
+                                    {p.unit_rate_cents > 0 && (
+                                      <span style={{ color: "var(--eq-muted)", fontSize: 10 }}>
+                                        {aud(p.unit_rate_cents)}{p.unit ? `/${p.unit}` : ""}
+                                      </span>
+                                    )}
+                                  </button>
+                                ))}
+                            </div>
                           </td>
                         </tr>
                         {secTotal > 0 && (
@@ -4714,74 +4778,6 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
                 </tbody>
               </table>
             </div>
-            {/* Quick-add preset panel */}
-            {!presetsLoading && presets.length > 0 && (
-              <div style={{ marginTop: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => setPresetPanelOpen((o) => !o)}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 6,
-                    background: "none", border: "none", cursor: "pointer",
-                    fontSize: 12, color: "var(--eq-muted)", fontWeight: 600,
-                    textTransform: "uppercase", letterSpacing: "0.06em", padding: 0,
-                  }}
-                >
-                  <span style={{ fontSize: 14 }}>{presetPanelOpen ? "▾" : "▸"}</span>
-                  Quick add from library
-                </button>
-                {presetPanelOpen && (
-                  <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--eq-surface-alt, var(--eq-surface))", borderRadius: 8, border: "1px solid var(--eq-border)" }}>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                      {QUOTE_SECTIONS.map((s) => (
-                        <button
-                          key={s.value}
-                          type="button"
-                          onClick={() => setPresetPanelCat(s.value)}
-                          style={{
-                            padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
-                            cursor: "pointer", border: "1px solid var(--eq-border)",
-                            background: presetPanelCat === s.value ? "var(--eq-sky, #3DA8D8)" : "var(--eq-surface)",
-                            color: presetPanelCat === s.value ? "#fff" : "var(--eq-text)",
-                          }}
-                        >
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {presets
-                        .filter((p) => (p.category ?? "") === presetPanelCat)
-                        .map((p) => (
-                          <button
-                            key={p.preset_id}
-                            type="button"
-                            onClick={() => applyPreset(p)}
-                            style={{
-                              display: "flex", flexDirection: "column", alignItems: "flex-start",
-                              padding: "5px 10px", borderRadius: 8, minWidth: 140,
-                              border: "1px solid var(--eq-border)",
-                              background: "var(--eq-surface)",
-                              cursor: "pointer", textAlign: "left",
-                              transition: "border-color 0.1s",
-                            }}
-                          >
-                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--eq-text)" }}>{p.description}</span>
-                            {p.unit_rate_cents > 0 && (
-                              <span style={{ fontSize: 11, color: "var(--eq-muted)", marginTop: 1 }}>
-                                {aud(p.unit_rate_cents)}{p.unit ? ` / ${p.unit}` : ""}
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                      {presets.filter((p) => (p.category ?? "") === presetPanelCat).length === 0 && (
-                        <span className="eq-quotes__muted" style={{ fontSize: 12 }}>No presets in this section yet.</span>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Outlet pricing calculator */}
             <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--eq-border)" }}>
@@ -5560,60 +5556,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             )}
           </div>
 
-          {/* Bulk actions — appear when rows are ticked */}
-          {selectedIds.size > 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "8px 0", padding: "8px 12px", background: "var(--eq-ice, #EAF5FB)", borderRadius: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{selectedIds.size} selected</span>
-              <select
-                className="eq-quotes__select"
-                style={{ fontSize: 13, padding: "4px 6px" }}
-                value={bulkStatus}
-                onChange={(e) => setBulkStatus(e.target.value)}
-              >
-                <option value="">Set status…</option>
-                {Object.entries(STATUS_LABELS).map(([k, label]) => (
-                  <option key={k} value={k}>{label}</option>
-                ))}
-              </select>
-              <input
-                className="eq-quotes__input eq-quotes__input--sm"
-                style={{ width: 70 }}
-                placeholder="Initials"
-                value={initials}
-                onChange={(e) => updateInitials(e.target.value)}
-                maxLength={4}
-              />
-              <button
-                type="button"
-                className="eq-quotes__btn eq-quotes__btn--primary"
-                disabled={!bulkStatus || bulkBusy}
-                onClick={() => void handleBulkStatus()}
-              >
-                {bulkBusy ? "Applying…" : "Apply"}
-              </button>
-              <span style={{ fontSize: 12, color: "var(--eq-muted, #6b7280)", margin: "0 4px" }}>|</span>
-              <input
-                type="date"
-                className="eq-quotes__input eq-quotes__input--sm"
-                style={{ width: 130, fontSize: 13, padding: "4px 6px" }}
-                value={bulkFupDate}
-                onChange={(e) => setBulkFupDate(e.target.value)}
-                title="Set follow-up date for all selected"
-              />
-              <button
-                type="button"
-                className="eq-quotes__btn eq-quotes__btn--outline"
-                disabled={!bulkFupDate || bulkFupBusy}
-                onClick={() => void handleBulkFollowUp()}
-                title="Apply follow-up date to all selected quotes"
-              >
-                {bulkFupBusy ? "Saving…" : "Set follow-up"}
-              </button>
-              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => setSelectedIds(new Set())}>
-                Clear
-              </button>
-            </div>
-          )}
+          {/* Bulk actions spacer — floating bar below takes the real space when rows are selected */}
+          {selectedIds.size > 0 && <div style={{ height: 64 }} />}
 
           {/* Table — canonical eq-ui Table (sortable + per-column filters + select) */}
           {pipelineError ? (
@@ -5999,6 +5943,98 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Floating bulk action bar — fixed at viewport bottom when rows are selected */}
+      {selectedIds.size > 0 && (
+        <div style={{
+          position: "fixed", bottom: 0, left: 52, right: 0, zIndex: 50,
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          padding: "12px 20px",
+          background: "var(--eq-ink, #1A1A2E)",
+          borderTop: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 -2px 12px rgba(0,0,0,0.18)",
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#fff", marginRight: 4 }}>
+            {selectedIds.size} selected
+          </span>
+          <button
+            type="button"
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "6px 14px", borderRadius: 6, border: "none", cursor: "pointer",
+              background: "var(--eq-primary, #3DA8D8)", color: "#fff",
+              fontSize: 13, fontWeight: 600,
+            }}
+            disabled={bulkBusy}
+            onClick={() => void handleBulkArchive()}
+          >
+            <Archive size={14} strokeWidth={2} />
+            {bulkBusy ? "Archiving…" : "Archive selected"}
+          </button>
+          <select
+            style={{
+              fontSize: 13, padding: "5px 8px", borderRadius: 6,
+              border: "1px solid rgba(255,255,255,0.2)",
+              background: "rgba(255,255,255,0.08)", color: "#fff",
+            }}
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value)}
+          >
+            <option value="">Set status…</option>
+            {Object.entries(STATUS_LABELS).map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            style={{
+              padding: "6px 14px", borderRadius: 6, cursor: "pointer",
+              background: "transparent", color: "#fff", fontSize: 13,
+              border: "1px solid rgba(255,255,255,0.25)",
+            }}
+            disabled={!bulkStatus || bulkBusy}
+            onClick={() => void handleBulkStatus()}
+          >
+            {bulkBusy ? "Applying…" : "Apply status"}
+          </button>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", margin: "0 2px" }}>|</span>
+          <input
+            type="date"
+            style={{
+              fontSize: 13, padding: "5px 8px", borderRadius: 6,
+              border: "1px solid rgba(255,255,255,0.2)",
+              background: "rgba(255,255,255,0.08)", color: "#fff",
+              colorScheme: "dark",
+            }}
+            value={bulkFupDate}
+            onChange={(e) => setBulkFupDate(e.target.value)}
+            title="Set follow-up date for all selected"
+          />
+          <button
+            type="button"
+            style={{
+              padding: "6px 14px", borderRadius: 6, cursor: "pointer",
+              background: "transparent", color: "#fff", fontSize: 13,
+              border: "1px solid rgba(255,255,255,0.25)",
+            }}
+            disabled={!bulkFupDate || bulkFupBusy}
+            onClick={() => void handleBulkFollowUp()}
+          >
+            {bulkFupBusy ? "Saving…" : "Set follow-up"}
+          </button>
+          <button
+            type="button"
+            style={{
+              marginLeft: "auto", padding: "6px 12px", borderRadius: 6, cursor: "pointer",
+              background: "transparent", color: "rgba(255,255,255,0.6)", fontSize: 13,
+              border: "1px solid rgba(255,255,255,0.15)",
+            }}
+            onClick={() => { setSelectedIds(new Set()); setBulkStatus(""); setBulkFupDate(""); }}
+          >
+            Clear
+          </button>
         </div>
       )}
     </div>

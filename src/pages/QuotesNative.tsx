@@ -6,10 +6,12 @@ import { defaultSidebarRecords } from '../lib/sidebarConfig';
 import { createTenantDataClient } from '../lib/tenantDataClient';
 import { createSKSSupabaseClient } from '../lib/sksSupabaseClient';
 import { QuotesModule } from '../modules/quotes/QuotesModule';
+import { useSession } from '../session';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 export default function QuotesNative() {
+  const { session } = useSession();
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(true);
@@ -91,7 +93,7 @@ export default function QuotesNative() {
             </button>
           </div>
         ) : (
-          <QuotesModule supabase={client} />
+          <QuotesModule supabase={client} sessionName={session?.user.name} />
         )}
       </div>
     </HubLayout>
