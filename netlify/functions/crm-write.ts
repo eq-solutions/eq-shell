@@ -226,6 +226,29 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(200, { ok: true });
   }
 
+  // ── add_site ───────────────────────────────────────────────────────────────
+  // id = customer_id
+  if (action === 'add_site') {
+    const name = str(body.name);
+    if (!name) return json(400, { ok: false, error: 'name_required' });
+    const { error } = await sb.from('sites').insert({
+      customer_id:         id,
+      tenant_id:           tid,
+      name,
+      code:                str(body.code),
+      suburb:              str(body.suburb),
+      state:               str(body.state),
+      site_contact_name:   str(body.site_contact_name),
+      site_contact_phone:  str(body.site_contact_phone),
+      site_contact_email:  str(body.site_contact_email),
+      active:              true,
+      created_at:          now,
+      updated_at:          now,
+    });
+    if (error) return json(500, { ok: false, error: error.message });
+    return json(200, { ok: true });
+  }
+
   // ── add_contact ────────────────────────────────────────────────────────────
   if (action === 'add_contact') {
     const customerId = str(body.customer_id);
