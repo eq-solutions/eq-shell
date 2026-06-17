@@ -281,6 +281,7 @@ interface PdfParseResult {
 
 interface QuotesModuleProps {
   supabase: SupabaseClient | null;
+  sessionName?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -541,7 +542,7 @@ function parseCSV(text: string): CoupaRow[] {
 // Component
 // ---------------------------------------------------------------------------
 
-export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element {
+export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): React.JSX.Element {
   type ModuleView = "pipeline" | "accordion" | "import" | "create" | "edit" | "setup" | "trash" | "reports" | "customers";
 
   // ── Main navigation ──────────────────────────────────────────────────────
@@ -598,9 +599,12 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
   // Status update
   const [advanceStatus, setAdvanceStatus] = useState("");
   const [statusNote, setStatusNote] = useState("");
-  const [initials, setInitials] = useState(() =>
-    (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? ""
-  );
+  const [initials, setInitials] = useState(() => {
+    const stored = typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null;
+    if (stored) return stored;
+    if (sessionName) return sessionName.split(" ").map((w) => w[0] ?? "").join("").toUpperCase().slice(0, 4);
+    return "";
+  });
   const updateInitials = (v: string) => {
     const upper = v.toUpperCase();
     setInitials(upper);
@@ -1210,8 +1214,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     setPdfParsing(false);
     setPdfParseErr(null);
     setCreateProjectName("");
-    const savedEstName = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-estimator-name") : null) ?? "";
-    const savedEstInitials = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? "";
+    const savedEstName = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-estimator-name") : null) ?? sessionName ?? "";
+    const savedEstInitials = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null)
+      ?? (sessionName ? sessionName.split(" ").map((w) => w[0] ?? "").join("").toUpperCase().slice(0, 4) : "");
     setCreateEstimatorName(savedEstName);
     setCreateEstimatorInitials(savedEstInitials);
     const savedTerms = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-payment-terms") : null) ?? "";
@@ -1838,6 +1843,21 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
     void loadQuotes(statusFilter, search);
   };
 
+  const handleBulkArchive = async () => {
+    if (!supabase || selectedIds.size === 0) return;
+    setBulkBusy(true);
+    const { error } = await supabase.rpc("eq_bulk_update_quote_status", {
+      p_quote_ids: Array.from(selectedIds),
+      p_new_status: "archived",
+      p_initials: initials.trim() || null,
+    });
+    setBulkBusy(false);
+    if (error) { captureRpcError("eq_bulk_update_quote_status", error, { count: selectedIds.size }); setPipelineError(error.message); return; }
+    setSelectedIds(new Set());
+    setBulkStatus("");
+    void loadQuotes(statusFilter, search);
+  };
+
   const handleBulkFollowUp = async () => {
     if (!supabase || !bulkFupDate || selectedIds.size === 0) return;
     setBulkFupBusy(true);
@@ -2133,7 +2153,9 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
       p_initials: initials.trim() || null,
     });
     if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: q.quote_id, new_status: newStatus }); return; }
-    void loadQuotes(statusFilter, search);
+    // Optimistic in-place update — avoids full refetch so the table keeps its scroll position.
+    // displayedQuotes filtering handles showing/hiding based on the current statusFilter.
+    setQuotes((prev) => prev.map((item) => item.quote_id === q.quote_id ? { ...item, status: newStatus } : item));
   };
 
   const savePipelineJobNo = async (q: Quote, value: string) => {
@@ -5560,60 +5582,8 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
             )}
           </div>
 
-          {/* Bulk actions — appear when rows are ticked */}
-          {selectedIds.size > 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "8px 0", padding: "8px 12px", background: "var(--eq-ice, #EAF5FB)", borderRadius: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{selectedIds.size} selected</span>
-              <select
-                className="eq-quotes__select"
-                style={{ fontSize: 13, padding: "4px 6px" }}
-                value={bulkStatus}
-                onChange={(e) => setBulkStatus(e.target.value)}
-              >
-                <option value="">Set status…</option>
-                {Object.entries(STATUS_LABELS).map(([k, label]) => (
-                  <option key={k} value={k}>{label}</option>
-                ))}
-              </select>
-              <input
-                className="eq-quotes__input eq-quotes__input--sm"
-                style={{ width: 70 }}
-                placeholder="Initials"
-                value={initials}
-                onChange={(e) => updateInitials(e.target.value)}
-                maxLength={4}
-              />
-              <button
-                type="button"
-                className="eq-quotes__btn eq-quotes__btn--primary"
-                disabled={!bulkStatus || bulkBusy}
-                onClick={() => void handleBulkStatus()}
-              >
-                {bulkBusy ? "Applying…" : "Apply"}
-              </button>
-              <span style={{ fontSize: 12, color: "var(--eq-muted, #6b7280)", margin: "0 4px" }}>|</span>
-              <input
-                type="date"
-                className="eq-quotes__input eq-quotes__input--sm"
-                style={{ width: 130, fontSize: 13, padding: "4px 6px" }}
-                value={bulkFupDate}
-                onChange={(e) => setBulkFupDate(e.target.value)}
-                title="Set follow-up date for all selected"
-              />
-              <button
-                type="button"
-                className="eq-quotes__btn eq-quotes__btn--outline"
-                disabled={!bulkFupDate || bulkFupBusy}
-                onClick={() => void handleBulkFollowUp()}
-                title="Apply follow-up date to all selected quotes"
-              >
-                {bulkFupBusy ? "Saving…" : "Set follow-up"}
-              </button>
-              <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => setSelectedIds(new Set())}>
-                Clear
-              </button>
-            </div>
-          )}
+          {/* Bulk actions spacer — floating bar below takes the real space when rows are selected */}
+          {selectedIds.size > 0 && <div style={{ height: 64 }} />}
 
           {/* Table — canonical eq-ui Table (sortable + per-column filters + select) */}
           {pipelineError ? (
@@ -5999,6 +5969,98 @@ export function QuotesModule({ supabase }: QuotesModuleProps): React.JSX.Element
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Floating bulk action bar — fixed at viewport bottom when rows are selected */}
+      {selectedIds.size > 0 && (
+        <div style={{
+          position: "fixed", bottom: 0, left: 52, right: 0, zIndex: 50,
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          padding: "12px 20px",
+          background: "var(--eq-ink, #1A1A2E)",
+          borderTop: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 -2px 12px rgba(0,0,0,0.18)",
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#fff", marginRight: 4 }}>
+            {selectedIds.size} selected
+          </span>
+          <button
+            type="button"
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "6px 14px", borderRadius: 6, border: "none", cursor: "pointer",
+              background: "var(--eq-primary, #3DA8D8)", color: "#fff",
+              fontSize: 13, fontWeight: 600,
+            }}
+            disabled={bulkBusy}
+            onClick={() => void handleBulkArchive()}
+          >
+            <Archive size={14} strokeWidth={2} />
+            {bulkBusy ? "Archiving…" : "Archive selected"}
+          </button>
+          <select
+            style={{
+              fontSize: 13, padding: "5px 8px", borderRadius: 6,
+              border: "1px solid rgba(255,255,255,0.2)",
+              background: "rgba(255,255,255,0.08)", color: "#fff",
+            }}
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value)}
+          >
+            <option value="">Set status…</option>
+            {Object.entries(STATUS_LABELS).map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            style={{
+              padding: "6px 14px", borderRadius: 6, cursor: "pointer",
+              background: "transparent", color: "#fff", fontSize: 13,
+              border: "1px solid rgba(255,255,255,0.25)",
+            }}
+            disabled={!bulkStatus || bulkBusy}
+            onClick={() => void handleBulkStatus()}
+          >
+            {bulkBusy ? "Applying…" : "Apply status"}
+          </button>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", margin: "0 2px" }}>|</span>
+          <input
+            type="date"
+            style={{
+              fontSize: 13, padding: "5px 8px", borderRadius: 6,
+              border: "1px solid rgba(255,255,255,0.2)",
+              background: "rgba(255,255,255,0.08)", color: "#fff",
+              colorScheme: "dark",
+            }}
+            value={bulkFupDate}
+            onChange={(e) => setBulkFupDate(e.target.value)}
+            title="Set follow-up date for all selected"
+          />
+          <button
+            type="button"
+            style={{
+              padding: "6px 14px", borderRadius: 6, cursor: "pointer",
+              background: "transparent", color: "#fff", fontSize: 13,
+              border: "1px solid rgba(255,255,255,0.25)",
+            }}
+            disabled={!bulkFupDate || bulkFupBusy}
+            onClick={() => void handleBulkFollowUp()}
+          >
+            {bulkFupBusy ? "Saving…" : "Set follow-up"}
+          </button>
+          <button
+            type="button"
+            style={{
+              marginLeft: "auto", padding: "6px 12px", borderRadius: 6, cursor: "pointer",
+              background: "transparent", color: "rgba(255,255,255,0.6)", fontSize: 13,
+              border: "1px solid rgba(255,255,255,0.15)",
+            }}
+            onClick={() => { setSelectedIds(new Set()); setBulkStatus(""); setBulkFupDate(""); }}
+          >
+            Clear
+          </button>
         </div>
       )}
     </div>
