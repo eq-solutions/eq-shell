@@ -1,7 +1,7 @@
 import { useParams, useMatch } from 'react-router-dom';
-import { Users, Wrench, FileText, CreditCard, ScrollText, Radio } from 'lucide-react';
+import { Users, Wrench, FileText, CreditCard, Radio } from 'lucide-react';
 import { AppRail, type AppRailItem } from '@eq-solutions/ui';
-import { useSession, moduleEnabled, type EqTier } from '../session';
+import { useSession, type EqTier } from '../session';
 import { EqLogo } from './EqLogo';
 import { MobileTabBar } from './MobileTabBar';
 
@@ -21,18 +21,14 @@ interface RailItemDef {
   icon: React.ReactNode;
   to: string;
   hideForTier?: EqTier[];
-  platformOnly?: boolean;
 }
 
 const RAIL_ITEMS: RailItemDef[] = [
-  { key: 'field',     label: 'EQ Field',   icon: <Users size={20} strokeWidth={2} aria-hidden="true" />,       to: 'field'     },
-  { key: 'service',   label: 'EQ Service', icon: <Wrench size={20} strokeWidth={2} aria-hidden="true" />,      to: 'service'   },
-  // EQ Quotes — the standalone tool the team uses today (external redirect).
-  { key: 'eq-quotes', label: 'EQ Quotes',  icon: <ScrollText size={20} strokeWidth={2} aria-hidden="true" />, to: 'eq-quotes' },
-  // EQ Ops — in-shell replacement; gated on the `ops` module entitlement (per-tenant) + platform admins.
-  { key: 'ops',       label: 'EQ Ops',     icon: <FileText size={20} strokeWidth={2} aria-hidden="true" />,    to: 'ops',       hideForTier: TRIAL_TIERS, platformOnly: true },
-  { key: 'cards',     label: 'EQ Cards',   icon: <CreditCard size={20} strokeWidth={2} aria-hidden="true" />,  to: 'cards'     },
-  { key: 'comms',     label: 'NSW Comms',  icon: <Radio size={20} strokeWidth={2} aria-hidden="true" />,        to: 'comms'     },
+  { key: 'field',   label: 'EQ Field',   icon: <Users size={20} strokeWidth={2} aria-hidden="true" />,      to: 'field'   },
+  { key: 'service', label: 'EQ Service', icon: <Wrench size={20} strokeWidth={2} aria-hidden="true" />,     to: 'service' },
+  { key: 'ops',     label: 'EQ Ops',     icon: <FileText size={20} strokeWidth={2} aria-hidden="true" />,   to: 'ops',    hideForTier: TRIAL_TIERS },
+  { key: 'cards',   label: 'EQ Cards',   icon: <CreditCard size={20} strokeWidth={2} aria-hidden="true" />, to: 'cards'   },
+  { key: 'comms',   label: 'NSW Comms',  icon: <Radio size={20} strokeWidth={2} aria-hidden="true" />,       to: 'comms'   },
 ];
 
 export function IconRail() {
@@ -48,11 +44,7 @@ export function IconRail() {
   const userInitials = initials(session.user.name, session.user.email);
   const userName = session.user.name ?? session.user.email.split('@')[0].replace('.', ' ');
 
-  const railItems: AppRailItem[] = RAIL_ITEMS
-    // EQ Ops shows for tenants with the `ops` module entitlement on, plus platform
-    // admins everywhere. Other rail items are unconditional (gated only by tier).
-    .filter((item) => !item.platformOnly || session.user.is_platform_admin || moduleEnabled(session, item.key))
-    .map((item) => {
+  const railItems: AppRailItem[] = RAIL_ITEMS.map((item) => {
     const isDisabled = item.hideForTier?.includes(tier) ?? false;
     return {
       key: item.key,

@@ -22,6 +22,9 @@
 
 DO $$
 BEGIN
+  -- Ensure service schema exists before creating views (zaap may not have it yet)
+  EXECUTE 'CREATE SCHEMA IF NOT EXISTS service';
+
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='app_data' AND table_name='customers') THEN
     IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='service' AND c.relname='customers' AND c.relkind='r') THEN
       EXECUTE 'DROP TABLE service.customers';
