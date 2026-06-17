@@ -904,6 +904,13 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
     } catch { /* ignore */ }
   }, [search, estFilter, customerFilter, siteFilter, expiringOnly, unsentOnly, needsJobNoOnly, overdueFupOnly, staleOnly]);
 
+  const sortContacts = (rows: ContactRow[]) =>
+    rows.slice().sort((a, b) => {
+      const la = (a.last_name ?? a.first_name ?? "").toLowerCase();
+      const lb = (b.last_name ?? b.first_name ?? "").toLowerCase();
+      return la.localeCompare(lb);
+    });
+
   const openDetail = useCallback(
     async (quoteId: string) => {
       if (!supabase) return;
@@ -966,7 +973,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
           const { data: contactsData } = await supabase.rpc("eq_list_contacts_for_customer", {
             p_customer_id: row.customer_id,
           });
-          setDetailContacts((contactsData as ContactRow[]) ?? []);
+          setDetailContacts(sortContacts((contactsData as ContactRow[]) ?? []));
         } else {
           setDetailContacts([]);
         }
@@ -1028,7 +1035,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
     setCustomersLoading(true);
     const { data, error } = await supabase.rpc("eq_list_customers");
     setCustomersLoading(false);
-    if (!error) setCustomers((data as Customer[]) ?? []);
+    if (!error) setCustomers(((data as Customer[]) ?? []).sort((a, b) => a.company_name.localeCompare(b.company_name)));
   }, [supabase]);
 
   const loadSites = useCallback(async (customerId: string) => {
@@ -1036,7 +1043,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
     setSitesLoading(true);
     const { data, error } = await supabase.rpc("eq_list_sites", { p_customer_id: customerId });
     setSitesLoading(false);
-    if (!error) setSites((data as Site[]) ?? []);
+    if (!error) setSites(((data as Site[]) ?? []).sort((a, b) => a.name.localeCompare(b.name)));
   }, [supabase]);
 
   const loadPresets = useCallback(async () => {
@@ -1050,19 +1057,19 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
   const loadTemplates = useCallback(async () => {
     if (!supabase) return;
     const { data, error } = await supabase.rpc("eq_list_quote_templates");
-    if (!error) setTemplates((data as QuoteTemplate[]) ?? []);
+    if (!error) setTemplates(((data as QuoteTemplate[]) ?? []).sort((a, b) => a.name.localeCompare(b.name)));
   }, [supabase]);
 
   const loadEstimators = useCallback(async () => {
     if (!supabase) return;
     const { data, error } = await supabase.rpc("eq_list_estimators");
-    if (!error) setEstimators((data as EstimatorRow[]) ?? []);
+    if (!error) setEstimators(((data as EstimatorRow[]) ?? []).sort((a, b) => a.name.localeCompare(b.name)));
   }, [supabase]);
 
   const loadSiteContactsForForm = useCallback(async (siteId: string) => {
     if (!supabase || !siteId) { setSiteContactsForForm([]); return; }
     const { data, error } = await supabase.rpc("eq_list_contacts_for_site", { p_site_id: siteId });
-    if (!error) setSiteContactsForForm((data as ContactRow[]) ?? []);
+    if (!error) setSiteContactsForForm(sortContacts((data as ContactRow[]) ?? []));
   }, [supabase]);
 
   const loadCalcProducts = useCallback(async () => {
@@ -1070,8 +1077,9 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
     const { data, error } = await supabase.rpc("eq_list_pricing_products");
     if (!error && data) {
       const prods = data as PricingProduct[];
-      setCalcProducts(prods);
-      if (prods.length > 0 && !calcProductId) setCalcProductId(prods[0].product_id);
+      const sorted = prods.slice().sort((a, b) => a.name.localeCompare(b.name));
+      setCalcProducts(sorted);
+      if (sorted.length > 0 && !calcProductId) setCalcProductId(sorted[0].product_id);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
@@ -1416,7 +1424,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
     void loadSites(d.customer_id);
     if (supabase && d.customer_id) {
       void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: d.customer_id }).then(({ data }) => {
-        setCreateContacts((data as ContactRow[]) ?? []);
+        setCreateContacts(sortContacts((data as ContactRow[]) ?? []));
       });
     } else {
       setCreateContacts([]);
@@ -1533,7 +1541,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
           void loadSites(match.customer_id);
           if (supabase) {
             void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: match.customer_id }).then(({ data }) => {
-              setCreateContacts((data as ContactRow[]) ?? []);
+              setCreateContacts(sortContacts((data as ContactRow[]) ?? []));
             });
           }
         }
@@ -3167,14 +3175,14 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <label className="eq-quotes__info-label">Loss reason (optional)</label>
                   <datalist id="eq-loss-reasons">
-                    <option value="Price" />
-                    <option value="Timeline" />
-                    <option value="No response" />
-                    <option value="Competitor" />
-                    <option value="Scope change" />
                     <option value="Budget cut" />
+                    <option value="Competitor" />
                     <option value="Deferred" />
                     <option value="Internal — not proceeding" />
+                    <option value="No response" />
+                    <option value="Price" />
+                    <option value="Scope change" />
+                    <option value="Timeline" />
                   </datalist>
                   <input
                     className="eq-quotes__input"
@@ -4305,7 +4313,7 @@ export function QuotesModule({ supabase, sessionName }: QuotesModuleProps): Reac
                             void loadSites(match.customer_id);
                             if (supabase) {
                               void supabase.rpc("eq_list_contacts_for_customer", { p_customer_id: match.customer_id }).then(({ data }) => {
-                                setCreateContacts((data as ContactRow[]) ?? []);
+                                setCreateContacts(sortContacts((data as ContactRow[]) ?? []));
                               });
                             }
                           }
