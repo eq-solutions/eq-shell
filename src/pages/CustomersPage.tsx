@@ -2,7 +2,7 @@
 // Route: /:tenant/customers
 
 import { useCallback, useEffect, useState } from 'react';
-import { Pencil, X, ChevronRight, Search, Building2, GitMerge, Link, Trash2, Archive } from 'lucide-react';
+import { Pencil, X, ChevronRight, Search, Building2, GitMerge, Link, Archive, UserPlus, Phone, Mail, AlertTriangle, Trash2 } from 'lucide-react';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 
@@ -66,6 +66,30 @@ function initials(name: string): string {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 }
 
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\bpty\.?\s*ltd\.?/g, '')
+    .replace(/\blimited\b/g, '')
+    .replace(/\bp\/l\b/g, '')
+    .replace(/\b(the|and|&|co\.?)\b/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findDupGroups(customers: CustomerItem[]): CustomerItem[][] {
+  const byNorm = new Map<string, CustomerItem[]>();
+  for (const c of customers.filter((x) => x.active)) {
+    const key = normalizeName(c.name);
+    if (!key) continue;
+    const g = byNorm.get(key) ?? [];
+    g.push(c);
+    byNorm.set(key, g);
+  }
+  return [...byNorm.values()].filter((g) => g.length >= 2);
+}
+
 // ─── API ─────────────────────────────────────────────────────────────────────
 
 async function crmFetch(params: Record<string, string>): Promise<Response> {
@@ -120,9 +144,17 @@ export function CustomersPage() {
   const [editSite,     setEditSite]     = useState<DetailSite | null>(null);
   const [editContact,  setEditContact]  = useState<DetailContact | null>(null);
 
-  // Multi-select + merge
+  // Multi-select + merge + bulk archive
   const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set());
   const [mergeOpen,    setMergeOpen]    = useState(false);
+  const [archivingBulk, setArchivingBulk] = useState(false);
+
+  // Contact add modal
+  const [addContactOpen, setAddContactOpen] = useState(false);
+
+  // Duplicate detection
+  const [dupGroups, setDupGroups] = useState<CustomerItem[][]>([]);
+  const [dupIdx,    setDupIdx]    = useState(0);
 
   const toggleSelected = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -172,6 +204,30 @@ export function CustomersPage() {
     setDetailReload((n) => n + 1);
   }, []);
 
+  useEffect(() => {
+    setDupGroups(findDupGroups(customers));
+    setDupIdx(0);
+  }, [customers]);
+
+  const handleBulkArchive = useCallback(async () => {
+    if (archivingBulk) return;
+    setArchivingBulk(true);
+    const ids = [...selectedIds];
+    await Promise.all(ids.map((id) => crmWrite({ action: 'archive_customer', id })));
+    setArchivingBulk(false);
+    setSelectedIds(new Set());
+    if (selCustomerId && ids.includes(selCustomerId)) { setSelCustomerId(null); setSelSiteId(null); }
+    setReload((n) => n + 1);
+  }, [archivingBulk, selectedIds, selCustomerId]);
+
+  const jumpToDupGroup = useCallback(() => {
+    const group = dupGroups[dupIdx];
+    if (!group) return;
+    setSelectedIds(new Set(group.map((c) => c.id)));
+    setDupIdx((i) => (i + 1) % dupGroups.length);
+    setMergeOpen(true);
+  }, [dupGroups, dupIdx]);
+
   const filtered = search
     ? customers.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
     : customers;
@@ -203,8 +259,30 @@ export function CustomersPage() {
 
         {/* Header */}
         <div style={s.ph}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <h1 style={{ ...s.title, flex: 1 }}>Customers</h1>
+            {dupGroups.length > 0 && selectedIds.size === 0 && (
+              <button
+                type="button"
+                title={`${dupGroups.length} possible duplicate group${dupGroups.length === 1 ? '' : 's'} — click to review`}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #FED7AA', background: '#FFF7ED', color: '#D97706', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                onClick={jumpToDupGroup}
+              >
+                <AlertTriangle size={12} />
+                {dupGroups.length} duplicate{dupGroups.length === 1 ? '' : 's'}
+              </button>
+            )}
+            {selectedIds.size >= 1 && (
+              <button
+                type="button"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #FECACA', background: 'white', color: '#EF4444', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: archivingBulk ? 0.6 : 1 }}
+                onClick={handleBulkArchive}
+                disabled={archivingBulk}
+              >
+                <Archive size={12} />
+                {archivingBulk ? 'Archiving…' : `Archive ${selectedIds.size}`}
+              </button>
+            )}
             {selectedIds.size >= 2 && (
               <button
                 type="button"
@@ -379,6 +457,17 @@ export function CustomersPage() {
                           </div>
                         )}
                       </div>
+                      {detail && (
+                        <button
+                          type="button"
+                          style={s.editBtn}
+                          title="Add contact"
+                          onClick={() => setAddContactOpen(true)}
+                          aria-label="Add contact"
+                        >
+                          <UserPlus size={12} />
+                        </button>
+                      )}
                     </div>
                     {/* Contact search bar */}
                     {detail && allContacts.length > 4 && (
@@ -413,8 +502,18 @@ export function CustomersPage() {
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={s.contactName}>{selSite.contact.name}</div>
-                                  {selSite.contact.phone && <div style={s.contactMeta}>{selSite.contact.phone}</div>}
-                                  {selSite.contact.email && <div style={s.contactMeta}>{selSite.contact.email}</div>}
+                                  {selSite.contact.phone && (
+                                    <div style={s.contactMeta}>
+                                      <Phone size={9} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3, color: '#94A3B8' }} />
+                                      <a href={`tel:${selSite.contact.phone}`} style={s.contactLink}>{selSite.contact.phone}</a>
+                                    </div>
+                                  )}
+                                  {selSite.contact.email && (
+                                    <div style={s.contactMeta}>
+                                      <Mail size={9} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3, color: '#94A3B8' }} />
+                                      <a href={`mailto:${selSite.contact.email}`} style={s.contactLink}>{selSite.contact.email}</a>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                               <div style={s.sectionLabel}>Customer contacts</div>
@@ -437,8 +536,18 @@ export function CustomersPage() {
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                       <div style={s.contactName}>{c.name}</div>
                                       {c.role  && <div style={s.contactRole}>{c.role}</div>}
-                                      {c.phone && <div style={s.contactMeta}>{c.phone}</div>}
-                                      {c.email && <div style={s.contactMeta}>{c.email}</div>}
+                                      {c.phone && (
+                                        <div style={s.contactMeta}>
+                                          <Phone size={9} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3, color: '#94A3B8' }} />
+                                          <a href={`tel:${c.phone}`} style={s.contactLink}>{c.phone}</a>
+                                        </div>
+                                      )}
+                                      {c.email && (
+                                        <div style={s.contactMeta}>
+                                          <Mail size={9} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3, color: '#94A3B8' }} />
+                                          <a href={`mailto:${c.email}`} style={s.contactLink}>{c.email}</a>
+                                        </div>
+                                      )}
                                       {(c.extra_customers ?? []).length > 0 && (
                                         <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                                           {(c.extra_customers ?? []).map((ec) => (
@@ -540,6 +649,13 @@ export function CustomersPage() {
           customers={customers}
           onClose={() => setLinkContactId(null)}
           onLinked={() => { setLinkContactId(null); handleMutated(); }}
+        />
+      )}
+      {addContactOpen && selCustomerId && (
+        <AddContactModal
+          customerId={selCustomerId}
+          onClose={() => setAddContactOpen(false)}
+          onSaved={() => { setAddContactOpen(false); handleMutated(); }}
         />
       )}
     </HubLayout>
@@ -892,6 +1008,51 @@ function EditContactModal({ contact, onClose, onSaved }: {
   );
 }
 
+// ─── ADD CONTACT MODAL ───────────────────────────────────────────────────────
+
+function AddContactModal({ customerId, onClose, onSaved }: {
+  customerId: string; onClose: () => void; onSaved: () => void;
+}) {
+  const [form, setForm] = useState({ first_name: '', last_name: '', role: '', email: '', phone: '' });
+  const [saving, setSaving] = useState(false);
+  const [err,    setErr]    = useState<string | null>(null);
+  const set = (f: keyof typeof form) => (v: string) => setForm((p) => ({ ...p, [f]: v }));
+
+  const save = async () => {
+    if (!form.first_name.trim() && !form.last_name.trim()) { setErr('First or last name is required'); return; }
+    setSaving(true); setErr(null);
+    const res = await crmWrite({ action: 'add_contact', id: customerId, customer_id: customerId, ...form });
+    setSaving(false);
+    if (!res.ok) { setErr(res.error ?? 'Save failed'); return; }
+    onSaved();
+  };
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={{ ...s.modal, width: 380 }} onClick={(e) => e.stopPropagation()}>
+        <div style={s.modalHead}>
+          <span style={s.modalTitle}>Add contact</span>
+          <button type="button" style={s.pcls} onClick={onClose} aria-label="Close"><X size={14} /></button>
+        </div>
+        <div style={s.modalBody}>
+          <FormField label="First name" value={form.first_name} onChange={set('first_name')} />
+          <FormField label="Last name"  value={form.last_name}  onChange={set('last_name')} />
+          <FormField label="Role"       value={form.role}       onChange={set('role')} />
+          <FormField label="Email"      value={form.email}      onChange={set('email')}  type="email" />
+          <FormField label="Mobile"     value={form.phone}      onChange={set('phone')} />
+        </div>
+        {err && <div style={s.modalErr}>{err}</div>}
+        <div style={s.modalFoot}>
+          <button type="button" style={s.btnSecondary} onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" style={{ ...s.btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={save} disabled={saving}>
+            {saving ? 'Adding…' : 'Add contact'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── STYLES ───────────────────────────────────────────────────────────────────
 
 const s: Record<string, React.CSSProperties> = {
@@ -955,4 +1116,5 @@ const s: Record<string, React.CSSProperties> = {
 
   linkChip:    { display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 600, color: '#2986B4', background: '#EAF5FB', border: '1px solid #BAE4F7', borderRadius: 5, padding: '1px 5px 1px 6px' },
   chipX:       { width: 13, height: 13, border: 'none', background: 'transparent', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, borderRadius: 3 },
+  contactLink: { color: '#2986B4', textDecoration: 'none' },
 };
