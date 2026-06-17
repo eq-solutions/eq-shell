@@ -159,6 +159,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
             ((xlCustRes.data ?? []) as CustomerRow[]).map((cr) => [cr.customer_id, customerName(cr)])
           );
           for (const row of xlRes.data as { contact_id: string; customer_id: string }[]) {
+            if (row.customer_id === id) continue; // skip self-referential links (artefacts of past merges)
             const list = crossByContact.get(row.contact_id) ?? [];
             list.push({ id: row.customer_id, name: custMap.get(row.customer_id) ?? 'Unknown' });
             crossByContact.set(row.contact_id, list);
