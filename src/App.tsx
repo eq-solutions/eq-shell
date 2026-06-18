@@ -525,7 +525,7 @@ function TenantTree() {
           }
         />
         <Route
-          path="service"
+          path="service/*"
           element={<ModuleGate module="service">{null}</ModuleGate>}
         />
         {/* EQ Ops — native job-tracking module (reads sks-canonical via eq_list_quotes RPCs) */}
