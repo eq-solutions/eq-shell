@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Sentry from '@sentry/react';
 import { HubLayout } from '../components/HubLayout';
 import { EqError } from '../components/EqError';
@@ -46,6 +47,22 @@ export default function ServiceIframe() {
   const loadCount = useRef(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  // URL sync state
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { tenantSlug } = useParams<{ tenantSlug: string }>();
+  // Last path received from (or sent to) Service — prevents echo loops.
+  const serviceCurrentPath = useRef<string>('');
+  // True once EQ_SERVICE_READY fires or the 4s fallback triggers.
+  const serviceReady = useRef(false);
+  // Whether Service was the active iframe on the previous location change.
+  const prevIsActive = useRef(false);
+  // Stable refs for reading current values inside event-handler closures.
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  const tenantSlugRef = useRef(tenantSlug ?? '');
+  tenantSlugRef.current = tenantSlug ?? '';
+
   // TOKEN MODE: mint the HMAC handoff token before setting the iframe src.
   useEffect(() => {
     if (COOKIE_AUTH) return;
@@ -64,10 +81,16 @@ export default function ServiceIframe() {
         }
         const { token } = (await res.json()) as { token: string };
         if (!cancelled) {
-          setState({
-            phase: 'loading',
-            src: `${SERVICE_URL}/shell#sh=${token}`,
-          });
+          // If Shell URL has a service sub-path (bookmark / deep link), tell Service
+          // where to land instead of /dashboard by passing a `return` param.
+          const base = `/${tenantSlugRef.current}/service`;
+          const sub = locationRef.current.pathname.startsWith(base + '/')
+            ? locationRef.current.pathname.slice(base.length)
+            : '';
+          const src = sub
+            ? `${SERVICE_URL}/shell?return=${encodeURIComponent(sub)}#sh=${token}`
+            : `${SERVICE_URL}/shell#sh=${token}`;
+          setState({ phase: 'loading', src });
         }
       } catch {
         if (!cancelled) setState({ phase: 'error', msg: 'Network error reaching EQ Service. Check your connection.' });
@@ -97,8 +120,22 @@ export default function ServiceIframe() {
       if (ev.origin !== SERVICE_URL) return;
       if (!ev.data || typeof ev.data !== 'object') return;
       if (ev.data.type === 'EQ_SERVICE_READY') {
+        serviceReady.current = true;
         Sentry.addBreadcrumb({ category: 'service-iframe', message: 'EQ_SERVICE_READY received', level: 'info' });
         setState((prev) => (prev.phase === 'loading' ? { ...prev, phase: 'ready' } : prev));
+        // If the `return` param deep-link didn't cover it (e.g. the param wasn't passed
+        // because Service was pre-warmed, not direct-loaded), send SERVICE_NAVIGATE now.
+        const base = `/${tenantSlugRef.current}/service`;
+        const sub = locationRef.current.pathname.startsWith(base + '/')
+          ? locationRef.current.pathname.slice(base.length)
+          : '';
+        if (sub && !serviceCurrentPath.current) {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: 'SERVICE_NAVIGATE', path: sub },
+            new URL(SERVICE_URL).origin,
+          );
+          serviceCurrentPath.current = sub;
+        }
       } else if (ev.data.type === 'EQ_SERVICE_ERROR') {
         const code = (ev.data as Record<string, unknown>).code;
         const msg =
@@ -155,6 +192,75 @@ export default function ServiceIframe() {
     return () => window.removeEventListener('message', onMessage);
   }, []);
 
+  // URL sync: Service → Shell.
+  // Receives SERVICE_URL_CHANGED from the iframe and updates the Shell URL bar
+  // to reflect where the user actually is inside Service.
+  useEffect(() => {
+    const expectedOrigin = new URL(SERVICE_URL).origin;
+    function onMessage(ev: MessageEvent) {
+      if (ev.origin !== expectedOrigin) return;
+      if (!ev.data || typeof ev.data !== 'object') return;
+      const data = ev.data as Record<string, unknown>;
+      if (data.type !== 'SERVICE_URL_CHANGED') return;
+      const path = data.path;
+      if (typeof path !== 'string' || !path.startsWith('/')) return;
+
+      const base = `/${tenantSlugRef.current}/service`;
+      const currentPath = locationRef.current.pathname;
+      const isActive = currentPath === base || currentPath.startsWith(base + '/');
+
+      serviceCurrentPath.current = path;
+      if (!isActive) return; // Service is pre-warmed in background — don't push history
+
+      const target = base + (path === '/' ? '' : path);
+      if (currentPath === target) return;
+
+      // First URL sync after load (Service landed on default page, Shell has bare /service).
+      // Use replace so the default /dashboard load doesn't pollute browser history.
+      const isDefaultLoad = currentPath === base;
+      navigate(target, { replace: isDefaultLoad });
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [navigate]);
+
+  // URL sync: Shell → Service.
+  // Fires when Shell's own URL changes (browser back/forward, direct URL entry,
+  // or re-activation after visiting another module). Tells Service to match.
+  useEffect(() => {
+    const base = `/${tenantSlug}/service`;
+    const isNowActive = location.pathname === base || location.pathname.startsWith(base + '/');
+    const wasActive = prevIsActive.current;
+    prevIsActive.current = isNowActive;
+
+    if (!isNowActive || !serviceReady.current) return;
+
+    // Re-activation: Service just became visible after the user navigated away.
+    // Sync Shell URL to where Service actually is (Service didn't navigate while hidden).
+    if (!wasActive && serviceCurrentPath.current && serviceCurrentPath.current !== '/') {
+      const target = base + serviceCurrentPath.current;
+      if (location.pathname !== target) {
+        navigate(target, { replace: true });
+        return;
+      }
+    }
+
+    // Derive the service sub-path from the current Shell URL.
+    const subPath = location.pathname.startsWith(base + '/')
+      ? location.pathname.slice(base.length)
+      : '/';
+
+    // Don't echo paths we just received from Service — prevents infinite loops.
+    if (subPath === serviceCurrentPath.current) return;
+
+    // Shell URL changed externally — tell Service to navigate to match.
+    serviceCurrentPath.current = subPath;
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'SERVICE_NAVIGATE', path: subPath },
+      new URL(SERVICE_URL).origin,
+    );
+  }, [location.pathname, tenantSlug, navigate]);
+
   function onIframeLoad() {
     loadCount.current += 1;
     if (COOKIE_AUTH) {
@@ -174,6 +280,19 @@ export default function ServiceIframe() {
       // round-trip so the shell-auth → dashboard path completes in ~2-3s.
       if (loadCount.current === 1) {
         setTimeout(() => {
+          serviceReady.current = true;
+          // Fallback: send initial navigate if EQ_SERVICE_READY never fired.
+          const base = `/${tenantSlugRef.current}/service`;
+          const sub = locationRef.current.pathname.startsWith(base + '/')
+            ? locationRef.current.pathname.slice(base.length)
+            : '';
+          if (sub && !serviceCurrentPath.current) {
+            iframeRef.current?.contentWindow?.postMessage(
+              { type: 'SERVICE_NAVIGATE', path: sub },
+              new URL(SERVICE_URL).origin,
+            );
+            serviceCurrentPath.current = sub;
+          }
           setState((prev) => {
             if (prev.phase !== 'loading') return prev;
             Sentry.addBreadcrumb({
