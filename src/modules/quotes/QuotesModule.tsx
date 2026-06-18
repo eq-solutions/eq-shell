@@ -1767,7 +1767,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     if (error) { captureRpcError("eq_trash_quote", error, { quote_id: quoteId }); setDetailError(error.message); return; }
     setDetailId(null);
     setDetail(null);
-    void loadQuotes(statusFilter, search);
+    setQuotes((prev) => prev.filter((item) => item.quote_id !== quoteId));
   };
 
   const handleRestore = async (quoteId: string) => {
@@ -2184,16 +2184,18 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   const savePipelineStatus = async (q: Quote, newStatus: string) => {
     setPipelineStatusEdit(null);
     if (!supabase || !newStatus || newStatus === q.status) return;
+    // Update immediately so the row reflects the change before the RPC round-trip.
+    setQuotes((prev) => prev.map((item) => item.quote_id === q.quote_id ? { ...item, status: newStatus } : item));
     const { error } = await supabase.rpc("eq_update_quote_status", {
       p_quote_id: q.quote_id,
       p_new_status: newStatus,
       p_note: null,
       p_initials: initials.trim() || null,
     });
-    if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: q.quote_id, new_status: newStatus }); return; }
-    // Optimistic in-place update — avoids full refetch so the table keeps its scroll position.
-    // displayedQuotes filtering handles showing/hiding based on the current statusFilter.
-    setQuotes((prev) => prev.map((item) => item.quote_id === q.quote_id ? { ...item, status: newStatus } : item));
+    if (error) {
+      captureRpcError("eq_update_quote_status", error, { quote_id: q.quote_id, new_status: newStatus });
+      setQuotes((prev) => prev.map((item) => item.quote_id === q.quote_id ? { ...item, status: q.status } : item));
+    }
   };
 
   const savePipelineJobNo = async (q: Quote, value: string) => {
