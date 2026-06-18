@@ -863,7 +863,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   // ── Data loaders ──────────────────────────────────────────────────────────
 
   const loadQuotes = useCallback(
-    async (status: string, q: string) => {
+    async (status: string, _q?: string) => {
       if (!supabase) {
         setPipelineLoading(false);
         setPipelineError("No Supabase connection.");
@@ -873,7 +873,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       setPipelineError(null);
       const { data, error } = await supabase.rpc("eq_list_quotes", {
         p_status: STAGE_KEYS.has(status) ? null : status,
-        p_search: q.trim() || null,
+        p_search: null,  // search is client-side — see displayedQuotes derivation
       });
       setPipelineLoading(false);
       if (error) setPipelineError(error.message);
@@ -2061,7 +2061,6 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   const handleSearch = (q: string) => {
     setSearch(q);
     if (searchRef.current) clearTimeout(searchRef.current);
-    searchRef.current = setTimeout(() => void loadQuotes(statusFilter, q), 300);
   };
 
   // ── Detail actions ────────────────────────────────────────────────────────
@@ -2557,15 +2556,28 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   let displayedQuotes = activeStage
     ? quotes.filter((q) => activeStage.match(q.status))
     : quotes.filter((q) => q.status === statusFilter); // backward-compat: a stored granular key
+  if (search.trim()) {
+    const sq = search.trim().toLowerCase();
+    displayedQuotes = displayedQuotes.filter(
+      (q) => q.quote_number.toLowerCase().includes(sq) ||
+             (q.project_name ?? "").toLowerCase().includes(sq) ||
+             (q.customer_name ?? "").toLowerCase().includes(sq) ||
+             (q.site_code ?? "").toLowerCase().includes(sq) ||
+             (q.workbench_job_no ?? "").toLowerCase().includes(sq) ||
+             (q.po_number ?? "").toLowerCase().includes(sq)
+    );
+  }
   if (dateFrom) displayedQuotes = displayedQuotes.filter((q) => q.created_at >= dateFrom);
   if (dateTo)   displayedQuotes = displayedQuotes.filter((q) => q.created_at.slice(0, 10) <= dateTo);
   if (estFilter) displayedQuotes = displayedQuotes.filter((q) => q.estimator_initials === estFilter);
   if (customerFilter) displayedQuotes = displayedQuotes.filter((q) => q.customer_name === customerFilter);
   if (siteFilter) displayedQuotes = displayedQuotes.filter((q) => q.site_code === siteFilter);
   if (expiringOnly) {
-    const soon = new Date(Date.now() + 14 * 86_400_000).toISOString();
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const soonIso  = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
     displayedQuotes = displayedQuotes.filter(
-      (q) => q.expires_at && q.expires_at <= soon && ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status)
+      (q) => q.expires_at && q.expires_at.slice(0, 10) >= todayIso && q.expires_at.slice(0, 10) <= soonIso &&
+             ["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(q.status)
     );
   }
   if (unsentOnly) {
