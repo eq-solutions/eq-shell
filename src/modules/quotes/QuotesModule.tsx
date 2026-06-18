@@ -2172,12 +2172,13 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   const savePipelineFup = async (quoteId: string, dateStr: string) => {
     setPipelineFupEdit(null);
     if (!supabase) return;
-    await supabase.rpc("eq_set_follow_up_date", {
+    const { error } = await supabase.rpc("eq_set_follow_up_date", {
       p_quote_id: quoteId,
       p_follow_up_at: dateStr || null,
       p_initials: initials.trim() || null,
     });
-    void loadQuotes(statusFilter, search);
+    if (error) { captureRpcError("eq_set_follow_up_date", error, { quote_id: quoteId }); return; }
+    setQuotes((prev) => prev.map((item) => item.quote_id === quoteId ? { ...item, follow_up_at: dateStr || null } : item));
   };
 
   const savePipelineStatus = async (q: Quote, newStatus: string) => {
@@ -2206,6 +2207,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     });
     if (error) { captureRpcError("eq_set_workbench_job_no", error, { quote_id: q.quote_id }); return; }
     // Mirror the detail-panel rule: setting a job no on a won-awaiting quote advances it.
+    const nextStatus = q.status === "won-awaiting-job-no" ? "won-job-created" : q.status;
     if (q.status === "won-awaiting-job-no") {
       await supabase.rpc("eq_update_quote_status", {
         p_quote_id: q.quote_id,
@@ -2214,7 +2216,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
         p_initials: initials.trim() || null,
       });
     }
-    void loadQuotes(statusFilter, search);
+    setQuotes((prev) => prev.map((item) => item.quote_id === q.quote_id ? { ...item, workbench_job_no: trimmed, status: nextStatus } : item));
   };
 
   const savePipelinePoNo = async (q: Quote, value: string) => {
@@ -2227,6 +2229,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       p_initials: initials.trim() || null,
     });
     if (error) { captureRpcError("eq_set_po_number", error, { quote_id: q.quote_id }); return; }
+    const nextPoStatus = q.status === "won-job-created" ? "po-matched" : q.status;
     if (q.status === "won-job-created") {
       await supabase.rpc("eq_update_quote_status", {
         p_quote_id: q.quote_id,
@@ -2235,7 +2238,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
         p_initials: initials.trim() || null,
       });
     }
-    void loadQuotes(statusFilter, search);
+    setQuotes((prev) => prev.map((item) => item.quote_id === q.quote_id ? { ...item, po_number: trimmed, status: nextPoStatus } : item));
   };
 
   const resetSmartFilters = () => {
