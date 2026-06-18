@@ -5338,8 +5338,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
             const todayStr = new Date().toISOString().slice(0, 10);
             const in14Days = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
             const staleThreshold = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-            const overdueFup = quotes.filter((q) => q.follow_up_at && q.follow_up_at <= todayStr && !CLOSED_STATUSES.has(q.status)).length;
-            const expiringSoon = quotes.filter((q) => q.expires_at && q.expires_at.slice(0, 10) <= in14Days && !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status)).length;
+            const overdueFup = quotes.filter((q) => q.follow_up_at && q.follow_up_at <= todayStr && !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status)).length;
+            const expiringSoon = quotes.filter((q) => q.expires_at && q.expires_at.slice(0, 10) >= todayStr && q.expires_at.slice(0, 10) <= in14Days && !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status)).length;
             const needsJobNo = quotes.filter((q) => !q.workbench_job_no && ACTIVE_JOB_STATUSES.has(q.status)).length;
             const staleCount = quotes.filter((q) => !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status) && !q.follow_up_at && q.created_at.slice(0, 10) < staleThreshold).length;
             const TONES: Record<string, { bg: string; fg: string; bd: string }> = {
