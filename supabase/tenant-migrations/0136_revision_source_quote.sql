@@ -103,6 +103,9 @@ END;
 $$;
 
 -- 4. Replace eq_list_quotes — add source_quote_number to return set
+-- DROP required: Postgres cannot change return type via CREATE OR REPLACE.
+-- IF EXISTS = no-op on planes where the function is absent or already replaced.
+DROP FUNCTION IF EXISTS public.eq_list_quotes(text, text);
 CREATE OR REPLACE FUNCTION public.eq_list_quotes(
   p_status text DEFAULT NULL,
   p_search text DEFAULT NULL
@@ -169,6 +172,7 @@ END;
 $$;
 
 -- 5. Replace eq_get_quote_detail — add source_quote_number to return set
+DROP FUNCTION IF EXISTS public.eq_get_quote_detail(uuid);
 CREATE OR REPLACE FUNCTION public.eq_get_quote_detail(p_quote_id uuid)
 RETURNS TABLE(
   quote_id            uuid,
