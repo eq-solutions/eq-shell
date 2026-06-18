@@ -1792,7 +1792,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     setDetailId(null);
     setDetail(null);
     void loadTrashed();
-    void loadQuotes(statusFilter, search);
+    // Permanently deleted from trash — not in quotes state, no list refresh needed
   };
 
   const handleMarkAsSent = async () => {
@@ -1827,8 +1827,13 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       });
       setFollowUpInput(fupStr);
     }
+    const fupDate = new Date(); fupDate.setDate(fupDate.getDate() + 7);
+    patchQuoteInList(detail.quote_id, {
+      sent_at: today,
+      status: detail.status === "draft" ? "submitted" : detail.status,
+      follow_up_at: !detail.follow_up_at ? fupDate.toISOString().slice(0, 10) : detail.follow_up_at,
+    });
     await openDetail(detail.quote_id);
-    void loadQuotes(statusFilter, search);
   };
 
   const handleQuickWin = async () => {
@@ -1842,8 +1847,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     });
     setQuickWinBusy(false);
     if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    patchQuoteInList(detail.quote_id, { status: "verbal-win" });
     await openDetail(detail.quote_id);
-    void loadQuotes(statusFilter, search);
   };
 
   const handleQuickLose = async (reason?: string) => {
@@ -1859,8 +1864,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     setLosePromptOpen(false);
     setLoseReason("");
     if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: detail.quote_id }); setDetailError(error.message); return; }
+    patchQuoteInList(detail.quote_id, { status: "lost" });
     await openDetail(detail.quote_id);
-    void loadQuotes(statusFilter, search);
   };
 
   const handleBulkStatus = async () => {
@@ -2078,8 +2083,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     setUpdatingStatus(false);
     if (error) { captureRpcError("eq_update_quote_status", error, { quote_id: detail.quote_id, new_status: advanceStatus }); setStatusMutErr(error.message); return; }
     setStatusNote("");
+    patchQuoteInList(detail.quote_id, { status: advanceStatus });
     await openDetail(detail.quote_id);
-    void loadQuotes(statusFilter, search);
   };
 
   const handleAddNote = async () => {
@@ -2118,8 +2123,11 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       });
     }
     setSavingJobNo(false);
+    patchQuoteInList(detail.quote_id, {
+      workbench_job_no: jobNoInput.trim(),
+      status: detail.status === "won-awaiting-job-no" ? "won-job-created" : detail.status,
+    });
     await openDetail(detail.quote_id);
-    void loadQuotes(statusFilter, search);
   };
 
   const handleSaveSentAt = async () => {
@@ -2134,8 +2142,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     });
     setSavingSentAt(false);
     if (error) { captureRpcError("eq_set_sent_at", error, { quote_id: detail.quote_id }); setSentAtErr(error.message); return; }
+    patchQuoteInList(detail.quote_id, { sent_at: sentAtValue });
     await openDetail(detail.quote_id);
-    void loadQuotes(statusFilter, search);
   };
 
   const handleSaveExpires = async () => {
@@ -2149,8 +2157,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     });
     setSavingExpires(false);
     if (error) { captureRpcError("eq_set_expires_at", error, { quote_id: detail.quote_id }); setExpiresErr(error.message); return; }
+    patchQuoteInList(detail.quote_id, { expires_at: new Date(expiresInput + "T00:00:00").toISOString() });
     await openDetail(detail.quote_id);
-    void loadQuotes(statusFilter, search);
   };
 
   const handleSaveFollowUp = async () => {
@@ -2164,8 +2172,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     });
     setSavingFollowUp(false);
     if (error) { captureRpcError("eq_set_follow_up_date", error, { quote_id: detail.quote_id }); setFollowUpErr(error.message); return; }
+    patchQuoteInList(detail.quote_id, { follow_up_at: followUpInput || null });
     await openDetail(detail.quote_id);
-    void loadQuotes(statusFilter, search);
   };
 
   const savePipelineFup = async (quoteId: string, dateStr: string) => {
@@ -2247,6 +2255,15 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     setOverdueFupOnly(false); setStaleOnly(false);
   };
 
+  const clearAllFilters = () => {
+    resetSmartFilters();
+    setEstFilter(""); setCustomerFilter(""); setSiteFilter("");
+    setDateFrom(""); setDateTo("");
+  };
+
+  const patchQuoteInList = (quoteId: string, fields: Partial<Quote>) =>
+    setQuotes((prev) => prev.map((q) => q.quote_id === quoteId ? { ...q, ...fields } : q));
+
   const handleSaveProject = async () => {
     if (!supabase || !detail) return;
     setSavingProject(true);
@@ -2261,8 +2278,12 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     setSavingProject(false);
     if (error) { captureRpcError("eq_set_quote_project", error, { quote_id: detail.quote_id }); setProjectErr(error.message); return; }
     setProjectEditing(false);
+    patchQuoteInList(detail.quote_id, {
+      project_name: projectInput.trim() || null,
+      estimator_name: estimatorInput.trim() || null,
+      estimator_initials: estInitialsInput.trim() || null,
+    });
     await openDetail(detail.quote_id);
-    void loadQuotes(statusFilter, search);
   };
 
   const handleSaveTerms = async () => {
@@ -2352,8 +2373,11 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       });
     }
     setSavingPo(false);
+    patchQuoteInList(detail.quote_id, {
+      po_number: poInput.trim(),
+      status: detail.status === "won-job-created" ? "po-matched" : detail.status,
+    });
     await openDetail(detail.quote_id);
-    void loadQuotes(statusFilter, search);
   };
 
   const handleGenerateDoc = async () => {
@@ -2373,7 +2397,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
         p_sent_at: new Date(today + "T00:00:00").toISOString(),
         p_initials: initials.trim() || null,
       });
-      void loadQuotes(statusFilter, search);
+      patchQuoteInList(detail.quote_id, { sent_at: today });
     }
     await openDetail(detail.quote_id);
   };
@@ -2408,8 +2432,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
           p_sent_at: new Date(today + "T00:00:00").toISOString(),
           p_initials: initials.trim() || null,
         });
+        patchQuoteInList(detail.quote_id, { sent_at: today });
         await openDetail(detail.quote_id);
-        void loadQuotes(statusFilter, search);
       }
     } finally {
       setDownloadingPdf(false);
@@ -3330,7 +3354,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                         <button
                           type="button"
                           style={{ background: "none", border: "none", color: "var(--eq-sky, #2986B4)", cursor: "pointer", fontSize: 11, padding: 0 }}
-                          onClick={() => { setCustomerFilter(detail.customer_name!); setStatusFilter("all"); void loadQuotes("all", search); }}
+                          onClick={() => { setCustomerFilter(detail.customer_name!); setStatusFilter("all"); }}
                         >
                           +{others.length} other{others.length !== 1 ? "s" : ""}
                         </button>
@@ -3680,7 +3704,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                         type="button"
                         className="eq-quotes__btn eq-quotes__btn--outline"
                         disabled={savingFollowUp}
-                        onClick={() => { setFollowUpInput(""); void (async () => { await supabase?.rpc("eq_set_follow_up_date", { p_quote_id: detail.quote_id, p_follow_up_at: null, p_initials: initials.trim() || null }); await openDetail(detail.quote_id); void loadQuotes(statusFilter, search); })(); }}
+                        onClick={() => { setFollowUpInput(""); void (async () => { await supabase?.rpc("eq_set_follow_up_date", { p_quote_id: detail.quote_id, p_follow_up_at: null, p_initials: initials.trim() || null }); patchQuoteInList(detail.quote_id, { follow_up_at: null }); await openDetail(detail.quote_id); })(); }}
                         title="Clear follow-up date"
                       >
                         ✕
@@ -5654,6 +5678,22 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
               </div>
             )}
           </div>
+
+          {/* Active filter pills */}
+          {activeFilterCount > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 0 2px" }}>
+              {expiringOnly && <button type="button" onClick={() => setExpiringOnly(false)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, fontSize: 12, fontWeight: 600, background: "var(--eq-ice, #EAF5FB)", color: "var(--eq-deep, #2986B4)", border: "1px solid var(--eq-sky, #3DA8D8)", cursor: "pointer" }}>Expiring soon ×</button>}
+              {unsentOnly && <button type="button" onClick={() => setUnsentOnly(false)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, fontSize: 12, fontWeight: 600, background: "var(--eq-ice, #EAF5FB)", color: "var(--eq-deep, #2986B4)", border: "1px solid var(--eq-sky, #3DA8D8)", cursor: "pointer" }}>Unsent ×</button>}
+              {needsJobNoOnly && <button type="button" onClick={() => setNeedsJobNoOnly(false)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, fontSize: 12, fontWeight: 600, background: "var(--eq-ice, #EAF5FB)", color: "var(--eq-deep, #2986B4)", border: "1px solid var(--eq-sky, #3DA8D8)", cursor: "pointer" }}>Needs job no. ×</button>}
+              {overdueFupOnly && <button type="button" onClick={() => setOverdueFupOnly(false)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, fontSize: 12, fontWeight: 600, background: "var(--eq-ice, #EAF5FB)", color: "var(--eq-deep, #2986B4)", border: "1px solid var(--eq-sky, #3DA8D8)", cursor: "pointer" }}>Overdue follow-up ×</button>}
+              {staleOnly && <button type="button" onClick={() => setStaleOnly(false)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, fontSize: 12, fontWeight: 600, background: "var(--eq-ice, #EAF5FB)", color: "var(--eq-deep, #2986B4)", border: "1px solid var(--eq-sky, #3DA8D8)", cursor: "pointer" }}>Stale ×</button>}
+              {estFilter && <button type="button" onClick={() => setEstFilter("")} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, fontSize: 12, fontWeight: 600, background: "var(--eq-ice, #EAF5FB)", color: "var(--eq-deep, #2986B4)", border: "1px solid var(--eq-sky, #3DA8D8)", cursor: "pointer" }}>Est: {estFilter} ×</button>}
+              {customerFilter && <button type="button" onClick={() => setCustomerFilter("")} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, fontSize: 12, fontWeight: 600, background: "var(--eq-ice, #EAF5FB)", color: "var(--eq-deep, #2986B4)", border: "1px solid var(--eq-sky, #3DA8D8)", cursor: "pointer" }}>Customer: {customerFilter} ×</button>}
+              {siteFilter && <button type="button" onClick={() => setSiteFilter("")} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, fontSize: 12, fontWeight: 600, background: "var(--eq-ice, #EAF5FB)", color: "var(--eq-deep, #2986B4)", border: "1px solid var(--eq-sky, #3DA8D8)", cursor: "pointer" }}>Site: {siteFilter} ×</button>}
+              {(dateFrom || dateTo) && <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, fontSize: 12, fontWeight: 600, background: "var(--eq-ice, #EAF5FB)", color: "var(--eq-deep, #2986B4)", border: "1px solid var(--eq-sky, #3DA8D8)", cursor: "pointer" }}>{dateFrom && dateTo ? `${dateFrom} – ${dateTo}` : dateFrom ? `From ${dateFrom}` : `To ${dateTo}`} ×</button>}
+              {activeFilterCount > 1 && <button type="button" onClick={clearAllFilters} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, fontSize: 12, fontWeight: 600, background: "transparent", color: "var(--eq-muted, #6b7280)", border: "1px solid var(--eq-border, #e8e8e8)", cursor: "pointer" }}>Clear all</button>}
+            </div>
+          )}
 
           {/* Bulk actions spacer — floating bar below takes the real space when rows are selected */}
           {selectedIds.size > 0 && <div style={{ height: 64 }} />}
