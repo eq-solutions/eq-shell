@@ -1186,11 +1186,11 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
         if (id) void handleDuplicateRef.current?.(id);
         return;
       }
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "k" || e.key === "j") {
         const dq = displayedQuotesRef.current;
         const idx = dq.findIndex((q) => q.quote_id === detailIdRef.current);
         if (idx < 0) return;
-        const target = e.key === "ArrowLeft" ? dq[idx - 1] : dq[idx + 1];
+        const target = (e.key === "ArrowLeft" || e.key === "k") ? dq[idx - 1] : dq[idx + 1];
         if (target) void openDetail(target.quote_id);
       }
     };
@@ -3008,17 +3008,18 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
 
   // ── Render detail view ────────────────────────────────────────────────────
 
-  if (detailId !== null) {
-    const nexts = detail ? (NEXT_STATUSES[detail.status] ?? []) : [];
-    return (
-      <div className="eq-quotes">
-        <div className="eq-quotes__detail-header">
+  const nexts = detail ? (NEXT_STATUSES[detail.status] ?? []) : [];
+  const detailPaneContent = detailId !== null ? (
+    <>
+      <div className="eq-quotes__detail-header">
           <button
             type="button"
-            className="eq-quotes__back"
+            style={{ background: "none", border: "0.5px solid var(--eq-border, #e0e0e0)", borderRadius: 6, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--eq-muted, #6b7280)", alignSelf: "flex-end" }}
             onClick={() => { setDetailId(null); setDetail(null); }}
+            title="Close panel (Esc)"
+            aria-label="Close"
           >
-            ← EQ Ops
+            <X size={14} />
           </button>
           {detail && (
             <div className="eq-quotes__detail-title-row">
@@ -4203,13 +4204,12 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
               </div>
             )}
             <div style={{ padding: "8px 0", textAlign: "center", fontSize: 11, color: "var(--eq-muted, #aaa)" }}>
-              ← → to navigate · Esc to close · N to create new quote
+              ← → j k to navigate · Esc to close · N to create new quote
             </div>
           </div>
         )}
-      </div>
-    );
-  }
+    </>
+  ) : null;
 
   // ── Computed create totals ────────────────────────────────────────────────
 
@@ -5298,6 +5298,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
         </div>
       </div>
 
+      <div style={{ display: "flex", alignItems: "flex-start" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
       {view === "setup" && <QuotesSetup supabase={supabase} />}
       {view === "reports" && <QuotesReports supabase={supabase} />}
       {view === "customers" && (
@@ -5773,6 +5775,17 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
               selectable
               selectedIds={selectedIds}
               onSelectionChange={setSelectedIds}
+              onRowClick={(q) => void openDetail(q.quote_id)}
+              rowStyle={(q) => q.quote_id === detailId ? { background: "#EAF5FB" } : undefined}
+              rowIndicator={(q) => {
+                const now = new Date();
+                const todayStr = now.toISOString().slice(0, 10);
+                const in14 = new Date(now.getTime() + 14 * 86_400_000).toISOString().slice(0, 10);
+                if (q.follow_up_at && q.follow_up_at <= todayStr && !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status)) return { color: "#E24B4A" };
+                if (q.expires_at && q.expires_at.slice(0, 10) >= todayStr && q.expires_at.slice(0, 10) <= in14 && !CLOSED_STATUSES.has(q.status) && !ACTIVE_JOB_STATUSES.has(q.status)) return { color: "#BA7517" };
+                if (ACTIVE_JOB_STATUSES.has(q.status) && !q.workbench_job_no) return { color: "#3DA8D8" };
+                return null;
+              }}
               emptyMessage={search ? `No quotes match "${search}".` : "No quotes in this filter."}
             />
           )}
@@ -6176,6 +6189,24 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
           </button>
         </div>
       )}
+      </div>
+      {detailId !== null && (
+        <div
+          style={{
+            width: 560,
+            flexShrink: 0,
+            borderLeft: "1px solid var(--eq-border, #e0e0e0)",
+            overflowY: "auto",
+            maxHeight: "100vh",
+            position: "sticky",
+            top: 0,
+            background: "var(--eq-surface, var(--eq-bg, #fff))",
+          }}
+        >
+          {detailPaneContent}
+        </div>
+      )}
+      </div>
     </div>
   );
 }
