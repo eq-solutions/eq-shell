@@ -46,7 +46,7 @@ interface JobCreationLine {
   category: string;
   qty_thousandths: number;
   unit_rate_cents: number;
-  cost_rate_cents: number;
+  cost_rate_cents: number | null;
 }
 
 interface JobCreationData {
@@ -150,11 +150,16 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   for (const line of d.lines ?? []) {
     const qty = line.qty_thousandths / 1000;
-    const costCents = (line.cost_rate_cents ?? 0) * qty;
+    // When cost_rate_cents is absent (pre-cost_rate quotes or presets without cost),
+    // fall back to deriving cost from the sell rate at 10% markup so SLAB/MAT/SUBC
+    // are never zero when a rate exists.
+    const costCents = (line.cost_rate_cents ?? 0) > 0
+      ? (line.cost_rate_cents ?? 0) * qty
+      : (line.unit_rate_cents ?? 0) * qty / 1.1;
     const cat = (line.category ?? '').toLowerCase();
-    if (cat === 'labour')                            labourCost   += costCents;
+    if (cat === 'labour')                             labourCost   += costCents;
     else if (cat === 'material' || cat === 'one_off') materialCost += costCents;
-    else if (cat === 'subcontractor')                subconCost   += costCents;
+    else if (cat === 'subcontractor')                 subconCost   += costCents;
   }
 
   // Write cost buckets and revenue total directly — ExcelJS doesn't recalculate

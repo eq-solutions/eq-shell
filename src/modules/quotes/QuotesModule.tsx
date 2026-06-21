@@ -458,11 +458,11 @@ function calcLineTotal(li: CreateLineItem): number {
 }
 
 function aud(cents: number): string {
-  return (cents / 100).toLocaleString("en-AU", {
-    style: "currency",
-    currency: "AUD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+  // Prepend '$' explicitly so the output is always '$1,234.56' regardless of
+  // whether the browser/OS locale would emit 'A$' for AUD currency style.
+  return "$" + (cents / 100).toLocaleString("en-AU", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 
@@ -1439,6 +1439,16 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
         const m = parseFloat(field === "markup" ? value : updated.markup);
         const rate = computeSellRate(c, m);
         if (!isNaN(rate)) updated.rate = rate.toFixed(2);
+      } else if (field === "rate") {
+        // Rate entered directly and cost is absent: back-fill cost at 10%
+        // so the margin chip and SLAB budget cell are never blank.
+        const r = parseFloat(value);
+        const hasCost = parseFloat(updated.cost) > 0;
+        if (!hasCost && isFinite(r) && r > 0) {
+          const mPct = parseFloat(updated.markup) || 10;
+          updated.cost = (r / (1 + mPct / 100)).toFixed(2);
+          if (!updated.markup) updated.markup = "10";
+        }
       }
       next[i] = updated;
       return next;
@@ -1450,13 +1460,17 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   };
 
   const applyPreset = (preset: RatePreset) => {
+    const rateDollars = preset.unit_rate_cents / 100;
+    // Presets don't carry a cost_rate; derive cost at 10% markup so the margin
+    // chip and SLAB budget cell populate instead of showing blank / zero.
+    const costDollars = rateDollars > 0 ? rateDollars / 1.1 : 0;
     const item: CreateLineItem = {
       description: preset.description,
       qty: (preset.qty_thousandths / 1000).toString(),
       unit: preset.unit ?? "",
-      cost: "",
-      markup: "",
-      rate: (preset.unit_rate_cents / 100).toString(),
+      cost: costDollars > 0 ? costDollars.toFixed(2) : "",
+      markup: costDollars > 0 ? "10" : "",
+      rate: rateDollars.toFixed(2),
       category: preset.category ?? "",
     };
     setCreateLineItems((prev) => {
