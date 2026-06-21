@@ -264,10 +264,21 @@ async function applyMigrationsToTenant(routing) {
       if (noWrite) { result.applied.push(m.name); continue; }
       log(`  [${slug}] applying ${m.name}…`);
 
-      // Apply the migration AND record it in a single Management API call, so the
-      // tracking insert can't be lost in a separate round-trip after the DDL
-      // committed. Migrations are idempotent, so a failed call re-runs safely.
-      await mgmtQuery(ref, m.sql + `\n;\n` +
+      // Two-call approach: run migration SQL first, then record it only on success.
+      //
+      // WHY NOT combined: Supabase's Management API may process multi-statement
+      // queries past an internal SQL error (e.g. DO block raises exception, but
+      // the subsequent ledger INSERT still executes), resulting in a migration
+      // recorded as "applied" when its DDL actually rolled back. 0138 hit this
+      // (HR table anon-lock ran but was overwritten by the ledger INSERT succeeding
+      // independently). Splitting ensures a SQL error aborts before the INSERT.
+      //
+      // IDEMPOTENCY NOTE: if the SQL succeeds but the INSERT call is lost (network
+      // error), the next run re-applies the migration. All tenant migrations must
+      // be idempotent — IF NOT EXISTS / CREATE OR REPLACE / DO $$...CONTINUE WHEN
+      // EXISTS patterns satisfy this. The ON CONFLICT UPDATE handles the INSERT re-run.
+      await mgmtQuery(ref, m.sql);
+      await mgmtQuery(ref,
         `INSERT INTO app_data._eq_migrations(name, checksum) ` +
         `VALUES (${sqlLiteral(m.name)}, ${sqlLiteral(m.checksum)}) ` +
         `ON CONFLICT (name) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now();`);
