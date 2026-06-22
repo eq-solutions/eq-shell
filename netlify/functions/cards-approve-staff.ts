@@ -327,9 +327,11 @@ async function handleApplication({
     }
   }
 
-  // Copy licences only for net-new staff records. Existing Field staff already have
-  // their licences — inserting again would create duplicates without a dedup key.
-  if (!existingStaff && app.sharing_scope === 'full' && worker?.id) {
+  // Copy credentials from Cards into Field licences.
+  // For existing staff: additive merge — only insert licences not already present
+  // (match on licence_type + licence_number). Avoids duplicates; still syncs new certs.
+  // For net-new staff: insert all active credentials.
+  if (app.sharing_scope === 'full' && worker?.id) {
     const { data: creds } = await sbPublic
       .from('worker_credentials')
       .select(
@@ -344,24 +346,45 @@ async function handleApplication({
       }> | null };
 
     if (creds && creds.length > 0) {
-      await tenantAny
-        .schema('app_data')
-        .from('licences')
-        .insert(
-          creds.map((c) => ({
-            licence_id: randomUUID(),
-            staff_id: staffId,
-            tenant_id: tenantId,
-            licence_type: c.credential_type,
-            licence_number: c.licence_number,
-            issuing_authority: c.issuing_body,
-            state: c.state_territory,
-            issue_date: c.issue_date,
-            expiry_date: c.expiry_date,
-            notes: c.notes,
-            active: true,
-          })),
+      let credsToInsert = creds;
+
+      if (existingStaff) {
+        // Fetch existing licence keys so we can skip duplicates.
+        const { data: existing } = (await tenantAny
+          .schema('app_data')
+          .from('licences')
+          .select('licence_type, licence_number')
+          .eq('staff_id', staffId)) as {
+          data: Array<{ licence_type: string; licence_number: string | null }> | null;
+        };
+        const existingKeys = new Set(
+          (existing ?? []).map((l) => `${l.licence_type}::${l.licence_number ?? ''}`),
         );
+        credsToInsert = creds.filter(
+          (c) => !existingKeys.has(`${c.credential_type}::${c.licence_number ?? ''}`),
+        );
+      }
+
+      if (credsToInsert.length > 0) {
+        await tenantAny
+          .schema('app_data')
+          .from('licences')
+          .insert(
+            credsToInsert.map((c) => ({
+              licence_id: randomUUID(),
+              staff_id: staffId,
+              tenant_id: tenantId,
+              licence_type: c.credential_type,
+              licence_number: c.licence_number,
+              issuing_authority: c.issuing_body,
+              state: c.state_territory,
+              issue_date: c.issue_date,
+              expiry_date: c.expiry_date,
+              notes: c.notes,
+              active: true,
+            })),
+          );
+      }
     }
   }
 
