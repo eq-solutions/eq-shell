@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { UserPlus } from 'lucide-react';
+import { Download, UserPlus } from 'lucide-react';
 import { Button } from '@eq-solutions/ui';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
@@ -370,6 +370,9 @@ function AdminCardsFeedInner() {
   const [connErr, setConnErr] = useState<string | null>(null);
   const connLoaded = useRef(false);
 
+  // Export
+  const [downloading, setDownloading] = useState(false);
+
   const loadPending = async () => {
     setPendErr(null);
     try {
@@ -430,6 +433,33 @@ function AdminCardsFeedInner() {
     }
   };
 
+  const downloadExport = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch('/.netlify/functions/cards-export-licences', { credentials: 'include' });
+      if (!res.ok) {
+        const body = (await res.json()) as { error?: string };
+        alert(body.error ?? 'Export failed');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cd = res.headers.get('Content-Disposition') ?? '';
+      const match = cd.match(/filename="([^"]+)"/);
+      a.download = match?.[1] ?? 'compliance-export.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const tabBtn = (active: boolean): React.CSSProperties => ({
     padding: '8px 16px',
     fontSize: 13,
@@ -462,17 +492,34 @@ function AdminCardsFeedInner() {
           <h1 className="eq-page__title">Cards</h1>
           <p className="eq-page__lede">Review and manage worker connections via EQ Cards.</p>
         </div>
-        <button
-          onClick={() => navigate(`/${tenantSlug}/admin/workers/invite`)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 14px', borderRadius: 6, fontSize: 13, fontWeight: 500,
-            background: '#2986B4', color: '#fff', border: 'none', cursor: 'pointer',
-          }}
-        >
-          <UserPlus size={15} />
-          Invite worker
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => void downloadExport()}
+            disabled={downloading}
+            title="Download CSV register + licence photos as ZIP"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', borderRadius: 6, fontSize: 13, fontWeight: 500,
+              background: '#fff', color: '#2986B4',
+              border: '1px solid #2986B4', cursor: downloading ? 'wait' : 'pointer',
+              opacity: downloading ? 0.6 : 1,
+            }}
+          >
+            <Download size={15} />
+            {downloading ? 'Preparing…' : 'Compliance pack'}
+          </button>
+          <button
+            onClick={() => navigate(`/${tenantSlug}/admin/workers/invite`)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', borderRadius: 6, fontSize: 13, fontWeight: 500,
+              background: '#2986B4', color: '#fff', border: 'none', cursor: 'pointer',
+            }}
+          >
+            <UserPlus size={15} />
+            Invite worker
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', borderBottom: '1px solid var(--eq-border, #E2E8F0)', marginTop: 16, marginBottom: 20 }}>
