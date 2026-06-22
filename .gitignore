@@ -50,3 +50,6 @@ supabase/.temp/
 
 # Working session notes (sprint docs, specs, context files)
 sessions/
+
+# One-shot cleanup scripts (self-deleting temp utilities)
+cleanup-*.ps1
