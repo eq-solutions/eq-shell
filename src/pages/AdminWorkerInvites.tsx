@@ -28,6 +28,7 @@ interface WorkerInvite {
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
+  email: string | null;
   is_activated: boolean;
   status: InviteStatus;
   claim_url: string;
@@ -135,6 +136,11 @@ function AdminWorkerInvitesInner() {
           {inv.phone && (
             <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 1, fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}>
               {inv.phone}
+            </div>
+          )}
+          {inv.email && (
+            <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 1 }}>
+              {inv.email}
             </div>
           )}
         </div>
