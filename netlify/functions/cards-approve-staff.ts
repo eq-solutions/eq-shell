@@ -276,32 +276,45 @@ async function handleApplication({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tenantAny = tenantDb as any;
 
-  const newStaffId = randomUUID();
-
-  const { error: staffInsertErr } = await tenantAny
+  // Check if this worker already exists in Field (added before they downloaded Cards).
+  // Match by phone — the canonical identifier in both systems.
+  const workerPhone = worker?.phone ?? app.worker_phone;
+  const { data: existingStaff } = (await tenantAny
     .schema('app_data')
     .from('staff')
-    .insert({
-      staff_id: newStaffId,
-      tenant_id: tenantId,
-      first_name: worker?.first_name ?? null,
-      last_name: worker?.last_name ?? null,
-      email: worker?.email ?? null,
-      phone: worker?.phone ?? app.worker_phone,
-      date_of_birth: worker?.date_of_birth ?? null,
-      address_street: worker?.address_street ?? null,
-      address_suburb: worker?.address_suburb ?? null,
-      address_state: worker?.address_state ?? null,
-      address_postcode: worker?.address_postcode ?? null,
-      active: true,
-      field_approved: true,
-      field_approved_at: new Date().toISOString(),
-      field_approved_by: session.user_id,
-      imported_from: 'eq-cards-application',
-    });
+    .select('staff_id')
+    .eq('tenant_id', tenantId)
+    .eq('phone', workerPhone)
+    .maybeSingle()) as { data: { staff_id: string } | null };
 
-  if (staffInsertErr) {
-    return json(500, { error: `Could not create staff record: ${staffInsertErr.message}` });
+  const staffId = existingStaff?.staff_id ?? randomUUID();
+
+  if (!existingStaff) {
+    const { error: staffInsertErr } = await tenantAny
+      .schema('app_data')
+      .from('staff')
+      .insert({
+        staff_id: staffId,
+        tenant_id: tenantId,
+        first_name: worker?.first_name ?? null,
+        last_name: worker?.last_name ?? null,
+        email: worker?.email ?? null,
+        phone: workerPhone,
+        date_of_birth: worker?.date_of_birth ?? null,
+        address_street: worker?.address_street ?? null,
+        address_suburb: worker?.address_suburb ?? null,
+        address_state: worker?.address_state ?? null,
+        address_postcode: worker?.address_postcode ?? null,
+        active: true,
+        field_approved: true,
+        field_approved_at: new Date().toISOString(),
+        field_approved_by: session.user_id,
+        imported_from: 'eq-cards-application',
+      });
+
+    if (staffInsertErr) {
+      return json(500, { error: `Could not create staff record: ${staffInsertErr.message}` });
+    }
   }
 
   // Copy licences if the worker shared full credentials
@@ -326,7 +339,7 @@ async function handleApplication({
         .insert(
           creds.map((c) => ({
             licence_id: randomUUID(),
-            staff_id: newStaffId,
+            staff_id: staffId,
             tenant_id: tenantId,
             licence_type: c.credential_type,
             licence_number: c.licence_number,
@@ -383,14 +396,14 @@ async function handleApplication({
 
   // Audit record in the control plane
   await sb.from('cards_field_approvals').insert({
-    staff_id: newStaffId,
+    staff_id: staffId,
     tenant_id: tenantId,
     field_people_id: null,
     status: 'approved',
     approved_by_user_id: session.user_id,
   });
 
-  return json(200, { ok: true, action: 'approved', staff_id: newStaffId, application_id });
+  return json(200, { ok: true, action: 'approved', staff_id: staffId, application_id });
 }
 
 function tenantRoutingError(e: unknown): Response {
