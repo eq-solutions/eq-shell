@@ -2,7 +2,7 @@ import { useParams, useLocation } from 'react-router-dom';
 import {
   Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings,
   Download, Users2, ClipboardList, Gauge, BarChart2, ShieldCheck, Database,
-  BadgeCheck, Network, ScrollText,
+  BadgeCheck, Network, ScrollText, UserPlus,
 } from 'lucide-react';
 import { AppSidebar, type AppSidebarSection } from '@eq-solutions/ui';
 import { useSession } from '../session';
@@ -71,6 +71,8 @@ export function HubSidebar({ apps, records }: Props) {
   const canIntake = useCan('intake.view');
   const canReports = useCan('reports.view');
   const canAdmin = useCan('admin.list_users');
+  const canWorkerInvites = useCan('admin.invite_user');
+  const canCardsFeed = useCan('admin.review_cards');
   const { compact, toggle: toggleDensity } = useDensity();
 
   if (!session || !tenantSlug) return null;
@@ -133,6 +135,14 @@ export function HubSidebar({ apps, records }: Props) {
       adminItems.push(
         { key: 'admin-hub',      label: 'Overview',        href: `/${tenantSlug}/admin`,                icon: <Gauge size={16} aria-hidden="true" />,         isActive: location.pathname === `/${tenantSlug}/admin` },
         { key: 'users',          label: 'Users',           href: `/${tenantSlug}/admin/users`,          icon: <Users2 size={16} aria-hidden="true" />,        isActive: active(`/${tenantSlug}/admin/users`) },
+      );
+      if (canWorkerInvites) adminItems.push(
+        { key: 'worker-invites', label: 'Worker invites',  href: `/${tenantSlug}/admin/workers`,        icon: <UserPlus size={16} aria-hidden="true" />,      isActive: active(`/${tenantSlug}/admin/workers`) },
+      );
+      if (canCardsFeed) adminItems.push(
+        { key: 'cards-feed',     label: 'Cards feed',      href: `/${tenantSlug}/admin/cards-feed`,     icon: <CreditCard size={16} aria-hidden="true" />,    isActive: active(`/${tenantSlug}/admin/cards-feed`) },
+      );
+      adminItems.push(
         { key: 'audit',          label: 'Audit log',       href: `/${tenantSlug}/admin/audit`,          icon: <ClipboardList size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/admin/audit`) },
         { key: 'access-control', label: 'Security groups', href: `/${tenantSlug}/admin/access-control`, icon: <ShieldCheck size={16} aria-hidden="true" />,   isActive: active(`/${tenantSlug}/admin/access-control`) },
         { key: 'settings',       label: 'Settings',        href: `/${tenantSlug}/admin/settings`,       icon: <Settings size={16} aria-hidden="true" />,      isActive: active(`/${tenantSlug}/admin/settings`) },
