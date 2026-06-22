@@ -6,14 +6,12 @@
 // Route: /:tenantSlug/admin/workers
 // Gated:  admin.invite_user
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Button } from '@eq-solutions/ui';
-import { EqTable, type ColDef } from '../components/EqTable';
+import { Table, type TableColumn, Button } from '@eq-solutions/ui';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
-import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
@@ -88,7 +86,7 @@ function AdminWorkerInvitesInner() {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function copyLink(inv: WorkerInvite) {
+  const copyLink = useCallback(async (inv: WorkerInvite) => {
     try {
       await navigator.clipboard.writeText(inv.claim_url);
       setCopiedId(inv.id);
@@ -96,9 +94,9 @@ function AdminWorkerInvitesInner() {
     } catch {
       // ignore — link is visible in the row
     }
-  }
+  }, []);
 
-  async function resend(inv: WorkerInvite) {
+  const resend = useCallback(async (inv: WorkerInvite) => {
     if (!inv.worker_id) return;
     setResendErr(null);
     setResendResult(null);
@@ -122,27 +120,30 @@ function AdminWorkerInvitesInner() {
     } finally {
       setResendingId(null);
     }
-  }
+  }, [load]);
 
-  const columns: ColDef<WorkerInvite>[] = [
+  const columns = useMemo<TableColumn<WorkerInvite>[]>(() => [
     {
       key: 'name',
       header: 'Name',
-      sortValue: (inv) => `${inv.last_name ?? ''} ${inv.first_name ?? ''}`,
-      render: (inv) => workerName(inv),
-    },
-    {
-      key: 'phone',
-      header: 'Phone',
+      sortAccessor: (inv) => `${inv.last_name ?? ''} ${inv.first_name ?? ''}`,
       render: (inv) => (
-        <span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 13 }}>
-          {inv.phone ?? '—'}
-        </span>
+        <div>
+          <div style={{ fontWeight: 700, color: '#1A1A2E', fontSize: 13, lineHeight: 1.2 }}>
+            {workerName(inv)}
+          </div>
+          {inv.phone && (
+            <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 1, fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}>
+              {inv.phone}
+            </div>
+          )}
+        </div>
       ),
     },
     {
       key: 'status',
       header: 'Status',
+      sortAccessor: (inv) => inv.status,
       render: (inv) => (
         <span style={{ ...STATUS_STYLES[inv.status], padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 500 }}>
           {statusLabel(inv.status)}
@@ -152,14 +153,18 @@ function AdminWorkerInvitesInner() {
     {
       key: 'sent',
       header: 'Sent',
-      sortValue: (inv) => inv.created_at,
-      render: (inv) => fmtDate(inv.created_at),
+      sortAccessor: (inv) => inv.created_at,
+      render: (inv) => <span style={{ color: '#475569' }}>{fmtDate(inv.created_at)}</span>,
     },
     {
       key: 'expires_claimed',
       header: 'Expires / Claimed',
-      sortValue: (inv) => inv.claimed_at ?? inv.expires_at,
-      render: (inv) => inv.claimed_at ? fmtDate(inv.claimed_at) : fmtDate(inv.expires_at),
+      sortAccessor: (inv) => inv.claimed_at ?? inv.expires_at,
+      render: (inv) => (
+        <span style={{ color: '#64748B' }}>
+          {inv.claimed_at ? fmtDate(inv.claimed_at) : fmtDate(inv.expires_at)}
+        </span>
+      ),
     },
     {
       key: 'actions',
@@ -168,19 +173,19 @@ function AdminWorkerInvitesInner() {
       render: (inv) => (
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           {inv.status === 'pending' && (
-            <Button type="button" variant="ghost" size="sm" onClick={() => copyLink(inv)}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => void copyLink(inv)}>
               {copiedId === inv.id ? 'Copied!' : 'Copy link'}
             </Button>
           )}
           {(inv.status === 'expired' || inv.status === 'pending' || inv.status === 'active') && inv.worker_id && (
-            <Button type="button" variant="ghost" size="sm" disabled={resendingId === inv.id} onClick={() => resend(inv)}>
+            <Button type="button" variant="ghost" size="sm" disabled={resendingId === inv.id} onClick={() => void resend(inv)}>
               {resendingId === inv.id ? 'Sending…' : 'Resend'}
             </Button>
           )}
         </div>
       ),
     },
-  ];
+  ], [copiedId, resendingId, copyLink, resend]);
 
   if (err) {
     return (
@@ -192,108 +197,110 @@ function AdminWorkerInvitesInner() {
 
   return (
     <PageShell>
-      <div
-        className="eq-page__header"
-        style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 24 }}
-      >
-        <div>
-          <h1 className="eq-page__title">Worker invites</h1>
-          <p className="eq-page__lede">
-            Activation links for EQ Cards. Share with workers so they can access their wallet.
-          </p>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ padding: '16px 24px 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A2E' }}>Worker invites</h1>
+            <p style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+              {invites === null ? 'Loading…' : `${invites.length} ${invites.length === 1 ? 'invite' : 'invites'}`}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Link
+              to={`/${tenantSlug}/admin/workers/qr`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', height: 36,
+                padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                border: '1px solid var(--eq-border)', color: 'var(--eq-deep)',
+                textDecoration: 'none', background: 'transparent',
+              }}
+            >
+              QR code
+            </Link>
+            <Link
+              to={`/${tenantSlug}/admin/workers/connect`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', height: 36,
+                padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                border: '1px solid var(--eq-border)', color: 'var(--eq-deep)',
+                textDecoration: 'none', background: 'transparent',
+              }}
+            >
+              Connect existing
+            </Link>
+            <Link to={`/${tenantSlug}/admin/workers/invite`}>
+              <Button variant="primary" size="sm">Invite worker</Button>
+            </Link>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Link
-            to={`/${tenantSlug}/admin/workers/qr`}
-            style={{
-              display: 'inline-flex', alignItems: 'center', height: 36,
-              padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              border: '1px solid var(--eq-border)', color: 'var(--eq-deep)',
-              textDecoration: 'none', background: 'transparent',
-            }}
-          >
-            QR code
-          </Link>
-          <Link
-            to={`/${tenantSlug}/admin/workers/connect`}
-            style={{
-              display: 'inline-flex', alignItems: 'center', height: 36,
-              padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              border: '1px solid var(--eq-border)', color: 'var(--eq-deep)',
-              textDecoration: 'none', background: 'transparent',
-            }}
-          >
-            Connect existing
-          </Link>
-          <Link to={`/${tenantSlug}/admin/workers/invite`}>
-            <Button variant="primary" size="sm">Invite worker</Button>
-          </Link>
+
+        {/* Banners */}
+        {(resendErr || resendResult) && (
+          <div style={{ padding: '12px 24px 0', flexShrink: 0 }}>
+            {resendErr && (
+              <div className="eq-err" role="alert">Resend failed: {resendErr}</div>
+            )}
+            {resendResult && (
+              <div
+                role="status"
+                style={{
+                  padding: '12px 16px',
+                  background: '#F0FDF4', border: '1px solid #BBF7D0',
+                  borderRadius: 6, fontSize: 13,
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>New invite link sent.</span>{' '}
+                <span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', wordBreak: 'break-all' }}>
+                  {resendResult.claim_url}
+                </span>{' '}
+                <button
+                  type="button"
+                  onClick={() => { void navigator.clipboard.writeText(resendResult!.claim_url); }}
+                  style={{
+                    marginLeft: 8, padding: '2px 8px', borderRadius: 4,
+                    border: '1px solid #16a34a', background: 'transparent',
+                    color: '#16a34a', fontSize: 12, cursor: 'pointer',
+                  }}
+                >
+                  Copy
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Table */}
+        <div style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
+          <Table
+            columns={columns}
+            rows={invites ?? []}
+            getRowId={(inv) => inv.id}
+            loading={invites === null}
+            slicers={[
+              { key: 'all',     label: 'All' },
+              { key: 'pending', label: 'Pending',  filter: (inv) => inv.status === 'pending' },
+              { key: 'active',  label: 'Active',   filter: (inv) => inv.status === 'active',  dot: '#7C3AED' },
+              { key: 'claimed', label: 'Claimed',  filter: (inv) => inv.status === 'claimed', dot: '#16a34a' },
+              { key: 'expired', label: 'Expired',  filter: (inv) => inv.status === 'expired' },
+            ]}
+            globalSearch={{ placeholder: 'Search invites…' }}
+            defaultSort={{ key: 'sent', dir: 'desc' }}
+            pagination={{ pageSize: 25 }}
+            summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
+            emptyMessage="No invites yet — create one to give a worker access to EQ Cards"
+          />
         </div>
+
       </div>
-
-      {resendErr && (
-        <div className="eq-err" role="alert" style={{ marginBottom: 16 }}>
-          Resend failed: {resendErr}
-        </div>
-      )}
-
-      {resendResult && (
-        <div
-          role="status"
-          style={{
-            marginBottom: 16, padding: '12px 16px',
-            background: '#F0FDF4', border: '1px solid #BBF7D0',
-            borderRadius: 6, fontSize: 13,
-          }}
-        >
-          <span style={{ fontWeight: 600 }}>New invite link sent.</span>{' '}
-          <span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', wordBreak: 'break-all' }}>
-            {resendResult.claim_url}
-          </span>{' '}
-          <button
-            type="button"
-            onClick={() => {
-              void navigator.clipboard.writeText(resendResult.claim_url);
-            }}
-            style={{
-              marginLeft: 8, padding: '2px 8px', borderRadius: 4,
-              border: '1px solid #16a34a', background: 'transparent',
-              color: '#16a34a', fontSize: 12, cursor: 'pointer',
-            }}
-          >
-            Copy
-          </button>
-        </div>
-      )}
-
-      {invites === null ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {[1, 2, 3].map((n) => <Skeleton key={n} variant="row" />)}
-        </div>
-      ) : invites.length === 0 ? (
-        <div className="eq-empty">
-          <p className="eq-empty__title">No invites yet</p>
-          <p>
-            Create your first invite to give a worker access to EQ Cards.{' '}
-            <Link to={`/${tenantSlug}/admin/workers/invite`}>Invite a worker →</Link>
-          </p>
-        </div>
-      ) : (
-        <EqTable
-          data={invites}
-          columns={columns}
-          rowKey={(inv) => inv.id}
-          defaultSort={{ key: 'sent', dir: 'desc' }}
-          emptyMessage="No invites yet"
-        />
-      )}
     </PageShell>
   );
 }
 
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
-    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
       {children}
     </HubLayout>
   );
