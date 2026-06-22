@@ -95,7 +95,6 @@ const RULES = [
     name: '[auth] Token-exchange seam errors',
     // token-exchange         — cross-app token exchange
     // mint-supabase-jwt      — mints tenant JWT for downstream services
-    // mint-iframe-token      — generic iframe mint
     // mint-cards-iframe-token — Cards iframe mint
     // mint-quotes-iframe-token — Quotes iframe mint
     environment: 'production',
@@ -106,7 +105,6 @@ const RULES = [
     filters: [
       fnTag('token-exchange'),
       fnTag('mint-supabase-jwt'),
-      fnTag('mint-iframe-token'),
       fnTag('mint-cards-iframe-token'),
       fnTag('mint-quotes-iframe-token'),
     ],

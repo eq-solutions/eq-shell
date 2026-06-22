@@ -1,6 +1,6 @@
 // Field tenant configuration — single source of truth for the Shell side.
 //
-// The Netlify function (netlify/functions/mint-iframe-token.ts) maintains
+// The Netlify function (netlify/functions/token-exchange.ts) maintains
 // its own ALLOWED_FIELD_TENANT_SLUGS allow-list. When adding a new Field
 // org, update BOTH that constant AND this file in the same PR.
 //

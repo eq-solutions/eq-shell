@@ -36,9 +36,6 @@ FAIL_COUNT=0
 # Each row: METHOD PATH ACCEPTED_STATUSES DESCRIPTION
 # - verify-shell-session with no cookie:        401 expected
 # - shell-login with empty body:                400 expected (malformed)
-# - mint-iframe-token with empty body:          400 or 401 (depending on
-#                                               which check fires first
-#                                               post-tenant-picker PR)
 #
 # Each of these exercises the env-var checks at the top of the function:
 # hasSecretSalt(), hasSupabaseJwtSecret(), getServiceClient(). If any
@@ -47,7 +44,6 @@ FAIL_COUNT=0
 declare -a CHECKS=(
   "GET   /.netlify/functions/verify-shell-session                                                        401      unauthenticated"
   "POST  /.netlify/functions/shell-login                                                                 400      empty-body"
-  "POST  /.netlify/functions/mint-iframe-token                                                           400|401  no-body-or-no-session"
 )
 
 printf '%s\n' "Smoking ${BASE_URL}"
@@ -69,8 +65,7 @@ for row in "${CHECKS[@]}"; do
   BODY=$(cat /tmp/smoke-body 2>/dev/null || echo "")
 
   # ACCEPTED is a `|`-separated list (e.g. "400|401") so endpoints whose
-  # status legitimately changes across PRs (mint-iframe-token gained body
-  # validation in the tenant-picker PR) don't trip false positives.
+  # status legitimately changes across PRs don't trip false positives.
   if echo "|$ACCEPTED|" | grep -qE "\|${RESPONSE}\|"; then
     printf 'PASS  %-50s %s  (%s)\n' "$PATHSPEC" "$RESPONSE" "$DESC"
   elif [ "$RESPONSE" -ge 500 ] 2>/dev/null; then
