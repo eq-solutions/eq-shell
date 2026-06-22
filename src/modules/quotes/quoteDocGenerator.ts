@@ -466,11 +466,15 @@ export async function generateQuoteDoc(q: QuoteDocData, mode: "detailed" | "summ
   // 1. Replace SDT content controls
   xml = replaceSdt(xml, "QuoteDate", simpleRun(formatDocDate(today), stdRpr));
   xml = replaceSdt(xml, "QuoteNumber", simpleRun(q.quote_number, stdRpr));
-  xml = replaceSdt(xml, "ContactName", simpleRun(q.attn_first_name ?? q.attn_name ?? "", stdRpr));
+  // attn_first_name = first name, attn_name = last name in EQ Ops.
+  // ContactName = full name for the formal address block.
+  // DearName = first name for the salutation ("Dear John,").
+  const fullContactName = [q.attn_first_name, q.attn_name].filter(Boolean).join(" ");
+  xml = replaceSdt(xml, "ContactName", simpleRun(fullContactName || "", stdRpr));
   xml = replaceSdt(xml, "ClientAddress", simpleRun(q.address ?? "", stdRpr));
   xml = replaceSdt(xml, "ClientEmail", simpleRun(q.contact_email ?? "", stdRpr));
   xml = replaceSdt(xml, "ProjectName", simpleRun(q.project_name ?? "", stdRpr));
-  xml = replaceSdt(xml, "DearName", simpleRun(q.attn_name ?? "", stdRpr));
+  xml = replaceSdt(xml, "DearName", simpleRun(q.attn_first_name ?? q.attn_name ?? "", stdRpr));
   xml = replaceSdt(xml, "ClientCompany", simpleRun(q.customer_name ?? "", stdRpr));
   xml = replaceSdt(xml, "RepName", simpleRun("Royce Milmlow", stdRpr));
   xml = replaceSdt(xml, "RepTitle", simpleRun("NSW Operations Manager", stdRpr));
