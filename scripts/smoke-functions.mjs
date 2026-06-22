@@ -25,7 +25,7 @@ const FUNCTIONS = [
   'cards-pending-staff','challenge-totp','confirm-totp','edit-user','enroll-totp',
   'entity-actions','entity-insert','entity-patch','entity-rows','equipment-list',
   'generate-gm-briefing','gm-chat','gm-reports','intake-commit','invite-user',
-  'manage-gm-report','mint-cards-iframe-token','mint-iframe-token','mint-quotes-iframe-token',
+  'manage-gm-report','mint-cards-iframe-token','mint-quotes-iframe-token',
   'mint-supabase-jwt','ocr-parse','provision-status','provision-tenant','reset-user-pin',
   'security-groups','select-tenant','shell-login','shell-login-magic-link',
   'shell-login-phone-otp','shell-logout','shell-request-pin-reset','switch-tenant',
