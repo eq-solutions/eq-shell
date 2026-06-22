@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+﻿import React, { useState, useEffect, useCallback, useRef } from "react";
 import { EqLogo } from "../../components/EqLogo";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateQuoteDoc, generateJobExcel } from "./quoteDocGenerator";
@@ -2072,6 +2072,10 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
 
   const handleStatusUpdate = async () => {
     if (!supabase || !detail || !advanceStatus) return;
+    if (advanceStatus === "won-job-created" && !detail.workbench_job_no) {
+      setStatusMutErr("Enter a Workbench Job No. before marking as Job Created.");
+      return;
+    }
     setUpdatingStatus(true);
     setStatusMutErr(null);
     const { error } = await supabase.rpc("eq_update_quote_status", {
@@ -3070,166 +3074,56 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
               <span style={{ fontSize: 14, fontWeight: 600, color: "var(--eq-ink, #1A1A2E)", marginLeft: 4 }}>
                 {aud(detail.total_cents)}
               </span>
-              {/* Row 1: Edit / Duplicate / Revise | Doc mode + Downloads */}
+              {/* Actions — single row: edit cluster | pipeline | doc-mode | more-menu */}
               <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="eq-quotes__btn eq-quotes__btn--outline"
-                  onClick={() => openEditForm(detail)}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="eq-quotes__btn eq-quotes__btn--outline"
-                  disabled={duplicating}
-                  onClick={() => void handleDuplicate(detail.quote_id)}
-                  title="Create a draft copy of this quote"
-                >
+                <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" onClick={() => openEditForm(detail)}>Edit</button>
+                <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" disabled={duplicating} onClick={() => void handleDuplicate(detail.quote_id)} title="Create a draft copy of this quote">
                   {duplicating ? "Duplicating…" : "Duplicate"}
                 </button>
                 {["submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
-                  <button
-                    type="button"
-                    className="eq-quotes__btn eq-quotes__btn--outline"
-                    disabled={duplicating}
-                    onClick={() => void handleRevise()}
-                    title="Supersede this quote and open a new draft revision"
-                  >
+                  <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" disabled={duplicating} onClick={() => void handleRevise()} title="Supersede this quote and open a new draft revision">
                     {duplicating ? "…" : "Revise"}
                   </button>
                 )}
                 <span style={{ display: "inline-block", width: 1, height: 20, background: "var(--eq-border, #ddd)", margin: "0 2px" }} />
-                <select
-                  className="eq-quotes__select"
-                  style={{ fontSize: 12, padding: "3px 6px" }}
-                  value={docMode}
-                  onChange={(e) => setDocMode(e.target.value as "detailed" | "summary" | "lump_sum")}
-                  title="Line items table mode"
-                >
-                  <option value="detailed">Detailed</option>
-                  <option value="summary">Summary</option>
-                  <option value="lump_sum">Lump Sum</option>
-                </select>
-                <button
-                  type="button"
-                  className="eq-quotes__btn eq-quotes__btn--outline"
-                  onClick={() => void handleGenerateDoc()}
-                >
-                  Download Quote
-                </button>
-                <button
-                  type="button"
-                  className="eq-quotes__btn eq-quotes__btn--outline"
-                  disabled={downloadingPdf}
-                  onClick={() => void handleDownloadPdf()}
-                  title="Download PDF"
-                >
-                  {downloadingPdf ? "…" : "Download PDF"}
-                </button>
-                <button
-                  type="button"
-                  className="eq-quotes__btn eq-quotes__btn--outline"
-                  onClick={() => {
-                    setShowEmailForm((v) => {
-                      if (!v && detail) {
-                        if (!emailToName.trim()) {
-                          const name = [detail.attn_first_name, detail.attn_name].filter(Boolean).join(" ");
-                          if (name) setEmailToName(name);
-                        }
-                        if (!emailTo.trim() && detail.contact_email) {
-                          setEmailTo(detail.contact_email);
-                        }
-                      }
-                      return !v;
-                    });
-                    setEmailMsg(null);
-                  }}
-                >
-                  Email PDF
-                </button>
-                <button
-                  type="button"
-                  className="eq-quotes__btn eq-quotes__btn--outline"
-                  disabled={sharingLink}
-                  onClick={() => void handleShareLink()}
-                  title="Create a shareable portal link for this quote"
-                >
-                  {sharingLink ? "…" : "Share"}
-                </button>
-              </div>
-              {/* Row 2: Job + status actions + trash — wraps to second line */}
-              <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingTop: 4 }}>
-                <button
-                  type="button"
-                  className="eq-quotes__btn eq-quotes__btn--outline"
-                  disabled={jobCreationBusy}
-                  onClick={async () => {
-                    setJobCreationBusy(true);
-                    setJobCreationErr(null);
-                    try { await generateJobExcel(detail.quote_id); }
-                    catch (e) { setJobCreationErr(e instanceof Error ? e.message : "Failed"); }
-                    finally { setJobCreationBusy(false); }
-                  }}
-                >
-                  {jobCreationBusy ? "…" : "Job Creation"}
-                </button>
-                {jobCreationErr && <span className="eq-quotes__inline-err">{jobCreationErr}</span>}
                 {["draft", "submitted", "client-reviewing", "on-hold"].includes(detail.status) && (
-                  <button
-                    type="button"
-                    className="eq-quotes__btn eq-quotes__btn--outline"
-                    disabled={quickWinBusy}
-                    onClick={() => void handleQuickWin()}
-                    title="Mark as Verbal Win"
-                    style={{ color: "var(--eq-sky, #2986B4)" }}
-                  >
+                  <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" disabled={quickWinBusy} onClick={() => void handleQuickWin()} title="Mark as Verbal Win" style={{ color: "var(--eq-sky, #2986B4)" }}>
                     {quickWinBusy ? "…" : "Win"}
                   </button>
                 )}
                 {["draft", "submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
-                  <button
-                    type="button"
-                    className="eq-quotes__btn eq-quotes__btn--outline"
-                    disabled={quickLoseBusy}
-                    onClick={() => setLosePromptOpen((o) => !o)}
-                    title="Mark as Lost"
-                    style={{ color: "var(--eq-err, #c0392b)" }}
-                  >
+                  <button type="button" className="eq-quotes__btn eq-quotes__btn--outline" disabled={quickLoseBusy} onClick={() => setLosePromptOpen((o) => !o)} title="Mark as Lost" style={{ color: "var(--eq-err, #c0392b)" }}>
                     {quickLoseBusy ? "…" : losePromptOpen ? "Cancel" : "Lose"}
                   </button>
                 )}
-                {!detail.sent_at && ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) && (
-                  <button
-                    type="button"
-                    className="eq-quotes__btn eq-quotes__btn--outline"
-                    disabled={markingSent}
-                    onClick={() => void handleMarkAsSent()}
-                    title={detail.status === "draft" ? "Submit and mark as sent today" : "Mark as sent today"}
-                  >
-                    {markingSent ? "…" : detail.status === "draft" ? "Submit & Mark Sent" : "Mark as Sent"}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="eq-quotes__btn eq-quotes__btn--outline"
-                  disabled={trashing}
-                  onClick={() => void handleTrash(detail.quote_id)}
-                  title="Archive this quote (recoverable from the Archived view)"
-                  style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}
-                >
-                  <Archive size={14} /> {trashing ? "…" : "Archive"}
-                </button>
-                <button
-                  type="button"
-                  className="eq-quotes__btn eq-quotes__btn--outline"
-                  onClick={() => void handleDelete(detail.quote_id, detail.quote_number)}
-                  title="Permanently delete this quote — cannot be undone"
-                  style={{ color: "var(--eq-err, #c0392b)", display: "inline-flex", alignItems: "center", gap: 6 }}
-                >
-                  <Trash2 size={14} /> Delete
-                </button>
+                <span style={{ display: "inline-block", width: 1, height: 20, background: "var(--eq-border, #ddd)", margin: "0 2px" }} />
+                <select className="eq-quotes__select" style={{ fontSize: 12, padding: "3px 6px" }} value={docMode} onChange={(e) => setDocMode(e.target.value as "detailed" | "summary" | "lump_sum")} title="Line items table mode">
+                  <option value="detailed">Detailed</option>
+                  <option value="summary">Summary</option>
+                  <option value="lump_sum">Lump Sum</option>
+                </select>
+                <DropdownMenu
+                  align="right"
+                  trigger={
+                    <button type="button" className="eq-quotes__btn eq-quotes__btn--outline eq-quotes__btn--icon" aria-label="More actions" title="More">
+                      <MoreHorizontal size={16} />
+                    </button>
+                  }
+                  items={[
+                    { key: "job-creation", label: jobCreationBusy ? "Generating…" : "Job Creation", icon: <Briefcase size={14} />, disabled: jobCreationBusy, onClick: () => { void (async () => { setJobCreationBusy(true); setJobCreationErr(null); try { await generateJobExcel(detail.quote_id); } catch (e) { setJobCreationErr(e instanceof Error ? e.message : "Failed"); } finally { setJobCreationBusy(false); } })(); } },
+                    ...(!detail.sent_at && ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) ? [{ key: "mark-sent", label: markingSent ? "…" : detail.status === "draft" ? "Submit & Mark Sent" : "Mark as Sent", disabled: markingSent, onClick: () => void handleMarkAsSent() }] : []),
+                    { key: "sep1", separator: true as const },
+                    { key: "download-quote", label: "Download Quote", onClick: () => void handleGenerateDoc() },
+                    { key: "download-pdf", label: downloadingPdf ? "Generating…" : "Download PDF", disabled: downloadingPdf, onClick: () => void handleDownloadPdf() },
+                    { key: "email-pdf", label: "Email PDF", onClick: () => { setShowEmailForm((v) => { if (!v && detail) { if (!emailToName.trim()) { const name = [detail.attn_first_name, detail.attn_name].filter(Boolean).join(" "); if (name) setEmailToName(name); } if (!emailTo.trim() && detail.contact_email) { setEmailTo(detail.contact_email); } } return !v; }); setEmailMsg(null); } },
+                    { key: "share", label: sharingLink ? "Copying…" : "Share", disabled: sharingLink, onClick: () => void handleShareLink() },
+                    { key: "sep2", separator: true as const },
+                    { key: "archive", label: trashing ? "Archiving…" : "Archive", icon: <Archive size={14} />, disabled: trashing, onClick: () => void handleTrash(detail.quote_id) },
+                    { key: "delete", label: "Delete", variant: "danger" as const, icon: <Trash2 size={14} />, onClick: () => void handleDelete(detail.quote_id, detail.quote_number) },
+                  ]}
+                />
               </div>
+              {jobCreationErr && <span className="eq-quotes__inline-err">{jobCreationErr}</span>}
             </div>
           )}
           {/* Email PDF inline form */}
@@ -3628,7 +3522,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                     {projectErr && <span className="eq-quotes__err">{projectErr}</span>}
                   </div>
                 )}
-                <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">Sent</span>
                   <div className="eq-quotes__job-no-row">
                     <input
@@ -3660,7 +3554,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                   </div>
                   {sentAtErr && <span className="eq-quotes__err">{sentAtErr}</span>}
                 </div>
-                <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">Expires</span>
                   <div className="eq-quotes__job-no-row">
                     <input
@@ -3714,7 +3608,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                   </div>
                   {followUpErr && <span className="eq-quotes__err">{followUpErr}</span>}
                 </div>
-                <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">Workbench Job No.</span>
                   <div className="eq-quotes__job-no-row">
                     <input
@@ -3735,7 +3629,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                   </div>
                   {jobNoErr && <div className="eq-quotes__inline-err">{jobNoErr}</div>}
                 </div>
-                <div className="eq-quotes__info-item eq-quotes__info-item--full">
+                <div className="eq-quotes__info-item">
                   <span className="eq-quotes__info-label">PO Number</span>
                   <div className="eq-quotes__job-no-row">
                     <input
