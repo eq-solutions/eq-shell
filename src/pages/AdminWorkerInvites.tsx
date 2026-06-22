@@ -6,18 +6,17 @@
 // Route: /:tenantSlug/admin/workers
 // Gated:  admin.invite_user
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Button } from '@eq-solutions/ui';
+import { Table, type TableColumn, Button } from '@eq-solutions/ui';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
-import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
-type InviteStatus = 'claimed' | 'expired' | 'pending';
+type InviteStatus = 'claimed' | 'active' | 'expired' | 'pending';
 
 interface WorkerInvite {
   id: string;
@@ -29,18 +28,23 @@ interface WorkerInvite {
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
+  is_activated: boolean;
   status: InviteStatus;
   claim_url: string;
 }
 
 const STATUS_STYLES: Record<InviteStatus, React.CSSProperties> = {
   pending:  { background: '#EAF5FB', color: '#2986B4', border: '1px solid #BDE3F5' },
+  active:   { background: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE' },
   claimed:  { background: '#F0FDF4', color: '#16a34a', border: '1px solid #BBF7D0' },
   expired:  { background: '#FFF7ED', color: '#c2410c', border: '1px solid #FED7AA' },
 };
 
 function statusLabel(s: InviteStatus) {
-  return s === 'pending' ? 'Pending' : s === 'claimed' ? 'Claimed' : 'Expired';
+  if (s === 'pending') return 'Pending';
+  if (s === 'active')  return 'Active — Cards not done';
+  if (s === 'claimed') return 'Claimed';
+  return 'Expired';
 }
 
 function fmtDate(iso: string): string {
@@ -57,9 +61,10 @@ function AdminWorkerInvitesInner() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const [invites, setInvites] = useState<WorkerInvite[] | null>(null);
   const [err, setErr]         = useState<string | null>(null);
-  const [copiedId, setCopiedId]   = useState<string | null>(null);
+  const [copiedId, setCopiedId]       = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
-  const [resendErr, setResendErr] = useState<string | null>(null);
+  const [resendErr, setResendErr]     = useState<string | null>(null);
+  const [resendResult, setResendResult] = useState<{ worker_id: string; claim_url: string } | null>(null);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -81,7 +86,7 @@ function AdminWorkerInvitesInner() {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function copyLink(inv: WorkerInvite) {
+  const copyLink = useCallback(async (inv: WorkerInvite) => {
     try {
       await navigator.clipboard.writeText(inv.claim_url);
       setCopiedId(inv.id);
@@ -89,11 +94,12 @@ function AdminWorkerInvitesInner() {
     } catch {
       // ignore — link is visible in the row
     }
-  }
+  }, []);
 
-  async function resend(inv: WorkerInvite) {
+  const resend = useCallback(async (inv: WorkerInvite) => {
     if (!inv.worker_id) return;
     setResendErr(null);
+    setResendResult(null);
     setResendingId(inv.id);
     try {
       const res = await fetch('/.netlify/functions/resend-worker-invite', {
@@ -106,7 +112,7 @@ function AdminWorkerInvitesInner() {
       if (!res.ok || !body.ok) {
         setResendErr(body.error ?? `Error ${res.status}`);
       } else {
-        // Reload the list so the new invite appears
+        setResendResult({ worker_id: inv.worker_id, claim_url: body.claim_url ?? '' });
         await load();
       }
     } catch (e) {
@@ -114,7 +120,72 @@ function AdminWorkerInvitesInner() {
     } finally {
       setResendingId(null);
     }
-  }
+  }, [load]);
+
+  const columns = useMemo<TableColumn<WorkerInvite>[]>(() => [
+    {
+      key: 'name',
+      header: 'Name',
+      sortAccessor: (inv) => `${inv.last_name ?? ''} ${inv.first_name ?? ''}`,
+      render: (inv) => (
+        <div>
+          <div style={{ fontWeight: 700, color: '#1A1A2E', fontSize: 13, lineHeight: 1.2 }}>
+            {workerName(inv)}
+          </div>
+          {inv.phone && (
+            <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 1, fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}>
+              {inv.phone}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortAccessor: (inv) => inv.status,
+      render: (inv) => (
+        <span style={{ ...STATUS_STYLES[inv.status], padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 500 }}>
+          {statusLabel(inv.status)}
+        </span>
+      ),
+    },
+    {
+      key: 'sent',
+      header: 'Sent',
+      sortAccessor: (inv) => inv.created_at,
+      render: (inv) => <span style={{ color: '#475569' }}>{fmtDate(inv.created_at)}</span>,
+    },
+    {
+      key: 'expires_claimed',
+      header: 'Expires / Claimed',
+      sortAccessor: (inv) => inv.claimed_at ?? inv.expires_at,
+      render: (inv) => (
+        <span style={{ color: '#64748B' }}>
+          {inv.claimed_at ? fmtDate(inv.claimed_at) : fmtDate(inv.expires_at)}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (inv) => (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          {inv.status === 'pending' && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => void copyLink(inv)}>
+              {copiedId === inv.id ? 'Copied!' : 'Copy link'}
+            </Button>
+          )}
+          {(inv.status === 'expired' || inv.status === 'pending' || inv.status === 'active') && inv.worker_id && (
+            <Button type="button" variant="ghost" size="sm" disabled={resendingId === inv.id} onClick={() => void resend(inv)}>
+              {resendingId === inv.id ? 'Sending…' : 'Resend'}
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ], [copiedId, resendingId, copyLink, resend]);
 
   if (err) {
     return (
@@ -126,150 +197,110 @@ function AdminWorkerInvitesInner() {
 
   return (
     <PageShell>
-      <div
-        className="eq-page__header"
-        style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 24 }}
-      >
-        <div>
-          <h1 className="eq-page__title">Worker invites</h1>
-          <p className="eq-page__lede">
-            Activation links for EQ Cards. Share with workers so they can access their wallet.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Link
-            to={`/${tenantSlug}/admin/workers/qr`}
-            style={{
-              display: 'inline-flex', alignItems: 'center', height: 36,
-              padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              border: '1px solid var(--eq-border)', color: 'var(--eq-deep)',
-              textDecoration: 'none', background: 'transparent',
-            }}
-          >
-            QR code
-          </Link>
-          <Link
-            to={`/${tenantSlug}/admin/workers/connect`}
-            style={{
-              display: 'inline-flex', alignItems: 'center', height: 36,
-              padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              border: '1px solid var(--eq-border)', color: 'var(--eq-deep)',
-              textDecoration: 'none', background: 'transparent',
-            }}
-          >
-            Connect existing
-          </Link>
-          <Link to={`/${tenantSlug}/admin/workers/invite`}>
-            <Button variant="primary" size="sm">Invite worker</Button>
-          </Link>
-        </div>
-      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-      {resendErr && (
-        <div className="eq-err" role="alert" style={{ marginBottom: 16 }}>
-          Resend failed: {resendErr}
+        {/* Header */}
+        <div style={{ padding: '16px 24px 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A2E' }}>Worker invites</h1>
+            <p style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+              {invites === null ? 'Loading…' : `${invites.length} ${invites.length === 1 ? 'invite' : 'invites'}`}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Link
+              to={`/${tenantSlug}/admin/workers/qr`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', height: 36,
+                padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                border: '1px solid var(--eq-border)', color: 'var(--eq-deep)',
+                textDecoration: 'none', background: 'transparent',
+              }}
+            >
+              QR code
+            </Link>
+            <Link
+              to={`/${tenantSlug}/admin/workers/connect`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', height: 36,
+                padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                border: '1px solid var(--eq-border)', color: 'var(--eq-deep)',
+                textDecoration: 'none', background: 'transparent',
+              }}
+            >
+              Connect existing
+            </Link>
+            <Link to={`/${tenantSlug}/admin/workers/invite`}>
+              <Button variant="primary" size="sm">Invite worker</Button>
+            </Link>
+          </div>
         </div>
-      )}
 
-      {invites === null ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {[1, 2, 3].map((n) => <Skeleton key={n} variant="row" />)}
-        </div>
-      ) : invites.length === 0 ? (
-        <div className="eq-empty">
-          <p className="eq-empty__title">No invites yet</p>
-          <p>
-            Create your first invite to give a worker access to EQ Cards.{' '}
-            <Link to={`/${tenantSlug}/admin/workers/invite`}>Invite a worker →</Link>
-          </p>
-        </div>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--eq-border)' }}>
-                {['Name', 'Phone', 'Status', 'Sent', 'Expires / Claimed', ''].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: 'left', padding: '8px 12px',
-                      fontSize: 11, fontWeight: 600,
-                      color: 'var(--eq-grey)', textTransform: 'uppercase', letterSpacing: '0.06em',
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {invites.map((inv) => (
-                <tr
-                  key={inv.id}
-                  style={{ borderBottom: '1px solid var(--eq-border)' }}
+        {/* Banners */}
+        {(resendErr || resendResult) && (
+          <div style={{ padding: '12px 24px 0', flexShrink: 0 }}>
+            {resendErr && (
+              <div className="eq-err" role="alert">Resend failed: {resendErr}</div>
+            )}
+            {resendResult && (
+              <div
+                role="status"
+                style={{
+                  padding: '12px 16px',
+                  background: '#F0FDF4', border: '1px solid #BBF7D0',
+                  borderRadius: 6, fontSize: 13,
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>New invite link sent.</span>{' '}
+                <span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', wordBreak: 'break-all' }}>
+                  {resendResult.claim_url}
+                </span>{' '}
+                <button
+                  type="button"
+                  onClick={() => { void navigator.clipboard.writeText(resendResult!.claim_url); }}
+                  style={{
+                    marginLeft: 8, padding: '2px 8px', borderRadius: 4,
+                    border: '1px solid #16a34a', background: 'transparent',
+                    color: '#16a34a', fontSize: 12, cursor: 'pointer',
+                  }}
                 >
-                  <td style={cellStyle}>{workerName(inv)}</td>
-                  <td style={cellStyle}>
-                    <span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 13 }}>
-                      {inv.phone ?? '—'}
-                    </span>
-                  </td>
-                  <td style={cellStyle}>
-                    <span
-                      style={{
-                        ...STATUS_STYLES[inv.status],
-                        padding: '2px 8px', borderRadius: 4,
-                        fontSize: 12, fontWeight: 500,
-                      }}
-                    >
-                      {statusLabel(inv.status)}
-                    </span>
-                  </td>
-                  <td style={cellStyle}>{fmtDate(inv.created_at)}</td>
-                  <td style={cellStyle}>
-                    {inv.status === 'claimed' && inv.claimed_at
-                      ? fmtDate(inv.claimed_at)
-                      : fmtDate(inv.expires_at)}
-                  </td>
-                  <td style={{ ...cellStyle, textAlign: 'right' }}>
-                    {inv.status === 'pending' && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyLink(inv)}
-                        style={{ marginRight: 8 }}
-                      >
-                        {copiedId === inv.id ? 'Copied!' : 'Copy link'}
-                      </Button>
-                    )}
-                    {(inv.status === 'expired' || inv.status === 'pending') && inv.worker_id && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={resendingId === inv.id}
-                        onClick={() => resend(inv)}
-                      >
-                        {resendingId === inv.id ? 'Sending…' : 'Resend'}
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  Copy
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Table */}
+        <div style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
+          <Table
+            columns={columns}
+            rows={invites ?? []}
+            getRowId={(inv) => inv.id}
+            loading={invites === null}
+            slicers={[
+              { key: 'all',     label: 'All' },
+              { key: 'pending', label: 'Pending',  filter: (inv) => inv.status === 'pending' },
+              { key: 'active',  label: 'Active',   filter: (inv) => inv.status === 'active',  dot: '#7C3AED' },
+              { key: 'claimed', label: 'Claimed',  filter: (inv) => inv.status === 'claimed', dot: '#16a34a' },
+              { key: 'expired', label: 'Expired',  filter: (inv) => inv.status === 'expired' },
+            ]}
+            globalSearch={{ placeholder: 'Search invites…' }}
+            defaultSort={{ key: 'sent', dir: 'desc' }}
+            pagination={{ pageSize: 25 }}
+            summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
+            emptyMessage="No invites yet — create one to give a worker access to EQ Cards"
+          />
         </div>
-      )}
+
+      </div>
     </PageShell>
   );
 }
 
-const cellStyle: React.CSSProperties = { padding: '10px 12px', verticalAlign: 'middle' };
-
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
-    <HubLayout sidebarRecords={SIDEBAR_RECORDS}>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
       {children}
     </HubLayout>
   );

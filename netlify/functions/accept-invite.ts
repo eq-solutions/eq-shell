@@ -298,21 +298,15 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       .update({ user_id: created.id })
       .eq('id', invite.worker_id);
 
-    const { data: workerInvite } = await sb
+    // Mark all pending Cards invites for this worker as claimed in one shot.
+    // The previous select+maybeSingle approach would silently fail when multiple
+    // unclaimed invites existed (PostgREST errors on >1 row; error was ignored).
+    await sb
       .schema('public')
       .from('worker_invites')
-      .select('id')
+      .update({ claimed_at: new Date().toISOString(), claimed_by: created.id })
       .eq('worker_id', invite.worker_id)
-      .is('claimed_at', null)
-      .maybeSingle<{ id: string }>();
-
-    if (workerInvite) {
-      await sb
-        .schema('public')
-        .from('worker_invites')
-        .update({ claimed_at: new Date().toISOString(), claimed_by: created.id })
-        .eq('id', workerInvite.id);
-    }
+      .is('claimed_at', null);
   }
 
   const inviteIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()

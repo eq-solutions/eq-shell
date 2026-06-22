@@ -23,7 +23,7 @@ function json(status: number, body: unknown): Response {
   });
 }
 
-type InviteStatus = 'claimed' | 'expired' | 'pending';
+type InviteStatus = 'claimed' | 'active' | 'expired' | 'pending';
 
 interface InviteRow {
   id: string;
@@ -35,6 +35,7 @@ interface InviteRow {
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
+  is_activated: boolean;
   status: InviteStatus;
   claim_url: string;
 }
@@ -76,7 +77,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       workers (
         first_name,
         last_name,
-        phone
+        phone,
+        user_id
       )
     `)
     .eq('org_id', org.id)
@@ -88,29 +90,42 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const now = new Date();
 
   const invites: InviteRow[] = (rows ?? []).map((r: any) => {
+    const w = r.workers as {
+      first_name: string | null;
+      last_name: string | null;
+      phone: string | null;
+      user_id: string | null;
+    } | null;
+
+    const isActivated = !!(w?.user_id);
+
     let status: InviteStatus;
     if (r.claimed_at) {
       status = 'claimed';
+    } else if (isActivated) {
+      // Shell account exists but Cards wallet not yet completed — distinct from pending.
+      status = 'active';
     } else if (new Date(r.expires_at) < now) {
       status = 'expired';
     } else {
       status = 'pending';
     }
 
-    const w = r.workers as { first_name: string | null; last_name: string | null; phone: string | null } | null;
-
     return {
-      id:         r.id,
-      token:      r.token,
-      worker_id:  r.worker_id,
-      created_at: r.created_at,
-      expires_at: r.expires_at,
-      claimed_at: r.claimed_at,
-      first_name: w?.first_name ?? null,
-      last_name:  w?.last_name  ?? null,
-      phone:      w?.phone      ?? null,
+      id:           r.id,
+      token:        r.token,
+      worker_id:    r.worker_id,
+      created_at:   r.created_at,
+      expires_at:   r.expires_at,
+      claimed_at:   r.claimed_at,
+      first_name:   w?.first_name ?? null,
+      last_name:    w?.last_name  ?? null,
+      phone:        w?.phone      ?? null,
+      is_activated: isActivated,
       status,
-      claim_url:  status === 'pending' ? `https://cards.eq.solutions/claim/${r.token}` : '',
+      claim_url:    (status === 'pending' || status === 'active')
+        ? `https://cards.eq.solutions/claim/${r.token}`
+        : '',
     };
   });
 
