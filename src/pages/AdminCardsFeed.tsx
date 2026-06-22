@@ -25,7 +25,10 @@ interface Licence {
 }
 
 interface PendingStaff {
-  staff_id: string;
+  staff_id?: string;
+  application_id?: string;
+  source?: 'invite' | 'application';
+  sharing_scope?: string;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -120,7 +123,7 @@ function PendingTab({
   setQuery: (q: string) => void;
   busy: string | null;
   actionErr: string | null;
-  decide: (id: string, action: 'approve' | 'reject') => void;
+  decide: (id: string, action: 'approve' | 'reject', source?: string) => void;
   reload: () => void;
 }) {
   const filtered = useMemo(() => {
@@ -175,12 +178,19 @@ function PendingTab({
                 </td>
               </tr>
             ) : (
-              filtered.map((p) => (
-                <tr key={p.staff_id}>
+              filtered.map((p) => {
+                const rowId = p.application_id ?? p.staff_id ?? '';
+                return (
+                <tr key={rowId}>
                   <td>
                     <span style={{ fontWeight: 500 }}>
                       {fullName(p.first_name, p.last_name, p.email)}
                     </span>
+                    {p.source === 'application' && (
+                      <span className="eq-table__mute" style={{ display: 'block', fontSize: 11 }}>
+                        Self-signup · {p.sharing_scope === 'full' ? 'Full credentials' : 'Basic profile'}
+                      </span>
+                    )}
                   </td>
                   <td>
                     <span>{p.email ?? '—'}</span>
@@ -192,7 +202,9 @@ function PendingTab({
                   </td>
                   <td>
                     {p.licences.length === 0 ? (
-                      <span className="eq-table__mute">None</span>
+                      <span className="eq-table__mute">
+                        {p.source === 'application' && p.sharing_scope === 'basic' ? 'Not shared' : 'None'}
+                      </span>
                     ) : (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                         {p.licences.map((l) => (
@@ -209,22 +221,23 @@ function PendingTab({
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                       <Button
                         variant="primary" size="sm"
-                        disabled={busy === p.staff_id}
-                        onClick={() => void decide(p.staff_id, 'approve')}
+                        disabled={busy === rowId}
+                        onClick={() => void decide(rowId, 'approve', p.source)}
                       >
-                        {busy === p.staff_id ? '…' : 'Add to Field'}
+                        {busy === rowId ? '…' : 'Add to Field'}
                       </Button>
                       <Button
                         variant="ghost" size="sm"
-                        disabled={busy === p.staff_id}
-                        onClick={() => void decide(p.staff_id, 'reject')}
+                        disabled={busy === rowId}
+                        onClick={() => void decide(rowId, 'reject', p.source)}
                       >
                         Dismiss
                       </Button>
                     </div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -388,19 +401,28 @@ function AdminCardsFeedInner() {
     if (tab === 'connected' && !connLoaded.current) void loadConnected();
   }, [tab]);
 
-  const decide = async (staffId: string, action: 'approve' | 'reject') => {
+  const decide = async (rowId: string, action: 'approve' | 'reject', source?: string) => {
     setActionErr(null);
-    setBusy(staffId);
+    setBusy(rowId);
     try {
+      const bodyPayload =
+        source === 'application'
+          ? { application_id: rowId, action }
+          : { staff_id: rowId, action };
       const res = await fetch('/.netlify/functions/cards-approve-staff', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staff_id: staffId, action }),
+        body: JSON.stringify(bodyPayload),
       });
       const body = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok) { setActionErr(body.error ?? 'Something went wrong'); }
-      else { setPending((prev) => (prev ?? []).filter((p) => p.staff_id !== staffId)); }
+      else {
+        setPending((prev) => (prev ?? []).filter((p) => {
+          const id = p.application_id ?? p.staff_id;
+          return id !== rowId;
+        }));
+      }
     } catch (e) {
       setActionErr((e as Error).message);
     } finally {
@@ -476,7 +498,7 @@ function AdminCardsFeedInner() {
           setQuery={setQuery}
           busy={busy}
           actionErr={actionErr}
-          decide={(id, action) => void decide(id, action)}
+          decide={(id, action, source) => void decide(id, action, source)}
           reload={loadPending}
         />
       )}
