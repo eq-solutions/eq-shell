@@ -35,6 +35,7 @@ interface InviteRow {
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
+  email: string | null;
   is_activated: boolean;
   status: InviteStatus;
   claim_url: string;
@@ -78,6 +79,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         first_name,
         last_name,
         phone,
+        email,
         user_id
       )
     `)
@@ -94,6 +96,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       first_name: string | null;
       last_name: string | null;
       phone: string | null;
+      email: string | null;
       user_id: string | null;
     } | null;
 
@@ -121,6 +124,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       first_name:   w?.first_name ?? null,
       last_name:    w?.last_name  ?? null,
       phone:        w?.phone      ?? null,
+      email:        w?.email      ?? null,
       is_activated: isActivated,
       status,
       claim_url:    (status === 'pending' || status === 'active')
