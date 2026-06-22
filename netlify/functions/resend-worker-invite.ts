@@ -4,12 +4,15 @@
 // deleted — it stays in the DB for audit. The new invite supersedes it.
 //
 // Use this when a pending invite has expired or the worker lost the link.
+// Also valid for workers who have a Shell account but haven't completed Cards
+// onboarding — the Shell account (user_id) and the Cards wallet (claimed_at)
+// are separate flows.
 //
 // Body: { worker_id: string }
 //
 // Rejects if:
-//   - The worker doesn't exist in the org
-//   - The worker has already claimed an invite (user_id is set)
+//   - The worker doesn't exist
+//   - The worker has no prior invite for this org
 //
 // Manager + platform_admin only.
 
@@ -18,6 +21,7 @@ import { getServiceClient } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
+import { sendEmail } from './_shared/email.js';
 
 const INVITE_TTL_DAYS = 30;
 
@@ -72,11 +76,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   if (workerErr) return json(500, { error: 'DB error: ' + workerErr.message });
   if (!worker)   return json(404, { error: 'Worker not found.' });
 
-  // Don't re-invite claimed workers
-  if (worker.user_id) {
-    return json(409, { error: 'Worker has already activated their account.' });
-  }
-
   // Confirm the worker has a prior invite for this org (i.e. they belong here)
   const { data: priorInvite } = await sb
     .schema('public')
@@ -117,11 +116,28 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(500, { error: 'Failed to create new invite: ' + (inviteErr?.message ?? 'unknown') });
   }
 
+  const claimUrl = `https://cards.eq.solutions/claim/${newInvite.token}`;
+
+  // Send email if the worker has one on record.
+  let emailDelivered = false;
+  if (worker.email) {
+    const expiryDate = new Date(newInvite.expires_at).toLocaleDateString('en-AU', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    });
+    const result = await sendEmail({
+      to: worker.email,
+      subject: 'Your EQ Cards activation link',
+      text: `Hi ${worker.first_name ?? 'there'},\n\nHere's your updated EQ Cards activation link:\n\n${claimUrl}\n\nThis link expires on ${expiryDate}.\n\nIf you didn't expect this, you can ignore it.`,
+    });
+    emailDelivered = result.delivered;
+  }
+
   return json(201, {
     ok: true,
-    claim_url:  `https://cards.eq.solutions/claim/${newInvite.token}`,
-    token:      newInvite.token,
-    worker_id:  workerId,
-    expires_at: newInvite.expires_at,
+    claim_url:      claimUrl,
+    token:          newInvite.token,
+    worker_id:      workerId,
+    expires_at:     newInvite.expires_at,
+    email_delivered: emailDelivered,
   });
 });

@@ -17,7 +17,7 @@ import { EqError } from '../components/EqError';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
-type InviteStatus = 'claimed' | 'expired' | 'pending';
+type InviteStatus = 'claimed' | 'active' | 'expired' | 'pending';
 
 interface WorkerInvite {
   id: string;
@@ -29,18 +29,23 @@ interface WorkerInvite {
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
+  is_activated: boolean;
   status: InviteStatus;
   claim_url: string;
 }
 
 const STATUS_STYLES: Record<InviteStatus, React.CSSProperties> = {
   pending:  { background: '#EAF5FB', color: '#2986B4', border: '1px solid #BDE3F5' },
+  active:   { background: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE' },
   claimed:  { background: '#F0FDF4', color: '#16a34a', border: '1px solid #BBF7D0' },
   expired:  { background: '#FFF7ED', color: '#c2410c', border: '1px solid #FED7AA' },
 };
 
 function statusLabel(s: InviteStatus) {
-  return s === 'pending' ? 'Pending' : s === 'claimed' ? 'Claimed' : 'Expired';
+  if (s === 'pending') return 'Pending';
+  if (s === 'active')  return 'Active — Cards not done';
+  if (s === 'claimed') return 'Claimed';
+  return 'Expired';
 }
 
 function fmtDate(iso: string): string {
@@ -57,9 +62,10 @@ function AdminWorkerInvitesInner() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const [invites, setInvites] = useState<WorkerInvite[] | null>(null);
   const [err, setErr]         = useState<string | null>(null);
-  const [copiedId, setCopiedId]   = useState<string | null>(null);
+  const [copiedId, setCopiedId]       = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
-  const [resendErr, setResendErr] = useState<string | null>(null);
+  const [resendErr, setResendErr]     = useState<string | null>(null);
+  const [resendResult, setResendResult] = useState<{ worker_id: string; claim_url: string } | null>(null);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -94,6 +100,7 @@ function AdminWorkerInvitesInner() {
   async function resend(inv: WorkerInvite) {
     if (!inv.worker_id) return;
     setResendErr(null);
+    setResendResult(null);
     setResendingId(inv.id);
     try {
       const res = await fetch('/.netlify/functions/resend-worker-invite', {
@@ -106,7 +113,7 @@ function AdminWorkerInvitesInner() {
       if (!res.ok || !body.ok) {
         setResendErr(body.error ?? `Error ${res.status}`);
       } else {
-        // Reload the list so the new invite appears
+        setResendResult({ worker_id: inv.worker_id, claim_url: body.claim_url ?? '' });
         await load();
       }
     } catch (e) {
@@ -171,6 +178,35 @@ function AdminWorkerInvitesInner() {
         </div>
       )}
 
+      {resendResult && (
+        <div
+          role="status"
+          style={{
+            marginBottom: 16, padding: '12px 16px',
+            background: '#F0FDF4', border: '1px solid #BBF7D0',
+            borderRadius: 6, fontSize: 13,
+          }}
+        >
+          <span style={{ fontWeight: 600 }}>New invite link sent.</span>{' '}
+          <span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', wordBreak: 'break-all' }}>
+            {resendResult.claim_url}
+          </span>{' '}
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard.writeText(resendResult.claim_url);
+            }}
+            style={{
+              marginLeft: 8, padding: '2px 8px', borderRadius: 4,
+              border: '1px solid #16a34a', background: 'transparent',
+              color: '#16a34a', fontSize: 12, cursor: 'pointer',
+            }}
+          >
+            Copy
+          </button>
+        </div>
+      )}
+
       {invites === null ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {[1, 2, 3].map((n) => <Skeleton key={n} variant="row" />)}
@@ -227,7 +263,7 @@ function AdminWorkerInvitesInner() {
                   </td>
                   <td style={cellStyle}>{fmtDate(inv.created_at)}</td>
                   <td style={cellStyle}>
-                    {inv.status === 'claimed' && inv.claimed_at
+                    {inv.claimed_at
                       ? fmtDate(inv.claimed_at)
                       : fmtDate(inv.expires_at)}
                   </td>
@@ -243,7 +279,7 @@ function AdminWorkerInvitesInner() {
                         {copiedId === inv.id ? 'Copied!' : 'Copy link'}
                       </Button>
                     )}
-                    {(inv.status === 'expired' || inv.status === 'pending') && inv.worker_id && (
+                    {(inv.status === 'expired' || inv.status === 'pending' || inv.status === 'active') && inv.worker_id && (
                       <Button
                         type="button"
                         variant="ghost"
