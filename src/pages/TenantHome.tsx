@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AlertTriangle, Check, Building2, MapPin, User, Users, BadgeCheck, ChevronRight } from 'lucide-react';
+import { AlertTriangle, Check, Building2, MapPin, User, Users, BadgeCheck, ChevronRight, Wrench, FileText, CreditCard, Network, ScrollText } from 'lucide-react';
 import { useSession, moduleEnabled, type EqTier, type EqRole } from '../session';
 import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
 import { MobileTabBar } from '../components/MobileTabBar';
@@ -180,6 +180,23 @@ const APP_DESCRIPTIONS: Record<string, string> = {
   ops:     'Live quoting — pipeline, tenders and job creation.',
   cards:   'Staff profiles and licence cards.',
   comms:   'NSW Comms job pipeline — quotes, POs and invoicing.',
+};
+
+const APP_COLORS: Record<string, string> = {
+  field:   '#3DA8D8',
+  service: '#F97316',
+  ops:     '#10B981',
+  cards:   '#8B5CF6',
+  comms:   '#6B7280',
+};
+
+const APP_TILE_ICONS: Record<string, React.ReactNode> = {
+  field:   <Users     size={20} aria-hidden="true" />,
+  service: <Wrench    size={20} aria-hidden="true" />,
+  ops:     <FileText  size={20} aria-hidden="true" />,
+  cards:   <CreditCard size={20} aria-hidden="true" />,
+  comms:   <Network   size={20} aria-hidden="true" />,
+  'eq-quotes': <ScrollText size={20} aria-hidden="true" />,
 };
 
 
@@ -747,6 +764,7 @@ export default function TenantHome() {
                             {SOURCE_LABELS[formatSource(action.source)] ?? formatSource(action.source)}
                           </span>
                           {action.deadline && <span className="eq-hub-action__deadline">{action.deadline}</span>}
+                          {dest && <Link to={dest} className="eq-hub-action__fix">Fix it →</Link>}
                         </div>
                       </div>
                       <div className="eq-hub-action__feedback">
@@ -791,7 +809,7 @@ export default function TenantHome() {
             <div className="eq-hub-col">
               <div className="eq-hub-col__head">
                 <span className="eq-hub-col__title">Upcoming</span>
-                <span className="eq-hub-col__sub">next 24h</span>
+                <span className="eq-hub-col__sub">AI brief · next 24h</span>
               </div>
               {aiData === undefined && (
                 <div style={{ padding: '12px 0' }}>
@@ -890,7 +908,11 @@ export default function TenantHome() {
                 key={app.key}
                 to={`/${tenantSlug}/${app.to}`}
                 className="eq-hub-tile"
+                style={{ '--tile-accent': APP_COLORS[app.key] ?? 'var(--eq-sky)' } as React.CSSProperties}
               >
+                <div className="eq-hub-tile__icon">
+                  {APP_TILE_ICONS[app.key] ?? HUB_APP_ICONS[app.key]}
+                </div>
                 <div className="eq-hub-tile__head">
                   <span className="eq-hub-tile__name">{app.label}</span>
                   <span className={`eq-hub-tile__badge eq-hub-tile__badge--${app.isBeta ? 'beta' : 'live'}`}>

@@ -2448,10 +2448,14 @@ table.prev th {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  transition: border-color 0.12s;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 
-.eq-hub-tile:hover { border-color: var(--eq-brand); }
+.eq-hub-tile:hover {
+  border-color: var(--tile-accent, var(--eq-brand));
+  box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+  transform: translateY(-2px);
+}
 
 .eq-hub-tile__head {
   display: flex;
@@ -2496,6 +2500,25 @@ table.prev th {
   font-size: 12px;
   font-weight: 600;
   color: var(--eq-brand);
+}
+
+.eq-hub-tile__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--gray-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--eq-ink);
+  margin-bottom: 4px;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.eq-hub-tile:hover .eq-hub-tile__icon {
+  background: var(--tile-accent, var(--eq-sky));
+  color: #fff;
 }
 
 /* Activity feed */
@@ -2591,9 +2614,11 @@ table.prev th {
   font-size: 13px;
   font-weight: 500;
   color: var(--eq-ink);
-  white-space: nowrap;
+  min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .eq-hub-activity__rows {
@@ -3457,6 +3482,16 @@ button.eq-hub-stat:focus-visible {
   font-weight: 500;
 }
 .eq-hub-action--critical .eq-hub-action__deadline { color: var(--eq-error-text); }
+
+.eq-hub-action__fix {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--eq-brand);
+  text-decoration: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.eq-hub-action__fix:hover { text-decoration: underline; }
 
 .eq-hub-action__arrow {
   flex-shrink: 0;
