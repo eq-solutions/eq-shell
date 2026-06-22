@@ -115,38 +115,44 @@ BEGIN
     SELECT 1 FROM information_schema.tables
     WHERE table_schema = 'service' AND table_name = 'contacts'
   ) THEN
-    INSERT INTO service.customer_contacts (
-      id, tenant_id, customer_id, name, role, email, phone, is_primary, created_at
-    )
-    SELECT
-      gen_random_uuid(),
-      c.tenant_id,
-      c.customer_id,
-      TRIM(
-        COALESCE(c.first_name, '') ||
-        CASE WHEN c.first_name IS NOT NULL AND c.last_name IS NOT NULL THEN ' ' ELSE '' END ||
-        COALESCE(c.last_name, '')
-      ),
-      c.position,
-      c.email,
-      COALESCE(c.work_phone, c.mobile_phone),
-      COALESCE(c.is_default_job_contact, false) OR COALESCE(c.is_default_quote_contact, false),
-      COALESCE(c.created_at, now())
-    FROM service.contacts c
-    INNER JOIN service.customers cu ON cu.customer_id = c.customer_id
-    WHERE c.tenant_id IS NOT NULL
-      AND TRIM(COALESCE(c.first_name, '') || COALESCE(c.last_name, '')) <> ''
-      AND NOT EXISTS (
-        SELECT 1
-        FROM service.customer_contacts cc
-        WHERE cc.customer_id = c.customer_id
-          AND cc.tenant_id   = c.tenant_id
-          AND cc.name = TRIM(
-            COALESCE(c.first_name, '') ||
-            CASE WHEN c.first_name IS NOT NULL AND c.last_name IS NOT NULL THEN ' ' ELSE '' END ||
-            COALESCE(c.last_name, '')
-          )
-      );
+    -- Dynamic SQL required: static PL/pgSQL parses table references at compile
+    -- time, so a plain INSERT would fail on zaap where service.contacts is absent
+    -- even though the IF guard would prevent it running. EXECUTE defers parsing
+    -- to execution time, so the IF guard is respected.
+    EXECUTE $backfill$
+      INSERT INTO service.customer_contacts (
+        id, tenant_id, customer_id, name, role, email, phone, is_primary, created_at
+      )
+      SELECT
+        gen_random_uuid(),
+        c.tenant_id,
+        c.customer_id,
+        TRIM(
+          COALESCE(c.first_name, '') ||
+          CASE WHEN c.first_name IS NOT NULL AND c.last_name IS NOT NULL THEN ' ' ELSE '' END ||
+          COALESCE(c.last_name, '')
+        ),
+        c.position,
+        c.email,
+        COALESCE(c.work_phone, c.mobile_phone),
+        COALESCE(c.is_default_job_contact, false) OR COALESCE(c.is_default_quote_contact, false),
+        COALESCE(c.created_at, now())
+      FROM service.contacts c
+      INNER JOIN service.customers cu ON cu.customer_id = c.customer_id
+      WHERE c.tenant_id IS NOT NULL
+        AND TRIM(COALESCE(c.first_name, '') || COALESCE(c.last_name, '')) <> ''
+        AND NOT EXISTS (
+          SELECT 1
+          FROM service.customer_contacts cc
+          WHERE cc.customer_id = c.customer_id
+            AND cc.tenant_id   = c.tenant_id
+            AND cc.name = TRIM(
+              COALESCE(c.first_name, '') ||
+              CASE WHEN c.first_name IS NOT NULL AND c.last_name IS NOT NULL THEN ' ' ELSE '' END ||
+              COALESCE(c.last_name, '')
+            )
+        )
+    $backfill$;
   ELSE
     RAISE NOTICE '0137: service.contacts absent — no legacy contacts to backfill.';
   END IF;
