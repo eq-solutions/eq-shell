@@ -196,7 +196,6 @@ interface AppSession {
 async function handleApplication({
   application_id,
   action,
-  rejection_reason,
   sb,
   session,
   tenantId,
