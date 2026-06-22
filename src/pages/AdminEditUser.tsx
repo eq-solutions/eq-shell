@@ -58,12 +58,14 @@ function AdminEditUserInner() {
 
   const [name, setName] = useState('');
   const [role, setRole] = useState<EqRole>('employee');
-  const [active, setActive] = useState(true);
   const [busy, setBusy] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [resetUrl, setResetUrl] = useState<string | null>(null);
   const [resetErr, setResetErr] = useState<string | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
+  const [archiveConfirm, setArchiveConfirm] = useState(false);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveErr, setArchiveErr] = useState<string | null>(null);
 
   const [allGroups, setAllGroups] = useState<SecurityGroup[]>([]);
   const [userGroupIds, setUserGroupIds] = useState<Set<string>>(new Set());
@@ -92,7 +94,6 @@ function AdminEditUserInner() {
       setTarget(row);
       setName(row.name ?? '');
       setRole(row.role);
-      setActive(row.active);
     } catch (e) {
       setLoadErr((e as Error).message);
     }
@@ -170,11 +171,10 @@ function AdminEditUserInner() {
     setSaveErr(null);
     setBusy(true);
     try {
-      const patch: { name?: string; role?: EqRole; active?: boolean } = {};
+      const patch: { name?: string; role?: EqRole } = {};
       const trimmedName = name.trim();
       if (trimmedName && trimmedName !== (target.name ?? '')) patch.name = trimmedName;
       if (role !== target.role) patch.role = role;
-      if (active !== target.active) patch.active = active;
       if (Object.keys(patch).length === 0) {
         navigate(`/${tenantSlug}/admin/users`, { replace: true });
         return;
@@ -226,6 +226,12 @@ function AdminEditUserInner() {
         </p>
       </div>
 
+      {!target.active && (
+        <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 6, padding: '10px 16px', marginBottom: 24, fontSize: 13, color: '#92400E', maxWidth: 480 }}>
+          <strong>Archived</strong> — this person cannot sign in. Restore access below.
+        </div>
+      )}
+
       <form onSubmit={onSubmit} style={{ maxWidth: 480 }}>
         <label htmlFor="edit-name" style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--eq-grey)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
           Display name
@@ -273,24 +279,6 @@ function AdminEditUserInner() {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 24,
-            fontSize: 14,
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={active}
-            onChange={(e) => setActive(e.target.checked)}
-            disabled={busy}
-          />
-          Active (uncheck to deactivate)
-        </label>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', rowGap: 8 }}>
           <Button
@@ -480,6 +468,88 @@ function AdminEditUserInner() {
               );
             })}
           </div>
+        )}
+      </section>
+
+      <section className="eq-section" style={{ marginTop: 40, maxWidth: 480 }}>
+        <h2 className="eq-section__heading">{target.active ? 'Archive user' : 'Restore access'}</h2>
+        {target.active ? (
+          <>
+            <p style={{ fontSize: 14, color: 'var(--eq-grey)', marginBottom: 16 }}>
+              Archiving blocks sign-in immediately. Their data is kept and access can be restored at any time.
+            </p>
+            {archiveConfirm ? (
+              <div style={{ padding: '16px', border: '1px solid #FCA5A5', borderRadius: 6, background: '#FFF5F5' }}>
+                <p style={{ fontSize: 14, margin: '0 0 14px', color: '#7F1D1D' }}>
+                  Archive <strong>{target.name ?? target.email}</strong>? They'll be blocked from signing in immediately.
+                </p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={archiveBusy}
+                    style={{ color: '#DC2626' }}
+                    onClick={async () => {
+                      setArchiveErr(null);
+                      setArchiveBusy(true);
+                      try {
+                        const res = await fetch('/.netlify/functions/edit-user', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                          body: JSON.stringify({ user_id: target.id, patch: { active: false } }),
+                        });
+                        const body = (await res.json()) as { ok: boolean; error?: string };
+                        if (!body.ok) { setArchiveErr('Could not archive. Try again.'); }
+                        else { navigate(`/${tenantSlug}/admin/users`, { replace: true }); }
+                      } catch { setArchiveErr('Network error — try again.'); }
+                      finally { setArchiveBusy(false); }
+                    }}
+                  >
+                    {archiveBusy ? 'Archiving…' : 'Yes, archive'}
+                  </Button>
+                  <Button type="button" variant="ghost" disabled={archiveBusy} onClick={() => setArchiveConfirm(false)}>
+                    Cancel
+                  </Button>
+                </div>
+                {archiveErr && <div className="eq-err" role="alert" style={{ marginTop: 12 }}>{archiveErr}</div>}
+              </div>
+            ) : (
+              <Button type="button" variant="ghost" style={{ color: '#DC2626' }} onClick={() => setArchiveConfirm(true)}>
+                Archive user
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            <p style={{ fontSize: 14, color: 'var(--eq-grey)', marginBottom: 16 }}>
+              Restoring access lets this person sign in again with their existing PIN.
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={archiveBusy}
+              onClick={async () => {
+                setArchiveErr(null);
+                setArchiveBusy(true);
+                try {
+                  const res = await fetch('/.netlify/functions/edit-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ user_id: target.id, patch: { active: true } }),
+                  });
+                  const body = (await res.json()) as { ok: boolean; error?: string };
+                  if (!body.ok) { setArchiveErr('Could not restore access. Try again.'); }
+                  else { navigate(`/${tenantSlug}/admin/users`, { replace: true }); }
+                } catch { setArchiveErr('Network error — try again.'); }
+                finally { setArchiveBusy(false); }
+              }}
+            >
+              {archiveBusy ? 'Restoring…' : 'Restore access'}
+            </Button>
+            {archiveErr && <div className="eq-err" role="alert" style={{ marginTop: 12 }}>{archiveErr}</div>}
+          </>
         )}
       </section>
     </HubLayout>

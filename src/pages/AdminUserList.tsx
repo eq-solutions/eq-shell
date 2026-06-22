@@ -180,6 +180,11 @@ function AdminUserListInner() {
           defaultSort={{ key: 'name', dir: 'asc' }}
           emptyMessage="No users yet. Invite the first one."
           globalSearch={{ placeholder: 'Search users…' }}
+          slicers={[
+            { key: 'active',      label: 'Active',      filter: (u) => u.active },
+            { key: 'all',         label: 'All' },
+            { key: 'deactivated', label: 'Deactivated', filter: (u) => !u.active },
+          ]}
           onRowClick={(u) => {
             if (u.id !== session?.user.id) navigate(`/${tenantSlug}/admin/users/${u.id}`);
           }}
