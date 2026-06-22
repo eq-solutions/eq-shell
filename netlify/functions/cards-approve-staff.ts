@@ -277,15 +277,25 @@ async function handleApplication({
   const tenantAny = tenantDb as any;
 
   // Check if this worker already exists in Field (added before they downloaded Cards).
-  // Match by phone — the canonical identifier in both systems.
+  // Phone formats are inconsistent: GoTrue normalises to +61XXXXXXXXX, employers type
+  // 0XXXXXXXXX, and the org_access_requests RPC strips to bare 9 digits. Check all three.
   const workerPhone = worker?.phone ?? app.worker_phone;
-  const { data: existingStaff } = (await tenantAny
-    .schema('app_data')
-    .from('staff')
-    .select('staff_id')
-    .eq('tenant_id', tenantId)
-    .eq('phone', workerPhone)
-    .maybeSingle()) as { data: { staff_id: string } | null };
+  const bareDigits = (workerPhone ?? '').replace(/^\+61/, '').replace(/^0/, '').replace(/\s/g, '');
+  const phoneVariants = bareDigits
+    ? [...new Set([workerPhone, `0${bareDigits}`, `+61${bareDigits}`].filter(Boolean) as string[])]
+    : [];
+
+  let existingStaff: { staff_id: string } | null = null;
+  if (phoneVariants.length > 0) {
+    ({ data: existingStaff } = (await tenantAny
+      .schema('app_data')
+      .from('staff')
+      .select('staff_id')
+      .eq('tenant_id', tenantId)
+      .in('phone', phoneVariants)
+      .limit(1)
+      .maybeSingle()) as { data: { staff_id: string } | null });
+  }
 
   const staffId = existingStaff?.staff_id ?? randomUUID();
 
@@ -317,8 +327,9 @@ async function handleApplication({
     }
   }
 
-  // Copy licences if the worker shared full credentials
-  if (app.sharing_scope === 'full' && worker?.id) {
+  // Copy licences only for net-new staff records. Existing Field staff already have
+  // their licences — inserting again would create duplicates without a dedup key.
+  if (!existingStaff && app.sharing_scope === 'full' && worker?.id) {
     const { data: creds } = await sbPublic
       .from('worker_credentials')
       .select(
