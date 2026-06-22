@@ -9,6 +9,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
+import { EqTable, type ColDef } from '../components/EqTable';
 import { Gate } from '../permissions/Gate';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
@@ -123,6 +124,64 @@ function AdminWorkerInvitesInner() {
     }
   }
 
+  const columns: ColDef<WorkerInvite>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      sortValue: (inv) => `${inv.last_name ?? ''} ${inv.first_name ?? ''}`,
+      render: (inv) => workerName(inv),
+    },
+    {
+      key: 'phone',
+      header: 'Phone',
+      render: (inv) => (
+        <span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 13 }}>
+          {inv.phone ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (inv) => (
+        <span style={{ ...STATUS_STYLES[inv.status], padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 500 }}>
+          {statusLabel(inv.status)}
+        </span>
+      ),
+    },
+    {
+      key: 'sent',
+      header: 'Sent',
+      sortValue: (inv) => inv.created_at,
+      render: (inv) => fmtDate(inv.created_at),
+    },
+    {
+      key: 'expires_claimed',
+      header: 'Expires / Claimed',
+      sortValue: (inv) => inv.claimed_at ?? inv.expires_at,
+      render: (inv) => inv.claimed_at ? fmtDate(inv.claimed_at) : fmtDate(inv.expires_at),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (inv) => (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          {inv.status === 'pending' && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => copyLink(inv)}>
+              {copiedId === inv.id ? 'Copied!' : 'Copy link'}
+            </Button>
+          )}
+          {(inv.status === 'expired' || inv.status === 'pending' || inv.status === 'active') && inv.worker_id && (
+            <Button type="button" variant="ghost" size="sm" disabled={resendingId === inv.id} onClick={() => resend(inv)}>
+              {resendingId === inv.id ? 'Sending…' : 'Resend'}
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   if (err) {
     return (
       <PageShell>
@@ -220,88 +279,17 @@ function AdminWorkerInvitesInner() {
           </p>
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--eq-border)' }}>
-                {['Name', 'Phone', 'Status', 'Sent', 'Expires / Claimed', ''].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: 'left', padding: '8px 12px',
-                      fontSize: 11, fontWeight: 600,
-                      color: 'var(--eq-grey)', textTransform: 'uppercase', letterSpacing: '0.06em',
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {invites.map((inv) => (
-                <tr
-                  key={inv.id}
-                  style={{ borderBottom: '1px solid var(--eq-border)' }}
-                >
-                  <td style={cellStyle}>{workerName(inv)}</td>
-                  <td style={cellStyle}>
-                    <span style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 13 }}>
-                      {inv.phone ?? '—'}
-                    </span>
-                  </td>
-                  <td style={cellStyle}>
-                    <span
-                      style={{
-                        ...STATUS_STYLES[inv.status],
-                        padding: '2px 8px', borderRadius: 4,
-                        fontSize: 12, fontWeight: 500,
-                      }}
-                    >
-                      {statusLabel(inv.status)}
-                    </span>
-                  </td>
-                  <td style={cellStyle}>{fmtDate(inv.created_at)}</td>
-                  <td style={cellStyle}>
-                    {inv.claimed_at
-                      ? fmtDate(inv.claimed_at)
-                      : fmtDate(inv.expires_at)}
-                  </td>
-                  <td style={{ ...cellStyle, textAlign: 'right' }}>
-                    {inv.status === 'pending' && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyLink(inv)}
-                        style={{ marginRight: 8 }}
-                      >
-                        {copiedId === inv.id ? 'Copied!' : 'Copy link'}
-                      </Button>
-                    )}
-                    {(inv.status === 'expired' || inv.status === 'pending' || inv.status === 'active') && inv.worker_id && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={resendingId === inv.id}
-                        onClick={() => resend(inv)}
-                      >
-                        {resendingId === inv.id ? 'Sending…' : 'Resend'}
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <EqTable
+          data={invites}
+          columns={columns}
+          rowKey={(inv) => inv.id}
+          defaultSort={{ key: 'sent', dir: 'desc' }}
+          emptyMessage="No invites yet"
+        />
       )}
     </PageShell>
   );
 }
-
-const cellStyle: React.CSSProperties = { padding: '10px 12px', verticalAlign: 'middle' };
 
 function PageShell({ children }: { children: React.ReactNode }) {
   return (

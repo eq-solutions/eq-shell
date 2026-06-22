@@ -240,6 +240,7 @@ export default function TenantHome() {
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [recordsEntity, setRecordsEntity] = useState<'customer' | 'site' | 'contact' | 'staff' | 'licence'>('customer');
   const [clock, setClock] = useState(formatClock);
+  const [query, setQuery] = useState('');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -687,12 +688,25 @@ export default function TenantHome() {
               className="eq-hub-ask__input"
               placeholder="Ask anything about your operations…"
               aria-label="Ask anything about your operations"
-              readOnly
-              onClick={() => { if (aiData === null) void loadAiData(); }}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && query.trim()) {
+                  setQuery('');
+                  void loadAiData(true);
+                }
+              }}
             />
             <div className="eq-hub-ask__chips">
               {["Who's on tomorrow?", "What's overdue in Service?", "Quote pipeline this month"].map(q => (
-                <button key={q} className="eq-hub-ask__chip" type="button">{q}</button>
+                <button
+                  key={q}
+                  className="eq-hub-ask__chip"
+                  type="button"
+                  onClick={() => { setQuery(''); void loadAiData(true); }}
+                >
+                  {q}
+                </button>
               ))}
             </div>
           </div>
