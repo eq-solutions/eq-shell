@@ -49,6 +49,41 @@ interface LicenceRow {
   notes: string | null;
 }
 
+interface ApplicationRow {
+  id: string;
+  worker_user_id: string;
+  worker_phone: string | null;
+  sharing_scope: string;
+  requested_at: string;
+  requested_by: string;
+}
+
+interface WorkerRow {
+  id: string;
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  date_of_birth: string | null;
+  address_street: string | null;
+  address_suburb: string | null;
+  address_state: string | null;
+  address_postcode: string | null;
+}
+
+interface CredRow {
+  id: string;
+  worker_id: string;
+  credential_type: string;
+  licence_number: string | null;
+  issuing_body: string | null;
+  state_territory: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  notes: string | null;
+}
+
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -119,25 +154,25 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     (s) => !reviewedIds.has(s.staff_id) && s.imported_from !== 'eq-solves-field',
   );
 
-  if (staff.length === 0) {
-    return json(200, { pending: [] });
-  }
-
-  // Fetch licences for all pending staff in one query.
+  // Fetch licences for all pending invite staff in one query.
   const staffIds = staff.map((s) => s.staff_id);
-  const { data: allLicences, error: licErr } = (await tenantAny
-    .schema('app_data')
-    .from('licences')
-    .select(
-      'licence_id, staff_id, licence_type, licence_number, ' +
-      'issuing_authority, state, issue_date, expiry_date, notes',
-    )
-    .eq('tenant_id', tenantId)
-    .eq('active', true)
-    .in('staff_id', staffIds)) as {
-    data: LicenceRow[] | null;
-    error: { message: string } | null;
-  };
+  let allLicences: LicenceRow[] | null = [];
+  let licErr: { message: string } | null = null;
+  if (staffIds.length > 0) {
+    ({ data: allLicences, error: licErr } = (await tenantAny
+      .schema('app_data')
+      .from('licences')
+      .select(
+        'licence_id, staff_id, licence_type, licence_number, ' +
+        'issuing_authority, state, issue_date, expiry_date, notes',
+      )
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .in('staff_id', staffIds)) as {
+      data: LicenceRow[] | null;
+      error: { message: string } | null;
+    });
+  }
 
   if (licErr) return json(500, { error: licErr.message });
 
@@ -149,10 +184,110 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     licencesByStaff.set(lic.staff_id, existing);
   }
 
-  const pending = staff.map((s) => ({
+  const invitePending = staff.map((s) => ({
     ...s,
+    source: 'invite' as const,
     licences: licencesByStaff.get(s.staff_id) ?? [],
   }));
+
+  // ── Self-signup applications (worker → employer, via org_access_requests) ──
+  // Look up this tenant's org in the canonical DB so we can query applications.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sbPublic = sb.schema('public') as any;
+
+  const { data: orgRow } = (await sbPublic
+    .from('organisations')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()) as { data: { id: string } | null };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let applicationPending: any[] = [];
+
+  if (orgRow?.id) {
+    const { data: appRows } = (await sbPublic
+      .from('org_access_requests')
+      .select('id, worker_user_id, worker_phone, sharing_scope, requested_at, requested_by')
+      .eq('org_id', orgRow.id)
+      .eq('status', 'pending')
+      .not('worker_user_id', 'is', null)) as {
+      data: ApplicationRow[] | null;
+    };
+
+    // Worker-initiated = requested_by equals the worker's own user_id.
+    const workerInitiated = (appRows ?? []).filter(
+      (a) => a.requested_by === a.worker_user_id,
+    );
+
+    if (workerInitiated.length > 0) {
+      const userIds = workerInitiated.map((a) => a.worker_user_id);
+
+      const { data: workers } = (await sbPublic
+        .from('workers')
+        .select(
+          'id, user_id, first_name, last_name, email, phone, date_of_birth, ' +
+          'address_street, address_suburb, address_state, address_postcode',
+        )
+        .in('user_id', userIds)) as { data: WorkerRow[] | null };
+
+      const workerMap = new Map<string, WorkerRow>();
+      for (const w of (workers ?? [])) workerMap.set(w.user_id, w);
+
+      // Fetch credentials only for full-scope applications.
+      const credsByWorkerId = new Map<string, CredRow[]>();
+      const fullScopeIds = workerInitiated
+        .filter((a) => a.sharing_scope === 'full')
+        .map((a) => workerMap.get(a.worker_user_id)?.id)
+        .filter((id): id is string => !!id);
+
+      if (fullScopeIds.length > 0) {
+        const { data: creds } = (await sbPublic
+          .from('worker_credentials')
+          .select(
+            'id, worker_id, credential_type, licence_number, issuing_body, ' +
+            'state_territory, issue_date, expiry_date, notes',
+          )
+          .in('worker_id', fullScopeIds)
+          .is('deleted_at', null)
+          .eq('status', 'active')) as { data: CredRow[] | null };
+
+        for (const c of (creds ?? [])) {
+          const list = credsByWorkerId.get(c.worker_id) ?? [];
+          list.push(c);
+          credsByWorkerId.set(c.worker_id, list);
+        }
+      }
+
+      applicationPending = workerInitiated.map((a) => {
+        const w = workerMap.get(a.worker_user_id);
+        const wCreds = w ? (credsByWorkerId.get(w.id) ?? []) : [];
+        return {
+          application_id: a.id,
+          source: 'application' as const,
+          sharing_scope: a.sharing_scope,
+          first_name: w?.first_name ?? null,
+          last_name: w?.last_name ?? null,
+          email: w?.email ?? null,
+          phone: w?.phone ?? a.worker_phone,
+          date_of_birth: w?.date_of_birth ?? null,
+          created_at: a.requested_at,
+          licences: wCreds.map((c) => ({
+            licence_id: c.id,
+            staff_id: '',
+            licence_type: c.credential_type,
+            licence_number: c.licence_number,
+            issuing_authority: c.issuing_body,
+            state: c.state_territory,
+            issue_date: c.issue_date,
+            expiry_date: c.expiry_date,
+            notes: c.notes,
+          })),
+        };
+      });
+    }
+  }
+
+  const pending = [...invitePending, ...applicationPending];
 
   return json(200, { pending });
 });
