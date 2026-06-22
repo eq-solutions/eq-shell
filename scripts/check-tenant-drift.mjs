@@ -48,10 +48,10 @@
 // --strict-identity are passed.
 
 import { parseArgs } from 'node:util';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mgmtRows, controlRef, requireAccessToken } from './_mgmt.mjs';
+import { mgmtRows, controlRef, requireAccessToken, mapWithConcurrency } from './_mgmt.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -83,6 +83,9 @@ const { values: args } = parseArgs({ options: {
   // which is almost always a migration bug rather than intentional. ABSOLUTE by
   // default: --no-policy-lint skips it entirely.
   'no-policy-lint': { type: 'boolean', default: false },
+  // Write the full JSON report to this file path regardless of --json.
+  // Used by CI to feed the GitHub Issue automation step without a second run.
+  'output-file':    { type: 'string' },
 }});
 
 requireAccessToken();
@@ -245,10 +248,10 @@ if (!args['anon-only']) {
   if (!tenants.length) fail(1, 'no active tenants in tenant_routing');
 
   const fps = {};
-  for (const t of tenants) {
+  await mapWithConcurrency(tenants, 3, async (t) => {
     fps[t.slug] = await fingerprint(t.ref);
     log(`fingerprinted ${t.slug} (${t.ref})`);
-  }
+  });
 
   const refSlug = args.reference ?? tenants[0].slug;
   if (!fps[refSlug]) fail(1, `reference '${refSlug}' not among ${tenants.map(t => t.slug).join(', ')}`);
@@ -828,41 +831,47 @@ const driftFails = driftResult.drift && args['strict-drift'];
 const spineFails = driftResult.spineDrift && args['strict-spine'];
 const anyFailure = driftFails || spineFails || anonFailed || identityFailed || spineRlsFailed || policyLintFailed;
 
+const _report = {
+  drift: {
+    skip: driftResult.skip,
+    detected: driftResult.drift,
+    spine_drift: driftResult.spineDrift,
+    spine_table_count: driftResult.spineCount,
+    reference: driftResult.refSlug,
+    report: driftResult.report,
+  },
+  anon_grants: {
+    skip: args['no-anon'],
+    failed: anonFailed,
+    projects: anonResults,
+  },
+  migration_identity: identityResult
+    ? {
+        skip: false,
+        failed: identityFailed,
+        repo_files: identityResult.repoFiles ?? [],
+        tenants: identityResult.tenants,
+      }
+    : { skip: true },
+  spine_rls: {
+    skip: args['anon-only'],
+    failed: spineRlsFailed,
+    spine_table_count: spineRlsResult.spineCount,
+    planes: spineRlsResult.planes,
+  },
+  policy_lint: {
+    skip: args['anon-only'] || args['no-policy-lint'],
+    failed: policyLintFailed,
+    planes: policyLintResult.planes,
+  },
+};
+
+if (args['output-file']) {
+  await writeFile(args['output-file'], JSON.stringify(_report, null, 2));
+}
+
 if (args.json) {
-  console.log(JSON.stringify({
-    drift: {
-      skip: driftResult.skip,
-      detected: driftResult.drift,
-      spine_drift: driftResult.spineDrift,
-      spine_table_count: driftResult.spineCount,
-      reference: driftResult.refSlug,
-      report: driftResult.report,
-    },
-    anon_grants: {
-      skip: args['no-anon'],
-      failed: anonFailed,
-      projects: anonResults,
-    },
-    migration_identity: identityResult
-      ? {
-          skip: false,
-          failed: identityFailed,
-          repo_files: identityResult.repoFiles ?? [],
-          tenants: identityResult.tenants,
-        }
-      : { skip: true },
-    spine_rls: {
-      skip: args['anon-only'],
-      failed: spineRlsFailed,
-      spine_table_count: spineRlsResult.spineCount,
-      planes: spineRlsResult.planes,
-    },
-    policy_lint: {
-      skip: args['anon-only'] || args['no-policy-lint'],
-      failed: policyLintFailed,
-      planes: policyLintResult.planes,
-    },
-  }, null, 2));
+  console.log(JSON.stringify(_report, null, 2));
 } else {
   // ── drift output ──
   if (!args['anon-only']) {

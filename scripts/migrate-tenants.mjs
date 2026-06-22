@@ -199,7 +199,8 @@ console.log('━'.repeat(70));
 let anyFailed = false;
 for (const r of results) {
   const tag = r.ok ? '✓' : '✗';
-  console.log(` ${tag} ${r.slug.padEnd(20)} ${r.applied.length} applied, ${r.skipped.length} skipped${r.error ? ' — ' + r.error : ''}`);
+  const timing = r.durationMs != null ? ` (${r.durationMs}ms)` : '';
+  console.log(` ${tag} ${r.slug.padEnd(20)} ${r.applied.length} applied, ${r.skipped.length} skipped${timing}${r.error ? ' — ' + r.error : ''}`);
   for (const w of r.warnings) console.log(`     ! ${w}`);
   if (!r.ok) anyFailed = true;
 }
@@ -211,6 +212,7 @@ process.exit(anyFailed ? 2 : 0);
 async function applyMigrationsToTenant(routing) {
   const { ref, slug } = routing;
   const result = { slug, ok: false, applied: [], skipped: [], warnings: [], error: null };
+  const t0 = performance.now();
 
   try {
     if (!noWrite) {
@@ -263,6 +265,7 @@ async function applyMigrationsToTenant(routing) {
 
       if (noWrite) { result.applied.push(m.name); continue; }
       log(`  [${slug}] applying ${m.name}…`);
+      const mt0 = performance.now();
 
       // Two-call approach: run migration SQL first, then record it only on success.
       //
@@ -283,13 +286,14 @@ async function applyMigrationsToTenant(routing) {
         `VALUES (${sqlLiteral(m.name)}, ${sqlLiteral(m.checksum)}) ` +
         `ON CONFLICT (name) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now();`);
       result.applied.push(m.name);
-      log(`  [${slug}] ✓ ${m.name}`);
+      log(`  [${slug}] ✓ ${m.name} (${Math.round(performance.now() - mt0)}ms)`);
     }
     result.ok = true;
   } catch (err) {
     result.error = err?.message ?? String(err);
     log(`  [${slug}] ✗ ${result.error}`);
   }
+  result.durationMs = Math.round(performance.now() - t0);
   return result;
 }
 

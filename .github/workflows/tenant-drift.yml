@@ -42,6 +42,9 @@ jobs:
   drift-check:
     name: Schema drift + anon-grant + policy-lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +84,7 @@ jobs:
           if [ "${{ inputs.anon_only }}" = "true" ]; then
             FLAGS="--anon-only"
           fi
-          node scripts/check-tenant-drift.mjs $FLAGS
+          node scripts/check-tenant-drift.mjs $FLAGS --output-file /tmp/drift-report.json
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}
@@ -98,3 +101,68 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           CONTROL_PROJECT_REF: ${{ secrets.CONTROL_PROJECT_REF }}
+
+      - name: Manage security issue for new violations
+        # Reads the JSON report written by the drift check step and opens or updates
+        # a GitHub Issue when new anon-grant / spine-RLS / policy-lint violations are
+        # found. Closes the issue when the run is clean. Runs even if the drift check
+        # step failed so that violations that block the build still get an issue.
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPORT=/tmp/drift-report.json
+          [ -f "$REPORT" ] || exit 0
+
+          # Collect violations across the three ABSOLUTE checks.
+          ANON=$(jq -r '[.anon_grants.projects[]? | select((.violations // []) | length > 0) |
+            "- **" + .label + "**: " +
+            ([ .violations[] | "`" + .key + "` (" + .reason + ")" ] | join(", "))] |
+            join("\n")' "$REPORT" 2>/dev/null || echo "")
+
+          SPINE=$(jq -r '[.spine_rls.planes[]? | select((.violations // []) | length > 0) |
+            "- **" + .label + "**: " +
+            ([ .violations[] | "`" + .table + "` (" + (.reasons | join(", ")) + ")" ] | join(", "))] |
+            join("\n")' "$REPORT" 2>/dev/null || echo "")
+
+          POLICY=$(jq -r '[.policy_lint.planes[]? | select((.violations // []) | length > 0) |
+            "- **" + .label + "**: " +
+            ([ .violations[] | "`app_data." + .table + "`" ] | join(", ")) +
+            " (missing tenant isolation policy)"] |
+            join("\n")' "$REPORT" 2>/dev/null || echo "")
+
+          ALL=$(printf '%s\n%s\n%s' "$ANON" "$SPINE" "$POLICY" | grep -v '^[[:space:]]*$' || true)
+
+          TITLE="[Security] Drift check violation"
+          LABEL="security"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Ensure the label exists (idempotent).
+          gh label create "$LABEL" --color "d93f0b" --description "Security posture violation" \
+            --repo "${{ github.repository }}" 2>/dev/null || true
+
+          EXISTING=$(gh issue list --label "$LABEL" --state open --json number,title \
+            --jq '.[] | select(.title == "'"$TITLE"'") | .number' \
+            --repo "${{ github.repository }}" 2>/dev/null | head -1 || echo "")
+
+          if [ -n "$ALL" ]; then
+            printf '## Security violation detected by drift check\n\n%s\n\n---\nAuto-managed by drift check · [View run](%s)' \
+              "$ALL" "$RUN_URL" > /tmp/issue-body.md
+
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body-file /tmp/issue-body.md \
+                --repo "${{ github.repository }}"
+              echo "Updated issue #$EXISTING"
+            else
+              gh issue create --title "$TITLE" --label "$LABEL" --body-file /tmp/issue-body.md \
+                --repo "${{ github.repository }}"
+              echo "Created security issue"
+            fi
+          else
+            if [ -n "$EXISTING" ]; then
+              gh issue close "$EXISTING" \
+                --comment "Drift check passed — all violations resolved. [View run]($RUN_URL)" \
+                --repo "${{ github.repository }}"
+              echo "Closed issue #$EXISTING"
+            fi
+          fi
