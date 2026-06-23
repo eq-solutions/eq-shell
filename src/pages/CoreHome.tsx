@@ -642,8 +642,20 @@ export default function CoreHome() {
   const tenantName = session?.tenant?.name ?? 'EQ';
 
   return (
-    <>
-      <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
+    <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
+      {/*
+        .eq-home provides the CSS token bridge + selector scope for every
+        .dq-* / .tr-* / .cm-* rule in CoreHome.css.
+        Inline style overrides the full-page layout properties from the
+        original standalone version (height: 100vh → 100%, display: flex
+        row → column so topbar + main stack vertically).
+        CanonMap uses position:fixed + inset:0 and must be inside this div
+        so the .eq-home .cm-overlay CSS selector resolves.
+      */}
+      <div
+        className="eq-home"
+        style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+      >
         {/* Thin topbar with tenant name, date, and canonical layer trigger */}
         <header className="eq-home-top">
           <div className="eq-home-top-l">
@@ -759,10 +771,10 @@ export default function CoreHome() {
             </div>
           </div>
         </main>
-      </HubLayout>
 
-      {/* Canonical map overlay — position:fixed, renders over everything */}
-      {showMap && <CanonMap onClose={() => setShowMap(false)} />}
-    </>
+        {/* position:fixed + inset:0 — renders over entire viewport */}
+        {showMap && <CanonMap onClose={() => setShowMap(false)} />}
+      </div>
+    </HubLayout>
   );
 }
