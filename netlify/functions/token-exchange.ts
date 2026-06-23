@@ -87,15 +87,17 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (error || !user) return jsonResponse(401, { valid: false });
 
-  if (aud === 'service' && user.tenant_id !== session.tenant_id) {
-    return jsonResponse(401, { valid: false });
-  }
+  // Use the session's active tenant (not the user's home tenant) — platform admins
+  // operate across tenants via select-tenant and session.tenant_id reflects that.
+  // Same pattern as mint-tenant-jwt fix (2026-06-22). user.tenant_id is 'core' for
+  // platform admins; checking it against session.tenant_id always fails for them.
+  const activeTenantId = session.tenant_id;
 
-  // For aud='service', resolve the tenant slug from the session tenant so the
+  // For aud='service', resolve the tenant slug from the SESSION tenant so the
   // minted JWT can carry it. EQ Service's shell-auth needs tenant_slug to upsert
   // the tenant_members row; without it a bridged user authenticates but lands
   // with no per-tenant access → access-gate bounce (e.g. the sks Service tile).
-  // The slug is server-derived from the user's own tenant_id — no cross-tenant
+  // The slug is server-derived from the session's active tenant_id — no cross-tenant
   // input, no escalation. Field encodes its slug in source_app already.
   let serviceTenantSlug: string | undefined;
   if (aud === 'service') {
@@ -103,16 +105,20 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .schema('shell_control')
       .from('tenants')
       .select('slug')
-      .eq('id', user.tenant_id)
+      .eq('id', activeTenantId)
       .maybeSingle<{ slug: string }>();
     if (!tenantRow) return jsonResponse(500, { error: 'Could not resolve tenant slug' });
     serviceTenantSlug = tenantRow.slug;
   }
 
+  // Role comes from the session cookie (set by verify-shell-session for the
+  // active tenant's membership), not from user.role which is the home-tenant role.
+  const activeRole = session.role ?? user.role;
+
   const { token, exp } = signSupabaseJwt(
     user.id,
-    user.tenant_id,
-    user.role,
+    activeTenantId,
+    activeRole,
     // Tenant isolation (Royce directive: no cross-tenant, ever): a bridged
     // Service identity must NEVER carry platform-admin. Service maps
     // is_platform_admin→super_admin, which grants cross-tenant visibility via
@@ -131,7 +137,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   void sb.schema('public').rpc('eq_write_audit_log', {
     p_event: 'token.exchange',
     p_actor_id: user.id,
-    p_tenant_id: user.tenant_id,
+    p_tenant_id: activeTenantId,
     p_ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown',
     p_detail: { aud, method: 'supabase-jwt', tenant_slug: tenantSlug ?? null },
   });
