@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
@@ -16,10 +15,10 @@ function isAuthError(e: unknown): boolean {
 }
 
 export default function QuotesNative() {
-  const { session } = useSession();
-  const navigate = useNavigate();
+  const { session, logout } = useSession();
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [connecting, setConnecting] = useState(true);
   const [slow, setSlow] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -42,10 +41,8 @@ export default function QuotesNative() {
         const c = await createTenantDataClient();
         if (!cancelled) { clearTimeout(slowTimer); setClient(c); setConnecting(false); }
       } catch (routedErr) {
-        // 401 from mint-tenant-jwt means the session cookie has expired.
-        // Redirect to login immediately rather than showing a connection error.
         if (isAuthError(routedErr)) {
-          if (!cancelled) { clearTimeout(slowTimer); navigate('/', { replace: true }); }
+          if (!cancelled) { clearTimeout(slowTimer); setSessionExpired(true); setConnecting(false); }
           return;
         }
         try {
@@ -53,7 +50,7 @@ export default function QuotesNative() {
           if (!cancelled) { clearTimeout(slowTimer); setClient(c); setConnecting(false); }
         } catch (fallbackErr) {
           if (isAuthError(fallbackErr)) {
-            if (!cancelled) { clearTimeout(slowTimer); navigate('/', { replace: true }); }
+            if (!cancelled) { clearTimeout(slowTimer); setSessionExpired(true); setConnecting(false); }
             return;
           }
           if (!cancelled) {
@@ -65,7 +62,7 @@ export default function QuotesNative() {
       }
     })();
     return () => { cancelled = true; clearTimeout(slowTimer); };
-  }, [retryCount, navigate]);
+  }, [retryCount]);
 
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
@@ -79,6 +76,33 @@ export default function QuotesNative() {
                 This is taking longer than usual — try refreshing if it doesn't load.
               </p>
             )}
+          </div>
+        ) : sessionExpired ? (
+          <div style={{
+            padding: '16px 20px',
+            background: 'var(--eq-error-bg, #fef2f2)',
+            color: 'var(--eq-error-text, #b91c1c)',
+            borderRadius: 6,
+            fontSize: 13,
+          }}>
+            <p style={{ marginBottom: 10 }}>
+              Your session has expired — sign in again to continue.
+            </p>
+            <button
+              type="button"
+              style={{
+                fontSize: 13,
+                padding: '5px 14px',
+                borderRadius: 4,
+                border: '1px solid currentColor',
+                background: 'transparent',
+                color: 'var(--eq-error-text, #b91c1c)',
+                cursor: 'pointer',
+              }}
+              onClick={() => logout()}
+            >
+              Sign in again
+            </button>
           </div>
         ) : clientError ? (
           <div style={{
