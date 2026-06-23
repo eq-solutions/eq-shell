@@ -23,6 +23,11 @@ violating them silently breaks production across multiple repos.
 - **Production = `main` branch.** A push to `main` triggers Netlify auto-deploy
   to core.eq.solutions. Never push without explicit instruction from Royce
   (global CLAUDE.md rule).
+- **`mint-tenant-jwt` uses `session.tenant_id` (active tenant), NOT `user.tenant_id` (home
+  tenant).** Users who switch tenants via `select-tenant` have `user.tenant_id = __personal__`
+  but `session.tenant_id = sks` (or whichever tenant they switched to). Any equality check
+  between these will always fail for cross-tenant users and produce a permanent 401. The session
+  cookie is HMAC-signed — `session.tenant_id` is trustworthy. Fixed in `39fa098` (2026-06-23).
 
 ## Don't touch without checking downstream
 
