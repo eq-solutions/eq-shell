@@ -31,7 +31,6 @@ import AdminEditUser from './pages/AdminEditUser';
 import AdminAuditPage from './pages/AdminAuditPage';
 import AccessControlPage from './pages/AccessControlPage';
 import AdminTenantSettings from './pages/AdminTenantSettings';
-import AdminCardsFeed from './pages/AdminCardsFeed';
 import AdminWorkerInvites from './pages/AdminWorkerInvites';
 import AdminWorkerInviteForm from './pages/AdminWorkerInviteForm';
 import AdminConnectWorker from './pages/AdminConnectWorker';
@@ -574,7 +573,6 @@ function TenantTree() {
         <Route path="admin/workers/invite" element={<AdminWorkerInviteForm />} />
         <Route path="admin/workers/connect" element={<AdminConnectWorker />} />
         <Route path="admin/workers/qr" element={<AdminWorkerQR />} />
-        <Route path="admin/cards-feed" element={<AdminCardsFeed />} />
         <Route path="admin/settings" element={<AdminTenantSettings />} />
         <Route path="admin/access-control" element={<AccessControlPage />} />
         <Route path="admin/security-groups" element={<AdminSecurityGroups />} />

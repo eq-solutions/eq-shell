@@ -32,6 +32,16 @@ interface LicenceRow {
   no_expiry: boolean | null;
 }
 
+interface PendingWorker {
+  application_id: string;
+  worker_user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  licence_count: number;
+  requested_at: string;
+}
+
 type LicStatus = 'current' | 'expiring' | 'expired' | 'ne';
 type View = 'list' | 'matrix';
 
@@ -73,7 +83,7 @@ interface EntityResp {
 }
 
 async function fetchEntity(entity: string, extra: Record<string, string> = {}): Promise<EntityResp> {
-  const qs = new URLSearchParams({ entity, page: '1', per_page: '500', ...extra });
+  const qs = new URLSearchParams({ entity, limit: '1000', ...extra });
   const res = await fetch(`/.netlify/functions/entity-rows?${qs}`, { credentials: 'include' });
   return res.json() as Promise<EntityResp>;
 }
@@ -112,32 +122,46 @@ export function StaffPage() {
   const [view,       setView]       = useState<View>('list');
   const [selId,      setSelId]      = useState<string | null>(null);
   const [reload,     setReload]     = useState(0);
+  const [pending,    setPending]    = useState<PendingWorker[]>([]);
   const [tipId,      setTipId]      = useState<string | null>(null);
   const [tipRect,    setTipRect]    = useState<DOMRect | null>(null);
   const tipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Staff fetch — exclude inactive on arrival; re-runs after mutations
+  // Staff fetch — active only, all records, re-runs after mutations
   useEffect(() => {
     setLoading(true);
-    fetchEntity('staff')
+    fetchEntity('staff', { active: 'true' })
       .then((r) => {
         if (!r.ok) { setError(r.error ?? 'Failed to load staff'); return; }
-        setStaff((r.rows ?? []).map(mapStaff).filter((s) => s.active !== false));
+        setStaff((r.rows ?? []).map(mapStaff));
       })
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
   }, [reload]);
 
-  // Licences fetch — best-effort
+  // Pending connection requests
+  useEffect(() => {
+    fetch('/.netlify/functions/staff-pending-connections', { credentials: 'include' })
+      .then((r) => r.json() as Promise<{ pending?: PendingWorker[] }>)
+      .then((r) => { if (r.pending) setPending(r.pending); })
+      .catch(() => {});
+  }, [reload]);
+
+  // Licences fetch — reads canonical (public.licences) for connected workers
   useEffect(() => {
     setLicLoading(true);
-    fetchEntity('licence')
-      .then((r) => {
-        if (r.ok) setLicences((r.rows ?? []).map(mapLicence));
-      })
+    fetch('/.netlify/functions/staff-canonical-licences', { credentials: 'include' })
+      .then((r) => r.json() as Promise<{ licences?: Record<string, unknown>[] }>)
+      .then((r) => { if (r.licences) setLicences(r.licences.map(mapLicence)); })
       .catch(() => {})
       .finally(() => setLicLoading(false));
   }, []);
+
+  // A-Z sort by full name
+  const sortedStaff = useMemo(
+    () => [...staff].sort((a, b) => fullName(a).localeCompare(fullName(b))),
+    [staff],
+  );
 
   // Licences by staff_id
   const licByStaff = useMemo(() => {
@@ -164,6 +188,25 @@ export function StaffPage() {
 
   const handleMutated = useCallback(() => setReload((n) => n + 1), []);
 
+  const handleApprove = useCallback(async (applicationId: string) => {
+    await fetch('/.netlify/functions/cards-approve-staff', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ row_id: applicationId, action: 'approve', source: 'application' }),
+    });
+    setPending((p) => p.filter((x) => x.application_id !== applicationId));
+    handleMutated();
+  }, [handleMutated]);
+
+  const handleDecline = useCallback(async (applicationId: string) => {
+    await fetch('/.netlify/functions/cards-approve-staff', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ row_id: applicationId, action: 'reject', source: 'application' }),
+    });
+    setPending((p) => p.filter((x) => x.application_id !== applicationId));
+  }, []);
+
   const showTip = useCallback((staffId: string, rect: DOMRect) => {
     if (tipTimer.current) clearTimeout(tipTimer.current);
     setTipId(staffId);
@@ -173,7 +216,7 @@ export function StaffPage() {
     tipTimer.current = setTimeout(() => setTipId(null), 100);
   }, []);
 
-  const selStaff = selId ? staff.find((s) => s.id === selId) ?? null : null;
+  const selStaff = selId ? sortedStaff.find((s) => s.id === selId) ?? null : null;
 
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
@@ -184,10 +227,26 @@ export function StaffPage() {
           <div>
             <h1 style={s.title}>Staff</h1>
             <p style={s.subtitle}>
-              {loading ? 'Loading…' : `${staff.length} ${staff.length === 1 ? 'person' : 'people'}`}
+              {loading ? 'Loading…' : `${sortedStaff.length} ${sortedStaff.length === 1 ? 'person' : 'people'}`}
             </p>
           </div>
+          <a
+            href="/.netlify/functions/cards-export-licences"
+            download
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 11, fontWeight: 700, textDecoration: 'none', fontFamily: 'inherit', alignSelf: 'flex-end', marginBottom: 4 }}
+          >
+            Compliance pack
+          </a>
         </div>
+
+        {/* Pending connections */}
+        {pending.length > 0 && (
+          <PendingSection
+            workers={pending}
+            onApprove={handleApprove}
+            onDecline={handleDecline}
+          />
+        )}
 
         {/* Zone B — view toggle */}
         <div style={s.vt}>
@@ -217,7 +276,7 @@ export function StaffPage() {
         ) : view === 'list' ? (
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
             <StaffList
-              rows={staff}
+              rows={sortedStaff}
               loading={loading}
               selId={selId}
               licByStaff={licByStaff}
@@ -234,7 +293,7 @@ export function StaffPage() {
           </div>
         ) : (
           <MatrixView
-            rows={staff}
+            rows={sortedStaff}
             loading={loading || licLoading}
             licByStaff={licByStaff}
             licTypes={licTypes}
@@ -247,6 +306,73 @@ export function StaffPage() {
         )}
       </div>
     </HubLayout>
+  );
+}
+
+// ─── PENDING CONNECTIONS SECTION ─────────────────────────────────────────────
+
+function PendingSection({
+  workers,
+  onApprove,
+  onDecline,
+}: {
+  workers: PendingWorker[];
+  onApprove: (id: string) => Promise<void>;
+  onDecline: (id: string) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const act = async (id: string, fn: (id: string) => Promise<void>) => {
+    setBusy(id);
+    try { await fn(id); } finally { setBusy(null); }
+  };
+
+  return (
+    <div style={{ padding: '8px 24px', borderBottom: '1px solid #F1F5F9', background: '#FAFBFD', flexShrink: 0 }}>
+      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#3DA8D8', marginBottom: 8 }}>
+        {workers.length} connection {workers.length === 1 ? 'request' : 'requests'} pending
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {workers.map((w) => {
+          const name = [w.first_name, w.last_name].filter(Boolean).join(' ') || w.phone || 'Unknown';
+          const isBusy = busy === w.application_id;
+          return (
+            <div
+              key={w.application_id}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px 6px 8px', border: '1px solid #BFDBFE', borderRadius: 8, background: 'white', fontSize: 12 }}
+            >
+              <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#3DA8D8', color: 'white', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {initials(w.first_name, w.last_name)}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: '#1A1A2E', whiteSpace: 'nowrap' }}>{name}</div>
+                <div style={{ fontSize: 10, color: '#64748B' }}>
+                  {w.licence_count > 0 ? `${w.licence_count} licence${w.licence_count === 1 ? '' : 's'} ready` : 'No licences yet'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 5, marginLeft: 4 }}>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => { void act(w.application_id, onApprove); }}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 11, fontWeight: 700, cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1, fontFamily: 'inherit' }}
+                >
+                  Add to roster
+                </button>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => { void act(w.application_id, onDecline); }}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', fontSize: 11, fontWeight: 700, cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1, fontFamily: 'inherit' }}
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -280,12 +406,6 @@ function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHi
           </div>
         </div>
       ),
-    },
-    {
-      key: 'trade',
-      header: 'Trade',
-      sortAccessor: (row) => row.trade,
-      render: (row) => <span style={{ color: '#475569' }}>{row.trade ?? '—'}</span>,
     },
     {
       key: 'type',
@@ -403,7 +523,7 @@ function MatrixView({ rows, loading, licByStaff, licTypes }: MatrixProps) {
       <div style={s.empty}>
         <div style={{ fontSize: 28, marginBottom: 10 }}>📋</div>
         <strong style={{ color: '#475569' }}>No licence data</strong>
-        <span>Licences recorded in EQ Field will appear here</span>
+        <span>Licences submitted by connected workers will appear here</span>
       </div>
     );
   }

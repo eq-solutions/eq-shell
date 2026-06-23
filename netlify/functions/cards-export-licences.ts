@@ -25,17 +25,14 @@ interface WorkerRow {
   email: string | null;
 }
 
-interface CredRow {
+interface LicRow {
   id: string;
-  worker_id: string;
-  credential_type: string;
+  user_id: string;
+  licence_type: string;
   licence_number: string | null;
-  issuing_body: string | null;
-  state_territory: string | null;
-  issue_date: string | null;
   expiry_date: string | null;
-  photo_front_path: string | null;
-  photo_back_path: string | null;
+  photo_front_url: string | null;
+  photo_back_url: string | null;
   never_expires: boolean;
 }
 
@@ -96,28 +93,22 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const workerMap = new Map<string, WorkerRow>();
   for (const w of workers ?? []) workerMap.set(w.user_id, w);
-  const workerIds = (workers ?? []).map((w) => w.id);
 
-  // Credentials
-  let allCreds: CredRow[] = [];
-  if (workerIds.length > 0) {
-    const { data: creds } = (await sbPublic
-      .from('worker_credentials')
-      .select(
-        'id, worker_id, credential_type, licence_number, issuing_body, ' +
-        'state_territory, issue_date, expiry_date, photo_front_path, photo_back_path, never_expires',
-      )
-      .in('worker_id', workerIds)
-      .is('deleted_at', null)
-      .eq('status', 'active')) as { data: CredRow[] | null };
-    allCreds = creds ?? [];
-  }
+  // Licences from canonical (public.licences) — the single source of truth
+  const { data: allLics } = (await sbPublic
+    .from('licences')
+    .select(
+      'id, user_id, licence_type, licence_number, expiry_date, ' +
+      'photo_front_url, photo_back_url, never_expires',
+    )
+    .in('user_id', userIds)
+    .is('deleted_at', null)) as { data: LicRow[] | null };
 
-  const credsByWorker = new Map<string, CredRow[]>();
-  for (const c of allCreds) {
-    const list = credsByWorker.get(c.worker_id) ?? [];
-    list.push(c);
-    credsByWorker.set(c.worker_id, list);
+  const licsByUser = new Map<string, LicRow[]>();
+  for (const l of allLics ?? []) {
+    const list = licsByUser.get(l.user_id) ?? [];
+    list.push(l);
+    licsByUser.set(l.user_id, list);
   }
 
   // Download a single photo from the private bucket. Returns null on any error.
@@ -135,8 +126,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const csvRows: string[] = [
     [
       'Worker Name', 'Phone', 'Email',
-      'Licence Type', 'Licence Number', 'Issuing Body', 'State',
-      'Issue Date', 'Expiry Date', 'Never Expires',
+      'Licence Type', 'Licence Number',
+      'Expiry Date', 'Never Expires',
       'Photo Front', 'Photo Back',
     ].join(','),
   ];
@@ -146,25 +137,25 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     Array.from(workerMap.values()).map(async (worker) => {
       const fullName = [worker.first_name, worker.last_name].filter(Boolean).join(' ') || 'Unknown';
       const folder = slugify(fullName);
-      const creds = credsByWorker.get(worker.id) ?? [];
+      const lics = licsByUser.get(worker.user_id) ?? [];
 
-      if (creds.length === 0) {
+      if (lics.length === 0) {
         csvRows.push([
           csvCell(fullName), csvCell(worker.phone), csvCell(worker.email),
-          '', '', '', '', '', '', '', '', '',
+          '', '', '', '', '', '',
         ].join(','));
         return;
       }
 
       await Promise.all(
-        creds.map(async (c) => {
-          const typeSlug = slugify(c.credential_type);
+        lics.map(async (l) => {
+          const typeSlug = slugify(l.licence_type);
           let frontFile = '';
           let backFile = '';
 
           const [frontBuf, backBuf] = await Promise.all([
-            c.photo_front_path ? fetchPhoto(c.photo_front_path) : Promise.resolve(null),
-            c.photo_back_path  ? fetchPhoto(c.photo_back_path)  : Promise.resolve(null),
+            l.photo_front_url ? fetchPhoto(l.photo_front_url) : Promise.resolve(null),
+            l.photo_back_url  ? fetchPhoto(l.photo_back_url)  : Promise.resolve(null),
           ]);
 
           if (frontBuf) {
@@ -176,17 +167,15 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
             zip.file(backFile, backBuf);
           }
 
+          const neverExpires = l.never_expires || l.expiry_date === '9999-12-31';
           csvRows.push([
             csvCell(fullName),
             csvCell(worker.phone),
             csvCell(worker.email),
-            csvCell(c.credential_type),
-            csvCell(c.licence_number),
-            csvCell(c.issuing_body),
-            csvCell(c.state_territory),
-            csvCell(c.issue_date),
-            c.never_expires ? 'Never' : csvCell(c.expiry_date),
-            c.never_expires ? 'Yes' : 'No',
+            csvCell(l.licence_type),
+            csvCell(l.licence_number),
+            neverExpires ? 'Never' : csvCell(l.expiry_date),
+            neverExpires ? 'Yes' : 'No',
             frontFile ? 'Yes' : 'No',
             backFile  ? 'Yes' : 'No',
           ].join(','));

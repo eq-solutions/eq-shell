@@ -72,7 +72,6 @@ export function HubSidebar({ apps, records }: Props) {
   const canReports = useCan('reports.view');
   const canAdmin = useCan('admin.list_users');
   const canWorkerInvites = useCan('admin.invite_user');
-  const canCardsFeed = useCan('admin.review_cards');
   const { compact, toggle: toggleDensity } = useDensity();
 
   if (!session || !tenantSlug) return null;
@@ -138,9 +137,6 @@ export function HubSidebar({ apps, records }: Props) {
       );
       if (canWorkerInvites) adminItems.push(
         { key: 'worker-invites', label: 'Worker invites',  href: `/${tenantSlug}/admin/workers`,        icon: <UserPlus size={16} aria-hidden="true" />,      isActive: active(`/${tenantSlug}/admin/workers`) },
-      );
-      if (canCardsFeed) adminItems.push(
-        { key: 'cards-feed',     label: 'Cards feed',      href: `/${tenantSlug}/admin/cards-feed`,     icon: <CreditCard size={16} aria-hidden="true" />,    isActive: active(`/${tenantSlug}/admin/cards-feed`) },
       );
       adminItems.push(
         { key: 'audit',          label: 'Audit log',       href: `/${tenantSlug}/admin/audit`,          icon: <ClipboardList size={16} aria-hidden="true" />, isActive: active(`/${tenantSlug}/admin/audit`) },
