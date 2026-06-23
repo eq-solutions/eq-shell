@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
@@ -10,8 +11,13 @@ import { useSession } from '../session';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
+function isAuthError(e: unknown): boolean {
+  return e instanceof Error && /\b401\b/.test(e.message);
+}
+
 export default function QuotesNative() {
   const { session } = useSession();
+  const navigate = useNavigate();
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(true);
@@ -24,7 +30,6 @@ export default function QuotesNative() {
     setClientError(null);
     setSlow(false);
 
-    // Show a "taking longer than usual" message after 8 seconds
     const slowTimer = setTimeout(() => {
       if (!cancelled) setSlow(true);
     }, 8_000);
@@ -37,10 +42,20 @@ export default function QuotesNative() {
         const c = await createTenantDataClient();
         if (!cancelled) { clearTimeout(slowTimer); setClient(c); setConnecting(false); }
       } catch (routedErr) {
+        // 401 from mint-tenant-jwt means the session cookie has expired.
+        // Redirect to login immediately rather than showing a connection error.
+        if (isAuthError(routedErr)) {
+          if (!cancelled) { clearTimeout(slowTimer); navigate('/', { replace: true }); }
+          return;
+        }
         try {
           const c = await createSKSSupabaseClient();
           if (!cancelled) { clearTimeout(slowTimer); setClient(c); setConnecting(false); }
-        } catch {
+        } catch (fallbackErr) {
+          if (isAuthError(fallbackErr)) {
+            if (!cancelled) { clearTimeout(slowTimer); navigate('/', { replace: true }); }
+            return;
+          }
           if (!cancelled) {
             clearTimeout(slowTimer);
             setClientError(routedErr instanceof Error ? routedErr.message : 'Failed to connect to the tenant database.');
@@ -50,7 +65,7 @@ export default function QuotesNative() {
       }
     })();
     return () => { cancelled = true; clearTimeout(slowTimer); };
-  }, [retryCount]);
+  }, [retryCount, navigate]);
 
   return (
     <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
