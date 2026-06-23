@@ -27,6 +27,7 @@ interface Licence {
 interface PendingStaff {
   staff_id?: string;
   application_id?: string;
+  worker_user_id?: string;
   source?: 'invite' | 'application';
   sharing_scope?: string;
   first_name: string | null;
@@ -36,6 +37,15 @@ interface PendingStaff {
   date_of_birth: string | null;
   created_at: string;
   licences: Licence[];
+}
+
+interface StaffMatch {
+  staff_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  confidence: 'phone_exact' | 'email_exact' | 'name_close' | 'name_possible';
+  match_reason: string;
 }
 
 interface Credential {
@@ -112,10 +122,168 @@ function CredPill({ cred }: { cred: Credential }) {
   );
 }
 
+// ─── Match confirmation modal ─────────────────────────────────────────────────
+
+const CONFIDENCE_STARS: Record<StaffMatch['confidence'], string> = {
+  phone_exact: '★★★',
+  email_exact: '★★★',
+  name_close: '★★☆',
+  name_possible: '★☆☆',
+};
+
+function MatchModal({
+  person,
+  onConfirm,
+  onClose,
+}: {
+  person: PendingStaff;
+  onConfirm: (confirmedStaffId: string | null) => void;
+  onClose: () => void;
+}) {
+  const [matches, setMatches] = useState<StaffMatch[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<string | 'new' | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (!person.worker_user_id) {
+      setMatches([]);
+      setSelected('new');
+      setLoading(false);
+      return;
+    }
+    fetch(
+      `/.netlify/functions/cards-staff-matches?worker_user_id=${encodeURIComponent(person.worker_user_id)}`,
+      { credentials: 'include' },
+    )
+      .then((r) => r.json())
+      .then((body) => {
+        const m = (body as { matches?: StaffMatch[] }).matches ?? [];
+        setMatches(m);
+        setSelected(m.length > 0 && m[0].confidence === 'phone_exact' ? m[0].staff_id : 'new');
+      })
+      .catch(() => { setMatches([]); setSelected('new'); })
+      .finally(() => setLoading(false));
+  }, [person.worker_user_id]);
+
+  const handleConfirm = () => {
+    if (confirming || selected === null) return;
+    setConfirming(true);
+    onConfirm(selected === 'new' ? null : selected);
+  };
+
+  const personName = fullName(person.first_name, person.last_name, person.email);
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: '#fff', borderRadius: 12, padding: 24, width: 440,
+          maxHeight: '90vh', overflow: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, color: '#1A1A2E' }}>
+          Add to Field — {personName}
+        </h2>
+        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 20 }}>
+          Is this person already in your staff list?
+        </p>
+
+        {loading ? (
+          <p style={{ color: '#64748B', fontSize: 13, textAlign: 'center', padding: '16px 0' }}>
+            Checking…
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+            {(matches ?? []).map((m) => (
+              <label
+                key={m.staff_id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                  border: `1.5px solid ${selected === m.staff_id ? '#3DA8D8' : '#E2E8F0'}`,
+                  background: selected === m.staff_id ? '#EAF5FB' : '#fff',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="staff-match"
+                  value={m.staff_id}
+                  checked={selected === m.staff_id}
+                  onChange={() => setSelected(m.staff_id)}
+                  style={{ accentColor: '#3DA8D8', flexShrink: 0 }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#1A1A2E' }}>
+                    {fullName(m.first_name, m.last_name)}
+                  </div>
+                  {m.phone && (
+                    <div style={{ fontSize: 12, color: '#64748B' }}>{m.phone}</div>
+                  )}
+                </div>
+                <span style={{ fontSize: 11, color: '#64748B', whiteSpace: 'nowrap' }}>
+                  {CONFIDENCE_STARS[m.confidence]} {m.match_reason}
+                </span>
+              </label>
+            ))}
+            <label
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                border: `1.5px solid ${selected === 'new' ? '#3DA8D8' : '#E2E8F0'}`,
+                background: selected === 'new' ? '#EAF5FB' : '#fff',
+              }}
+            >
+              <input
+                type="radio"
+                name="staff-match"
+                value="new"
+                checked={selected === 'new'}
+                onChange={() => setSelected('new')}
+                style={{ accentColor: '#3DA8D8', flexShrink: 0 }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13, color: '#1A1A2E' }}>
+                  Not in my staff list
+                </div>
+                <div style={{ fontSize: 12, color: '#64748B' }}>
+                  {matches && matches.length === 0
+                    ? 'No matches found — will create a new staff record'
+                    : 'Create a new staff record for this person'}
+                </div>
+              </div>
+            </label>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={confirming}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary" size="sm"
+            disabled={loading || selected === null || confirming}
+            onClick={handleConfirm}
+          >
+            {confirming ? 'Adding…' : 'Confirm'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Pending tab ──────────────────────────────────────────────────────────────
 
 function PendingTab({
-  pending, err, query, setQuery, busy, actionErr, decide, reload,
+  pending, err, query, setQuery, busy, actionErr, decide, reload, onApprove,
 }: {
   pending: PendingStaff[] | null;
   err: string | null;
@@ -125,6 +293,7 @@ function PendingTab({
   actionErr: string | null;
   decide: (id: string, action: 'approve' | 'reject', source?: string) => void;
   reload: () => void;
+  onApprove: (p: PendingStaff) => void;
 }) {
   const filtered = useMemo(() => {
     if (!pending) return [];
@@ -222,7 +391,7 @@ function PendingTab({
                       <Button
                         variant="primary" size="sm"
                         disabled={busy === rowId}
-                        onClick={() => void decide(rowId, 'approve', p.source)}
+                        onClick={() => onApprove(p)}
                       >
                         {busy === rowId ? '…' : 'Add to Field'}
                       </Button>
@@ -370,6 +539,9 @@ function AdminCardsFeedInner() {
   const [connErr, setConnErr] = useState<string | null>(null);
   const connLoaded = useRef(false);
 
+  // Match modal (application-path approval)
+  const [matchModal, setMatchModal] = useState<PendingStaff | null>(null);
+
   // Export
   const [downloading, setDownloading] = useState(false);
 
@@ -404,13 +576,13 @@ function AdminCardsFeedInner() {
     if (tab === 'connected' && !connLoaded.current) void loadConnected();
   }, [tab]);
 
-  const decide = async (rowId: string, action: 'approve' | 'reject', source?: string) => {
+  const decide = async (rowId: string, action: 'approve' | 'reject', source?: string, confirmedStaffId?: string | null) => {
     setActionErr(null);
     setBusy(rowId);
     try {
       const bodyPayload =
         source === 'application'
-          ? { application_id: rowId, action }
+          ? { application_id: rowId, action, ...(confirmedStaffId !== undefined ? { confirmed_staff_id: confirmedStaffId } : {}) }
           : { staff_id: rowId, action };
       const res = await fetch('/.netlify/functions/cards-approve-staff', {
         method: 'POST',
@@ -431,6 +603,20 @@ function AdminCardsFeedInner() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const onApprove = (p: PendingStaff) => {
+    if (p.source === 'application' && p.worker_user_id) {
+      setMatchModal(p);
+    } else {
+      void decide(p.application_id ?? p.staff_id ?? '', 'approve', p.source);
+    }
+  };
+
+  const confirmMatch = (confirmedStaffId: string | null) => {
+    if (!matchModal) return;
+    void decide(matchModal.application_id ?? matchModal.staff_id ?? '', 'approve', matchModal.source, confirmedStaffId);
+    setMatchModal(null);
   };
 
   const downloadExport = async () => {
@@ -547,6 +733,7 @@ function AdminCardsFeedInner() {
           actionErr={actionErr}
           decide={(id, action, source) => void decide(id, action, source)}
           reload={loadPending}
+          onApprove={onApprove}
         />
       )}
 
@@ -555,6 +742,14 @@ function AdminCardsFeedInner() {
           connected={connected}
           err={connErr}
           reload={loadConnected}
+        />
+      )}
+
+      {matchModal && (
+        <MatchModal
+          person={matchModal}
+          onConfirm={confirmMatch}
+          onClose={() => setMatchModal(null)}
         />
       )}
     </HubLayout>

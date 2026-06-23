@@ -38,6 +38,7 @@ interface ApproveBody {
   application_id?: string;
   action: 'approve' | 'reject';
   rejection_reason?: string;
+  confirmed_staff_id?: string | null;
 }
 
 function json(status: number, body: unknown): Response {
@@ -64,7 +65,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(400, { error: 'Invalid JSON body' });
   }
 
-  const { staff_id, application_id, action, rejection_reason } = body;
+  const { staff_id, application_id, action, rejection_reason, confirmed_staff_id } = body;
   if (!staff_id && !application_id) {
     return json(400, { error: 'staff_id or application_id is required' });
   }
@@ -78,7 +79,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   // ── Application path (worker self-signup) ──────────────────────────────────
   if (application_id) {
-    return handleApplication({ application_id, action, rejection_reason, sb, session, tenantId });
+    return handleApplication({ application_id, action, rejection_reason, confirmed_staff_id, sb, session, tenantId });
   }
 
   // ── Invite path (existing app_data.staff row) ──────────────────────────────
@@ -123,12 +124,12 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const { data: staffRow, error: staffErr } = (await tenantAny
     .schema('app_data')
     .from('staff')
-    .select('staff_id, field_approved, tenant_id')
+    .select('staff_id, field_approved, tenant_id, phone')
     .eq('staff_id', staff_id_safe)
     .eq('tenant_id', tenantId)
     .eq('active', true)
     .maybeSingle()) as {
-    data: { staff_id: string; field_approved: boolean | null; tenant_id: string } | null;
+    data: { staff_id: string; field_approved: boolean | null; tenant_id: string; phone: string | null } | null;
     error: { message: string } | null;
   };
 
@@ -152,6 +153,39 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (updErr) {
     return json(500, { error: `Could not approve staff: ${updErr.message}` });
+  }
+
+  // Link Cards worker ↔ Field staff record by phone so future credential syncs work.
+  // Fire-and-forget — approval is already committed; a FK sync failure must not roll it back.
+  if (staffRow.phone) {
+    const inviteBare = staffRow.phone.replace(/[^0-9]/g, '');
+    const inviteSuffix = inviteBare.startsWith('61')
+      ? inviteBare.slice(2)
+      : inviteBare.startsWith('0') ? inviteBare.slice(1) : inviteBare;
+    const inviteVariants = inviteSuffix
+      ? [...new Set([staffRow.phone, `0${inviteSuffix}`, `+61${inviteSuffix}`].filter(Boolean) as string[])]
+      : [];
+    if (inviteVariants.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sbPub = (sb as any).schema('public');
+      (async () => {
+        const { data: linkedWorker } = (await sbPub
+          .from('workers')
+          .select('id')
+          .in('phone', inviteVariants)
+          .is('staff_id', null)
+          .limit(1)
+          .maybeSingle()) as { data: { id: string } | null };
+        if (!linkedWorker) return;
+        await Promise.all([
+          sbPub.from('workers').update({ staff_id: staff_id_safe }).eq('id', linkedWorker.id),
+          tenantAny.schema('app_data').from('staff')
+            .update({ cards_worker_id: linkedWorker.id })
+            .eq('staff_id', staff_id_safe)
+            .eq('tenant_id', tenantId),
+        ]);
+      })().catch((e: unknown) => console.error('[cards-approve-staff] invite FK link failed', e));
+    }
   }
 
   // Record the approval in the control plane (cross-tenant audit). field_people_id
@@ -196,6 +230,7 @@ interface AppSession {
 async function handleApplication({
   application_id,
   action,
+  confirmed_staff_id,
   sb,
   session,
   tenantId,
@@ -203,6 +238,7 @@ async function handleApplication({
   application_id: string;
   action: 'approve' | 'reject';
   rejection_reason?: string;
+  confirmed_staff_id?: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sb: any;
   session: AppSession;
@@ -276,7 +312,6 @@ async function handleApplication({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tenantAny = tenantDb as any;
 
-  // Check if this worker already exists in Field (added before they downloaded Cards).
   // Phone formats are inconsistent: GoTrue normalises to +61XXXXXXXXX, employers type
   // 0XXXXXXXXX, and the org_access_requests RPC strips to bare 9 digits. Check all three.
   const workerPhone = worker?.phone ?? app.worker_phone;
@@ -285,21 +320,32 @@ async function handleApplication({
     ? [...new Set([workerPhone, `0${bareDigits}`, `+61${bareDigits}`].filter(Boolean) as string[])]
     : [];
 
-  let existingStaff: { staff_id: string } | null = null;
-  if (phoneVariants.length > 0) {
-    ({ data: existingStaff } = (await tenantAny
-      .schema('app_data')
-      .from('staff')
-      .select('staff_id')
-      .eq('tenant_id', tenantId)
-      .in('phone', phoneVariants)
-      .limit(1)
-      .maybeSingle()) as { data: { staff_id: string } | null });
+  // Resolve which app_data.staff record to use.
+  //   confirmed_staff_id !== undefined  → admin chose via the match panel (non-null = link existing, null = create new)
+  //   confirmed_staff_id === undefined  → legacy path: auto-detect by phone
+  let staffId: string;
+  let isExistingStaff: boolean;
+
+  if (confirmed_staff_id !== undefined) {
+    staffId = confirmed_staff_id !== null ? confirmed_staff_id : randomUUID();
+    isExistingStaff = confirmed_staff_id !== null;
+  } else {
+    let autoDetected: { staff_id: string } | null = null;
+    if (phoneVariants.length > 0) {
+      ({ data: autoDetected } = (await tenantAny
+        .schema('app_data')
+        .from('staff')
+        .select('staff_id')
+        .eq('tenant_id', tenantId)
+        .in('phone', phoneVariants)
+        .limit(1)
+        .maybeSingle()) as { data: { staff_id: string } | null });
+    }
+    staffId = autoDetected?.staff_id ?? randomUUID();
+    isExistingStaff = !!autoDetected;
   }
 
-  const staffId = existingStaff?.staff_id ?? randomUUID();
-
-  if (!existingStaff) {
+  if (!isExistingStaff) {
     const { error: staffInsertErr } = await tenantAny
       .schema('app_data')
       .from('staff')
@@ -348,7 +394,7 @@ async function handleApplication({
     if (creds && creds.length > 0) {
       let credsToInsert = creds;
 
-      if (existingStaff) {
+      if (isExistingStaff) {
         // Fetch existing licence keys so we can skip duplicates.
         const { data: existing } = (await tenantAny
           .schema('app_data')
@@ -386,6 +432,21 @@ async function handleApplication({
           );
       }
     }
+  }
+
+  // Link Cards worker ↔ Field staff record so future credential syncs work automatically.
+  // Fire-and-forget — approval is already committed; FK sync failure must not roll it back.
+  if (worker?.id) {
+    const workerId = worker.id;
+    (async () => {
+      await Promise.all([
+        sbPublic.from('workers').update({ staff_id: staffId }).eq('id', workerId),
+        tenantAny.schema('app_data').from('staff')
+          .update({ cards_worker_id: workerId })
+          .eq('staff_id', staffId)
+          .eq('tenant_id', tenantId),
+      ]);
+    })().catch((e: unknown) => console.error('[cards-approve-staff] application FK link failed', e));
   }
 
   // Mark application approved in canonical DB

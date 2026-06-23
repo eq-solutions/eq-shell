@@ -263,6 +263,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         const wCreds = w ? (credsByWorkerId.get(w.id) ?? []) : [];
         return {
           application_id: a.id,
+          worker_user_id: a.worker_user_id,
           source: 'application' as const,
           sharing_scope: a.sharing_scope,
           first_name: w?.first_name ?? null,
