@@ -218,22 +218,32 @@ export function StaffPage() {
   const handleMutated = useCallback(() => setReload((n) => n + 1), []);
 
   const handleApprove = useCallback(async (applicationId: string) => {
-    await fetch('/.netlify/functions/cards-approve-staff', {
+    const res = await fetch('/.netlify/functions/cards-approve-staff', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ row_id: applicationId, action: 'approve', source: 'application' }),
+      body: JSON.stringify({ application_id: applicationId, action: 'approve' }),
     });
-    setPending((p) => p.filter((x) => x.application_id !== applicationId));
-    handleMutated();
+    if (res.ok) {
+      setPending((p) => p.filter((x) => x.application_id !== applicationId));
+      handleMutated();
+    } else {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      console.error('[staff] approve failed', res.status, err.error);
+    }
   }, [handleMutated]);
 
   const handleDecline = useCallback(async (applicationId: string) => {
-    await fetch('/.netlify/functions/cards-approve-staff', {
+    const res = await fetch('/.netlify/functions/cards-approve-staff', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ row_id: applicationId, action: 'reject', source: 'application' }),
+      body: JSON.stringify({ application_id: applicationId, action: 'reject' }),
     });
-    setPending((p) => p.filter((x) => x.application_id !== applicationId));
+    if (res.ok) {
+      setPending((p) => p.filter((x) => x.application_id !== applicationId));
+    } else {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      console.error('[staff] decline failed', res.status, err.error);
+    }
   }, []);
 
   const showTip = useCallback((staffId: string, rect: DOMRect) => {
@@ -274,6 +284,7 @@ export function StaffPage() {
             workers={pending}
             onApprove={handleApprove}
             onDecline={handleDecline}
+            isMobile={isMobile}
           />
         )}
 
@@ -365,27 +376,31 @@ function PendingSection({
   workers,
   onApprove,
   onDecline,
+  isMobile,
 }: {
   workers: PendingWorker[];
   onApprove: (id: string) => Promise<void>;
   onDecline: (id: string) => Promise<void>;
+  isMobile?: boolean;
 }) {
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<Set<string>>(new Set());
+
+  const isBusy = (id: string) => busy.has(id);
 
   const act = async (id: string, fn: (id: string) => Promise<void>) => {
-    setBusy(id);
-    try { await fn(id); } finally { setBusy(null); }
+    setBusy((prev) => new Set(prev).add(id));
+    try { await fn(id); } finally { setBusy((prev) => { const s = new Set(prev); s.delete(id); return s; }); }
   };
 
   return (
-    <div style={{ padding: '8px 24px', borderBottom: '1px solid #F1F5F9', background: '#FAFBFD', flexShrink: 0 }}>
+    <div style={{ padding: isMobile ? '8px 12px' : '8px 24px', borderBottom: '1px solid #F1F5F9', background: '#FAFBFD', flexShrink: 0 }}>
       <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#3DA8D8', marginBottom: 8 }}>
         {workers.length} connection {workers.length === 1 ? 'request' : 'requests'} pending
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: isMobile ? undefined : 'wrap', gap: 8 }}>
         {workers.map((w) => {
           const name = [w.first_name, w.last_name].filter(Boolean).join(' ') || w.phone || 'Unknown';
-          const isBusy = busy === w.application_id;
+          const busy = isBusy(w.application_id);
           return (
             <div
               key={w.application_id}
@@ -394,28 +409,28 @@ function PendingSection({
               <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#3DA8D8', color: 'white', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 {initials(w.first_name, w.last_name)}
               </div>
-              <div style={{ minWidth: 0 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, color: '#1A1A2E', whiteSpace: 'nowrap' }}>{name}</div>
                 <div style={{ fontSize: 10, color: '#64748B' }}>
                   {w.licence_count > 0 ? `${w.licence_count} licence${w.licence_count === 1 ? '' : 's'} ready` : 'No licences yet'}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 5, marginLeft: 4 }}>
+              <div style={{ display: 'flex', gap: 5, marginLeft: 4, flexShrink: 0 }}>
                 <button
                   type="button"
-                  disabled={isBusy}
+                  disabled={busy}
                   onClick={() => { void act(w.application_id, onApprove); }}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 11, fontWeight: 700, cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1, fontFamily: 'inherit' }}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: busy ? '#94A3B8' : '#3DA8D8', color: 'white', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minWidth: 82, transition: 'background .15s' }}
                 >
-                  Add to roster
+                  {busy ? 'Adding…' : 'Add to roster'}
                 </button>
                 <button
                   type="button"
-                  disabled={isBusy}
+                  disabled={busy}
                   onClick={() => { void act(w.application_id, onDecline); }}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', fontSize: 11, fontWeight: 700, cursor: isBusy ? 'not-allowed' : 'pointer', opacity: isBusy ? 0.6 : 1, fontFamily: 'inherit' }}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: busy ? '#CBD5E1' : '#64748B', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minWidth: 68, transition: 'color .15s' }}
                 >
-                  Decline
+                  {busy ? 'Declining…' : 'Decline'}
                 </button>
               </div>
             </div>
@@ -688,9 +703,11 @@ function MatrixView({ rows, loading, licByStaff, licTypes }: MatrixProps) {
   if (!licTypes.length) {
     return (
       <div style={s.empty}>
-        <div style={{ fontSize: 28, marginBottom: 10 }}>📋</div>
-        <strong style={{ color: '#475569' }}>No licence data</strong>
-        <span>Licences submitted by connected workers will appear here</span>
+        <strong style={{ color: '#475569' }}>No licence data yet</strong>
+        <span>
+          Workers need to connect to your org via EQ Cards and upload their licences.
+          Once connected, their credentials appear here automatically.
+        </span>
       </div>
     );
   }
