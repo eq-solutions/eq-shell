@@ -8,8 +8,6 @@ import { archiveStaff } from '../lib/entityActions';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
 
-const SIDEBAR_RECORDS = defaultSidebarRecords();
-
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
 interface StaffRow {
@@ -73,6 +71,13 @@ function fmtDate(iso: string): string {
 function fmtDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
 }
+
+const MC: Record<LicStatus, React.CSSProperties> = {
+  current:  { background: '#DCFCE7', color: '#15803D' },
+  ne:       { background: '#EFF6FF', color: '#1D4ED8' },
+  expiring: { background: '#FEF3C7', color: '#B45309' },
+  expired:  { background: '#FEE2E2', color: '#B91C1C' },
+};
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 
@@ -163,6 +168,17 @@ export function StaffPage() {
     [staff],
   );
 
+  // Sidebar records — warn + count badge when connection requests are waiting
+  const sidebarRecords = useMemo(
+    () => defaultSidebarRecords().map((r) =>
+      r.key === 'staff'
+        ? { ...r, count: pending.length > 0 ? pending.length : null, warn: pending.length > 0 }
+        : r,
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pending.length],
+  );
+
   // Licences by staff_id
   const licByStaff = useMemo(() => {
     const m = new Map<string, LicenceRow[]>();
@@ -219,7 +235,7 @@ export function StaffPage() {
   const selStaff = selId ? sortedStaff.find((s) => s.id === selId) ?? null : null;
 
   return (
-    <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
+    <HubLayout sidebarRecords={sidebarRecords} fullWidth>
       <div style={s.page}>
 
         {/* Zone A — header */}
@@ -417,19 +433,13 @@ function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHi
       key: 'licences',
       header: 'Licences & Training',
       render: (row) => {
-        let cur = 0, exp = 0, red = 0;
-        for (const l of licByStaff.get(row.id) ?? []) {
-          const st = licStatus(l);
-          if (st === 'current' || st === 'ne') cur++;
-          else if (st === 'expiring') exp++;
-          else red++;
-        }
+        const lics = licByStaff.get(row.id) ?? [];
         return (
           <span
             onMouseEnter={(e) => onShowTip(row.id, (e.currentTarget as HTMLElement).getBoundingClientRect())}
             onMouseLeave={onHideTip}
           >
-            <LicDots cur={cur} exp={exp} red={red} />
+            <LicChips lics={lics} />
           </span>
         );
       },
@@ -472,28 +482,22 @@ function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHi
   );
 }
 
-function LicDots({ cur, exp, red }: { cur: number; exp: number; red: number }) {
-  if (cur + exp + red === 0) return <span style={{ color: '#CBD5E1', fontSize: 12 }}>None recorded</span>;
+function LicChips({ lics }: { lics: LicenceRow[] }) {
+  if (lics.length === 0) return <span style={{ color: '#CBD5E1', fontSize: 11 }}>None recorded</span>;
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      {cur > 0 && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#475569' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22C55E', display: 'inline-block' }} />
-          {cur}
-        </span>
-      )}
-      {exp > 0 && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#B45309' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#F59E0B', display: 'inline-block' }} />
-          {exp} expiring
-        </span>
-      )}
-      {red > 0 && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700, color: '#B91C1C' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#EF4444', display: 'inline-block' }} />
-          {red} expired
-        </span>
-      )}
+    <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 3 }}>
+      {lics.map((l) => {
+        const st = licStatus(l);
+        const abbr = (l.licence_type ?? '?').split(' ').map((w) => w[0]).join('').slice(0, 4).toUpperCase();
+        return (
+          <span
+            key={l.id}
+            style={{ ...MC[st], padding: '1px 5px', borderRadius: 4, fontSize: 9, fontWeight: 800, letterSpacing: '.03em', fontFamily: 'monospace', lineHeight: 1.6 }}
+          >
+            {abbr}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -506,13 +510,6 @@ interface MatrixProps {
   licByStaff: Map<string, LicenceRow[]>;
   licTypes: string[];
 }
-
-const MC: Record<LicStatus, React.CSSProperties> = {
-  current:  { background: '#DCFCE7', color: '#15803D' },
-  ne:       { background: '#EFF6FF', color: '#1D4ED8' },
-  expiring: { background: '#FEF3C7', color: '#B45309' },
-  expired:  { background: '#FEE2E2', color: '#B91C1C' },
-};
 
 function MatrixView({ rows, loading, licByStaff, licTypes }: MatrixProps) {
   if (loading) {
