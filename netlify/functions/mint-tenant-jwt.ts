@@ -69,18 +69,25 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     .maybeSingle<Pick<CanonicalUser, 'id' | 'tenant_id' | 'role' | 'is_platform_admin' | 'active'>>();
 
   if (userErr || !user) return jsonResponse(401, { valid: false });
-  if (user.tenant_id !== session.tenant_id) return jsonResponse(401, { valid: false });
 
-  // Resolve the caller's own tenant plane (URL + anon key) from tenant_routing.
+  // Use the session's active tenant (not the user's home tenant) — users can
+  // switch tenants via select-tenant and session.tenant_id reflects that.
+  const activeTenantId = session.tenant_id;
+
+  // Resolve the active tenant plane (URL + anon key) from tenant_routing.
   let routing;
   try {
-    routing = await getRoutingById(user.tenant_id, true);
+    routing = await getRoutingById(activeTenantId, true);
   } catch (e) {
     return jsonResponse(500, { error: `tenant routing: ${(e as Error).message}` });
   }
 
   const ttlSeconds = parseTtl(req);
   const sourceApp = new URL(req.url).searchParams.get('source_app') ?? 'shell';
+
+  // Role comes from the session cookie (set by verify-shell-session for the
+  // active tenant's membership), not from user.tenant_id which is the home tenant.
+  const activeRole = session.role ?? user.role;
 
   let token: string;
   let exp: number;
@@ -89,8 +96,8 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     ({ token, exp } = signJwtWithSecret(
       SKS_JWT_SECRET,
       user.id,
-      user.tenant_id,
-      user.role,
+      activeTenantId,
+      activeRole,
       user.is_platform_admin,
       ttlSeconds,
       sourceApp,
@@ -101,8 +108,8 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     }
     ({ token, exp } = signSupabaseJwt(
       user.id,
-      user.tenant_id,
-      user.role,
+      activeTenantId,
+      activeRole,
       user.is_platform_admin,
       ttlSeconds,
       sourceApp,
