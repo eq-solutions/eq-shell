@@ -1,12 +1,12 @@
 import './CoreHome.css';
 import React from 'react';
-import { Link, useParams } from 'react-router-dom';
 import {
-  Home, HardHat, Wrench, Users, Package, BarChart3,
-  Search, Bell, ChevronDown, LogOut, Network,
+  Search, Bell, ChevronDown, Network,
   Check, Sparkles, ExternalLink, ArrowRight, X,
 } from 'lucide-react';
 import { useSession } from '../session';
+import { HubLayout } from '../components/HubLayout';
+import { defaultSidebarRecords } from '../lib/sidebarConfig';
 
 /* ─────────────────────────────────────────
    Types
@@ -313,15 +313,7 @@ function formatDate(): { date: string; time: string } {
   };
 }
 
-function formatRole(raw: string): string {
-  return raw.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function initials(name: string): string {
-  return name.split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
-}
-
-const LOGO_W = 'https://pub-409bd651f2e549f4907f5a856a9264ae.r2.dev/EQ_logo_white_transparent.svg';
+const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 /* Custom icon — trace glyph (3 nodes + connecting paths) */
 function TraceIcon({ size = 15 }: { size?: number }) {
@@ -607,14 +599,12 @@ function CanonMap({ onClose }: { onClose: () => void }) {
 ───────────────────────────────────────── */
 export default function CoreHome() {
   const { session } = useSession();
-  const { tenantSlug } = useParams<{ tenantSlug: string }>();
 
   const [filter,   setFilter]   = React.useState<string>('all');
   const [resolved, setResolved] = React.useState<Record<string, ResolvedHow>>({});
   const [showMap,  setShowMap]  = React.useState(false);
   const [dateInfo] = React.useState(formatDate);
 
-  /* Esc closes the canonical layer */
   React.useEffect(() => {
     if (!showMap) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowMap(false); };
@@ -626,7 +616,6 @@ export default function CoreHome() {
     setResolved((prev) => ({ ...prev, [id]: how }));
   }, []);
 
-  /* Derived counts */
   const counts = React.useMemo<Record<string, number>>(() => {
     const c: Record<string, number> = { all: 0 };
     DECISIONS.forEach((d) => {
@@ -649,58 +638,13 @@ export default function CoreHome() {
   );
   const allClear = counts.all === 0;
 
-  const slug = tenantSlug ?? '';
-  const userName   = session?.user?.name ?? '';
-  const firstName  = userName.split(' ')[0] || 'there';
+  const firstName  = session?.user?.name?.split(' ')[0] || 'there';
   const tenantName = session?.tenant?.name ?? 'EQ';
-  const userRole   = session?.user?.role ? formatRole(session.user.role) : 'User';
-  const userInit   = userName ? initials(userName) : 'EQ';
 
   return (
-    <div className="eq-home">
-      {/* ── Sidebar ── */}
-      <aside className="eq-home-side">
-        <div className="eq-home-brand">
-          <img src={LOGO_W} alt="EQ" />
-        </div>
-
-        <div className="eq-home-grp">Workspace</div>
-
-        <button className="eq-home-nav on">
-          <Home size={18} /><span className="eq-home-nav-lbl">Home</span>
-          <span className="eq-home-nav-badge">{counts.all}</span>
-        </button>
-        <Link className="eq-home-nav" to={`/${slug}/field`}>
-          <HardHat size={18} /><span className="eq-home-nav-lbl">Field</span>
-        </Link>
-        <Link className="eq-home-nav" to={`/${slug}/service`}>
-          <Wrench size={18} /><span className="eq-home-nav-lbl">Service</span>
-        </Link>
-        <Link className="eq-home-nav" to={`/${slug}/field`}>
-          <Users size={18} /><span className="eq-home-nav-lbl">People</span>
-        </Link>
-        <Link className="eq-home-nav" to={`/${slug}/field`}>
-          <Package size={18} /><span className="eq-home-nav-lbl">Plant & equipment</span>
-        </Link>
-        <Link className="eq-home-nav" to={`/${slug}/reports`}>
-          <BarChart3 size={18} /><span className="eq-home-nav-lbl">Reports</span>
-        </Link>
-
-        <div className="eq-home-side-foot">
-          <div className="eq-home-me">
-            <span className="eq-home-me-av">{userInit}</span>
-            <span className="eq-home-me-info">
-              <div className="eq-home-me-name">{userName || 'User'}</div>
-              <div className="eq-home-me-role">{userRole}</div>
-            </span>
-            <span className="eq-home-me-out"><LogOut size={15} /></span>
-          </div>
-        </div>
-      </aside>
-
-      {/* ── Main frame ── */}
-      <div className="eq-home-frame">
-        {/* Topbar */}
+    <>
+      <HubLayout sidebarRecords={SIDEBAR_RECORDS} fullWidth>
+        {/* Thin topbar with tenant name, date, and canonical layer trigger */}
         <header className="eq-home-top">
           <div className="eq-home-top-l">
             <button className="eq-home-tenant">
@@ -724,11 +668,10 @@ export default function CoreHome() {
           </div>
         </header>
 
-        {/* Body */}
+        {/* Decision queue */}
         <main className="eq-home-main">
           <div className="eq-home-content">
 
-            {/* Queue header */}
             <div className="dq-head">
               <span className="dq-eyebrow">
                 <span className="dq-eyebrow-spark"><Sparkles size={14} /></span>
@@ -747,10 +690,8 @@ export default function CoreHome() {
               </div>
             </div>
 
-            {/* Two-col layout */}
             <div className="dq-wrap">
 
-              {/* Left rail */}
               <div className="dq-rail">
                 <div className="dq-rail-hd">Queue</div>
 
@@ -790,7 +731,6 @@ export default function CoreHome() {
                 </div>
               </div>
 
-              {/* Decision stack */}
               <div className="dq-stack">
                 {allClear ? (
                   <div className="dq-empty">
@@ -819,10 +759,10 @@ export default function CoreHome() {
             </div>
           </div>
         </main>
-      </div>
+      </HubLayout>
 
-      {/* Canonical map overlay */}
+      {/* Canonical map overlay — position:fixed, renders over everything */}
       {showMap && <CanonMap onClose={() => setShowMap(false)} />}
-    </div>
+    </>
   );
 }
