@@ -116,6 +116,18 @@ function mapLicence(row: Record<string, unknown>): LicenceRow {
   };
 }
 
+// ─── HOOKS ───────────────────────────────────────────────────────────────────
+
+function useIsMobile(): boolean {
+  const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  useEffect(() => {
+    const fn = () => setMobile(window.innerWidth < 768);
+    window.addEventListener('resize', fn, { passive: true });
+    return () => window.removeEventListener('resize', fn);
+  }, []);
+  return mobile;
+}
+
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 
 export function StaffPage() {
@@ -131,6 +143,7 @@ export function StaffPage() {
   const [tipId,      setTipId]      = useState<string | null>(null);
   const [tipRect,    setTipRect]    = useState<DOMRect | null>(null);
   const tipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMobile = useIsMobile();
 
   // Staff fetch — active only, all records, re-runs after mutations
   useEffect(() => {
@@ -239,7 +252,7 @@ export function StaffPage() {
       <div style={s.page}>
 
         {/* Zone A — header */}
-        <div style={s.ph}>
+        <div style={{ ...s.ph, flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'flex-end', padding: isMobile ? '12px 16px 0' : '16px 24px 0', gap: isMobile ? 8 : 0 }}>
           <div>
             <h1 style={s.title}>Staff</h1>
             <p style={s.subtitle}>
@@ -249,7 +262,7 @@ export function StaffPage() {
           <a
             href="/.netlify/functions/cards-export-licences"
             download
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 11, fontWeight: 700, textDecoration: 'none', fontFamily: 'inherit', alignSelf: 'flex-end', marginBottom: 4 }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 11, fontWeight: 700, textDecoration: 'none', fontFamily: 'inherit', alignSelf: isMobile ? 'flex-start' : 'flex-end', marginBottom: isMobile ? 0 : 4 }}
           >
             Compliance pack
           </a>
@@ -291,21 +304,33 @@ export function StaffPage() {
           </div>
         ) : view === 'list' ? (
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-            <StaffList
-              rows={sortedStaff}
-              loading={loading}
-              selId={selId}
-              licByStaff={licByStaff}
-              onSelect={selectRow}
-              onShowTip={showTip}
-              onHideTip={hideTip}
-              onMutated={handleMutated}
-            />
-            <SplitPanel
-              staff={selStaff}
-              lics={selStaff ? (licByStaff.get(selStaff.id) ?? []) : []}
-              onClose={() => setSelId(null)}
-            />
+            {isMobile ? (
+              <MobileStaffList
+                rows={sortedStaff}
+                loading={loading}
+                selId={selId}
+                licByStaff={licByStaff}
+                onSelect={selectRow}
+              />
+            ) : (
+              <>
+                <StaffList
+                  rows={sortedStaff}
+                  loading={loading}
+                  selId={selId}
+                  licByStaff={licByStaff}
+                  onSelect={selectRow}
+                  onShowTip={showTip}
+                  onHideTip={hideTip}
+                  onMutated={handleMutated}
+                />
+                <SplitPanel
+                  staff={selStaff}
+                  lics={selStaff ? (licByStaff.get(selStaff.id) ?? []) : []}
+                  onClose={() => setSelId(null)}
+                />
+              </>
+            )}
           </div>
         ) : (
           <MatrixView
@@ -316,8 +341,17 @@ export function StaffPage() {
           />
         )}
 
-        {/* Tooltip */}
-        {tipId && tipRect && (
+        {/* Mobile bottom sheet — shown instead of split panel */}
+        {isMobile && selStaff && (
+          <MobileSheet
+            staff={selStaff}
+            lics={licByStaff.get(selStaff.id) ?? []}
+            onClose={() => setSelId(null)}
+          />
+        )}
+
+        {/* Tooltip — desktop only (hover doesn't exist on touch) */}
+        {!isMobile && tipId && tipRect && (
           <LicTip lics={licByStaff.get(tipId) ?? []} rect={tipRect} />
         )}
       </div>
@@ -498,6 +532,142 @@ function LicChips({ lics }: { lics: LicenceRow[] }) {
           </span>
         );
       })}
+    </div>
+  );
+}
+
+// ─── MOBILE STAFF LIST ───────────────────────────────────────────────────────
+
+function MobileStaffList({
+  rows, loading, selId, licByStaff, onSelect,
+}: {
+  rows: StaffRow[];
+  loading: boolean;
+  selId: string | null;
+  licByStaff: Map<string, LicenceRow[]>;
+  onSelect: (id: string) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? rows.filter((r) => fullName(r).toLowerCase().includes(q)) : rows;
+  }, [rows, search]);
+
+  if (loading) {
+    return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8' }}>Loading…</div>;
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid #F1F5F9', flexShrink: 0 }}>
+        <input
+          type="search"
+          placeholder="Search staff…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none', background: '#F8FAFC' }}
+        />
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+        {filtered.length === 0 && (
+          <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>No results</div>
+        )}
+        {filtered.map((row) => {
+          const lics = licByStaff.get(row.id) ?? [];
+          const sel = row.id === selId;
+          const worst = lics.some((l) => licStatus(l) === 'expired')
+            ? '#EF4444'
+            : lics.some((l) => licStatus(l) === 'expiring')
+            ? '#F59E0B'
+            : null;
+          return (
+            <div
+              key={row.id}
+              onClick={() => onSelect(row.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid #F1F5F9', background: sel ? '#EAF5FB' : 'white', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', borderLeft: worst ? `3px solid ${worst}` : '3px solid transparent' } as React.CSSProperties}
+            >
+              <div style={{ width: 38, height: 38, borderRadius: '50%', background: avatarColour(row.id), color: 'white', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {initials(row.first_name, row.last_name)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#1A1A2E', lineHeight: 1.2 }}>{fullName(row)}</div>
+                {row.employment_type && <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{row.employment_type}</div>}
+                {lics.length > 0 && <div style={{ marginTop: 5 }}><LicChips lics={lics} /></div>}
+                {lics.length === 0 && <div style={{ marginTop: 3, fontSize: 11, color: '#CBD5E1' }}>No licences recorded</div>}
+              </div>
+              <span style={{ color: '#CBD5E1', fontSize: 20, fontWeight: 300, flexShrink: 0 }}>›</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── MOBILE BOTTOM SHEET ─────────────────────────────────────────────────────
+
+function MobileSheet({
+  staff, lics, onClose,
+}: {
+  staff: StaffRow;
+  lics: LicenceRow[];
+  onClose: () => void;
+}) {
+  const groupedLics = useMemo(() => {
+    const cur: LicenceRow[] = [], exp: LicenceRow[] = [], red: LicenceRow[] = [];
+    for (const l of lics) {
+      const st = licStatus(l);
+      if (st === 'current' || st === 'ne') cur.push(l);
+      else if (st === 'expiring') exp.push(l);
+      else red.push(l);
+    }
+    return { cur, exp, red };
+  }, [lics]);
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.35)' }}
+      onClick={onClose}
+    >
+      <div
+        style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white', borderRadius: '16px 16px 0 0', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Drag handle */}
+        <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'center', padding: '10px 0 2px' }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: '#E2E8F0' }} />
+        </div>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px 12px', borderBottom: '1px solid #F1F5F9', flexShrink: 0 }}>
+          <div style={{ width: 42, height: 42, borderRadius: '50%', background: avatarColour(staff.id), color: 'white', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {initials(staff.first_name, staff.last_name)}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#1A1A2E' }}>{fullName(staff)}</div>
+            <div style={{ fontSize: 12, color: '#64748B', marginTop: 1 }}>{[staff.trade, staff.employment_type].filter(Boolean).join(' · ')}</div>
+          </div>
+          <button type="button" onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid #E2E8F0', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <X size={14} />
+          </button>
+        </div>
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 40px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+          {staff.email && <PField label="Email" value={staff.email} />}
+          {staff.level && <PField label="Level" value={staff.level} />}
+          <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '12px 0 6px' }}>
+            Licences &amp; Training ({lics.length} held)
+          </div>
+          {lics.length === 0 ? (
+            <p style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No licences recorded</p>
+          ) : (
+            <>
+              {groupedLics.cur.length > 0 && <LicGroup label="Active" colour="#22C55E" lics={groupedLics.cur} />}
+              {groupedLics.exp.length > 0 && <LicGroup label="Expiring soon" colour="#F59E0B" lics={groupedLics.exp} />}
+              {groupedLics.red.length > 0 && <LicGroup label="Expired" colour="#EF4444" lics={groupedLics.red} />}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
