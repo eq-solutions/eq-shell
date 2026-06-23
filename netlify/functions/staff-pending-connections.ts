@@ -66,19 +66,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const userIds = workerInitiated.map((a) => a.worker_user_id);
 
+  type WorkerProfile = { user_id: string; first_name: string | null; last_name: string | null; phone: string | null };
+
   const { data: workers } = (await sbPublic
     .from('workers')
     .select('user_id, first_name, last_name, phone')
-    .in('user_id', userIds)) as {
-    data: Array<{
-      user_id: string;
-      first_name: string | null;
-      last_name: string | null;
-      phone: string | null;
-    }> | null;
-  };
+    .in('user_id', userIds)) as { data: WorkerProfile[] | null };
 
-  const workerMap = new Map<string, (typeof workers)[0]>();
+  const workerMap = new Map<string, WorkerProfile>();
   for (const w of workers ?? []) workerMap.set(w.user_id, w);
 
   // Licence counts from canonical (public.licences, not worker_credentials)
