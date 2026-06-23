@@ -322,7 +322,7 @@ async function handleApplication({
 
   // Resolve which app_data.staff record to use.
   //   confirmed_staff_id !== undefined  → admin chose via the match panel (non-null = link existing, null = create new)
-  //   confirmed_staff_id === undefined  → legacy path: auto-detect by phone
+  //   confirmed_staff_id === undefined  → auto-detect: cards_worker_id first (authoritative), then phone
   let staffId: string;
   let isExistingStaff: boolean;
 
@@ -331,7 +331,23 @@ async function handleApplication({
     isExistingStaff = confirmed_staff_id !== null;
   } else {
     let autoDetected: { staff_id: string } | null = null;
-    if (phoneVariants.length > 0) {
+
+    // 1. Primary: look for a Field record already linked to this canonical worker.
+    //    This is the most reliable signal — set on previous approvals and unaffected
+    //    by phone format variations.
+    if (worker?.id) {
+      ({ data: autoDetected } = (await tenantAny
+        .schema('app_data')
+        .from('staff')
+        .select('staff_id')
+        .eq('tenant_id', tenantId)
+        .eq('cards_worker_id', worker.id)
+        .limit(1)
+        .maybeSingle()) as { data: { staff_id: string } | null });
+    }
+
+    // 2. Fallback: match by phone across normalised variants.
+    if (!autoDetected && phoneVariants.length > 0) {
       ({ data: autoDetected } = (await tenantAny
         .schema('app_data')
         .from('staff')
@@ -341,6 +357,7 @@ async function handleApplication({
         .limit(1)
         .maybeSingle()) as { data: { staff_id: string } | null });
     }
+
     staffId = autoDetected?.staff_id ?? randomUUID();
     isExistingStaff = !!autoDetected;
   }
@@ -439,13 +456,32 @@ async function handleApplication({
   if (worker?.id) {
     const workerId = worker.id;
     (async () => {
-      await Promise.all([
-        sbPublic.from('workers').update({ staff_id: staffId }).eq('id', workerId),
+      const { data: currentWorker } = (await sbPublic
+        .from('workers')
+        .select('staff_id')
+        .eq('id', workerId)
+        .maybeSingle()) as { data: { staff_id: string | null } | null };
+
+      const tasks: Promise<unknown>[] = [
         tenantAny.schema('app_data').from('staff')
           .update({ cards_worker_id: workerId })
           .eq('staff_id', staffId)
           .eq('tenant_id', tenantId),
-      ]);
+      ];
+
+      const existingStaffId = currentWorker?.staff_id ?? null;
+      if (!existingStaffId || existingStaffId === staffId) {
+        // Safe to set: either unset or already pointing at this record (idempotent).
+        tasks.push(sbPublic.from('workers').update({ staff_id: staffId }).eq('id', workerId));
+      } else {
+        // workers.staff_id already points somewhere else. Log and skip — don't clobber
+        // a link that may have been set by a previous (correct) approval.
+        console.warn('[cards-approve-staff] workers.staff_id already set, skipping overwrite', {
+          worker_id: workerId, existing: existingStaffId, resolved: staffId,
+        });
+      }
+
+      await Promise.all(tasks);
     })().catch((e: unknown) => console.error('[cards-approve-staff] application FK link failed', e));
   }
 
