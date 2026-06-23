@@ -13,7 +13,7 @@ import { BrandProvider } from './brand';
 import { identifyUser, resetUser } from './observability';
 import LoginPage from './pages/LoginPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
-import CoreHome from './pages/CoreHome';
+import TenantHome from './pages/TenantHome';
 import FieldIframe from './pages/FieldIframe';
 import CardsIframe from './pages/CardsIframe';
 import AcceptInvite from './pages/AcceptInvite';
@@ -437,7 +437,7 @@ function TenantTree() {
         </div>
       )}
       <Routes>
-        <Route index element={<CoreHome />} />
+        <Route index element={<TenantHome />} />
         <Route
           path="field"
           element={<ModuleGate module="field">{null}</ModuleGate>}
