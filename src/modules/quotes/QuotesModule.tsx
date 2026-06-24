@@ -1370,7 +1370,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       p_email: newContactEmail.trim() || null,
     });
     setAddingContact(false);
-    if (error || !data) { setAddingContactErr(error?.message ?? "Could not save contact — try again."); return; }
+    if (error || !data) { captureRpcError("eq_upsert_contact", error, { customer_id: createCustomerId }); setAddingContactErr(error?.message ?? "Could not save contact — try again."); return; }
     setAddingContactErr(null);
     const newId = data as string;
     const newContact: ContactRow = {
@@ -1782,13 +1782,15 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   const handleRevise = async () => {
     if (!supabase || !detail) return;
     setDuplicating(true);
-    // 1. Supersede the original
-    await supabase.rpc("eq_update_quote_status", {
+    // 1. Supersede the original — must succeed before duplicating to avoid an
+    //    active quote existing alongside its revision.
+    const { error: supersededErr } = await supabase.rpc("eq_update_quote_status", {
       p_quote_id: detail.quote_id,
       p_new_status: "superseded",
       p_note: null,
       p_initials: initials.trim() || null,
     });
+    if (supersededErr) { captureRpcError("eq_update_quote_status", supersededErr, { quote_id: detail.quote_id, op: "supersede" }); setDuplicating(false); setDetailError(supersededErr.message); return; }
     // 2. Duplicate to a new draft
     const { data, error } = await supabase.rpc("eq_duplicate_quote", { p_source_quote_id: detail.quote_id });
     setDuplicating(false);
