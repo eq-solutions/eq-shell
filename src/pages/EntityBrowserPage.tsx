@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { X } from 'lucide-react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
 import { useSession } from '../session';
 import { useCan } from '../permissions';
@@ -1294,8 +1294,11 @@ function EntityCreateDrawer({
 }
 
 export default function EntityBrowserPage() {
-  const { entity } = useParams<{ entity: string }>();
+  const { entity, tenantSlug } = useParams<{ entity: string; tenantSlug: string }>();
   const { session } = useSession();
   if (!session) return null;
+  // Licences are canonical (jvkn public.licences), not in the tenant data plane.
+  // Staff page is the correct surface — it reads via staff-canonical-licences.
+  if (entity === 'licence') return <Navigate to={`/${tenantSlug}/staff`} replace />;
   return <EntityBrowserInner entity={entity ?? ''} />;
 }
