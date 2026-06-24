@@ -26,32 +26,28 @@ function setCachedDashboard(key: string, data: DashboardResponse): void {
   _dashboardCache.set(key, { data, ts: Date.now() });
 }
 
-const HUB_APPS: Array<{ key: string; label: string; to: string; isBeta: boolean; alwaysShow?: boolean; platformOnly?: boolean }> = [
-  { key: 'field',     label: 'EQ Field',   to: 'field',     isBeta: false },
-  { key: 'service',   label: 'EQ Service', to: 'service',   isBeta: false },
-  // EQ Quotes — the standalone tool the team uses today (external redirect).
-  { key: 'eq-quotes', label: 'EQ Quotes',  to: 'eq-quotes', isBeta: false, alwaysShow: true },
-  // EQ Ops — in-shell replacement; gated on the `ops` module entitlement (per-tenant) + platform admins.
-  { key: 'ops',       label: 'EQ Ops',     to: 'ops',       isBeta: false, platformOnly: true },
-  { key: 'cards',     label: 'EQ Cards',   to: 'cards',     isBeta: true  },
-  { key: 'comms',     label: 'NSW Comms',  to: 'comms',     isBeta: true  },
+const HUB_APPS: Array<{ key: string; label: string; to: string; isBeta: boolean; platformOnly?: boolean }> = [
+  { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
+  { key: 'service', label: 'EQ Service', to: 'service', isBeta: false },
+  // EQ Ops — in-shell quoting surface; gated on the `ops` module entitlement (per-tenant) + platform admins.
+  { key: 'ops',     label: 'EQ Ops',     to: 'ops',     isBeta: false, platformOnly: true },
+  { key: 'cards',   label: 'EQ Cards',   to: 'cards',   isBeta: true  },
+  { key: 'comms',   label: 'NSW Comms',  to: 'comms',   isBeta: true  },
 ];
 
 interface DashboardCounts {
   field:   number | null;
   service: number | null;
-  quotes:  number | null;
 }
 
 function extractCounts(data: DashboardResponse): DashboardCounts {
-  const counts: DashboardCounts = { field: null, service: null, quotes: null };
+  const counts: DashboardCounts = { field: null, service: null };
   if (!data.ok || !data.counts) return counts;
   for (const row of data.counts) {
     if (typeof row.count_total !== 'number') continue;
     switch (row.entity) {
       case 'staff':    counts.field   = row.count_total; break;
       case 'incident': counts.service = row.count_total || null; break;
-      case 'quote':    counts.quotes  = row.count_total || null; break;
     }
   }
   return counts;
@@ -73,7 +69,7 @@ export function HubLayout({
 }) {
   const { session } = useSession();
   const [liveCounts, setLiveCounts] = useState<DashboardCounts>({
-    field: null, service: null, quotes: null,
+    field: null, service: null,
   });
   const [pendingCount, setPendingCount] = useState<number>(0);
 

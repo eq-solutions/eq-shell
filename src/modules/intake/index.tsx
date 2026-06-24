@@ -55,6 +55,10 @@ function IntakeShell() {
   const aiProvider = useAiProvider();
 
   useEffect(() => {
+    // Wait until the shell session is confirmed before minting the SKS JWT —
+    // otherwise this races verify-shell-session and mint-sks-jwt sees an
+    // expired (or not-yet-refreshed) cookie and returns 401.
+    if (!session) return;
     let cancelled = false;
     (async () => {
       try {
@@ -67,7 +71,7 @@ function IntakeShell() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [session?.tenant.id]);
 
   if (err) {
     return (
