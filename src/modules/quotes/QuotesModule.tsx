@@ -756,6 +756,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
 
   // PDF download + email
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [pdfErr, setPdfErr] = useState<string | null>(null);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [emailTo, setEmailTo] = useState("");
   const [emailToName, setEmailToName] = useState("");
@@ -1694,6 +1695,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     setCreating(false);
     clearDraft();
     resetCreateForm();
+    setView("pipeline");
     void loadQuotes(statusFilter, search);
     const loaded = await openDetail(createdQuoteId);
     // Auto-open the email form so the user can send the quote immediately.
@@ -2485,6 +2487,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   const handleDownloadPdf = async () => {
     if (!detail || !supabase) return;
     setDownloadingPdf(true);
+    setPdfErr(null);
     try {
       const res = await fetch("/.netlify/functions/quote-pdf", {
         method: "POST",
@@ -2492,7 +2495,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
         body: JSON.stringify({ quote_id: detail.quote_id }),
         credentials: "include",
       });
-      if (!res.ok) return;
+      if (!res.ok) { setPdfErr("Could not generate PDF — try again."); return; }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -2504,7 +2507,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      // Auto-mark sent if not already set
+      // Auto-mark sent + advance draft → submitted on first PDF download
       if (!detail.sent_at) {
         const today = new Date().toISOString().slice(0, 10);
         await supabase.rpc("eq_set_sent_at", {
@@ -2513,6 +2516,15 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
           p_initials: initials.trim() || null,
         });
         patchQuoteInList(detail.quote_id, { sent_at: today });
+        if (detail.status === "draft") {
+          await supabase.rpc("eq_update_quote_status", {
+            p_quote_id: detail.quote_id,
+            p_new_status: "submitted",
+            p_note: null,
+            p_initials: initials.trim() || null,
+          });
+          patchQuoteInList(detail.quote_id, { status: "submitted" });
+        }
         await openDetail(detail.quote_id);
       }
     } finally {
@@ -2534,6 +2546,15 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       const json = await res.json() as { ok: boolean; error?: string };
       if (json.ok) {
         setEmailMsg({ ok: true, text: `Sent to ${emailTo.trim()}.` });
+        if (detail.status === "draft") {
+          await supabase.rpc("eq_update_quote_status", {
+            p_quote_id: detail.quote_id,
+            p_new_status: "submitted",
+            p_note: null,
+            p_initials: initials.trim() || null,
+          });
+          patchQuoteInList(detail.quote_id, { status: "submitted" });
+        }
         setEmailTo("");
         setEmailToName("");
         setShowEmailForm(false);
@@ -3200,6 +3221,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                 />
               </div>
               {jobCreationErr && <span className="eq-quotes__inline-err">{jobCreationErr}</span>}
+              {pdfErr && <span className="eq-quotes__inline-err">{pdfErr}</span>}
             </div>
           )}
           {/* Email PDF inline form */}
