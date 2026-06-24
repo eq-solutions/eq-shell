@@ -45,7 +45,6 @@ import FieldRosterPage from './pages/FieldRosterPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { StaffPage } from './pages/StaffPage';
 import ServiceIframe from './pages/ServiceIframe';
-const QuotesNative = lazy(() => import('./pages/QuotesNative'));
 const EqQuotesExternal = lazy(() => import('./pages/EqQuotesExternal'));
 const EqOpsPage = lazy(() => import('./pages/EqOps'));
 import StorageBrowser from './pages/StorageBrowser';
@@ -528,16 +527,8 @@ function TenantTree() {
           element={<ModuleGate module="service">{null}</ModuleGate>}
         />
         {/* EQ Ops — native job-tracking module (reads sks-canonical via eq_list_quotes RPCs) */}
-        <Route
-          path="quotes"
-          element={
-            <ModuleGate module="quotes">
-              <Suspense fallback={<PageLoadingFallback />}>
-                <QuotesNative />
-              </Suspense>
-            </ModuleGate>
-          }
-        />
+        {/* /quotes was the old in-shell QuotesNative path; EQ Ops is the canonical surface now */}
+        <Route path="quotes" element={<Navigate to="ops" replace />} />
         {/* EQ Quotes — external redirect; opens quotes.eq.solutions in a new tab */}
         <Route
           path="eq-quotes"

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AlertTriangle, Check, Building2, MapPin, User, Users, BadgeCheck, ChevronRight, Wrench, FileText, CreditCard, Network, ScrollText } from 'lucide-react';
+import { AlertTriangle, Check, Building2, MapPin, User, Users, BadgeCheck, ChevronRight, Wrench, FileText, CreditCard, Network } from 'lucide-react';
 import { useSession, moduleEnabled, type EqTier, type EqRole } from '../session';
 import { HubSidebar, HUB_APP_ICONS, type HubApp } from '../components/HubSidebar';
 import { MobileTabBar } from '../components/MobileTabBar';
@@ -191,12 +191,11 @@ const APP_COLORS: Record<string, string> = {
 };
 
 const APP_TILE_ICONS: Record<string, React.ReactNode> = {
-  field:   <Users     size={20} aria-hidden="true" />,
-  service: <Wrench    size={20} aria-hidden="true" />,
-  ops:     <FileText  size={20} aria-hidden="true" />,
+  field:   <Users      size={20} aria-hidden="true" />,
+  service: <Wrench     size={20} aria-hidden="true" />,
+  ops:     <FileText   size={20} aria-hidden="true" />,
   cards:   <CreditCard size={20} aria-hidden="true" />,
-  comms:   <Network   size={20} aria-hidden="true" />,
-  'eq-quotes': <ScrollText size={20} aria-hidden="true" />,
+  comms:   <Network    size={20} aria-hidden="true" />,
 };
 
 

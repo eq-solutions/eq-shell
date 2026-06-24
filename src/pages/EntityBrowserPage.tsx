@@ -1297,8 +1297,7 @@ export default function EntityBrowserPage() {
   const { entity, tenantSlug } = useParams<{ entity: string; tenantSlug: string }>();
   const { session } = useSession();
   if (!session) return null;
-  // Licences are canonical (jvkn public.licences), not in the tenant data plane.
-  // Staff page is the correct surface — it reads via staff-canonical-licences.
-  if (entity === 'licence') return <Navigate to={`/${tenantSlug}/staff`} replace />;
+  // Licences and staff have richer dedicated pages — redirect to those surfaces.
+  if (entity === 'licence' || entity === 'staff') return <Navigate to={`/${tenantSlug}/staff`} replace />;
   return <EntityBrowserInner entity={entity ?? ''} />;
 }

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, NavLink, useMatch, useParams } from 'react-router-dom';
 import {
   Users, Wrench, FileText, CreditCard, House, CircleUser, Settings, LogOut,
-  Grid3x3, ShieldCheck, BarChart2, Download, ClipboardList, ArrowRightLeft,
+  Grid3x3, ShieldCheck, BarChart2, Download, ClipboardList, UserPlus,
   ChevronRight,
 } from 'lucide-react';
 import { useSession, moduleEnabled } from '../session';
@@ -117,13 +117,13 @@ export function MobileTabBar() {
         )}
 
         <NavLink
-          to={`/${tenantSlug}/admin/access-control`}
+          to={`/${tenantSlug}/settings/2fa`}
           className="eq-mob-sheet__row"
           role="menuitem"
           onClick={closeAll}
         >
           <span className="eq-mob-sheet__row-ic"><ShieldCheck size={18} strokeWidth={2} aria-hidden="true" /></span>
-          <span className="eq-mob-sheet__row-label">Security</span>
+          <span className="eq-mob-sheet__row-label">Two-factor security</span>
           <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
         </NavLink>
 
@@ -222,6 +222,19 @@ export function MobileTabBar() {
         </NavLink>
 
         <NavLink
+          to={`/${tenantSlug}/admin/workers`}
+          className="eq-mob-sheet__row"
+          role="menuitem"
+          onClick={closeAll}
+        >
+          <span className="eq-mob-sheet__row-ic">
+            <UserPlus size={18} strokeWidth={2} aria-hidden="true" />
+          </span>
+          <span className="eq-mob-sheet__row-label">Worker invites</span>
+          <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
+        </NavLink>
+
+        <NavLink
           to={`/${tenantSlug}/admin/audit`}
           className="eq-mob-sheet__row"
           role="menuitem"
@@ -231,19 +244,6 @@ export function MobileTabBar() {
             <ClipboardList size={18} strokeWidth={2} aria-hidden="true" />
           </span>
           <span className="eq-mob-sheet__row-label">Audit log</span>
-          <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
-        </NavLink>
-
-        <NavLink
-          to={`/${tenantSlug}/admin/migration`}
-          className="eq-mob-sheet__row"
-          role="menuitem"
-          onClick={closeAll}
-        >
-          <span className="eq-mob-sheet__row-ic">
-            <ArrowRightLeft size={18} strokeWidth={2} aria-hidden="true" />
-          </span>
-          <span className="eq-mob-sheet__row-label">Migration</span>
           <ChevronRight size={16} strokeWidth={2} className="eq-mob-sheet__row-chev" aria-hidden="true" />
         </NavLink>
 

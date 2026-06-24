@@ -2,7 +2,7 @@ import { useParams, useLocation } from 'react-router-dom';
 import {
   Users, Wrench, FileText, CreditCard, Building2, MapPin, User, Settings,
   Download, Users2, ClipboardList, Gauge, BarChart2, ShieldCheck, Database,
-  BadgeCheck, Network, ScrollText, UserPlus,
+  BadgeCheck, Network, UserPlus,
 } from 'lucide-react';
 import { AppSidebar, type AppSidebarSection } from '@eq-solutions/ui';
 import { useSession } from '../session';
@@ -32,13 +32,11 @@ export interface RecordLink {
 }
 
 export const HUB_APP_ICONS: Record<string, React.ReactNode> = {
-  field:      <Users size={16} aria-hidden="true" />,
-  service:    <Wrench size={16} aria-hidden="true" />,
-  quotes:     <FileText size={16} aria-hidden="true" />,
-  'eq-quotes': <ScrollText size={16} aria-hidden="true" />,
-  cards:      <CreditCard size={16} aria-hidden="true" />,
-  comms:      <Network size={16} aria-hidden="true" />,
-  ops:        <FileText size={16} aria-hidden="true" />,
+  field:   <Users size={16} aria-hidden="true" />,
+  service: <Wrench size={16} aria-hidden="true" />,
+  cards:   <CreditCard size={16} aria-hidden="true" />,
+  comms:   <Network size={16} aria-hidden="true" />,
+  ops:     <FileText size={16} aria-hidden="true" />,
 };
 
 const RECORD_ICONS: Record<string, React.ReactNode> = {
