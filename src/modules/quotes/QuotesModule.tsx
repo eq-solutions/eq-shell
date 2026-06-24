@@ -921,8 +921,13 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     async (quoteId: string) => {
       if (!supabase) return;
       setDetailId(quoteId);
-      setDetail(null);
-      setAudit([]);
+      // Only blank the panel when switching to a different quote.
+      // Reloading the same quote (e.g. after an action) keeps the existing
+      // detail visible so the panel doesn't flash blank between updates.
+      if (quoteId !== detailIdRef.current) {
+        setDetail(null);
+        setAudit([]);
+      }
       setDetailLoading(true);
       setDetailError(null);
       setAdvanceStatus("");
@@ -1405,7 +1410,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     setCreateSiteId(d.site_id ?? "");
     setCreateSiteSearch(d.site_name ? `${d.site_name}${d.site_code ? ` [${d.site_code}]` : ""}` : "");
     setSiteContactsForForm([]);
-    setSelectedContactId(null);
+    setSelectedContactId(d.contact_id ?? null);
     setCreateProjectName(d.project_name ?? "");
     setCreateEstimatorName(d.estimator_name ?? "");
     setCreateEstimatorInitials(d.estimator_initials ?? "");
