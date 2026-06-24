@@ -183,12 +183,32 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const safeName   = d.customer_name ? `-${sanitiseFilename(d.customer_name)}` : '';
   const filename   = `JobCreation-${safeNumber}${safeName}.xlsx`;
 
+  // Auto-advance status to won-job-created on first job creation Excel download
+  let statusAdvanced: string | null = null;
+  const eligibleStatuses = ['verbal-win', 'won-awaiting-job-no'];
+  const { data: statusRow } = await rpcClient
+    .from('sks_quotes')
+    .select('status')
+    .eq('quote_id', quoteId)
+    .maybeSingle() as { data: { status: string } | null };
+
+  if (statusRow && eligibleStatuses.includes(statusRow.status)) {
+    const { error: statusErr } = await rpcClient.rpc('eq_update_quote_status', {
+      p_quote_id: quoteId,
+      p_new_status: 'won-job-created',
+      p_note: null,
+      p_initials: null,
+    });
+    if (!statusErr) statusAdvanced = 'won-job-created';
+  }
+
   return new Response(outBuffer as ArrayBuffer, {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Cache-Control': 'no-store',
+      ...(statusAdvanced ? { 'X-Status-Advanced': statusAdvanced } : {}),
     },
   });
 });

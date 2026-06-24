@@ -3186,7 +3186,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                     </button>
                   }
                   items={[
-                    { key: "job-creation", label: jobCreationBusy ? "Generating…" : "Job Creation", icon: <Briefcase size={14} />, disabled: jobCreationBusy, onClick: () => { void (async () => { setJobCreationBusy(true); setJobCreationErr(null); try { await generateJobExcel(detail.quote_id); } catch (e) { setJobCreationErr(e instanceof Error ? e.message : "Failed"); } finally { setJobCreationBusy(false); } })(); } },
+                    { key: "job-creation", label: jobCreationBusy ? "Generating…" : "Job Creation", icon: <Briefcase size={14} />, disabled: jobCreationBusy, onClick: () => { void (async () => { setJobCreationBusy(true); setJobCreationErr(null); try { const advanced = await generateJobExcel(detail.quote_id); if (advanced) { patchQuoteInList(detail.quote_id, { status: advanced }); await openDetail(detail.quote_id); } } catch (e) { setJobCreationErr(e instanceof Error ? e.message : "Failed"); } finally { setJobCreationBusy(false); } })(); } },
                     ...(!detail.sent_at && ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win"].includes(detail.status) ? [{ key: "mark-sent", label: markingSent ? "…" : detail.status === "draft" ? "Submit & Mark Sent" : "Mark as Sent", disabled: markingSent, onClick: () => void handleMarkAsSent() }] : []),
                     { key: "sep1", separator: true as const },
                     { key: "download-quote", label: "Download Quote", onClick: () => void handleGenerateDoc() },

@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, ImageIcon } from 'lucide-react';
-import { Table, type TableColumn } from '@eq-solutions/ui';
+import { Table, TableBulkAction, type TableColumn } from '@eq-solutions/ui';
 import { archiveStaff } from '../lib/entityActions';
 import { HubLayout } from '../components/HubLayout';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
@@ -164,7 +164,9 @@ export function StaffPage() {
   const [pending,    setPending]    = useState<PendingWorker[]>([]);
   const [tipId,      setTipId]      = useState<string | null>(null);
   const [tipRect,    setTipRect]    = useState<DOMRect | null>(null);
-  const [toast,      setToast]      = useState<{ msg: string; ok: boolean } | null>(null);
+  const [toast,        setToast]        = useState<{ msg: string; ok: boolean } | null>(null);
+  const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set());
+  const [compBusy,     setCompBusy]     = useState(false);
   const tipTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMobile = useIsMobile();
@@ -174,6 +176,29 @@ export function StaffPage() {
     setToast({ msg, ok });
     toastTimer.current = setTimeout(() => setToast(null), 3500);
   }, []);
+
+  const handleCompliancePack = useCallback(async (staffIdFilter?: string[]) => {
+    setCompBusy(true);
+    try {
+      const res = await fetch('/.netlify/functions/cards-export-licences', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(staffIdFilter ? { staff_ids: staffIdFilter } : {}),
+      });
+      if (!res.ok) { showToast('Export failed', false); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'compliance-pack.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch { showToast('Export failed', false); }
+    finally { setCompBusy(false); }
+  }, [showToast]);
 
   // Staff fetch — active only, all records, re-runs after mutations
   useEffect(() => {
@@ -324,13 +349,14 @@ export function StaffPage() {
               {loading ? 'Loading…' : `${sortedStaff.length} ${sortedStaff.length === 1 ? 'person' : 'people'}`}
             </p>
           </div>
-          <a
-            href="/.netlify/functions/cards-export-licences"
-            download
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 11, fontWeight: 700, textDecoration: 'none', fontFamily: 'inherit', alignSelf: isMobile ? 'flex-start' : 'flex-end', marginBottom: isMobile ? 0 : 4 }}
+          <button
+            type="button"
+            disabled={compBusy}
+            onClick={() => { void handleCompliancePack(selectedIds.size > 0 ? [...selectedIds] : undefined); }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#475569', fontSize: 11, fontWeight: 700, cursor: compBusy ? 'wait' : 'pointer', fontFamily: 'inherit', alignSelf: isMobile ? 'flex-start' : 'flex-end', marginBottom: isMobile ? 0 : 4, opacity: compBusy ? 0.6 : 1 }}
           >
-            Compliance pack
-          </a>
+            {compBusy ? 'Preparing…' : selectedIds.size > 0 ? `Compliance pack (${selectedIds.size})` : 'Compliance pack'}
+          </button>
         </div>
 
         {/* Pending connections */}
@@ -389,6 +415,9 @@ export function StaffPage() {
                   onShowTip={showTip}
                   onHideTip={hideTip}
                   onMutated={handleMutated}
+                  selectedIds={selectedIds}
+                  onSelectionChange={setSelectedIds}
+                  onCompliancePack={handleCompliancePack}
                 />
                 <SplitPanel
                   staff={selStaff}
@@ -518,9 +547,12 @@ interface ListProps {
   onShowTip: (id: string, rect: DOMRect) => void;
   onHideTip: () => void;
   onMutated: () => void;
+  selectedIds: Set<string>;
+  onSelectionChange: (ids: Set<string>) => void;
+  onCompliancePack: (staffIdFilter?: string[]) => Promise<void>;
 }
 
-function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHideTip, onMutated }: ListProps) {
+function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHideTip, onMutated, selectedIds, onSelectionChange, onCompliancePack }: ListProps) {
   const staffCols = useMemo<TableColumn<StaffRow>[]>(() => [
     {
       key: 'name',
@@ -589,6 +621,32 @@ function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHi
         rowStyle={(row) => row.id === selId ? { background: '#e1f1fb' } : undefined}
         pagination={{ pageSize: 25 }}
         summary={(v, t) => <>Showing <strong>{v}</strong> of <strong>{t.toLocaleString()}</strong></>}
+        selectedIds={selectedIds}
+        onSelectionChange={onSelectionChange}
+        bulkActions={(selectedRows, clearSel) => {
+          const exportCsv = () => {
+            const header = 'Name,Email,Phone,Type';
+            const cell = (v: string | null | undefined) => {
+              if (!v) return '';
+              return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v;
+            };
+            const lines = selectedRows.map((r) => [cell(fullName(r)), cell(r.email), cell(r.phone), cell(r.employment_type)].join(','));
+            const csv = [header, ...lines].join('\r\n');
+            const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+            const a = document.createElement('a');
+            a.href = url; a.download = `staff-${selectedRows.length}.csv`; a.click();
+            URL.revokeObjectURL(url);
+            clearSel();
+          };
+          return (
+            <>
+              <TableBulkAction onClick={exportCsv}>Export CSV</TableBulkAction>
+              <TableBulkAction onClick={() => { void onCompliancePack(selectedRows.map((r) => r.id)).then(() => clearSel()); }}>
+                Compliance pack
+              </TableBulkAction>
+            </>
+          );
+        }}
         onArchive={async (rows) => { await archiveStaff(rows.map((r) => r.id)); onMutated(); }}
         archiveConfirm={{ description: (n) => `${n} staff member${n === 1 ? '' : 's'} will be set to inactive and removed from the active roster.` }}
         onActionError={(_action, err) => console.error('[staff] bulk archive failed', err)}

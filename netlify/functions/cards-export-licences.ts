@@ -48,13 +48,24 @@ function csvCell(v: string | null | undefined): string {
 }
 
 export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
-  if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+  if (req.method !== 'GET' && req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
   const session = verifySessionToken(readSessionCookie(req));
   if (!session) return new Response(JSON.stringify({ error: 'Not signed in' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
 
   if (!can(session, 'admin.review_cards')) {
     return new Response(JSON.stringify({ error: 'Manager access required' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // Optional staff_ids filter (POST body) — limits export to the given app_data.staff IDs
+  let staffIds: string[] | null = null;
+  if (req.method === 'POST') {
+    try {
+      const body = (await req.json()) as { staff_ids?: string[] };
+      if (Array.isArray(body.staff_ids) && body.staff_ids.length > 0) {
+        staffIds = body.staff_ids;
+      }
+    } catch { /* no body — export all */ }
   }
 
   const sb = getServiceClient();
@@ -73,12 +84,28 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return new Response(JSON.stringify({ error: 'Organisation not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
   }
 
-  // All active workers connected to this org
-  const { data: members } = (await sbPublic
+  // When staff_ids filter is provided, resolve to canonical user_ids via workers.staff_id
+  let filteredUserIds: string[] | null = null;
+  if (staffIds) {
+    const { data: linkedWorkers } = (await sbPublic
+      .from('workers')
+      .select('user_id')
+      .in('staff_id', staffIds)) as { data: Array<{ user_id: string }> | null };
+    filteredUserIds = (linkedWorkers ?? []).map((w) => w.user_id).filter(Boolean);
+    if (filteredUserIds.length === 0) {
+      return new Response(JSON.stringify({ workers: 0 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+  }
+
+  // Active workers connected to this org (optionally filtered to resolved user_ids)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let memberQuery: any = sbPublic
     .from('org_memberships')
     .select('user_id')
     .eq('org_id', orgRow.id)
-    .eq('status', 'active')) as { data: Array<{ user_id: string }> | null };
+    .eq('status', 'active');
+  if (filteredUserIds) memberQuery = memberQuery.in('user_id', filteredUserIds);
+  const { data: members } = (await memberQuery) as { data: Array<{ user_id: string }> | null };
 
   const userIds = (members ?? []).map((m) => m.user_id);
   if (userIds.length === 0) {

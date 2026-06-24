@@ -511,7 +511,8 @@ export async function generateQuoteDoc(q: QuoteDocData, mode: "detailed" | "summ
 // the binary xlsx. Budget uses COST (not sell) per user spec.
 // ---------------------------------------------------------------------------
 
-export async function generateJobExcel(quoteId: string): Promise<void> {
+// Returns the new status slug if the server auto-advanced it (e.g. 'won-job-created'), else null.
+export async function generateJobExcel(quoteId: string): Promise<string | null> {
   const resp = await fetch("/.netlify/functions/job-creation", {
     method: "POST",
     credentials: "include",
@@ -528,4 +529,5 @@ export async function generateJobExcel(quoteId: string): Promise<void> {
   const match = cd.match(/filename="([^"]+)"/);
   const filename = match ? match[1] : `JobCreation-${quoteId}.xlsx`;
   triggerDownload(blob, filename);
+  return resp.headers.get("X-Status-Advanced");
 }
