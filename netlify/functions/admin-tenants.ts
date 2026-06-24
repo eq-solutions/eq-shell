@@ -23,7 +23,7 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-const ALLOWED_MODULES = ['cards', 'field', 'service', 'intake', 'quotes'] as const;
+const ALLOWED_MODULES = ['cards', 'field', 'service', 'intake', 'ops', 'quotes'] as const;
 
 export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
   // Platform admin only
