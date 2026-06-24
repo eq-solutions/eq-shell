@@ -132,7 +132,7 @@ export default function QuotesNative() {
             </button>
           </div>
         ) : (
-          <QuotesModule supabase={client} sessionName={session?.user.name} homeHref={session ? `/${session.tenant.slug}` : undefined} />
+          <QuotesModule supabase={client} sessionName={session?.user.name} homeHref={session ? `/${session.tenant.slug}/ops` : undefined} />
         )}
       </div>
     </HubLayout>

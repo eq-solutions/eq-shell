@@ -211,6 +211,10 @@ interface Site {
   name: string;
   code: string | null;
   customer_id: string | null;
+  address_line_1: string | null;
+  suburb: string | null;
+  state: string | null;
+  postcode: string | null;
 }
 
 interface CreateLineItem {
@@ -778,6 +782,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   const [sites, setSites] = useState<Site[]>([]);
   const [sitesLoading, setSitesLoading] = useState(false);
   const [presets, setPresets] = useState<RatePreset[]>([]);
+  const [defaultMaterialMarkup, setDefaultMaterialMarkup] = useState("10");
   const [createCustomerId, setCreateCustomerId] = useState("");
   const [createCustomerSearch, setCreateCustomerSearch] = useState("");
   const [createSiteId, setCreateSiteId] = useState("");
@@ -989,6 +994,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       // Change history (best-effort; never blocks the detail view).
       const { data: auditData } = await supabase.rpc("eq_list_quote_audit", { p_quote_id: quoteId });
       setAudit((auditData as QuoteAuditEntry[]) ?? []);
+      return row;
     },
     [supabase],
   );
@@ -1050,6 +1056,16 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     if (!supabase) return;
     const { data, error } = await supabase.rpc("eq_list_rate_presets");
     if (!error) setPresets((data as RatePreset[]) ?? []);
+  }, [supabase]);
+
+  const loadPricingConfig = useCallback(async () => {
+    if (!supabase) return;
+    const { data } = await supabase.rpc("eq_get_pricing_config");
+    const row = (data as Record<string, unknown>[] | null)?.[0];
+    if (row?.material_markup) {
+      const pct = ((Number(row.material_markup) - 1) * 100).toFixed(1);
+      setDefaultMaterialMarkup(pct);
+    }
   }, [supabase]);
 
   const loadTemplates = useCallback(async () => {
@@ -1148,6 +1164,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     if (view === "create" || view === "edit") {
       void loadCustomers();
       void loadPresets();
+      void loadPricingConfig();
       void loadTemplates();
       void loadCalcProducts();
       void loadEstimators();
@@ -1220,9 +1237,11 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     setPdfParsing(false);
     setPdfParseErr(null);
     setCreateProjectName("");
-    const savedEstName = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-estimator-name") : null) ?? sessionName ?? "";
-    const savedEstInitials = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null)
-      ?? (sessionName ? sessionName.split(" ").map((w) => w[0] ?? "").join("").toUpperCase().slice(0, 4) : "");
+    // New quote always defaults to the logged-in Shell user; localStorage captures manual overrides.
+    const savedEstName = sessionName ?? (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-estimator-name") : null) ?? "";
+    const savedEstInitials = sessionName
+      ? sessionName.split(" ").map((w) => w[0] ?? "").join("").toUpperCase().slice(0, 4)
+      : (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-initials") : null) ?? "";
     setCreateEstimatorName(savedEstName);
     setCreateEstimatorInitials(savedEstInitials);
     const savedTerms = (typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-payment-terms") : null) ?? "";
@@ -1456,7 +1475,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   };
 
   const addLineItem = (category = "labour") => {
-    setCreateLineItems((prev) => [...prev, { description: "", qty: "1", unit: "", cost: "", markup: "", rate: "", category }]);
+    const markup = category === "labour" ? "" : defaultMaterialMarkup;
+    setCreateLineItems((prev) => [...prev, { description: "", qty: "1", unit: "", cost: "", markup, rate: "", category }]);
   };
 
   const applyPreset = (preset: RatePreset) => {
@@ -1637,6 +1657,15 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     });
     if (itemsErr) { captureRpcError("eq_replace_line_items", itemsErr, { quote_id: row.quote_id, op: "create" }); setCreateError(itemsErr.message); setCreating(false); return; }
 
+    // Link selected contact so contact_email is available in Word doc.
+    if (selectedContactId) {
+      await supabase.rpc("eq_link_quote_contact", {
+        p_quote_id: row.quote_id,
+        p_contact_id: selectedContactId,
+        p_initials: createEstimatorInitials.trim() || null,
+      });
+    }
+
     // Audit: record creation on the quote timeline (best-effort, non-blocking).
     await supabase.rpc("eq_add_quote_note", {
       p_quote_id: row.quote_id,
@@ -1645,11 +1674,21 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       p_initials: createEstimatorInitials.trim() || null,
     });
 
+    const createdQuoteId = row.quote_id;
+    const createdInitials = createEstimatorInitials.trim();
     setCreating(false);
     clearDraft();
     resetCreateForm();
     void loadQuotes(statusFilter, search);
-    void openDetail(row.quote_id);
+    const loaded = await openDetail(createdQuoteId);
+    // Auto-open the email form so the user can send the quote immediately.
+    setShowEmailForm(true);
+    if (loaded) {
+      const name = [loaded.attn_first_name, loaded.attn_name].filter(Boolean).join(" ");
+      if (name) setEmailToName(name);
+      if (loaded.contact_email) setEmailTo(loaded.contact_email);
+    }
+    if (createdInitials) setInitials(createdInitials);
   };
 
   const handleEditQuote = async () => {
@@ -4380,6 +4419,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                           if (match.site_id !== createSiteId) {
                             setCreateSiteId(match.site_id);
                             void loadSiteContactsForForm(match.site_id);
+                            const addrParts = [match.address_line_1, match.suburb, match.state, match.postcode].filter(Boolean);
+                            if (addrParts.length > 0) setCreateAddress(addrParts.join(", "));
                           }
                         } else {
                           setCreateSiteId("");
@@ -4736,29 +4777,31 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                               >
                                 + Add {sec.label.toLowerCase()} line
                               </button>
-                              {presets
-                                .filter((p) => (p.category ?? "") === sec.value)
-                                .map((p) => (
-                                  <button
-                                    key={p.preset_id}
-                                    type="button"
-                                    onClick={() => applyPreset(p)}
-                                    title={p.unit_rate_cents > 0 ? `${aud(p.unit_rate_cents)}${p.unit ? ` / ${p.unit}` : ""}` : undefined}
+                              {(() => {
+                                const catPresets = presets.filter((p) => (p.category ?? "") === sec.value);
+                                if (catPresets.length === 0) return null;
+                                return (
+                                  <select
                                     style={{
-                                      display: "inline-flex", alignItems: "center", gap: 4,
-                                      padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 500,
+                                      fontSize: 12, padding: "2px 8px", borderRadius: 4,
                                       border: "1px solid var(--eq-border)", background: "var(--eq-surface)",
-                                      color: "var(--eq-text)", cursor: "pointer", whiteSpace: "nowrap",
+                                      color: "var(--eq-text)", cursor: "pointer",
+                                    }}
+                                    value=""
+                                    onChange={(e) => {
+                                      const preset = catPresets.find((p) => p.preset_id === e.target.value);
+                                      if (preset) applyPreset(preset);
                                     }}
                                   >
-                                    {p.description}
-                                    {p.unit_rate_cents > 0 && (
-                                      <span style={{ color: "var(--eq-muted)", fontSize: 10 }}>
-                                        {aud(p.unit_rate_cents)}{p.unit ? `/${p.unit}` : ""}
-                                      </span>
-                                    )}
-                                  </button>
-                                ))}
+                                    <option value="">Rate preset…</option>
+                                    {catPresets.map((p) => (
+                                      <option key={p.preset_id} value={p.preset_id}>
+                                        {p.description}{p.unit_rate_cents > 0 ? ` — ${aud(p.unit_rate_cents)}${p.unit ? `/${p.unit}` : ""}` : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                );
+                              })()}
                             </div>
                           </td>
                         </tr>
@@ -5298,7 +5341,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
               { n: needsJobNo,   label: "need a job no.",       tone: "sky",   icon: <Briefcase size={15} />,     on: () => { resetSmartFilters(); setNeedsJobNoOnly(true); setStatusFilter("active-jobs"); } },
               { n: expiringSoon, label: "expiring ≤ 14 days",   tone: "amber", icon: <Clock size={15} />,         on: () => { resetSmartFilters(); setExpiringOnly(true); setStatusFilter("all"); } },
               { n: overdueFup,   label: "follow-ups overdue",   tone: "err",   icon: <CalendarClock size={15} />, on: () => { resetSmartFilters(); setOverdueFupOnly(true); setStatusFilter("all"); } },
-              { n: staleCount,   label: "stale — no follow-up", tone: "muted", icon: <AlarmClock size={15} />,    on: () => { resetSmartFilters(); setStaleOnly(true); setStatusFilter("open"); } },
+              { n: staleCount,   label: "stale — no follow-up", tone: "muted", icon: <AlarmClock size={15} />,    on: () => { resetSmartFilters(); setStaleOnly(true); setStatusFilter("all"); } },
             ].filter((c) => c.n > 0);
             if (cards.length === 0) return null;
             return (
