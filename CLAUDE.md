@@ -35,8 +35,8 @@ When you change anything in this list, also verify the downstream consumer:
 
 | File / behaviour | Downstream that depends on it |
 |---|---|
-| `netlify/functions/_shared/token.ts` (`ShellTokenPayload`, `ServiceTokenPayload`) | eq-solves-field's `verify-pin.js` (action `verify-shell-token`), eq-solves-service's `/.netlify/functions/shell-auth` |
-| `netlify/functions/mint-iframe-token.ts` (`aud='field'` default + `aud='service'`) | eq-solves-field iframe handoff (PR #106 on Milmlow/eq-field-app); eq-solves-service `/shell` → `/api/shell-auth`. There is **no** separate `mint-service-iframe-token.ts` — Service is the `aud='service'` branch of this file. |
+| `netlify/functions/_shared/token.ts` (`ServiceTokenPayload`, `SessionPayload`, etc.) | eq-solves-service's `/.netlify/functions/shell-auth`. **`ShellTokenPayload` / `signShellToken()` — the Field HMAC handoff — is RETIRED (dead code, no caller); the live Field handoff is a Supabase JWT, see the `token-exchange.ts` row below.** |
+| `netlify/functions/token-exchange.ts` (Supabase JWT — HS256 `SUPABASE_JWT_SECRET`, 60s TTL, `source_app=field:<slug>`; `aud='field'` + `aud='service'`) | eq-solves-field iframe handoff — Field `verify-pin.js` (action `verify-shell-token`) verifies the JWT; eq-solves-service `/shell` → `/api/shell-auth`. **Replaced the HMAC `mint-iframe-token.ts`, removed in the Phase 3/4 HMAC retirement (eq-context `auth-phase4-hmac-retirement-runbook.md`). Service is still the `aud='service'` branch — no separate minter.** |
 | `netlify/functions/mint-cards-iframe-token.ts` | eq-cards Flutter web app (`CARDS_USE_SHELL_SSO=true`) |
 | Session cookie shape in `_shared/token.ts` (`SessionPayload`) | Every Netlify function that calls `verifySessionToken` — login/logout/verify/mint-* all assume it |
 | Supabase JWT shape in `_shared/supabase-jwt.ts` | All RLS policies on eq-canonical (read `auth.jwt() -> 'app_metadata' ->> 'tenant_id'`) |

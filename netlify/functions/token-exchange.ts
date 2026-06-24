@@ -1,5 +1,13 @@
 // POST /.netlify/functions/token-exchange
 //
+// LIVE STATUS (verified 2026-06-24): Phase 3/4 is DONE — this is the SOLE iframe
+// token minter. The HMAC path (mint-iframe-token.ts / signShellToken) has been
+// removed; signShellToken() in _shared/token.ts is now dead code. The Field
+// receiver kept action="verify-shell-token" (it verifies this Supabase JWT with
+// SUPABASE_JWT_SECRET) — it was NOT renamed to verify-supabase-token as the
+// Phase-2 note below speculated. Ref: eq-context auth-phase4-hmac-retirement-runbook.md.
+// The Phase 2/3 narrative below is historical.
+//
 // Phase 2 (C4 shadow mode) — mints a Supabase JWT for an embedded app iframe
 // instead of the HMAC token that mint-iframe-token produces.
 //

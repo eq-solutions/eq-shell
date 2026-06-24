@@ -7,12 +7,15 @@
 //      Lives in the eq_shell_session cookie on .eq.solutions.
 //      Signed with EQ_SESSION_SALT (falls back to EQ_SECRET_SALT).
 //
-//   2. Field iframe handoff token — { kind: 'shell-token', name, role, exp }
-//      Minted by mint-iframe-token, validated by EQ Field's
-//      /.netlify/functions/verify-pin (action="verify-shell-token").
-//      Must match EQ Field's verifyShellToken() shape exactly —
-//      see Field-side PR #106 (Phase 1.C) for the contract.
-//      Signed with EQ_FIELD_HANDOFF_KEY (falls back to EQ_SECRET_SALT).
+//   2. Field iframe handoff token — RETIRED (Phase 3/4 HMAC retirement; verified
+//      live 2026-06-24). The Field iframe handoff is now a short-lived Supabase
+//      JWT minted by token-exchange.ts (HS256, SUPABASE_JWT_SECRET, 60s TTL);
+//      Field's verify-pin (action="verify-shell-token") verifies that JWT.
+//      The HMAC ShellTokenPayload + signShellToken() below are DEAD CODE — no
+//      caller in netlify/functions, and mint-iframe-token.ts has been removed
+//      from the repo. Retained only until EQ_SECRET_SALT is retired (see
+//      eq-context auth-phase4-hmac-retirement-runbook.md). Was:
+//      { kind: 'shell-token', name, role, exp }, signed with EQ_FIELD_HANDOFF_KEY.
 //
 //   3. Service bridge token — { iss, aud, email, tenant_slug, exp }
 //      Signed with EQ_SHELL_BRIDGE_SECRET (already isolated — no EQ_SECRET_SALT fallback).
@@ -36,7 +39,7 @@
 //
 // Required env vars per consumer:
 //   EQ_SESSION_SALT          — session cookies + internal shell tokens
-//   EQ_FIELD_HANDOFF_KEY     — field iframe handoff tokens (must also be set in eq-solves-field)
+//   EQ_FIELD_HANDOFF_KEY     — LEGACY/unused: the Field handoff is now a Supabase JWT (token-exchange.ts); this HMAC key is dead pending EQ_SECRET_SALT retirement
 //   EQ_SERVICE_HANDOFF_KEY   — reserved for future service iframe tokens
 //   EQ_QUOTES_HANDOFF_KEY    — quotes iframe handoff tokens (must also be set in eq-quotes)
 //   EQ_SHELL_BRIDGE_SECRET   — service bridge tokens (already existed; no EQ_SECRET_SALT fallback)
