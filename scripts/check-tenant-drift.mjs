@@ -367,6 +367,11 @@ const KNOWN_LEGACY_ANON = {
     // (the base table denies writes). Verified live on ehow 2026-06-16.
     'service.assets', 'service.contacts', 'service.customers', 'service.sites',
     'service.contract_scopes',
+    // EQ Service RCD/test bridge views (security_invoker=on, SELECT … FROM app_data.<table>):
+    // base app_data.{rcd_tests,rcd_test_circuits,test_records,test_record_readings} are all
+    // RLS-on with a <t>_tenant policy, so invoker-rights reads/writes are tenant-gated — the
+    // view object reporting rls=off is not a real exposure. Verified live on ehow 2026-06-24.
+    'service.rcd_tests', 'service.rcd_test_circuits', 'service.test_records', 'service.test_record_readings',
     // pass-through views on public.* (views cannot have RLS enabled — tracked debt)
     'app_data.field_audit_log', 'app_data.field_leave_requests', 'app_data.field_prestarts',
     'app_data.field_schedule', 'app_data.field_site_diaries', 'app_data.field_timesheets',
