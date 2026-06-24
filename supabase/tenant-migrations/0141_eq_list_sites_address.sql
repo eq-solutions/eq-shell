@@ -56,7 +56,3 @@ $$;
 
 REVOKE ALL ON FUNCTION public.eq_list_sites(uuid) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.eq_list_sites(uuid) TO authenticated;
-
-INSERT INTO app_data._eq_migrations(name, checksum)
-VALUES ('0141_eq_list_sites_address', NULL)
-ON CONFLICT (name) DO NOTHING;
