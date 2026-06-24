@@ -77,7 +77,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     .from('licences')
     .select('id, user_id, licence_type, licence_number, expiry_date, never_expires')
     .in('user_id', linkedUserIds)
-    .is('deleted_at', null)) as {
+    .is('deleted_at', null)
+    .eq('is_private', false)) as {
     data: Array<{
       id: string;
       user_id: string;
