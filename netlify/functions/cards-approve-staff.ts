@@ -412,6 +412,39 @@ async function handleApplication({
     isExistingStaff = !!autoDetected;
   }
 
+  // Dedup guard: when admin explicitly chose "create new" via the match panel
+  // (confirmed_staff_id === null), the phone/email checks above were skipped.
+  // Guard against phone-format variants (0x vs +61x) or email collisions that
+  // the match panel may have missed. If we find a definitive match, use it.
+  if (!isExistingStaff && confirmed_staff_id === null) {
+    let guardMatch: { staff_id: string } | null = null;
+    if (worker?.email) {
+      ({ data: guardMatch } = (await tenantAny
+        .schema('app_data')
+        .from('staff')
+        .select('staff_id')
+        .eq('tenant_id', tenantId)
+        .eq('email', worker.email)
+        .limit(1)
+        .maybeSingle()) as { data: { staff_id: string } | null });
+    }
+    if (!guardMatch && phoneVariants.length > 0) {
+      ({ data: guardMatch } = (await tenantAny
+        .schema('app_data')
+        .from('staff')
+        .select('staff_id')
+        .eq('tenant_id', tenantId)
+        .in('phone', phoneVariants)
+        .limit(1)
+        .maybeSingle()) as { data: { staff_id: string } | null });
+    }
+    if (guardMatch) {
+      console.warn(`[cards-approve-staff] dedup guard: matched existing staff ${guardMatch.staff_id} by email/phone — linking instead of creating`);
+      staffId = guardMatch.staff_id;
+      isExistingStaff = true;
+    }
+  }
+
   if (!isExistingStaff) {
     const { error: staffInsertErr } = await tenantAny
       .schema('app_data')
