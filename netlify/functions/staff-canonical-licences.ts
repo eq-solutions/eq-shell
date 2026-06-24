@@ -92,12 +92,30 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (licErr) return json(500, { error: licErr.message });
 
-  // 5. Shape for StaffPage.tsx — replace user_id with staff_id, normalise no_expiry
+  // 5. Batch-generate signed URLs for licence card photos (front.jpg).
+  //    Path: {tenant_id}/{user_id}/{licence_id}/front.jpg in licence-photos bucket.
+  //    createSignedUrls generates URLs regardless of whether the file exists;
+  //    the UI handles 404s gracefully (onError hides the photo).
+  const photoPaths = (licences ?? [])
+    .filter((l) => staffIdByUser.has(l.user_id))
+    .map((l) => `${tenantId}/${l.user_id}/${l.id}/front.jpg`);
+
+  const { data: signedData } = photoPaths.length > 0
+    ? await sb.storage.from('licence-photos').createSignedUrls(photoPaths, 3600)
+    : { data: [] };
+
+  const photoUrlByPath = new Map<string, string>();
+  for (const item of (signedData ?? []) as Array<{ path: string; signedUrl: string; error: unknown }>) {
+    if (item.signedUrl && !item.error) photoUrlByPath.set(item.path, item.signedUrl);
+  }
+
+  // 6. Shape for StaffPage.tsx — replace user_id with staff_id, normalise no_expiry
   const rows = (licences ?? [])
     .map((l) => {
       const staffId = staffIdByUser.get(l.user_id);
       if (!staffId) return null;
       const neverExpires = l.never_expires || l.expiry_date === '9999-12-31';
+      const path = `${tenantId}/${l.user_id}/${l.id}/front.jpg`;
       return {
         id:             l.id,
         staff_id:       staffId,
@@ -105,6 +123,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         licence_number: l.licence_number ?? null,
         expiry_date:    neverExpires ? null : l.expiry_date,
         no_expiry:      neverExpires,
+        photo_url:      photoUrlByPath.get(path) ?? null,
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);

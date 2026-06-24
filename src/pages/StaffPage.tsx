@@ -2,7 +2,7 @@
 // Route: /:tenant/staff
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, ImageIcon } from 'lucide-react';
 import { Table, type TableColumn } from '@eq-solutions/ui';
 import { archiveStaff } from '../lib/entityActions';
 import { HubLayout } from '../components/HubLayout';
@@ -15,6 +15,7 @@ interface StaffRow {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  phone: string | null;
   employment_type: string | null;
   trade: string | null;
   level: string | null;
@@ -28,6 +29,7 @@ interface LicenceRow {
   licence_number: string | null;
   expiry_date: string | null;
   no_expiry: boolean | null;
+  photo_url: string | null;
 }
 
 interface PendingWorker {
@@ -55,8 +57,19 @@ function avatarColour(id: string): string {
 function initials(first: string | null, last: string | null): string {
   return ((first?.[0] ?? '') + (last?.[0] ?? '')).toUpperCase() || '?';
 }
+// Some imported records store last_name as "MiddleName SURNAME_ALLCAPS".
+// Strip the middle prefix and title-case the true surname for display.
+function parseSurname(last: string | null): string | null {
+  if (!last) return null;
+  const parts = last.trim().split(/\s+/);
+  const final = parts[parts.length - 1];
+  if (parts.length > 1 && /^[A-Z]{2,}$/.test(final)) {
+    return final.charAt(0) + final.slice(1).toLowerCase();
+  }
+  return last;
+}
 function fullName(s: StaffRow): string {
-  return [s.first_name, s.last_name].filter(Boolean).join(' ') || 'Unnamed';
+  return [s.first_name, parseSurname(s.last_name)].filter(Boolean).join(' ') || 'Unnamed';
 }
 function licStatus(l: LicenceRow): LicStatus {
   if (l.no_expiry || !l.expiry_date) return 'ne';
@@ -106,6 +119,7 @@ function mapStaff(row: Record<string, unknown>): StaffRow {
     first_name:       (row['first_name']      as string  | null) ?? null,
     last_name:        (row['last_name']        as string  | null) ?? null,
     email:            (row['email']            as string  | null) ?? null,
+    phone:            (row['phone']            as string  | null) ?? null,
     employment_type:  (row['employment_type']  as string  | null) ?? null,
     trade:            (row['trade']            as string  | null) ?? null,
     level:            (row['level']            as string  | null) ?? null,
@@ -120,6 +134,7 @@ function mapLicence(row: Record<string, unknown>): LicenceRow {
     licence_number:(row['licence_number'] as string  | null) ?? null,
     expiry_date:   (row['expiry_date']    as string  | null) ?? null,
     no_expiry:     (row['no_expiry']      as boolean | null) ?? null,
+    photo_url:     (row['photo_url']      as string  | null) ?? null,
   };
 }
 
@@ -231,6 +246,23 @@ export function StaffPage() {
   }, []);
 
   const handleMutated = useCallback(() => setReload((n) => n + 1), []);
+
+  const handleEditSave = useCallback(async (
+    staffId: string,
+    fields: { first_name: string; last_name: string; email: string; phone: string; trade: string; level: string; employment_type: string },
+  ): Promise<void> => {
+    const res = await fetch('/.netlify/functions/staff-update', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staff_id: staffId, ...fields }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error ?? 'Save failed');
+    }
+    handleMutated();
+    showToast('Record updated');
+  }, [handleMutated, showToast]);
 
   const handleApprove = useCallback(async (applicationId: string) => {
     const worker = pending.find((p) => p.application_id === applicationId);
@@ -362,6 +394,7 @@ export function StaffPage() {
                   staff={selStaff}
                   lics={selStaff ? (licByStaff.get(selStaff.id) ?? []) : []}
                   onClose={() => setSelId(null)}
+                  onSaved={handleEditSave}
                 />
               </>
             )}
@@ -826,8 +859,59 @@ function MatrixView({ rows, loading, licByStaff, licTypes }: MatrixProps) {
 
 // ─── SPLIT PANEL ─────────────────────────────────────────────────────────────
 
-function SplitPanel({ staff, lics, onClose }: { staff: StaffRow | null; lics: LicenceRow[]; onClose: () => void }) {
+type SaveFn = (
+  staffId: string,
+  fields: { first_name: string; last_name: string; email: string; phone: string; trade: string; level: string; employment_type: string },
+) => Promise<void>;
+
+function SplitPanel({ staff, lics, onClose, onSaved }: { staff: StaffRow | null; lics: LicenceRow[]; onClose: () => void; onSaved: SaveFn }) {
   const open = staff !== null;
+  const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  // Edit field state
+  const [eFirst, setEFirst] = useState('');
+  const [eLast,  setELast]  = useState('');
+  const [eEmail, setEEmail] = useState('');
+  const [ePhone, setEPhone] = useState('');
+  const [eTrade, setETrade] = useState('');
+  const [eLevel, setELevel] = useState('');
+  const [eType,  setEType]  = useState('');
+
+  // Reset edit state whenever a different staff member is selected
+  useEffect(() => {
+    setEditMode(false);
+    setSaveErr(null);
+  }, [staff?.id]);
+
+  const enterEdit = () => {
+    if (!staff) return;
+    setEFirst(staff.first_name ?? '');
+    setELast(parseSurname(staff.last_name) ?? '');
+    setEEmail(staff.email ?? '');
+    setEPhone(staff.phone ?? '');
+    setETrade(staff.trade ?? '');
+    setELevel(staff.level ?? '');
+    setEType(staff.employment_type ?? '');
+    setSaveErr(null);
+    setEditMode(true);
+  };
+
+  const handleSave = async () => {
+    if (!staff) return;
+    setSaving(true);
+    setSaveErr(null);
+    try {
+      await onSaved(staff.id, { first_name: eFirst, last_name: eLast, email: eEmail, phone: ePhone, trade: eTrade, level: eLevel, employment_type: eType });
+      setEditMode(false);
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const groupedLics = useMemo(() => {
     const cur: LicenceRow[] = [], exp: LicenceRow[] = [], red: LicenceRow[] = [];
     for (const l of lics) {
@@ -838,6 +922,9 @@ function SplitPanel({ staff, lics, onClose }: { staff: StaffRow | null; lics: Li
     }
     return { cur, exp, red };
   }, [lics]);
+
+  const inp: React.CSSProperties = { width: '100%', padding: '5px 8px', border: '1px solid #CBD5E1', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', color: '#1A1A2E', background: 'white', boxSizing: 'border-box' };
+  const lbl: React.CSSProperties = { fontSize: 10, color: '#94A3B8', fontWeight: 600, marginBottom: 3, display: 'block' };
 
   return (
     <div style={{ ...s.pw, ...(open ? s.pwOpen : {}) }}>
@@ -856,33 +943,96 @@ function SplitPanel({ staff, lics, onClose }: { staff: StaffRow | null; lics: Li
                 <X size={14} />
               </button>
             </div>
-            <div style={s.pbody}>
-              <div style={s.psec}>Contact</div>
-              {staff.email && <PField label="Email" value={staff.email} />}
-              {staff.level && <PField label="Level" value={staff.level} />}
 
-              <div style={s.psec}>
-                Licences &amp; Training ({lics.length} held)
+            {editMode ? (
+              <div style={{ ...s.pbody, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={s.psec}>Edit record</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={lbl}>First name</label>
+                    <input style={inp} value={eFirst} onChange={(e) => setEFirst(e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Last name</label>
+                    <input style={inp} value={eLast} onChange={(e) => setELast(e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label style={lbl}>Email</label>
+                  <input style={inp} type="email" value={eEmail} onChange={(e) => setEEmail(e.target.value)} />
+                </div>
+                <div>
+                  <label style={lbl}>Phone</label>
+                  <input style={inp} type="tel" value={ePhone} onChange={(e) => setEPhone(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={lbl}>Trade</label>
+                    <input style={inp} value={eTrade} onChange={(e) => setETrade(e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Level</label>
+                    <input style={inp} value={eLevel} onChange={(e) => setELevel(e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label style={lbl}>Employment type</label>
+                  <input style={inp} value={eType} onChange={(e) => setEType(e.target.value)} />
+                </div>
+                {saveErr && <p style={{ fontSize: 11, color: '#EF4444', margin: 0 }}>{saveErr}</p>}
               </div>
+            ) : (
+              <div style={s.pbody}>
+                <div style={s.psec}>Contact</div>
+                {staff.email && <PField label="Email" value={staff.email} />}
+                {staff.phone && <PField label="Phone" value={staff.phone} />}
+                {staff.level && <PField label="Level" value={staff.level} />}
 
-              {lics.length === 0 ? (
-                <p style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>No licences recorded</p>
-              ) : (
-                <>
-                  {groupedLics.cur.length > 0 && (
-                    <LicGroup label="Active" colour="#22C55E" lics={groupedLics.cur} />
-                  )}
-                  {groupedLics.exp.length > 0 && (
-                    <LicGroup label="Expiring soon" colour="#F59E0B" lics={groupedLics.exp} />
-                  )}
-                  {groupedLics.red.length > 0 && (
-                    <LicGroup label="Expired" colour="#EF4444" lics={groupedLics.red} />
-                  )}
-                </>
-              )}
-            </div>
+                <div style={s.psec}>
+                  Licences &amp; Training ({lics.length} held)
+                </div>
+
+                {lics.length === 0 ? (
+                  <p style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>No licences recorded</p>
+                ) : (
+                  <>
+                    {groupedLics.cur.length > 0 && (
+                      <LicGroup label="Active" colour="#22C55E" lics={groupedLics.cur} />
+                    )}
+                    {groupedLics.exp.length > 0 && (
+                      <LicGroup label="Expiring soon" colour="#F59E0B" lics={groupedLics.exp} />
+                    )}
+                    {groupedLics.red.length > 0 && (
+                      <LicGroup label="Expired" colour="#EF4444" lics={groupedLics.red} />
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             <div style={s.pfoot}>
-              <button type="button" style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center' }}>Edit record</button>
+              {editMode ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => { void handleSave(); }}
+                    style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center', opacity: saving ? 0.6 : 1 }}
+                  >
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setEditMode(false)}
+                    style={{ ...s.btnSecondary, flex: 1, justifyContent: 'center' }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={enterEdit} style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center' }}>Edit record</button>
+              )}
             </div>
           </>
         )}
@@ -897,6 +1047,35 @@ function PField({ label, value }: { label: string; value: string }) {
       <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600, marginBottom: 2 }}>{label}</div>
       <div style={{ fontSize: 12, fontWeight: 600, color: '#1A1A2E' }}>{value}</div>
     </div>
+  );
+}
+
+function LicPhoto({ url }: { url: string }) {
+  const [revealed, setRevealed] = useState(false);
+  const [err, setErr] = useState(false);
+
+  if (!revealed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setRevealed(true)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px', border: '1px solid #E2E8F0', borderRadius: 5, background: 'white', color: '#64748B', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginTop: 3 }}
+      >
+        <ImageIcon size={10} />
+        View card
+      </button>
+    );
+  }
+  if (err) {
+    return <span style={{ fontSize: 10, color: '#CBD5E1', display: 'block', marginTop: 3 }}>No photo</span>;
+  }
+  return (
+    <img
+      src={url}
+      onError={() => setErr(true)}
+      style={{ display: 'block', width: 88, height: 55, objectFit: 'cover', borderRadius: 5, marginTop: 5, border: '1px solid #E2E8F0' }}
+      alt="Licence card"
+    />
   );
 }
 
@@ -918,16 +1097,19 @@ function LicGroup({ label, colour, lics }: { label: string; colour: string; lics
           : `Expires ${fmtDate(l.expiry_date)}`;
         const expColour = st === 'expiring' ? '#B45309' : st === 'expired' ? '#B91C1C' : '#94A3B8';
         return (
-          <div key={l.id} style={s.licRow}>
-            <div style={{ fontSize: 10, fontWeight: 800, color: '#1A1A2E', width: 40, flexShrink: 0 }}>
-              {(l.licence_type ?? '').split(' ').map((w) => w[0]).join('').slice(0, 4).toUpperCase()}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {l.licence_type ?? 'Unknown'}
+          <div key={l.id} style={{ ...s.licRow, flexDirection: 'column', alignItems: 'flex-start', gap: 0, paddingBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, width: '100%' }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: '#1A1A2E', width: 40, flexShrink: 0 }}>
+                {(l.licence_type ?? '').split(' ').map((w) => w[0]).join('').slice(0, 4).toUpperCase()}
               </div>
-              <div style={{ fontSize: 10, color: expColour, marginTop: 1 }}>{expText}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {l.licence_type ?? 'Unknown'}
+                </div>
+                <div style={{ fontSize: 10, color: expColour, marginTop: 1 }}>{expText}</div>
+              </div>
             </div>
+            {l.photo_url && <div style={{ paddingLeft: 40 }}><LicPhoto url={l.photo_url} /></div>}
           </div>
         );
       })}
@@ -1036,5 +1218,6 @@ const s: Record<string, React.CSSProperties> = {
   psec:      { fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '12px 0 6px', marginTop: 0 },
   pfoot:     { padding: '10px 16px 14px', borderTop: '1px solid #E2E8F0', display: 'flex', gap: 8, flexShrink: 0 },
   licRow:    { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, border: '1px solid #E2E8F0', marginBottom: 5, background: '#FAFAFA' },
-  btnPrimary:{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
+  btnPrimary:   { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
+  btnSecondary: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
 };
