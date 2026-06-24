@@ -33,7 +33,7 @@ const MODULE_OPTIONS = [
   { key: 'field',           label: 'EQ Field' },
   { key: 'cards',           label: 'Cards' },
   { key: 'intake',          label: 'Intake' },
-  { key: 'quotes',          label: 'Quotes' },
+  { key: 'ops',             label: 'EQ Ops' },
   { key: 'service',         label: 'Service' },
 ];
 

@@ -24,7 +24,7 @@ import type { EqRole } from '../session';
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
 const VALID_ROLES: EqRole[] = ['manager', 'supervisor', 'employee', 'apprentice', 'labour_hire'];
-const VALID_APPS = ['field', 'cards', 'intake', 'quotes', 'service'];
+const VALID_APPS = ['field', 'cards', 'intake', 'ops', 'service'];
 const MAX_ROWS = 50;
 
 function normaliseRole(raw: string): EqRole | null {

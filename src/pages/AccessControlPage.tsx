@@ -72,7 +72,7 @@ const MODULES: ModuleDef[] = [
   },
   {
     key: 'quotes',
-    label: 'Quotes',
+    label: 'EQ Ops',
     perms: [
       { key: 'quotes.view', label: 'View quotes' },
       { key: 'quotes.create', label: 'Create quotes' },

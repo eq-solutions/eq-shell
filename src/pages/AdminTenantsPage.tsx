@@ -58,7 +58,7 @@ function StatusBadge({ status }: StatusBadgeProps) {
   return <span className={meta.cls}>{meta.label}</span>;
 }
 
-const ALL_MODULES = ['cards', 'field', 'service', 'intake', 'quotes'] as const;
+const ALL_MODULES = ['cards', 'field', 'service', 'intake', 'ops'] as const;
 
 export default function AdminTenantsPage() {
   const { session } = useSession();

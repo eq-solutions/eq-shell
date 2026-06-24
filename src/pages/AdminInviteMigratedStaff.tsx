@@ -19,7 +19,7 @@ import type { EqRole } from '../session';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
-const VALID_APPS = ['field', 'cards', 'intake', 'quotes', 'service'] as const;
+const VALID_APPS = ['field', 'cards', 'intake', 'ops', 'service'] as const;
 const DEFAULT_APPS = ['field', 'cards'];
 const MAX_PER_BATCH = 50;
 
