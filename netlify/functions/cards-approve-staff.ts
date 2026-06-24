@@ -156,6 +156,57 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(500, { error: `Could not approve staff: ${updErr.message}` });
   }
 
+  // Grant org membership so licences appear in Shell's canonical licence view.
+  // staff-canonical-licences.ts gates on public.org_memberships — without this row
+  // the approved worker's licences are invisible even though field_approved is true.
+  // Awaited (not fire-and-forget) because an invisible worker is a silent failure.
+  {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sbPub = (sb as any).schema('public');
+    const { data: orgRow } = (await sbPub
+      .from('organisations')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .maybeSingle()) as { data: { id: string } | null };
+
+    if (orgRow && staffRow.phone) {
+      const bare = staffRow.phone.replace(/[^0-9]/g, '');
+      const suffix = bare.startsWith('61')
+        ? bare.slice(2)
+        : bare.startsWith('0') ? bare.slice(1) : bare;
+      const variants = suffix
+        ? [...new Set([staffRow.phone, `0${suffix}`, `+61${suffix}`].filter(Boolean) as string[])]
+        : [];
+      if (variants.length > 0) {
+        const { data: workerRow } = (await sbPub
+          .from('workers')
+          .select('user_id')
+          .in('phone', variants)
+          .limit(1)
+          .maybeSingle()) as { data: { user_id: string | null } | null };
+        if (workerRow?.user_id) {
+          await (sbPub
+            .from('org_memberships')
+            .insert({
+              org_id: orgRow.id,
+              user_id: workerRow.user_id,
+              role: 'member',
+              status: 'active',
+              invited_by: session.user_id,
+              invited_at: new Date().toISOString(),
+              accepted_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              tenant_id: tenantId,
+            }) as Promise<unknown>)
+            .catch((e: unknown) => {
+              // Swallow duplicate — if already active the worker is already visible.
+              console.warn('[cards-approve-staff] org_memberships insert skipped', e);
+            });
+        }
+      }
+    }
+  }
+
   // Link Cards worker ↔ Field staff record by phone so future credential syncs work.
   // Fire-and-forget — approval is already committed; a FK sync failure must not roll it back.
   if (staffRow.phone) {
@@ -498,7 +549,7 @@ async function handleApplication({
     .insert({
       org_id: app.org_id,
       user_id: app.worker_user_id,
-      role: 'worker',
+      role: 'member',
       status: 'active',
       invited_by: session.user_id,
       invited_at: new Date().toISOString(),

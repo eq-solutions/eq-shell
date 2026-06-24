@@ -72,10 +72,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const linkedUserIds = Array.from(staffIdByUser.keys());
   if (linkedUserIds.length === 0) return json(200, { licences: [] });
 
-  // 4. Canonical licences for connected, linked workers
+  // 4. Canonical licences for connected, linked workers.
+  //    photo_front_url stores the exact storage path Cards used when uploading
+  //    ({tenant_uuid}/{user_id}/{licence_id}/front.jpg). We read it directly
+  //    rather than reconstructing, because session.tenant_id is the slug ("sks"),
+  //    not the UUID that Cards embedded as the bucket path prefix.
   const { data: licences, error: licErr } = (await sbPublic
     .from('licences')
-    .select('id, user_id, licence_type, licence_number, expiry_date, never_expires')
+    .select('id, user_id, licence_type, licence_number, expiry_date, never_expires, photo_front_url, photo_back_url')
     .in('user_id', linkedUserIds)
     .is('deleted_at', null)
     .eq('is_private', false)) as {
@@ -86,19 +90,18 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       licence_number: string | null;
       expiry_date: string | null;
       never_expires: boolean;
+      photo_front_url: string | null;
+      photo_back_url: string | null;
     }> | null;
     error: { message: string } | null;
   };
 
   if (licErr) return json(500, { error: licErr.message });
 
-  // 5. Batch-generate signed URLs for licence card photos (front.jpg).
-  //    Path: {tenant_id}/{user_id}/{licence_id}/front.jpg in licence-photos bucket.
-  //    createSignedUrls generates URLs regardless of whether the file exists;
-  //    the UI handles 404s gracefully (onError hides the photo).
+  // 5. Batch-generate signed URLs using the paths already stored in the DB.
   const photoPaths = (licences ?? [])
-    .filter((l) => staffIdByUser.has(l.user_id))
-    .map((l) => `${tenantId}/${l.user_id}/${l.id}/front.jpg`);
+    .filter((l) => staffIdByUser.has(l.user_id) && l.photo_front_url)
+    .map((l) => l.photo_front_url as string);
 
   const { data: signedData } = photoPaths.length > 0
     ? await sb.storage.from('licence-photos').createSignedUrls(photoPaths, 3600)
@@ -115,7 +118,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       const staffId = staffIdByUser.get(l.user_id);
       if (!staffId) return null;
       const neverExpires = l.never_expires || l.expiry_date === '9999-12-31';
-      const path = `${tenantId}/${l.user_id}/${l.id}/front.jpg`;
       return {
         id:             l.id,
         staff_id:       staffId,
@@ -123,7 +125,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         licence_number: l.licence_number ?? null,
         expiry_date:    neverExpires ? null : l.expiry_date,
         no_expiry:      neverExpires,
-        photo_url:      photoUrlByPath.get(path) ?? null,
+        photo_url:      l.photo_front_url ? (photoUrlByPath.get(l.photo_front_url) ?? null) : null,
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);

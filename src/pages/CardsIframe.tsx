@@ -1,15 +1,16 @@
 // Embeds the EQ Cards Flutter web build as an iframe.
 //
-// Auth flow (Phase 2 — 2026-05-29):
-//   1. Shell loads the iframe with ?shell=1 — no JWT in URL.
-//   2. Flutter detects ?shell=1, sends REQUEST_SHELL_TOKEN via postMessage
-//      to core.eq.solutions (5s timeout).
-//   3. This handler calls mint-cards-iframe-token (which now runs
-//      ensureAuthUser), and posts SHELL_TOKEN_RESPONSE back.
-//   4. Flutter calls setSession(token) — auth complete.
-//   5. On 15-min expiry Flutter re-sends REQUEST_SHELL_TOKEN; same handler.
+// Auth flow (OTP path — replaces broken setSession(custom_jwt)):
+//   1. Shell loads the iframe with ?shell=1.
+//   2. Flutter detects ?shell=1 with no session, sends REQUEST_SHELL_TOKEN.
+//   3. This handler calls mint-cards-otp (ensureAuthUser + generateLink).
+//   4. Posts SHELL_TOKEN_RESPONSE { token_hash } back to Flutter.
+//   5. Flutter calls auth.verifyOTP(tokenHash, OtpType.magiclink) — GoTrue
+//      creates a real auth.sessions row with refresh_token. Session established.
 //
-// JWT never appears in the URL, browser history, or Referer headers.
+// Why not setSession(custom_jwt): gotrue_dart 2.20.0+ calls getUser() inside
+// setSession, which rejects JWTs with no auth.sessions row → session_not_found.
+// The token_hash path creates a real GoTrue session that survives refresh.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Sentry from '@sentry/react';
@@ -74,7 +75,7 @@ export default function CardsIframe() {
       const replyTarget = ev.source as Window | null;
 
       try {
-        const res = await fetch('/.netlify/functions/mint-cards-iframe-token', {
+        const res = await fetch('/.netlify/functions/mint-cards-otp', {
           method: 'POST',
           credentials: 'include',
         });
@@ -83,12 +84,12 @@ export default function CardsIframe() {
             { type: 'SHELL_TOKEN_RESPONSE', error: 'mint-failed' },
             expectedOrigin,
           );
-          Sentry.captureMessage(`mint-cards-iframe-token returned ${res.status}`, { level: 'error' });
+          Sentry.captureMessage(`mint-cards-otp returned ${res.status}`, { level: 'error' });
           return;
         }
-        const { token } = (await res.json()) as { token: string };
+        const { token_hash } = (await res.json()) as { token_hash: string };
         replyTarget?.postMessage(
-          { type: 'SHELL_TOKEN_RESPONSE', token },
+          { type: 'SHELL_TOKEN_RESPONSE', token_hash },
           expectedOrigin,
         );
       } catch (e) {
