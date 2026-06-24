@@ -816,6 +816,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   const [newContactPhone, setNewContactPhone] = useState("");
   const [newContactEmail, setNewContactEmail] = useState("");
   const [addingContact, setAddingContact] = useState(false);
+  const [addingContactErr, setAddingContactErr] = useState<string | null>(null);
   const [templates, setTemplates] = useState<QuoteTemplate[]>([]);
 
   // ── Outlet calculator state ───────────────────────────────────────────────
@@ -1369,7 +1370,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       p_email: newContactEmail.trim() || null,
     });
     setAddingContact(false);
-    if (error || !data) return;
+    if (error || !data) { setAddingContactErr(error?.message ?? "Could not save contact — try again."); return; }
+    setAddingContactErr(null);
     const newId = data as string;
     const newContact: ContactRow = {
       contact_id: newId,
@@ -1615,6 +1617,12 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       setCreateError("Add at least one line item with a description.");
       return;
     }
+    const rawValidity = createValidityDays.trim();
+    const validityDaysNum = rawValidity === "" ? 30 : parseInt(rawValidity, 10);
+    if (isNaN(validityDaysNum) || validityDaysNum <= 0) {
+      setCreateError("Validity days must be a number greater than 0.");
+      return;
+    }
     setCreating(true);
     setCreateError(null);
 
@@ -1626,7 +1634,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       p_estimator_initials: createEstimatorInitials.trim() || null,
       p_scope_of_works: createScope.trim() || null,
       p_notes: createNotes.trim() || null,
-      p_validity_days: parseInt(createValidityDays, 10) || 30,
+      p_validity_days: validityDaysNum,
       p_attn_name: createAttnName.trim() || null,
       p_attn_first_name: createAttnFirstName.trim() || null,
       p_attn_phone: createAttnPhone.trim() || null,
@@ -1660,11 +1668,12 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
 
     // Link selected contact so contact_email is available in Word doc.
     if (selectedContactId) {
-      await supabase.rpc("eq_link_quote_contact", {
+      const { error: linkErr } = await supabase.rpc("eq_link_quote_contact", {
         p_quote_id: row.quote_id,
         p_contact_id: selectedContactId,
         p_initials: createEstimatorInitials.trim() || null,
       });
+      if (linkErr) captureRpcError("eq_link_quote_contact", linkErr, { quote_id: row.quote_id });
     }
 
     // Audit: record creation on the quote timeline (best-effort, non-blocking).
@@ -1699,6 +1708,12 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       setCreateError("Add at least one line item with a description.");
       return;
     }
+    const rawValidity = createValidityDays.trim();
+    const validityDaysNum = rawValidity === "" ? 30 : parseInt(rawValidity, 10);
+    if (isNaN(validityDaysNum) || validityDaysNum <= 0) {
+      setCreateError("Validity days must be a number greater than 0.");
+      return;
+    }
     setCreating(true);
     setCreateError(null);
 
@@ -1711,7 +1726,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       p_estimator_initials: createEstimatorInitials.trim() || null,
       p_scope_of_works: createScope.trim() || null,
       p_notes: createNotes.trim() || null,
-      p_validity_days: parseInt(createValidityDays, 10) || 30,
+      p_validity_days: validityDaysNum,
       p_attn_name: createAttnName.trim() || null,
       p_attn_first_name: createAttnFirstName.trim() || null,
       p_attn_phone: createAttnPhone.trim() || null,
@@ -4529,18 +4544,21 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                             type="button"
                             className="eq-quotes__btn eq-quotes__btn--outline"
                             style={{ height: 32, fontSize: 13 }}
-                            onClick={() => { setShowAddContact(false); setNewContactFirst(""); setNewContactLast(""); setNewContactPhone(""); setNewContactEmail(""); }}
+                            onClick={() => { setShowAddContact(false); setNewContactFirst(""); setNewContactLast(""); setNewContactPhone(""); setNewContactEmail(""); setAddingContactErr(null); }}
                           >
                             Cancel
                           </button>
                         </div>
+                        {addingContactErr && (
+                          <span style={{ width: "100%", fontSize: 12, color: "var(--eq-error-text, #b91c1c)" }}>{addingContactErr}</span>
+                        )}
                       </div>
                     ) : (
                       <button
                         type="button"
                         className="eq-quotes__btn eq-quotes__btn--outline"
                         style={{ fontSize: 12, padding: "3px 10px", marginTop: allContacts.length > 0 ? 0 : 0 }}
-                        onClick={() => setShowAddContact(true)}
+                        onClick={() => { setShowAddContact(true); setAddingContactErr(null); }}
                       >
                         + Add new contact
                       </button>
