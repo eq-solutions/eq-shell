@@ -247,6 +247,12 @@ export function StaffPage() {
 
   const handleMutated = useCallback(() => setReload((n) => n + 1), []);
 
+  const handleArchived = useCallback(() => {
+    setSelId(null);
+    setReload((n) => n + 1);
+    showToast('Staff member archived');
+  }, [showToast]);
+
   const handleEditSave = useCallback(async (
     staffId: string,
     fields: { first_name: string; last_name: string; email: string; phone: string; trade: string; level: string; employment_type: string },
@@ -395,6 +401,7 @@ export function StaffPage() {
                   lics={selStaff ? (licByStaff.get(selStaff.id) ?? []) : []}
                   onClose={() => setSelId(null)}
                   onSaved={handleEditSave}
+                  onArchived={handleArchived}
                 />
               </>
             )}
@@ -415,6 +422,7 @@ export function StaffPage() {
             lics={licByStaff.get(selStaff.id) ?? []}
             onClose={() => setSelId(null)}
             onSaved={handleEditSave}
+            onArchived={handleArchived}
           />
         )}
 
@@ -688,16 +696,19 @@ function MobileStaffList({
 // ─── MOBILE BOTTOM SHEET ─────────────────────────────────────────────────────
 
 function MobileSheet({
-  staff, lics, onClose, onSaved,
+  staff, lics, onClose, onSaved, onArchived,
 }: {
   staff: StaffRow;
   lics: LicenceRow[];
   onClose: () => void;
   onSaved: SaveFn;
+  onArchived?: () => void;
 }) {
-  const [editMode, setEditMode] = useState(false);
-  const [saving,   setSaving]   = useState(false);
-  const [saveErr,  setSaveErr]  = useState<string | null>(null);
+  const [editMode,     setEditMode]     = useState(false);
+  const [saving,       setSaving]       = useState(false);
+  const [saveErr,      setSaveErr]      = useState<string | null>(null);
+  const [archiving,    setArchiving]    = useState(false);
+  const [archiveStep,  setArchiveStep]  = useState(false);
   const [eFirst, setEFirst] = useState('');
   const [eLast,  setELast]  = useState('');
   const [eEmail, setEEmail] = useState('');
@@ -706,7 +717,7 @@ function MobileSheet({
   const [eLevel, setELevel] = useState('');
   const [eType,  setEType]  = useState('');
 
-  useEffect(() => { setEditMode(false); setSaveErr(null); }, [staff.id]);
+  useEffect(() => { setEditMode(false); setSaveErr(null); setArchiveStep(false); }, [staff.id]);
 
   const enterEdit = () => {
     setEFirst(staff.first_name ?? '');
@@ -729,6 +740,19 @@ function MobileSheet({
       setSaveErr(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleArchiveMob = async () => {
+    setArchiving(true);
+    try {
+      await archiveStaff([staff.id]);
+      onArchived?.();
+    } catch {
+      setSaveErr('Archive failed — try again');
+    } finally {
+      setArchiving(false);
+      setArchiveStep(false);
     }
   };
 
@@ -848,13 +872,26 @@ function MobileSheet({
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              onClick={enterEdit}
-              style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center', fontSize: 14, padding: '11px 14px' }}
-            >
-              Edit record
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={enterEdit}
+                style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center', fontSize: 14, padding: '11px 14px' }}
+              >
+                Edit record
+              </button>
+              {onArchived && (
+                <button
+                  type="button"
+                  disabled={archiving}
+                  onClick={archiveStep ? () => { void handleArchiveMob(); } : () => setArchiveStep(true)}
+                  onBlur={() => { if (!archiving) setArchiveStep(false); }}
+                  style={{ ...s.btnDanger, justifyContent: 'center', fontSize: 14, padding: '11px 14px', minWidth: 96, opacity: archiving ? 0.6 : 1 }}
+                >
+                  {archiving ? 'Archiving…' : archiveStep ? 'Confirm?' : 'Archive'}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -974,11 +1011,13 @@ type SaveFn = (
   fields: { first_name: string; last_name: string; email: string; phone: string; trade: string; level: string; employment_type: string },
 ) => Promise<void>;
 
-function SplitPanel({ staff, lics, onClose, onSaved }: { staff: StaffRow | null; lics: LicenceRow[]; onClose: () => void; onSaved: SaveFn }) {
+function SplitPanel({ staff, lics, onClose, onSaved, onArchived }: { staff: StaffRow | null; lics: LicenceRow[]; onClose: () => void; onSaved: SaveFn; onArchived?: () => void }) {
   const open = staff !== null;
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveStep, setArchiveStep] = useState(false);
 
   // Edit field state
   const [eFirst, setEFirst] = useState('');
@@ -989,10 +1028,11 @@ function SplitPanel({ staff, lics, onClose, onSaved }: { staff: StaffRow | null;
   const [eLevel, setELevel] = useState('');
   const [eType,  setEType]  = useState('');
 
-  // Reset edit state whenever a different staff member is selected
+  // Reset edit + archive state when a different staff member is selected
   useEffect(() => {
     setEditMode(false);
     setSaveErr(null);
+    setArchiveStep(false);
   }, [staff?.id]);
 
   const enterEdit = () => {
@@ -1019,6 +1059,20 @@ function SplitPanel({ staff, lics, onClose, onSaved }: { staff: StaffRow | null;
       setSaveErr(e instanceof Error ? e.message : 'Save failed');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!staff) return;
+    setArchiving(true);
+    try {
+      await archiveStaff([staff.id]);
+      onArchived?.();
+    } catch {
+      setSaveErr('Archive failed — try again');
+    } finally {
+      setArchiving(false);
+      setArchiveStep(false);
     }
   };
 
@@ -1141,7 +1195,20 @@ function SplitPanel({ staff, lics, onClose, onSaved }: { staff: StaffRow | null;
                   </button>
                 </>
               ) : (
-                <button type="button" onClick={enterEdit} style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center' }}>Edit record</button>
+                <>
+                  <button type="button" onClick={enterEdit} style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center' }}>Edit record</button>
+                  {onArchived && (
+                    <button
+                      type="button"
+                      disabled={archiving}
+                      onClick={archiveStep ? () => { void handleArchive(); } : () => setArchiveStep(true)}
+                      onBlur={() => { if (!archiving) setArchiveStep(false); }}
+                      style={{ ...s.btnDanger, justifyContent: 'center', minWidth: 80, opacity: archiving ? 0.6 : 1 }}
+                    >
+                      {archiving ? 'Archiving…' : archiveStep ? 'Confirm?' : 'Archive'}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </>
@@ -1330,4 +1397,5 @@ const s: Record<string, React.CSSProperties> = {
   licRow:    { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, border: '1px solid #E2E8F0', marginBottom: 5, background: '#FAFAFA' },
   btnPrimary:   { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
   btnSecondary: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
+  btnDanger:    { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, border: '1px solid #FECACA', background: '#FEF2F2', color: '#B91C1C', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' },
 };
