@@ -71,6 +71,13 @@ function fmtDate(iso: string): string {
 function fmtDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
 }
+function relativeTime(iso: string): string {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60)    return 'just now';
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
 
 const MC: Record<LicStatus, React.CSSProperties> = {
   current:  { background: '#DCFCE7', color: '#15803D' },
@@ -142,8 +149,16 @@ export function StaffPage() {
   const [pending,    setPending]    = useState<PendingWorker[]>([]);
   const [tipId,      setTipId]      = useState<string | null>(null);
   const [tipRect,    setTipRect]    = useState<DOMRect | null>(null);
-  const tipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [toast,      setToast]      = useState<{ msg: string; ok: boolean } | null>(null);
+  const tipTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMobile = useIsMobile();
+
+  const showToast = useCallback((msg: string, ok = true) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ msg, ok });
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  }, []);
 
   // Staff fetch — active only, all records, re-runs after mutations
   useEffect(() => {
@@ -218,6 +233,8 @@ export function StaffPage() {
   const handleMutated = useCallback(() => setReload((n) => n + 1), []);
 
   const handleApprove = useCallback(async (applicationId: string) => {
+    const worker = pending.find((p) => p.application_id === applicationId);
+    const name = [worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || 'Worker';
     const res = await fetch('/.netlify/functions/cards-approve-staff', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -226,13 +243,17 @@ export function StaffPage() {
     if (res.ok) {
       setPending((p) => p.filter((x) => x.application_id !== applicationId));
       handleMutated();
+      showToast(`${name} added to roster`);
     } else {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       console.error('[staff] approve failed', res.status, err.error);
+      showToast('Approval failed — try again', false);
     }
-  }, [handleMutated]);
+  }, [handleMutated, pending, showToast]);
 
   const handleDecline = useCallback(async (applicationId: string) => {
+    const worker = pending.find((p) => p.application_id === applicationId);
+    const name = [worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || 'Worker';
     const res = await fetch('/.netlify/functions/cards-approve-staff', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -240,11 +261,13 @@ export function StaffPage() {
     });
     if (res.ok) {
       setPending((p) => p.filter((x) => x.application_id !== applicationId));
+      showToast(`${name} declined`);
     } else {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       console.error('[staff] decline failed', res.status, err.error);
+      showToast('Failed to decline — try again', false);
     }
-  }, []);
+  }, [pending, showToast]);
 
   const showTip = useCallback((staffId: string, rect: DOMRect) => {
     if (tipTimer.current) clearTimeout(tipTimer.current);
@@ -365,6 +388,13 @@ export function StaffPage() {
         {!isMobile && tipId && tipRect && (
           <LicTip lics={licByStaff.get(tipId) ?? []} rect={tipRect} />
         )}
+
+        {/* Toast */}
+        {toast && (
+          <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', background: toast.ok ? '#1A1A2E' : '#EF4444', color: 'white', padding: '10px 18px', borderRadius: 9, fontSize: 13, fontWeight: 600, zIndex: 9999, pointerEvents: 'none', whiteSpace: 'nowrap', boxShadow: '0 4px 16px rgba(0,0,0,.18)' }}>
+            {toast.msg}
+          </div>
+        )}
       </div>
     </HubLayout>
   );
@@ -413,6 +443,8 @@ function PendingSection({
                 <div style={{ fontWeight: 700, color: '#1A1A2E', whiteSpace: 'nowrap' }}>{name}</div>
                 <div style={{ fontSize: 10, color: '#64748B' }}>
                   {w.licence_count > 0 ? `${w.licence_count} licence${w.licence_count === 1 ? '' : 's'} ready` : 'No licences yet'}
+                  {' · '}
+                  {relativeTime(w.requested_at)}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 5, marginLeft: 4, flexShrink: 0 }}>
