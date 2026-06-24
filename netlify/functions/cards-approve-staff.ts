@@ -125,12 +125,12 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const { data: staffRow, error: staffErr } = (await tenantAny
     .schema('app_data')
     .from('staff')
-    .select('staff_id, field_approved, tenant_id, phone')
+    .select('staff_id, field_approved, tenant_id, phone, cards_worker_id')
     .eq('staff_id', staff_id_safe)
     .eq('tenant_id', tenantId)
     .eq('active', true)
     .maybeSingle()) as {
-    data: { staff_id: string; field_approved: boolean | null; tenant_id: string; phone: string | null } | null;
+    data: { staff_id: string; field_approved: boolean | null; tenant_id: string; phone: string | null; cards_worker_id: string | null } | null;
     error: { message: string } | null;
   };
 
@@ -160,7 +160,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   // staff-canonical-licences.ts gates on public.org_memberships — without this row
   // the approved worker's licences are invisible even though field_approved is true.
   // Awaited (not fire-and-forget) because an invisible worker is a silent failure.
-  {
+  //
+  // Only runs when cards_worker_id is already set — meaning this staff member has
+  // gone through Cards and has a verified workers row. Phone-based lookup is
+  // intentionally avoided: it has no tenant scope and would match unrelated workers
+  // at other tenants who share the same phone number (cross-tenant data exposure).
+  // Workers without a cards_worker_id link haven't self-registered in Cards yet;
+  // when they do, the application path handles org_memberships via worker_user_id.
+  if (staffRow.cards_worker_id) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sbPub = (sb as any).schema('public');
     const { data: orgRow } = (await sbPub
@@ -169,40 +176,31 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .eq('tenant_id', tenantId)
       .maybeSingle()) as { data: { id: string } | null };
 
-    if (orgRow && staffRow.phone) {
-      const bare = staffRow.phone.replace(/[^0-9]/g, '');
-      const suffix = bare.startsWith('61')
-        ? bare.slice(2)
-        : bare.startsWith('0') ? bare.slice(1) : bare;
-      const variants = suffix
-        ? [...new Set([staffRow.phone, `0${suffix}`, `+61${suffix}`].filter(Boolean) as string[])]
-        : [];
-      if (variants.length > 0) {
-        const { data: workerRow } = (await sbPub
-          .from('workers')
-          .select('user_id')
-          .in('phone', variants)
-          .limit(1)
-          .maybeSingle()) as { data: { user_id: string | null } | null };
-        if (workerRow?.user_id) {
-          await (sbPub
-            .from('org_memberships')
-            .insert({
-              org_id: orgRow.id,
-              user_id: workerRow.user_id,
-              role: 'member',
-              status: 'active',
-              invited_by: session.user_id,
-              invited_at: new Date().toISOString(),
-              accepted_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              tenant_id: tenantId,
-            }) as Promise<unknown>)
-            .catch((e: unknown) => {
-              // Swallow duplicate — if already active the worker is already visible.
-              console.warn('[cards-approve-staff] org_memberships insert skipped', e);
-            });
-        }
+    if (orgRow) {
+      const { data: workerRow } = (await sbPub
+        .from('workers')
+        .select('user_id')
+        .eq('id', staffRow.cards_worker_id)
+        .maybeSingle()) as { data: { user_id: string | null } | null };
+
+      if (workerRow?.user_id) {
+        await (sbPub
+          .from('org_memberships')
+          .insert({
+            org_id: orgRow.id,
+            user_id: workerRow.user_id,
+            role: 'member',
+            status: 'active',
+            invited_by: session.user_id,
+            invited_at: new Date().toISOString(),
+            accepted_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            tenant_id: tenantId,
+          }) as Promise<unknown>)
+          .catch((e: unknown) => {
+            // Swallow duplicate — if already active the worker is already visible.
+            console.warn('[cards-approve-staff] org_memberships insert skipped', e);
+          });
       }
     }
   }
