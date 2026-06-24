@@ -414,6 +414,7 @@ export function StaffPage() {
             staff={selStaff}
             lics={licByStaff.get(selStaff.id) ?? []}
             onClose={() => setSelId(null)}
+            onSaved={handleEditSave}
           />
         )}
 
@@ -687,12 +688,50 @@ function MobileStaffList({
 // ─── MOBILE BOTTOM SHEET ─────────────────────────────────────────────────────
 
 function MobileSheet({
-  staff, lics, onClose,
+  staff, lics, onClose, onSaved,
 }: {
   staff: StaffRow;
   lics: LicenceRow[];
   onClose: () => void;
+  onSaved: SaveFn;
 }) {
+  const [editMode, setEditMode] = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [saveErr,  setSaveErr]  = useState<string | null>(null);
+  const [eFirst, setEFirst] = useState('');
+  const [eLast,  setELast]  = useState('');
+  const [eEmail, setEEmail] = useState('');
+  const [ePhone, setEPhone] = useState('');
+  const [eTrade, setETrade] = useState('');
+  const [eLevel, setELevel] = useState('');
+  const [eType,  setEType]  = useState('');
+
+  useEffect(() => { setEditMode(false); setSaveErr(null); }, [staff.id]);
+
+  const enterEdit = () => {
+    setEFirst(staff.first_name ?? '');
+    setELast(parseSurname(staff.last_name) ?? '');
+    setEEmail(staff.email ?? '');
+    setEPhone(staff.phone ?? '');
+    setETrade(staff.trade ?? '');
+    setELevel(staff.level ?? '');
+    setEType(staff.employment_type ?? '');
+    setSaveErr(null);
+    setEditMode(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true); setSaveErr(null);
+    try {
+      await onSaved(staff.id, { first_name: eFirst, last_name: eLast, email: eEmail, phone: ePhone, trade: eTrade, level: eLevel, employment_type: eType });
+      setEditMode(false);
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const groupedLics = useMemo(() => {
     const cur: LicenceRow[] = [], exp: LicenceRow[] = [], red: LicenceRow[] = [];
     for (const l of lics) {
@@ -704,13 +743,16 @@ function MobileSheet({
     return { cur, exp, red };
   }, [lics]);
 
+  const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', color: '#1A1A2E', background: 'white', boxSizing: 'border-box' };
+  const lbl: React.CSSProperties = { fontSize: 11, color: '#94A3B8', fontWeight: 600, marginBottom: 4, display: 'block' };
+
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.35)' }}
-      onClick={onClose}
+      onClick={editMode ? undefined : onClose}
     >
       <div
-        style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white', borderRadius: '16px 16px 0 0', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white', borderRadius: '16px 16px 0 0', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag handle */}
@@ -730,21 +772,89 @@ function MobileSheet({
             <X size={14} />
           </button>
         </div>
+
         {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 40px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
-          {staff.email && <PField label="Email" value={staff.email} />}
-          {staff.level && <PField label="Level" value={staff.level} />}
-          <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '12px 0 6px' }}>
-            Licences &amp; Training ({lics.length} held)
+        {editMode ? (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 8px', display: 'flex', flexDirection: 'column', gap: 12, WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+            <div>
+              <label style={lbl}>First name</label>
+              <input style={inp} value={eFirst} onChange={(e) => setEFirst(e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>Last name</label>
+              <input style={inp} value={eLast} onChange={(e) => setELast(e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>Email</label>
+              <input style={inp} type="email" value={eEmail} onChange={(e) => setEEmail(e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>Phone</label>
+              <input style={inp} type="tel" value={ePhone} onChange={(e) => setEPhone(e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>Trade</label>
+              <input style={inp} value={eTrade} onChange={(e) => setETrade(e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>Level</label>
+              <input style={inp} value={eLevel} onChange={(e) => setELevel(e.target.value)} />
+            </div>
+            <div>
+              <label style={lbl}>Employment type</label>
+              <input style={inp} value={eType} onChange={(e) => setEType(e.target.value)} />
+            </div>
+            {saveErr && <p style={{ fontSize: 13, color: '#EF4444', margin: 0 }}>{saveErr}</p>}
           </div>
-          {lics.length === 0 ? (
-            <p style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No licences recorded</p>
-          ) : (
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 8px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+            {staff.email && <PField label="Email" value={staff.email} />}
+            {staff.phone && <PField label="Phone" value={staff.phone} />}
+            {staff.level && <PField label="Level" value={staff.level} />}
+            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '12px 0 6px' }}>
+              Licences &amp; Training ({lics.length} held)
+            </div>
+            {lics.length === 0 ? (
+              <p style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No licences recorded</p>
+            ) : (
+              <>
+                {groupedLics.cur.length > 0 && <LicGroup label="Active" colour="#22C55E" lics={groupedLics.cur} />}
+                {groupedLics.exp.length > 0 && <LicGroup label="Expiring soon" colour="#F59E0B" lics={groupedLics.exp} />}
+                {groupedLics.red.length > 0 && <LicGroup label="Expired" colour="#EF4444" lics={groupedLics.red} />}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div style={{ padding: '10px 16px 28px', borderTop: '1px solid #F1F5F9', display: 'flex', gap: 8, flexShrink: 0 }}>
+          {editMode ? (
             <>
-              {groupedLics.cur.length > 0 && <LicGroup label="Active" colour="#22C55E" lics={groupedLics.cur} />}
-              {groupedLics.exp.length > 0 && <LicGroup label="Expiring soon" colour="#F59E0B" lics={groupedLics.exp} />}
-              {groupedLics.red.length > 0 && <LicGroup label="Expired" colour="#EF4444" lics={groupedLics.red} />}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => { void handleSave(); }}
+                style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center', fontSize: 14, padding: '11px 14px', opacity: saving ? 0.6 : 1 }}
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setEditMode(false)}
+                style={{ ...s.btnSecondary, flex: 1, justifyContent: 'center', fontSize: 14, padding: '11px 14px' }}
+              >
+                Cancel
+              </button>
             </>
+          ) : (
+            <button
+              type="button"
+              onClick={enterEdit}
+              style={{ ...s.btnPrimary, flex: 1, justifyContent: 'center', fontSize: 14, padding: '11px 14px' }}
+            >
+              Edit record
+            </button>
           )}
         </div>
       </div>
