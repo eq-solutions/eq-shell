@@ -20,6 +20,17 @@ type TabKey = (typeof RECORD_TABS)[number]['key'];
 // Shape of a single row returned by /.netlify/functions/entity-rows
 type EntityRow = Record<string, unknown>;
 
+// Shape of a canonical licence from staff-canonical-licences
+interface CanonicalLicenceRow {
+  id: string;
+  staff_id: string;
+  licence_type: string | null;
+  licence_number: string | null;
+  expiry_date: string | null;
+  no_expiry: boolean;
+  photo_url: string | null;
+}
+
 interface EntityRowsResponse {
   ok: boolean;
   rows?: EntityRow[];
@@ -34,7 +45,7 @@ function rowName(entity: TabKey, row: EntityRow): string {
     case 'site':     return String(row['name'] ?? '—');
     case 'contact':  return [row['first_name'], row['last_name']].filter(Boolean).join(' ') || '—';
     case 'staff':    return [row['first_name'], row['last_name']].filter(Boolean).join(' ') || '—';
-    case 'licence':  return String(row['licence_class'] ?? row['name'] ?? '—');
+    case 'licence':  return String(row['licence_class'] ?? row['name'] ?? '—').replace(/_/g, ' ');
     default:         return '—';
   }
 }
@@ -94,6 +105,21 @@ export function MobileRecordsDrawer({ open, initialEntity = 'customer', counts, 
     setRows(null);
     setTotal(null);
     try {
+      if (entity === 'licence') {
+        // Canonical licences live on jvkn (public.licences), not ehow app_data.licences.
+        const res = await fetch('/.netlify/functions/staff-canonical-licences', { credentials: 'include' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json() as { licences?: CanonicalLicenceRow[] };
+        const mapped = (body.licences ?? []).slice(0, 6).map((l) => ({
+          id: l.id,
+          licence_class: l.licence_type,
+          licence_number: l.licence_number,
+          staff_id: l.staff_id,
+        }));
+        setRows(mapped);
+        setTotal(body.licences?.length ?? 0);
+        return;
+      }
       const res = await fetch(`/.netlify/functions/entity-rows?entity=${entity}&limit=6&page=0`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json() as EntityRowsResponse;
@@ -205,7 +231,7 @@ export function MobileRecordsDrawer({ open, initialEntity = 'customer', counts, 
           {!loading && !err && rows && rows.length === 0 && (
             <div className="eq-rec-drawer__empty">
               No {activeTabDef.label.toLowerCase()} yet.{' '}
-              <Link to={`/${tenantSlug}/data/${activeTab}`} onClick={onClose} className="eq-rec-drawer__empty-link">
+              <Link to={activeTab === 'licence' ? `/${tenantSlug}/staff` : `/${tenantSlug}/data/${activeTab}`} onClick={onClose} className="eq-rec-drawer__empty-link">
                 Browse →
               </Link>
             </div>
@@ -218,7 +244,7 @@ export function MobileRecordsDrawer({ open, initialEntity = 'customer', counts, 
             return (
               <Link
                 key={i}
-                to={`/${tenantSlug}/data/${activeTab}`}
+                to={activeTab === 'licence' ? `/${tenantSlug}/staff` : `/${tenantSlug}/data/${activeTab}`}
                 className="eq-rec-drawer__row"
                 onClick={onClose}
               >
@@ -243,7 +269,7 @@ export function MobileRecordsDrawer({ open, initialEntity = 'customer', counts, 
         {tenantSlug && (
           <div className="eq-rec-drawer__footer">
             <Link
-              to={`/${tenantSlug}/data/${activeTab}`}
+              to={activeTab === 'licence' ? `/${tenantSlug}/staff` : `/${tenantSlug}/data/${activeTab}`}
               className="eq-rec-drawer__footer-link"
               onClick={onClose}
             >
