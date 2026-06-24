@@ -32,6 +32,7 @@ import {
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
+import { sendEmail } from './_shared/email.js';
 
 interface ApproveBody {
   staff_id?: string;
@@ -270,9 +271,9 @@ async function handleApplication({
   // Verify the application is for this manager's org (via tenant_id)
   const { data: org } = await sbPublic
     .from('organisations')
-    .select('id, tenant_id')
+    .select('id, tenant_id, name')
     .eq('id', app.org_id)
-    .maybeSingle() as { data: { id: string; tenant_id: string } | null };
+    .maybeSingle() as { data: { id: string; tenant_id: string; name: string | null } | null };
 
   if (!org || org.tenant_id !== tenantId) {
     return json(403, { error: 'Application does not belong to your organisation' });
@@ -533,6 +534,21 @@ async function handleApplication({
     status: 'approved',
     approved_by_user_id: session.user_id,
   });
+
+  // Notify the worker their connection was approved. Non-fatal — never block
+  // the approval on email delivery. Fire-and-forget (no await).
+  if (worker?.email) {
+    const orgName = org?.name ?? 'your employer';
+    const firstName = worker.first_name ?? 'there';
+    sendEmail({
+      to: worker.email,
+      subject: `You're connected to ${orgName} on EQ Cards`,
+      text: `Hi ${firstName},\n\n${orgName} has approved your EQ Cards connection. Open the app — your workspace is ready.\n\ncards.eq.solutions`,
+      html: `<p>Hi ${firstName},</p><p><strong>${orgName}</strong> has approved your EQ Cards connection. Open the app — your workspace is ready.</p><p><a href="https://cards.eq.solutions">Open EQ Cards →</a></p>`,
+    }).catch((err: unknown) => {
+      console.warn('[cards-approve-staff] worker approval email failed (non-fatal)', err);
+    });
+  }
 
   return json(200, { ok: true, action: 'approved', staff_id: staffId, application_id });
 }

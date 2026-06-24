@@ -75,6 +75,7 @@ export function HubLayout({
   const [liveCounts, setLiveCounts] = useState<DashboardCounts>({
     field: null, service: null, quotes: null,
   });
+  const [pendingCount, setPendingCount] = useState<number>(0);
 
   useEffect(() => {
     if (!session || iframe || hideMainSidebar) return;
@@ -88,6 +89,20 @@ export function HubLayout({
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as DashboardResponse;
         if (!cancelled) { setCachedDashboard(cacheKey, data); setLiveCounts(extractCounts(data)); }
+      } catch { /* best-effort */ }
+    })();
+    return () => { cancelled = true; };
+  }, [session, iframe, hideMainSidebar]);
+
+  useEffect(() => {
+    if (!session || iframe || hideMainSidebar) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/.netlify/functions/staff-pending-connections', { credentials: 'include' });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { pending?: unknown[] };
+        if (!cancelled) setPendingCount(data.pending?.length ?? 0);
       } catch { /* best-effort */ }
     })();
     return () => { cancelled = true; };
@@ -115,9 +130,17 @@ export function HubLayout({
       icon: HUB_APP_ICONS[a.key],
     }));
 
+  // Inject pending connection count into the Staff record.
+  // Only override if the page hasn't already set it (StaffPage manages its own).
+  const resolvedRecords = sidebarRecords?.map((r) =>
+    r.key === 'staff' && r.count === null && !r.warn && pendingCount > 0
+      ? { ...r, count: pendingCount, warn: true }
+      : r,
+  );
+
   return (
     <AppShell
-      sidebar={<HubSidebar apps={sidebarApps} records={sidebarRecords} />}
+      sidebar={<HubSidebar apps={sidebarApps} records={resolvedRecords} />}
       fullWidth={fullWidth}
     >
       {children}
