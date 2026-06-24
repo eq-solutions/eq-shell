@@ -128,7 +128,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       is_activated: isActivated,
       status,
       claim_url:    (status === 'pending' || status === 'active')
-        ? `https://cards.eq.solutions/claim/${r.token}`
+        ? `https://cards.eq.solutions/claim?token=${r.token}`
         : '',
     };
   });

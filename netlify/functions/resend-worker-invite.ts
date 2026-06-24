@@ -116,7 +116,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(500, { error: 'Failed to create new invite: ' + (inviteErr?.message ?? 'unknown') });
   }
 
-  const claimUrl = `https://cards.eq.solutions/claim/${newInvite.token}`;
+  const claimUrl = `https://cards.eq.solutions/claim?token=${newInvite.token}`;
 
   // Send email if the worker has one on record.
   let emailDelivered = false;

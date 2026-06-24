@@ -115,7 +115,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .maybeSingle<{ token: string; expires_at: string }>();
 
     if (existingInvite) {
-      const claimUrl = `https://cards.eq.solutions/claim/${existingInvite.token}`;
+      const claimUrl = `https://cards.eq.solutions/claim?token=${existingInvite.token}`;
       let emailDelivered = false;
       if (email) {
         const result = await sendEmail({
@@ -186,7 +186,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(500, { error: 'Failed to create invite: ' + (inviteErr?.message ?? 'unknown') });
   }
 
-  const claimUrl = `https://cards.eq.solutions/claim/${invite.token}`;
+  const claimUrl = `https://cards.eq.solutions/claim?token=${invite.token}`;
 
   // Create a Shell (Core) user_invite when email is provided, linked to the worker record
   // via worker_id. When the worker accepts this invite, accept-invite.ts writes
