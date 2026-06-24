@@ -190,7 +190,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
             .insert({
               org_id: orgRow.id,
               user_id: workerRow.user_id,
-              role: 'worker',
+              role: 'member',
               status: 'active',
               invited_by: session.user_id,
               invited_at: new Date().toISOString(),
@@ -549,7 +549,7 @@ async function handleApplication({
     .insert({
       org_id: app.org_id,
       user_id: app.worker_user_id,
-      role: 'worker',
+      role: 'member',
       status: 'active',
       invited_by: session.user_id,
       invited_at: new Date().toISOString(),
