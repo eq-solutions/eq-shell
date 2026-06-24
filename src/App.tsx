@@ -421,7 +421,7 @@ function TenantTree() {
           already auth'd and rendered by the time the user clicks the nav item. */}
       {fieldEnabled && (evermounted.current.has('field') || eagerTriggered) && (
         <div style={activeIframe === 'field' ? undefined : HIDDEN_IFRAME_KEEPER_STYLE}>
-          <FieldIframe />
+          <FieldIframe active={activeIframe === 'field'} />
         </div>
       )}
       {cardsEnabled && (evermounted.current.has('cards') || eagerTriggered) && (

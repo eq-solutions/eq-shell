@@ -1743,7 +1743,15 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
       p_quote_number: createQuoteNumber.trim() || null,
     });
 
-    if (headerErr) { captureRpcError("eq_update_quote", headerErr, { quote_id: editingQuoteId }); setCreateError(headerErr.message); setCreating(false); return; }
+    if (headerErr) {
+      captureRpcError("eq_update_quote", headerErr, { quote_id: editingQuoteId });
+      const errMsg = /duplicate key|unique.*quote_number/i.test(headerErr.message)
+        ? "That quote number is already in use — choose a different number."
+        : headerErr.message;
+      setCreateError(errMsg);
+      setCreating(false);
+      return;
+    }
 
     const lineItemsJson = validLines.map((li, idx) => ({
       line_number: idx + 1,
@@ -1842,7 +1850,14 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     setTrashing(true);
     const { error } = await supabase.rpc("eq_trash_quote", { p_quote_id: quoteId });
     setTrashing(false);
-    if (error) { captureRpcError("eq_trash_quote", error, { quote_id: quoteId }); setDetailError(error.message); return; }
+    if (error) {
+      captureRpcError("eq_trash_quote", error, { quote_id: quoteId });
+      const errMsg = /not found|does not exist/i.test(error.message)
+        ? "This quote has already been archived."
+        : error.message;
+      setDetailError(errMsg);
+      return;
+    }
     setDetailId(null);
     setDetail(null);
     setQuotes((prev) => prev.filter((item) => item.quote_id !== quoteId));

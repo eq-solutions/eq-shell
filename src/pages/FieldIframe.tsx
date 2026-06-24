@@ -90,7 +90,7 @@ if (!_FIELD_URL || _FIELD_URL.trim() === '') {
 // is intentional — a misconfigured env var should surface immediately.
 const FIELD_EXPECTED_ORIGIN: string = new URL(_FIELD_URL).origin;
 
-export default function FieldIframe() {
+export default function FieldIframe({ active = true }: { active?: boolean }) {
   const { session, loading } = useSession();
   const [selectedTenant, setSelectedTenant] = useState<TenantSlug | null>(null);
   const [src, setSrc] = useState<string | null>(null);
@@ -257,12 +257,16 @@ export default function FieldIframe() {
 
   useEffect(() => {
     if (state.phase !== 'waiting') return;
+    // Only start the timeout when the iframe is the active/visible frame.
+    // When pre-warming in the background (active=false), Field may not send
+    // a postMessage within 30s — that's expected, not an error.
+    if (!active) return;
     const timer = setTimeout(() => {
       setState((prev) => (prev.phase === 'waiting' ? { phase: 'timeout' } : prev));
       Sentry.captureMessage('EQ Field handoff timeout — no postMessage in 30s', { level: 'error' });
     }, HANDOFF_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [state.phase]);
+  }, [state.phase, active]);
 
   // TOKEN MODE: token refresh requests from Field.
   useEffect(() => {

@@ -26,7 +26,7 @@ function setCachedDashboard(key: string, data: DashboardResponse): void {
   _dashboardCache.set(key, { data, ts: Date.now() });
 }
 
-const HUB_APPS: Array<{ key: string; label: string; to: string; isBeta: boolean; platformOnly?: boolean }> = [
+const HUB_APPS: Array<{ key: string; label: string; to: string; isBeta: boolean; platformOnly?: boolean; alwaysShow?: boolean }> = [
   { key: 'field',   label: 'EQ Field',   to: 'field',   isBeta: false },
   { key: 'service', label: 'EQ Service', to: 'service', isBeta: false },
   // EQ Ops — in-shell quoting surface; gated on the `ops` module entitlement (per-tenant) + platform admins.

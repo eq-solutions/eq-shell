@@ -367,6 +367,19 @@ const KNOWN_LEGACY_ANON = {
     // (the base table denies writes). Verified live on ehow 2026-06-16.
     'service.assets', 'service.contacts', 'service.customers', 'service.sites',
     'service.contract_scopes',
+    // EQ Service security_invoker=on views for test records, inspections, defects, etc.
+    // All are thin SELECT * FROM app_data.<same_name> pass-throughs. RLS on the
+    // underlying app_data tables enforces tenant isolation; views always report
+    // rls_enabled=false (PostgreSQL invariant, not a gap). Verified SECURITY INVOKER 2026-06-25.
+    // NOTE: underlying app_data tables are not yet created — views are currently inert.
+    // When those tables land, their migration MUST include RLS + tenant policy.
+    'service.acb_test_readings', 'service.acb_tests', 'service.asset_test_results',
+    'service.attachments', 'service.check_assets', 'service.defects',
+    'service.import_sessions', 'service.instruments', 'service.job_plan_items',
+    'service.job_plans', 'service.maintenance_check_items', 'service.maintenance_checks',
+    'service.notifications', 'service.nsx_test_readings', 'service.nsx_tests',
+    'service.rcd_test_circuits', 'service.rcd_tests', 'service.test_record_readings',
+    'service.test_records',
     // pass-through views on public.* (views cannot have RLS enabled — tracked debt)
     'app_data.field_audit_log', 'app_data.field_leave_requests', 'app_data.field_prestarts',
     'app_data.field_schedule', 'app_data.field_site_diaries', 'app_data.field_timesheets',
