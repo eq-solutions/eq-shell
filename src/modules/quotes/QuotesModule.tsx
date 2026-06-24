@@ -1184,6 +1184,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
         return;
       }
       if (e.key === "n" && detailIdRef.current === null && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        resetCreateForm();
         setView("create");
         return;
       }
@@ -5188,7 +5189,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
           <button
             type="button"
             className="eq-quotes__btn eq-quotes__btn--primary eq-quotes__btn--new-quote"
-            onClick={() => setView("create")}
+            onClick={() => { resetCreateForm(); setView("create"); }}
           >
             + New Quote
           </button>
