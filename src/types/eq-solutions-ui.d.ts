@@ -124,6 +124,17 @@ declare module '@eq-solutions/ui' {
   export function SkeletonRows(props: SkeletonRowsProps): React.ReactElement
   export function SkeletonCards(props: SkeletonCardsProps): React.ReactElement
 
+  // ── Spinner ────────────────────────────────────────────────────────────────
+  export type SpinnerVariant = 'bars' | 'ring' | 'dots' | 'trail'
+  export type SpinnerSize = 'sm' | 'md' | 'lg'
+  export interface SpinnerProps extends HTMLAttributes<HTMLSpanElement> {
+    variant?: SpinnerVariant
+    size?: SpinnerSize
+    label?: string
+    inverted?: boolean
+  }
+  export function Spinner(props: SpinnerProps): React.ReactElement
+
   // ── Table ──────────────────────────────────────────────────────────────────
   export interface TableColumn<T> {
     key: string
