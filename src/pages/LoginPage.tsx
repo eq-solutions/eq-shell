@@ -2,7 +2,7 @@ import React, { useState, type FormEvent } from 'react';
 import './auth.css';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
-import { useSession, type EqRole } from '../session';
+import { type EqRole } from '../session';
 import { EqLogo } from '../components/EqLogo';
 import { storePendingSelection } from './TenantPicker';
 
