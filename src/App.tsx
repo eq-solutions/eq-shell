@@ -53,6 +53,7 @@ import NotFound from './pages/NotFound';
 import QuotePortal from './portal/QuotePortal';
 import { RouteProgressBar } from './components/RouteProgressBar';
 import { Skeleton } from './components/Skeleton';
+import { Spinner } from '@eq-solutions/ui';
 import './App.css';
 
 function PageLoadingFallback() {
@@ -287,7 +288,7 @@ function RequireSession({ children }: { children: ReactNode }) {
   if (loading && !session) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
-        <Skeleton variant="text" width={120} />
+        <Spinner size="lg" label="Loading…" />
       </div>
     );
   }
@@ -321,7 +322,7 @@ function RootRoute() {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
-        <Skeleton variant="text" width={120} />
+        <Spinner size="lg" label="Loading…" />
       </div>
     );
   }
@@ -337,7 +338,7 @@ function RequirePlatformSession({ children }: { children: ReactNode }) {
   if (loading && !session) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100svh' }}>
-        <Skeleton variant="text" width={120} />
+        <Spinner size="lg" label="Loading…" />
       </div>
     );
   }
