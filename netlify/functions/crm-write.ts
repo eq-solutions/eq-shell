@@ -88,8 +88,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     const { error } = await sb
       .from('contacts')
       .update({
-        first_name:   str(body.first_name),
-        last_name:    str(body.last_name),
+        first_name:   str(body.first_name) ?? '',
+        last_name:    str(body.last_name) ?? '',
         email:        str(body.email),
         mobile_phone: str(body.mobile_phone),
         position:     str(body.position),
@@ -259,8 +259,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     const { error } = await sb.from('contacts').insert({
       customer_id:  customerId,
       tenant_id:    tid,
-      first_name:   firstName,
-      last_name:    lastName,
+      first_name:   firstName ?? '',
+      last_name:    lastName ?? '',
       position:     str(body.role),
       email:        str(body.email),
       mobile_phone: str(body.phone),
