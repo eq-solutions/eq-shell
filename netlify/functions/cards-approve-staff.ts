@@ -21,7 +21,6 @@
 //   - shell_control.cards_field_approvals    → control plane (shared, audit)
 
 import { randomUUID } from 'node:crypto';
-import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import {
   getTenantDataClientById,
@@ -31,7 +30,7 @@ import {
 } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { can } from './_shared/permissions.js';
-import { withSentry } from './_shared/sentry.js';
+import { withSentry, captureServerError } from './_shared/sentry.js';
 import { sendEmail } from './_shared/email.js';
 
 interface ApproveBody {
@@ -49,7 +48,7 @@ function json(status: number, body: unknown): Response {
   });
 }
 
-export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
+async function approveHandler(req: Request): Promise<Response> {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed' });
 
   const session = verifySessionToken(readSessionCookie(req));
@@ -122,26 +121,13 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tenantAny = tenantDb as any;
 
-  const { data: staffRow, error: staffErr } = (await tenantAny
-    .schema('app_data')
-    .from('staff')
-    .select('staff_id, field_approved, tenant_id, phone, cards_worker_id')
-    .eq('staff_id', staff_id_safe)
-    .eq('tenant_id', tenantId)
-    .eq('active', true)
-    .maybeSingle()) as {
-    data: { staff_id: string; field_approved: boolean | null; tenant_id: string; phone: string | null; cards_worker_id: string | null } | null;
-    error: { message: string } | null;
-  };
-
-  if (staffErr || !staffRow) {
-    return json(404, { error: 'Staff record not found or not in your tenant' });
-  }
-
-  // Approval = flip the canonical field_approved flag. The staff member already
-  // lives in app_data.staff (the plane live Field reads); approval clears them
-  // onto the roster. No second copy into the dead legacy Field DB.
-  const { error: updErr } = await tenantAny
+  // Approve = flip the canonical field_approved flag and read the row back in a
+  // single round-trip (UPDATE … RETURNING). The staff member already lives in
+  // app_data.staff (the plane live Field reads); approval clears them onto the
+  // roster — no second copy into the dead legacy Field DB. Collapsing the prior
+  // SELECT-then-UPDATE into one statement removes a round-trip to the tenant
+  // data plane, the slow hop on this path.
+  const { data: staffRow, error: updErr } = (await tenantAny
     .schema('app_data')
     .from('staff')
     .update({
@@ -150,10 +136,19 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       field_approved_by: session.user_id,
     })
     .eq('staff_id', staff_id_safe)
-    .eq('tenant_id', tenantId);
+    .eq('tenant_id', tenantId)
+    .eq('active', true)
+    .select('staff_id, field_approved, tenant_id, phone, cards_worker_id')
+    .maybeSingle()) as {
+    data: { staff_id: string; field_approved: boolean | null; tenant_id: string; phone: string | null; cards_worker_id: string | null } | null;
+    error: { message: string } | null;
+  };
 
   if (updErr) {
     return json(500, { error: `Could not approve staff: ${updErr.message}` });
+  }
+  if (!staffRow) {
+    return json(404, { error: 'Staff record not found or not in your tenant' });
   }
 
   // Grant org membership so licences appear in Shell's canonical licence view.
@@ -268,6 +263,19 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     });
 
   return json(200, { ok: true, action: 'approved', staff_id: staff_id_safe });
+}
+
+export default withSentry(async (req: Request): Promise<Response> => {
+  // A throw below would otherwise surface as a bare 502 with no body (Netlify's
+  // platform error) — and withSentry only reports it when SENTRY_DSN is set on
+  // the deploy. Convert any uncaught error into a structured 500 so the caller
+  // sees the real reason and approvals never fail silently.
+  try {
+    return await approveHandler(req);
+  } catch (err) {
+    captureServerError(err, { fn: 'cards-approve-staff' });
+    return json(500, { error: err instanceof Error ? err.message : 'Unexpected server error' });
+  }
 });
 
 // ── Self-signup application approval ──────────────────────────────────────────
