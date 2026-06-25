@@ -76,7 +76,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   const { token, exp } = signJwtWithSecret(
     SKS_JWT_SECRET,
     user.id,
-    user.tenant_id,
+    session.tenant_id,
     user.role,
     user.is_platform_admin,
     ttlSeconds,
