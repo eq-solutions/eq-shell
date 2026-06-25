@@ -235,13 +235,17 @@ async function approveHandler(req: Request): Promise<Response> {
 
   // Record the approval in the control plane (cross-tenant audit). field_people_id
   // is retained for legacy rows but is no longer written — approval is canonical.
-  await sb.from('cards_field_approvals').insert({
+  const { error: auditErr } = await sb.from('cards_field_approvals').insert({
     staff_id: staff_id_safe,
     tenant_id: tenantId,
     field_people_id: null,
     status: 'approved',
     approved_by_user_id: session.user_id,
   });
+  if (auditErr) {
+    captureServerError(auditErr, { fn: 'cards-approve-staff', context: 'audit-insert-invite' });
+    console.error('[cards-approve-staff] audit insert failed (invite path)', auditErr);
+  }
 
   // Canonical heartbeat — every approval lands a row in canonical_events so the
   // sentient layer has a durable audit trail. Fire-and-forget: the approval is
@@ -259,6 +263,7 @@ async function approveHandler(req: Request): Promise<Response> {
     })
     .then(() => {/* ok */})
     .catch((err: unknown) => {
+      captureServerError(err, { fn: 'cards-approve-staff', context: 'canonical-events-invite' });
       console.error('[cards-approve-staff] canonical_events emit failed', err);
     });
 
@@ -617,13 +622,17 @@ async function handleApplication({
     });
 
   // Audit record in the control plane
-  await sb.from('cards_field_approvals').insert({
+  const { error: auditAppErr } = await sb.from('cards_field_approvals').insert({
     staff_id: staffId,
     tenant_id: tenantId,
     field_people_id: null,
     status: 'approved',
     approved_by_user_id: session.user_id,
   });
+  if (auditAppErr) {
+    captureServerError(auditAppErr, { fn: 'cards-approve-staff', context: 'audit-insert-application' });
+    console.error('[cards-approve-staff] audit insert failed (application path)', auditAppErr);
+  }
 
   // Notify the worker their connection was approved. Non-fatal — never block
   // the approval on email delivery. Fire-and-forget (no await).
