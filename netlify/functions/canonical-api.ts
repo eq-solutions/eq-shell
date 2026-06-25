@@ -40,6 +40,8 @@
 //   active=true|false                where active = <value> if column exists
 //   since=<iso>                      where updated_at|occurred_at >= <iso>
 //   ids=<uuid>,<uuid>,...            where <pk> in (...)
+//   customer_id=<uuid>   contacts only — filter by customer_id
+//   quote_id=<uuid>      jobs only    — filter by quote_id
 //
 // Response envelope
 //   { ok: true, tenant, resource, total, limit, offset, data: [...] }
@@ -434,6 +436,20 @@ async function handleGet(
   }
   if (parsed.ids) {
     query = query.in(def.pk, parsed.ids);
+  }
+  if (resourceName === "contacts") {
+    const customerId = url.searchParams.get("customer_id");
+    if (customerId !== null) {
+      if (!UUID_RE.test(customerId)) return err(400, "invalid_filter", "customer_id must be a valid UUID");
+      query = query.eq("customer_id", customerId);
+    }
+  }
+  if (resourceName === "jobs") {
+    const quoteId = url.searchParams.get("quote_id");
+    if (quoteId !== null) {
+      if (!UUID_RE.test(quoteId)) return err(400, "invalid_filter", "quote_id must be a valid UUID");
+      query = query.eq("quote_id", quoteId);
+    }
   }
   // canonical_events is naturally time-ordered; everything else by updated_at desc
   query = query.order(def.sinceColumn, { ascending: false });
