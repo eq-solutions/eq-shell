@@ -3,8 +3,8 @@
 // Returns a ZIP containing:
 //   register.csv          — all connected workers + licences, one row per licence
 //   {Worker_Name}/        — one folder per worker
-//     {Licence_Type}_front.jpg
-//     {Licence_Type}_back.jpg
+//     {Worker_Name}_{Licence_Type}_{Number}_front.jpg
+//     {Worker_Name}_{Licence_Type}_{Number}_back.jpg
 //
 // Manager + platform_admin only. Photos are served from the private
 // licence-photos bucket via service role — no signed URLs exposed.
@@ -163,7 +163,10 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   await Promise.all(
     Array.from(workerMap.values()).map(async (worker) => {
       const fullName = [worker.first_name, worker.last_name].filter(Boolean).join(' ') || 'Unknown';
-      const folder = slugify(fullName);
+      // Cap the name slug so an unusually long legal name can't push a zip entry
+      // path past filesystem limits once it's extracted into a nested folder.
+      const nameSlug = slugify(fullName).slice(0, 40).replace(/_+$/, '') || 'Unknown';
+      const folder = nameSlug;
       const lics = licsByUser.get(worker.user_id) ?? [];
 
       if (lics.length === 0) {
@@ -177,6 +180,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       await Promise.all(
         lics.map(async (l) => {
           const typeSlug = slugify(l.licence_type);
+          // Lead each filename with the worker name so a photo stays
+          // self-describing once dragged out of its folder, and include the
+          // licence number (or a short id fallback) so two same-type licences
+          // — e.g. an old card kept alongside its renewal — can't overwrite
+          // each other inside the zip.
+          const numSlug = l.licence_number ? slugify(l.licence_number) : '';
+          const uniqSlug = numSlug || l.id.slice(0, 8);
+          const stem = `${nameSlug}_${typeSlug}_${uniqSlug}`;
           let frontFile = '';
           let backFile = '';
 
@@ -186,11 +197,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
           ]);
 
           if (frontBuf) {
-            frontFile = `${folder}/${typeSlug}_front.jpg`;
+            frontFile = `${folder}/${stem}_front.jpg`;
             zip.file(frontFile, frontBuf);
           }
           if (backBuf) {
-            backFile = `${folder}/${typeSlug}_back.jpg`;
+            backFile = `${folder}/${stem}_back.jpg`;
             zip.file(backFile, backBuf);
           }
 
