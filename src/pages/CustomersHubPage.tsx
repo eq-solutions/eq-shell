@@ -76,6 +76,8 @@ type Selection =
 
 type LevelFilter = 'all' | 'customers' | 'sites' | 'contacts';
 
+type DupMatch = { partnerId: string; partnerName: string; partnerCustomerId: string; confidence: 'high' | 'medium' };
+
 // ── API ────────────────────────────────────────────────────────────────────
 
 async function crmFetch(qs: string): Promise<Record<string, unknown>> {
@@ -138,6 +140,14 @@ function CustomersHubInner() {
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
 
   const treeRef = useRef<HTMLUListElement>(null);
+  const [dupMap, setDupMap] = useState<Map<string, DupMatch[]>>(new Map());
+
+  useEffect(() => {
+    void crmFetch('?action=dedup').then((d) => {
+      const raw = d.matches as Record<string, DupMatch[]> | undefined;
+      if (raw) setDupMap(new Map(Object.entries(raw)));
+    }).catch(() => { /* dedup is non-critical */ });
+  }, []);
 
   // ── Load list ───────────────────────────────────────────────────────────
 
@@ -567,6 +577,7 @@ function CustomersHubInner() {
             resolved={detailResolved}
             detailLoading={!!detailLoading}
             customers={customers}
+            dupMap={dupMap}
             onLoadList={loadList}
             onInvalidateCustomer={invalidateCustomer}
           />
@@ -749,10 +760,11 @@ type ResolvedDetail = {
 };
 
 function DetailPane({
-  resolved, detailLoading, customers, onLoadList, onInvalidateCustomer,
+  resolved, detailLoading, customers, dupMap, onLoadList, onInvalidateCustomer,
 }: {
   resolved: ResolvedDetail; detailLoading: boolean;
   customers: CustomerListItem[];
+  dupMap: Map<string, DupMatch[]>;
   onLoadList: () => void;
   onInvalidateCustomer: (id: string) => void;
 }) {
@@ -779,7 +791,7 @@ function DetailPane({
     return <SiteDetailView s={resolved.site} customer={resolved.customerDetail?.customer ?? null} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
   }
   if (resolved.kind === 'contact' && resolved.contact) {
-    return <ContactDetailView ct={resolved.contact} customer={resolved.customerDetail?.customer ?? null} allCustomers={customers} allSites={resolved.customerDetail?.sites ?? []} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
+    return <ContactDetailView ct={resolved.contact} customer={resolved.customerDetail?.customer ?? null} allCustomers={customers} allSites={resolved.customerDetail?.sites ?? []} dupMatches={dupMap.get(resolved.contact.id) ?? []} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
   }
   return <DetailSkeleton />;
 }
@@ -965,10 +977,11 @@ function SiteDetailView({ s, customer, onLoadList, onInvalidateCustomer }: { s: 
 
 // ── Right-pane: contact detail ─────────────────────────────────────────────
 
-function ContactDetailView({ ct, customer, allCustomers, allSites, onLoadList, onInvalidateCustomer }: {
+function ContactDetailView({ ct, customer, allCustomers, allSites, dupMatches, onLoadList, onInvalidateCustomer }: {
   ct: ContactItem; customer: CustomerDetail['customer'] | null;
   allCustomers: CustomerListItem[];
   allSites: SiteItem[];
+  dupMatches: DupMatch[];
   onLoadList: () => void; onInvalidateCustomer: (id: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -1043,6 +1056,21 @@ function ContactDetailView({ ct, customer, allCustomers, allSites, onLoadList, o
   return (
     <div style={{ padding: 24 }}>
       {toast && <div style={toastStyle}><CheckCircle2 size={14} /> {toast}</div>}
+      {dupMatches.length > 0 && (
+        <div style={{ border: '1px solid #E89F3C', borderRadius: 8, background: '#fffbf0', padding: '10px 14px', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: '#7A5500', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+            <AlertTriangle size={11} aria-hidden="true" /> Possible duplicate{dupMatches.length > 1 ? 's' : ''}
+          </div>
+          {dupMatches.map((m) => (
+            <div key={m.partnerId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, paddingTop: 4 }}>
+              <span style={{ flex: 1, color: 'var(--eq-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.partnerName}</span>
+              <span style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 4, flexShrink: 0, background: m.confidence === 'high' ? '#fff0f0' : '#fffbf0', color: m.confidence === 'high' ? '#b71c1c' : '#7A5500', border: `1px solid ${m.confidence === 'high' ? '#f5c6c6' : '#e6cc80'}` }}>
+                {m.confidence}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
         <span style={{ ...avatar, width: 52, height: 52, borderRadius: '50%', fontSize: 17, background: brandColour(ct.name) }}>{initials(ct.name)}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
