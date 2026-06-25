@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, FileText, FileCheck2, FileX2, MapPin, User, ChevronRight, ChevronDown,
   Check, Clock, AlertTriangle, Gauge, CalendarDays, ArrowRightLeft,
-  Download, UserCheck,
+  Download, UserCheck, Upload,
 } from 'lucide-react';
 import { Button, Table, type TableColumn } from '@eq-solutions/ui';
 import { TableBulkAction } from '../../components/TableBulkAction';
@@ -34,6 +34,7 @@ import { defaultSidebarRecords } from '../../lib/sidebarConfig';
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 import { Skeleton } from '../../components/Skeleton';
 import { EqError } from '../../components/EqError';
+import { CertificateImportPanel } from './CertificateImportPanel';
 
 // Deterministic custodian avatar colour from the staff id. Stays within the
 // brand-blue family (sky → deep) so it never reads as a status colour.
@@ -586,6 +587,7 @@ export default function EquipmentModule() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; row: AssetRow | null } | null>(null);
   const [detail, setDetail] = useState<AssetRow | null>(null);
+  const [certImport, setCertImport] = useState(false);
   const [filter, setFilter] = useState<StatusFilter>('all');
   // Group by Site (default) or by custodian (Person). Site keeps the single
   // table; Person renders one collapsible card per custodian with rollups.
@@ -879,9 +881,14 @@ export default function EquipmentModule() {
           <p style={{ fontSize: 13, color: 'var(--eq-mute)', margin: 0 }}>{lede}</p>
         </div>
         {canEdit && (
-          <Button type="button" icon={<Gauge size={16} />} onClick={() => setForm({ mode: 'create', row: null })}>
-            Add item
-          </Button>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <Button type="button" variant="ghost" icon={<Upload size={16} />} onClick={() => setCertImport(true)}>
+              Import certificates
+            </Button>
+            <Button type="button" icon={<Gauge size={16} />} onClick={() => setForm({ mode: 'create', row: null })}>
+              Add item
+            </Button>
+          </div>
         )}
       </div>
 
@@ -1040,6 +1047,14 @@ export default function EquipmentModule() {
           staff={staff}
           onClose={() => setForm(null)}
           onSaved={() => { setForm(null); void load(); }}
+        />
+      )}
+
+      {certImport && (
+        <CertificateImportPanel
+          sites={sites}
+          onClose={() => setCertImport(false)}
+          onCommitted={() => { setCertImport(false); void load(); }}
         />
       )}
     </HubLayout>

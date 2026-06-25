@@ -57,6 +57,9 @@ function cleanFields(raw: Record<string, unknown>): { fields: Record<string, unk
   if ('model' in raw)         out.model         = str(raw.model) || null;
   if ('serial_number' in raw) out.serial_number = str(raw.serial_number) || null;
   if ('ppm_frequency' in raw) out.ppm_frequency = str(raw.ppm_frequency) || null;
+  // Asset tag (e.g. a calibration cert's "CXS027014"). Freeform; also the
+  // (tenant_id, external_id) upsert key, so cert imports backfill it.
+  if ('external_id' in raw)   out.external_id   = str(raw.external_id) || null;
 
   if ('site_id' in raw) {
     const s = str(raw.site_id);

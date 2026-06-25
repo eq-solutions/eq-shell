@@ -157,3 +157,24 @@ export type {
   ExistingAssetKey,
   ExistingAssetMatch,
 } from "./dedup.js";
+
+// ── Skills (document-type extractors) ──────────────────────────────────────
+export {
+  parseCalibrationCerts,
+  reconcileCalibrationCerts,
+  matchCertToAssets,
+  CALIBRATION_CERT_EXTRACT_SCHEMA,
+} from "./skills/calibration-cert/index.js";
+export type {
+  CalibrationCertRecord,
+  CalCertAssetCandidate,
+  CalCertReconcileRow,
+  CalCertMatch,
+  CalCertMatchBasis,
+  CalCertAction,
+  CalCertResult,
+  CanonicalAssetRef,
+  ParseCalibrationCertsInput,
+  ParseCalibrationCertsResult,
+  CalCertFileSource,
+} from "./skills/calibration-cert/index.js";
