@@ -30,6 +30,7 @@ const EXCLUDE = new Set(['quotes-expiry-scheduler', 'backfill-auth-users']);
 const FUNCTIONS = [
   'accept-invite','accept-pin-reset','admin-tenants','ai-briefing','asset-calibration',
   'asset-relations','briefing-action','canonical-api','cards-api','cards-approve-staff',
+  'crm-customers','crm-write',
   'cards-pending-staff','challenge-totp','confirm-totp','edit-user','enroll-totp',
   'entity-actions','entity-insert','entity-patch','entity-rows','equipment-list',
   'generate-gm-briefing','gm-chat','gm-reports','intake-commit','invite-user',

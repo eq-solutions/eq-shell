@@ -83,6 +83,20 @@ function mapContact(
   };
 }
 
+// ── Dedup helpers (bigram Dice coefficient — same algorithm as eq-intake duplicate-detect) ─
+function bgrams(s: string): Set<string> {
+  const g = new Set<string>();
+  for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2));
+  return g;
+}
+function diceCoeff(a: string, b: string): number {
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+  const gA = bgrams(a), gB = bgrams(b);
+  let m = 0; gA.forEach((g) => { if (gB.has(g)) m++; });
+  return (2 * m) / (gA.size + gB.size);
+}
+
 export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
   if (req.method !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' });
 
@@ -206,6 +220,37 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       sites: ((siteRes.data ?? []) as SiteRow[]).map(mapSite),
       contacts: contactRows.map((ct) => mapContact(ct, crossByContact.get(ct.contact_id), sitesByContact.get(ct.contact_id))),
     });
+  }
+
+  if (action === 'dedup') {
+    type DedupRow = { contact_id: string; first_name: string | null; last_name: string | null; email: string | null; customer_id: string | null };
+    const { data, error } = await (sb as any).from('contacts').select('contact_id, first_name, last_name, email, customer_id').eq('active', true);
+    if (error) return json(500, { ok: false, error: error.message });
+    const rows = (data ?? []) as DedupRow[];
+    const norm = (r: DedupRow) => `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim().toLowerCase();
+    const matches: Record<string, { partnerId: string; partnerName: string; partnerCustomerId: string; confidence: 'high' | 'medium' }[]> = {};
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length; j++) {
+        const a = rows[i], b = rows[j];
+        let confidence: 'high' | 'medium' | null = null;
+        if (a.email && b.email && a.email.toLowerCase() === b.email.toLowerCase()) {
+          confidence = 'high';
+        } else {
+          const nameA = norm(a), nameB = norm(b);
+          if (nameA.length >= 2 && nameB.length >= 2) {
+            const sim = diceCoeff(nameA, nameB);
+            if (sim >= 0.85) confidence = 'high';
+            else if (sim >= 0.65) confidence = 'medium';
+          }
+        }
+        if (confidence) {
+          const aName = norm(a) || '—', bName = norm(b) || '—';
+          (matches[a.contact_id] ??= []).push({ partnerId: b.contact_id, partnerName: bName, partnerCustomerId: b.customer_id ?? '', confidence });
+          (matches[b.contact_id] ??= []).push({ partnerId: a.contact_id, partnerName: aName, partnerCustomerId: a.customer_id ?? '', confidence });
+        }
+      }
+    }
+    return json(200, { ok: true, matches });
   }
 
   if (action === 'unassigned') {
