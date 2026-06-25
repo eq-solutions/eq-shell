@@ -27,9 +27,9 @@ export interface Licence {
    */
   licence_type: string;
   /**
-   * The number printed on the card. Optional: training-register / matrix imports often record only that a ticket is held plus its expiry, with no card number. Null = number pending enrichment (see metadata.number_status).
+   * The number printed on the card. Required.
    */
-  licence_number?: string | null;
+  licence_number: string;
   /**
    * Who issued the licence. e.g. 'Service NSW', 'RTO 12345', 'WorkCover NSW'. Often inferred from licence_type + state when missing.
    */
@@ -68,22 +68,6 @@ export interface Licence {
    * Whether this licence record is currently active. Defaults true on import. Aligns with staff.active rather than Cards's deleted_at pattern (per canonical convention).
    */
   active: boolean;
-  /**
-   * Portable identity anchor for the licence holder — the email the credential is keyed to ACROSS tenants. The basis for an employee 'claiming' employer-asserted records when they onboard to Cards. staff_id is the tenant-local link; holder_email is the cross-tenant identity. Ownership of the credential follows the person (this email), not the employer that asserted it.
-   */
-  holder_email?: string | null;
-  /**
-   * Who asserted this record. employer = entered on the worker's behalf (e.g. an SKS training matrix import); employee = self-entered in Cards; rto = training-provider feed. Provenance travels with the record; ownership stays with the employee regardless of who asserted it.
-   */
-  asserted_by?: "employer" | "employee" | "rto" | "import" | "unknown";
-  /**
-   * How strongly the record is evidenced. asserted = stated by an employer with no document; self_declared = the employee stated it; verified_document = a card/cert image or authoritative check backs it. A matrix import is 'asserted'.
-   */
-  verification_status?: "asserted" | "self_declared" | "verified_document";
-  /**
-   * Whether the employee has claimed ownership. unclaimed = employer-asserted and the employee hasn't onboarded/linked in Cards yet; claimed = the employee has confirmed identity and the record is attached to their wallet. The Cards claim flow flips this; until then the asserting employer operates on it.
-   */
-  claim_status?: "unclaimed" | "claimed";
   /**
    * When this record was last imported. System-managed.
    */
