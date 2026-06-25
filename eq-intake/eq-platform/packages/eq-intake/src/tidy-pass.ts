@@ -22,7 +22,7 @@ import contactSchema  from '@eq/schemas/schemas/contact.schema.json';
 import staffSchema    from '@eq/schemas/schemas/staff.schema.json';
 import licenceSchema  from '@eq/schemas/schemas/licence.schema.json';
 
-import type { SupabaseLikeClient } from './tidy-types.js';
+import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
 import type {
   TidyEntity,
   TidyFix,

@@ -16,6 +16,10 @@ import type {
   MapResult,
   ExtractInput,
   ExtractResult,
+  EnrichInput,
+  EnrichResult,
+  EnrichRowSuggestion,
+  FieldSuggestion,
   AIMetrics,
   MetricsCallback,
   AIErrorCode,
@@ -32,6 +36,8 @@ export interface AnthropicProviderOptions {
   mapModel?: string;
   /** Default model for extract() (typical case) */
   extractModel?: string;
+  /** Default model for enrich() — cheap classification, Haiku by default */
+  enrichModel?: string;
   /** Escalation model for extract() when confidence is low */
   extractEscalationModel?: string;
   /** Confidence threshold below which to escalate from Sonnet → Opus on extract */
@@ -49,6 +55,7 @@ export interface AnthropicProviderOptions {
 const DEFAULTS: Required<Omit<AnthropicProviderOptions, 'apiKey' | 'onMetrics'>> = {
   mapModel: 'claude-sonnet-4-5',
   extractModel: 'claude-sonnet-4-5',
+  enrichModel: 'claude-haiku-4-5',
   extractEscalationModel: 'claude-opus-4-7',
   escalationThreshold: 0.6,
   timeoutMs: 30_000,
@@ -67,6 +74,7 @@ const ANTHROPIC_VERSION = '2023-06-01';
 
 import { COLUMN_MAPPING_SYSTEM_PROMPT } from './prompts/column-mapping';
 import { VISION_EXTRACTION_SYSTEM_PROMPT } from './prompts/vision-extraction';
+import { ASSET_ENRICHMENT_SYSTEM_PROMPT } from './prompts/asset-enrichment';
 
 // ============================================================================
 // PROVIDER
@@ -271,6 +279,68 @@ export class AnthropicProvider implements AIProvider {
   }
 
   // --------------------------------------------------------------------------
+  // enrich() — infer missing field values from name/make/model
+  // --------------------------------------------------------------------------
+
+  async enrich(input: EnrichInput): Promise<EnrichResult> {
+    const startedAt = new Date().toISOString();
+    const t0 = Date.now();
+
+    const userPrompt = this.buildEnrichUserPrompt(input);
+    const model = this.opts.enrichModel;
+
+    let retried = false;
+    for (let attempt = 0; attempt <= this.opts.maxRetries; attempt++) {
+      try {
+        const response = await this.callMessages({
+          model,
+          system: ASSET_ENRICHMENT_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: userPrompt }],
+          maxTokens: 4096,
+          temperature: 0.0,
+        });
+
+        const parsed = this.parseJsonResponse(response.text);
+        const suggestions = this.normalizeEnrichResult(parsed, input.fieldsToInfer);
+
+        const metrics: AIMetrics = {
+          provider: 'anthropic',
+          model,
+          tokensIn: response.usage.inputTokens,
+          tokensOut: response.usage.outputTokens,
+          latencyMs: Date.now() - t0,
+          success: true,
+          retried,
+          startedAt,
+        };
+        await this.recordMetrics(metrics);
+
+        return { suggestions, metrics };
+      } catch (e) {
+        const code = classifyError(e);
+        if (!isRetriable(code) || attempt === this.opts.maxRetries) {
+          const metrics: AIMetrics = {
+            provider: 'anthropic',
+            model,
+            tokensIn: 0,
+            tokensOut: 0,
+            latencyMs: Date.now() - t0,
+            success: false,
+            errorCode: code,
+            retried,
+            startedAt,
+          };
+          await this.recordMetrics(metrics);
+          throw new AIError(`enrich() failed: ${code}`, code, e);
+        }
+        retried = true;
+        await sleep(backoffDelay(attempt));
+      }
+    }
+    throw new AIError('enrich() exhausted retries', 'unknown');
+  }
+
+  // --------------------------------------------------------------------------
   // Internals
   // --------------------------------------------------------------------------
 
@@ -302,6 +372,21 @@ export class AnthropicProvider implements AIProvider {
       input.documentTypeHint ?? 'unknown',
       '',
       'Extract per the system prompt rules. Return only the JSON object.',
+    ].join('\n');
+  }
+
+  private buildEnrichUserPrompt(input: EnrichInput): string {
+    return [
+      'target_schema:',
+      JSON.stringify(input.targetSchema, null, 2),
+      '',
+      'fields_to_infer:',
+      JSON.stringify(input.fieldsToInfer),
+      '',
+      'rows:',
+      JSON.stringify(input.rows, null, 2),
+      '',
+      'Infer per the system prompt rules. Return only the JSON object.',
     ].join('\n');
   }
 
@@ -387,6 +472,32 @@ export class AnthropicProvider implements AIProvider {
         appearsComplete: Boolean(raw.metadata?.appears_complete ?? raw.metadata?.appearsComplete),
       },
     };
+  }
+
+  private normalizeEnrichResult(raw: any, fieldsToInfer: string[]): EnrichRowSuggestion[] {
+    if (!raw || typeof raw !== 'object') {
+      throw new AIError('enrich response missing top-level object', 'response_schema_mismatch');
+    }
+    if (!Array.isArray(raw.suggestions)) {
+      throw new AIError('enrich response missing suggestions array', 'response_schema_mismatch');
+    }
+    const allowed = new Set(fieldsToInfer);
+    return raw.suggestions.map((s: any): EnrichRowSuggestion => {
+      const fields: Record<string, FieldSuggestion> = {};
+      const rawFields = s.fields ?? {};
+      for (const [field, sug] of Object.entries<any>(rawFields)) {
+        // Drop anything outside the requested set or with no usable value —
+        // a null/absent suggestion is not surfaced to the user.
+        if (!allowed.has(field)) continue;
+        if (sug == null || sug.value == null || sug.value === '') continue;
+        fields[field] = {
+          value: sug.value,
+          confidence: Number(sug.confidence ?? 0),
+          reason: String(sug.reason ?? ''),
+        };
+      }
+      return { index: Number(s.index ?? 0), fields };
+    });
   }
 
   private async callMessages(req: {

@@ -22,9 +22,18 @@ import type {
 import {
   parseFile,
   classifySheet,
+  enrichAssets,
+  detectDuplicates,
+  findExistingDuplicates,
   type ParsedSheet,
+  type DuplicateFinding,
 } from "@eq/intake";
-import { validate, type TransformSpec, type Flag } from "@eq/validation";
+import {
+  validate,
+  type TransformSpec,
+  type Flag,
+  type ValidationResult,
+} from "@eq/validation";
 
 /**
  * Create a fresh confirm-flow store. Returns the Zustand hook + a driver
@@ -78,6 +87,38 @@ export function createConfirmFlow(): {
         for (const row of flagged) {
           if (row.flags.some((f) => f.kind === flagKind)) {
             next[row.source_row_index] = resolution;
+          }
+        }
+        return { resolutions: next };
+      }),
+    resolveBulkPickTop: (flagKind) =>
+      set((s) => {
+        // Per-row top-candidate pick — each fuzzy/date flag has its OWN
+        // candidates, so a single shared resolution (resolveBulk) can't express
+        // "accept the best match for each". Pick candidates[0] per row.
+        const next = { ...s.resolutions };
+        const flagged = s.validationResult?.flagged_rows ?? [];
+        for (const row of flagged) {
+          const flag = row.flags.find((f) => f.kind === flagKind);
+          if (!flag) continue;
+          if (flag.kind === "fk_fuzzy_match") {
+            const top = (flag.candidates as Array<{ id: string }>)[0];
+            if (top) {
+              next[row.source_row_index] = {
+                kind: "pick_candidate",
+                flagKind: "fk_fuzzy_match",
+                chosen: top.id,
+              };
+            }
+          } else if (flag.kind === "date_ambiguous") {
+            const top = flag.candidates[0];
+            if (top) {
+              next[row.source_row_index] = {
+                kind: "pick_candidate",
+                flagKind: "date_ambiguous",
+                chosen: top,
+              };
+            }
           }
         }
         return { resolutions: next };
@@ -273,6 +314,10 @@ class FlowDriverImpl implements FlowDriver {
         fkLookup: this.config.fkLookup,
       });
       store.setValidationResult(result);
+      // Post-validation augment: AI enrichment + duplicate detection weave
+      // extra flags into the result so everything resolves on the one review
+      // screen. A failure here must not lose rows — we keep the plain result.
+      await this.augment();
       store.setStatus({ kind: "confirm_rows" });
     } catch (e) {
       store.setStatus({
@@ -281,6 +326,99 @@ class FlowDriverImpl implements FlowDriver {
         phase: "validating",
       });
       throw e;
+    }
+  }
+
+  /**
+   * Enrichment + duplicate detection over the committable rows (valid +
+   * flagged; rejected rows are excluded — they aren't going in). Attaches
+   * `ai_enrichment` and `duplicate` flags and re-buckets via
+   * augmentValidationResult(). Best-effort: any error leaves the validation
+   * result untouched rather than blocking commit.
+   */
+  private async augment(): Promise<void> {
+    const store = this.useStore.getState();
+    const result = store.validationResult;
+    if (!this.config || !result) return;
+
+    const schemaEntity = this.config.schema["x-eq-entity"];
+    const rows = [
+      ...result.valid_rows.map((r) => ({
+        index: r.source_row_index,
+        canonical: r.canonical,
+      })),
+      ...result.flagged_rows.map((r) => ({
+        index: r.source_row_index,
+        canonical: r.canonical,
+      })),
+    ];
+    if (rows.length === 0) return;
+
+    const extra = new Map<number, Flag[]>();
+    const add = (index: number, flag: Flag) => {
+      const list = extra.get(index) ?? [];
+      list.push(flag);
+      extra.set(index, list);
+    };
+
+    try {
+      // Enrichment — on by default for asset imports when the provider supports it.
+      const doEnrich =
+        (this.config.enableEnrichment ?? schemaEntity === "asset") &&
+        !!this.config.ai?.enrich;
+      if (doEnrich) {
+        const fields =
+          this.config.enrichFields ?? ["criticality", "ppm_frequency", "asset_type"];
+        const suggestions = await enrichAssets({
+          ai: this.config.ai!,
+          schema: this.config.schema,
+          rows,
+          fieldsToInfer: fields,
+        });
+        for (const s of suggestions) {
+          for (const [field, sug] of Object.entries(s.fields)) {
+            add(s.index, {
+              kind: "ai_enrichment",
+              field,
+              suggested: sug.value,
+              confidence: sug.confidence,
+              reason: sug.reason,
+            });
+          }
+        }
+      }
+
+      // Duplicate detection — asset-specific. Prefer an existing-DB match over
+      // a within-batch one (upsert in place beats keep/skip), one dup flag/row.
+      if (schemaEntity === "asset") {
+        const dupByIndex = new Map<number, DuplicateFinding>();
+        if (this.config.dupLookup) {
+          for (const f of await findExistingDuplicates(rows, this.config.dupLookup)) {
+            dupByIndex.set(f.index, f);
+          }
+        }
+        for (const f of detectDuplicates(rows)) {
+          if (!dupByIndex.has(f.index)) dupByIndex.set(f.index, f);
+        }
+        for (const f of dupByIndex.values()) {
+          add(f.index, {
+            kind: "duplicate",
+            reason: f.reason,
+            matchType: f.matchType,
+            key: f.key,
+            duplicateOf: f.duplicateOf,
+            existingAssetId: f.existingAssetId,
+          });
+        }
+      }
+    } catch (e) {
+      // Best-effort — surface to console, keep the un-augmented result.
+      console.warn("[eq-confirm-ui] augment() failed — continuing without suggestions.", e);
+      return;
+    }
+
+    if (extra.size > 0) {
+      store.setValidationResult(augmentValidationResult(result, extra));
     }
   }
 
@@ -325,8 +463,22 @@ class FlowDriverImpl implements FlowDriver {
     await this.parse(file);
     // Multi-sheet input — wait for the caller to pickSheet(). pickSheet()
     // will continue through classify + map on its own.
-    const status = this.useStore.getState().status;
-    if (status.kind === "confirm_sheet") return;
+    const state = this.useStore.getState();
+    if (state.status.kind === "confirm_sheet") return;
+
+    // Vision fast-path: a photo / scanned-PDF sheet is ALREADY canonical-keyed
+    // (the extractor returns canonical fields, not source columns). Running
+    // classify + AI column-mapping on it is wasteful and can misfire mapping a
+    // field onto itself. Seed an identity mapping and jump straight to review.
+    const sheet = state.parsedSheet;
+    if (sheet && isVisionSheet(sheet)) {
+      for (const col of sheet.headerRow) {
+        state.setUserOverride(col, col);
+      }
+      state.setStatus({ kind: "confirm_mapping" });
+      return;
+    }
+
     await this.classify();
     await this.map();
   }
@@ -335,6 +487,62 @@ class FlowDriverImpl implements FlowDriver {
 // ============================================================================
 // HELPERS — exported for tests + power users
 // ============================================================================
+
+/** A ParsedSheet produced by the vision extractor is canonical-keyed already. */
+function isVisionSheet(sheet: ParsedSheet): boolean {
+  return (sheet.meta as { delimiter?: string }).delimiter === "ai-extract";
+}
+
+/**
+ * Re-bucket a ValidationResult after the augment pass. `extraFlags` maps a
+ * source_row_index to additional flags (enrichment suggestions, duplicate
+ * findings). Valid rows that gain a flag move to flagged; existing flagged
+ * rows merge the new flags in. Rejected rows are never touched — they aren't
+ * commit candidates. Summary counts are recomputed; flagged rows are sorted
+ * by source index for stable display.
+ */
+export function augmentValidationResult(
+  result: ValidationResult,
+  extraFlags: Map<number, Flag[]>,
+): ValidationResult {
+  if (extraFlags.size === 0) return result;
+
+  const newValid: ValidationResult["valid_rows"] = [];
+  const movedToFlagged: ValidationResult["flagged_rows"] = [];
+
+  for (const v of result.valid_rows) {
+    const extra = extraFlags.get(v.source_row_index);
+    if (extra && extra.length > 0) {
+      movedToFlagged.push({
+        source_row_index: v.source_row_index,
+        canonical: v.canonical,
+        flags: extra,
+      });
+    } else {
+      newValid.push(v);
+    }
+  }
+
+  const mergedFlagged = result.flagged_rows.map((f) => {
+    const extra = extraFlags.get(f.source_row_index);
+    return extra && extra.length > 0 ? { ...f, flags: [...f.flags, ...extra] } : f;
+  });
+
+  const allFlagged = [...mergedFlagged, ...movedToFlagged].sort(
+    (a, b) => a.source_row_index - b.source_row_index,
+  );
+
+  return {
+    valid_rows: newValid,
+    flagged_rows: allFlagged,
+    rejected_rows: result.rejected_rows,
+    summary: {
+      ...result.summary,
+      valid: newValid.length,
+      flagged: allFlagged.length,
+    },
+  };
+}
 
 export function computeEffectiveMapping(state: FlowState): EffectiveMapping {
   const fromAi: Record<string, string | null> = {};
@@ -408,6 +616,9 @@ function applyResolution(
   if (res.kind === "accept_canonical") return canonical;
   if (res.kind === "set_value") {
     return { ...canonical, [res.field]: res.value };
+  }
+  if (res.kind === "set_fields") {
+    return { ...canonical, ...res.values };
   }
   if (res.kind === "pick_candidate") {
     // Find the matching flag, replace its field with the chosen value.
