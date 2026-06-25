@@ -18,7 +18,7 @@ import {
   AlertTriangle, Search, Pencil, Download, Plus, X, Archive, Trash2,
   Link2, Merge, CheckCircle2,
 } from 'lucide-react';
-import { Button, Skeleton } from '@eq-solutions/ui';
+import { Button, Skeleton, Spinner } from '@eq-solutions/ui';
 import { HubLayout } from '../components/HubLayout';
 import { Gate } from '../permissions/Gate';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
@@ -772,7 +772,7 @@ function ActionBar({ actions }: ActionBarProps) {
             opacity: a.busy ? 0.6 : 1,
           }}
         >
-          {a.icon} {a.label}
+          {a.busy ? <Spinner size="sm" variant="ring" label="" /> : a.icon} {a.label}
         </button>
       ))}
     </div>
@@ -1193,7 +1193,9 @@ function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
         <input value={state} onChange={(e) => setState(e.target.value)} style={inputStyle} placeholder="NSW" />
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
           <Button variant="ghost" size="sm" type="button" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" size="sm" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add customer'}</Button>
+          <Button variant="primary" size="sm" type="submit" disabled={busy}>
+            {busy ? <><Spinner size="sm" variant="ring" inverted label="" /> Adding…</> : 'Add customer'}
+          </Button>
         </div>
       </form>
     </div>
