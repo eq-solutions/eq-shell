@@ -14,8 +14,12 @@
 // Exit 0 = all loaded; exit 1 = one or more crashed/unreachable.
 
 const BASE = (process.argv[2] || 'https://core.eq.solutions').replace(/\/$/, '');
-const TIMEOUT_MS = 12000;
-const CONCURRENCY = 8;
+const TIMEOUT_MS = 30000;
+const CONCURRENCY = 4;
+// Retry delay for cold-start ECONNRESET ("fetch failed" TypeError). The Lambda
+// is already booting from the first request; a 3s pause lets it warm up so the
+// retry lands on a live container rather than another dropped connection.
+const RETRY_DELAY_MS = 3000;
 
 // All functions EXCEPT cron/side-effectful ones we don't want to poke with a bare GET.
 const EXCLUDE = new Set(['quotes-expiry-scheduler', 'backfill-auth-users']);
@@ -35,14 +39,32 @@ const FUNCTIONS = [
 
 const CRASH_RE = /"errorType"|"errorMessage"|ERR_[A-Z_]+|Runtime\.|terminated unexpectedly|Cannot find module/i;
 
-async function probe(fn) {
+async function probeOnce(fn) {
   const url = `${BASE}/.netlify/functions/${fn}`;
+  const res = await fetch(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const body = await res.text().catch(() => '');
+  const crash = res.status === 502 || res.status === 504 || CRASH_RE.test(body.slice(0, 500));
+  return { fn, status: res.status, crash, note: crash ? body.slice(0, 140).replace(/\s+/g, ' ') : '' };
+}
+
+async function probe(fn) {
   try {
-    const res = await fetch(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(TIMEOUT_MS) });
-    const body = await res.text().catch(() => '');
-    const crash = res.status === 502 || res.status === 504 || CRASH_RE.test(body.slice(0, 500));
-    return { fn, status: res.status, crash, note: crash ? body.slice(0, 140).replace(/\s+/g, ' ') : '' };
+    return await probeOnce(fn);
   } catch (e) {
+    // TypeError ("fetch failed") = network-level failure (ECONNRESET / ECONNREFUSED).
+    // Happens on cold-start: Netlify drops the TCP connection while the Lambda
+    // container is booting under concurrent load. The container is already
+    // warming from the first hit — wait briefly then retry so the second attempt
+    // lands on a live Lambda. Timeout aborts are NOT retried; they mean the
+    // function is genuinely slow or broken, not a network blip.
+    if (e instanceof TypeError) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      try {
+        return await probeOnce(fn);
+      } catch (e2) {
+        return { fn, status: 0, crash: true, note: 'unreachable (after retry): ' + (e2?.message || e2) };
+      }
+    }
     return { fn, status: 0, crash: true, note: 'unreachable: ' + (e?.message || e) };
   }
 }
