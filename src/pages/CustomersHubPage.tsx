@@ -6,19 +6,19 @@
 // Left pane level-filter tabs: All | Customers | Sites | Contacts
 // Search filters by customer name/group; auto-expands matched customers.
 //
-// TODO: cross-entity search by site/contact name (filter within sites/contacts
-// list by typed string) — deferred follow-up enhancement.
-//
 // Data: /.netlify/functions/crm-customers (list / detail / unassigned).
 // On-demand detail (sites + contacts) fetched per customer on first expand —
 // cached in expandedData map, never re-fetched.
+//
+// Mutations: /.netlify/functions/crm-write (archive/delete/merge/link actions).
 
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from 'react';
 import {
   Building2, MapPin, User, Phone, Mail, ChevronDown, ChevronRight,
-  AlertTriangle, Search, Pencil, Download, Plus, X,
+  AlertTriangle, Search, Pencil, Download, Plus, X, Archive, Trash2,
+  Link2, Merge, CheckCircle2,
 } from 'lucide-react';
-import { Button } from '@eq-solutions/ui';
+import { Button, Skeleton } from '@eq-solutions/ui';
 import { HubLayout } from '../components/HubLayout';
 import { Gate } from '../permissions/Gate';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
@@ -28,14 +28,12 @@ import '../styles/records-tree.css';
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 const UNASSIGNED = '__unassigned__';
 
-// Deterministic squared-avatar colour from a name — brand-blue family only.
 const BRAND_PALETTE = ['#2986B4', '#1F4E6C', '#3DA8D8', '#5AC0E6', '#2E6E94'];
 function brandColour(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   return BRAND_PALETTE[h % BRAND_PALETTE.length];
 }
-
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '–';
@@ -55,6 +53,7 @@ interface SiteItem {
 
 interface ContactItem {
   id: string; name: string; role: string | null; email: string | null; phone: string | null;
+  extra_customers: { id: string; name: string }[];
 }
 
 interface CustomerDetail {
@@ -66,7 +65,6 @@ interface CustomerDetail {
   contacts: ContactItem[];
 }
 
-// Selection can be a customer, a site, or a contact — each needs context.
 type Selection =
   | { kind: 'customer'; customerId: string }
   | { kind: 'site'; customerId: string; siteId: string }
@@ -84,6 +82,16 @@ async function crmFetch(qs: string): Promise<Record<string, unknown>> {
     throw new Error(body.error ?? `HTTP ${res.status}`);
   }
   return res.json() as Promise<Record<string, unknown>>;
+}
+
+async function crmWrite(body: Record<string, unknown>): Promise<{ ok: boolean; error?: string; [k: string]: unknown }> {
+  const res = await fetch('/.netlify/functions/crm-write', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json() as Promise<{ ok: boolean; error?: string }>;
 }
 
 // ── Page shell ─────────────────────────────────────────────────────────────
@@ -104,34 +112,27 @@ function CustomersHubInner() {
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [orphan, setOrphan] = useState<{ sites: number; contacts: number }>({ sites: 0, contacts: 0 });
 
-  // Tree expand state: set of customer IDs with expanded root node
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
-  // Branch expand state: 'sites:ID' | 'contacts:ID' keys
   const [expandedBranches, setExpandedBranches] = useState<Set<string>>(new Set());
-  // Unassigned root expanded
   const [unassignedOpen, setUnassignedOpen] = useState(false);
   const [unassignedBranchSites, setUnassignedBranchSites] = useState(true);
   const [unassignedBranchContacts, setUnassignedBranchContacts] = useState(true);
 
-  // Per-customer detail cache — fetched on first expand.
   const [expandedData, setExpandedData] = useState<Map<string, CustomerDetail>>(new Map());
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
 
-  // Unassigned data
   const [unassignedData, setUnassignedData] = useState<{ sites: SiteItem[]; contacts: ContactItem[] } | null>(null);
   const [unassignedLoading, setUnassignedLoading] = useState(false);
 
-  // Selection
   const [selection, setSelection] = useState<Selection | null>(null);
-
-  // UI state
   const [filter, setFilter] = useState('');
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Mobile sheet
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Add-customer modal state
+  const [addCustomerOpen, setAddCustomerOpen] = useState(false);
 
   const treeRef = useRef<HTMLUListElement>(null);
 
@@ -152,7 +153,7 @@ function CustomersHubInner() {
 
   useEffect(() => { void loadList(); }, [loadList]);
 
-  // ── Expand a customer node (lazy-fetch detail) ──────────────────────────
+  // ── Expand a customer node ──────────────────────────────────────────────
 
   const expandCustomer = useCallback(async (id: string) => {
     if (expandedData.has(id) || loadingIds.has(id)) return;
@@ -171,13 +172,17 @@ function CustomersHubInner() {
     }
   }, [expandedData, loadingIds]);
 
+  // Invalidate a customer's cached detail (used after mutations)
+  const invalidateCustomer = useCallback((id: string) => {
+    setExpandedData((prev) => { const next = new Map(prev); next.delete(id); return next; });
+  }, []);
+
   const toggleCustomer = useCallback((id: string) => {
     setExpandedCustomers((prev) => {
       const next = new Set(prev);
       if (next.has(id)) { next.delete(id); } else {
         next.add(id);
         void expandCustomer(id);
-        // Auto-expand both branches when opening a customer
         setExpandedBranches((pb) => {
           const nb = new Set(pb);
           nb.add(`sites:${id}`);
@@ -197,8 +202,6 @@ function CustomersHubInner() {
     });
   }, []);
 
-  // ── Unassigned expand ───────────────────────────────────────────────────
-
   const toggleUnassigned = useCallback(async () => {
     if (!unassignedOpen && !unassignedData && !unassignedLoading) {
       setUnassignedLoading(true);
@@ -217,16 +220,11 @@ function CustomersHubInner() {
     setUnassignedOpen((o) => !o);
   }, [unassignedOpen, unassignedData, unassignedLoading]);
 
-  // ── Selection helpers ───────────────────────────────────────────────────
-
   const select = useCallback((s: Selection) => {
     setSelection(s);
     setSheetOpen(true);
-    // Selecting a customer with no expanded state → expand + fetch
-    if (s.kind === 'customer') {
-      if (!expandedCustomers.has(s.customerId)) {
-        toggleCustomer(s.customerId);
-      }
+    if (s.kind === 'customer' && !expandedCustomers.has(s.customerId)) {
+      toggleCustomer(s.customerId);
     }
   }, [expandedCustomers, toggleCustomer]);
 
@@ -240,14 +238,13 @@ function CustomersHubInner() {
     return false;
   }, [selection]);
 
-  // ── Filtering + search ──────────────────────────────────────────────────
+  // ── Filtering ───────────────────────────────────────────────────────────
 
   const q = filter.trim().toLowerCase();
   const filteredCustomers = q
     ? customers.filter((c) => c.name.toLowerCase().includes(q) || (c.group ?? '').toLowerCase().includes(q))
     : customers;
 
-  // When search active, auto-expand matched customers (after their data loads)
   useEffect(() => {
     if (!q) return;
     filteredCustomers.forEach((c) => {
@@ -262,7 +259,6 @@ function CustomersHubInner() {
         });
       }
     });
-  // Only re-run when the search string changes — not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
@@ -280,16 +276,12 @@ function CustomersHubInner() {
       return { kind: 'unassigned', customerDetail: null, site: null, contact: null, unassigned: unassignedData };
     }
     const cd = expandedData.get(selection.customerId) ?? null;
-    if (selection.kind === 'customer') {
-      return { kind: 'customer', customerDetail: cd, site: null, contact: null, unassigned: null };
-    }
+    if (selection.kind === 'customer') return { kind: 'customer', customerDetail: cd, site: null, contact: null, unassigned: null };
     if (selection.kind === 'site') {
-      const site = cd?.sites.find((s) => s.id === selection.siteId) ?? null;
-      return { kind: 'site', customerDetail: cd, site, contact: null, unassigned: null };
+      return { kind: 'site', customerDetail: cd, site: cd?.sites.find((s) => s.id === (selection as { siteId: string }).siteId) ?? null, contact: null, unassigned: null };
     }
     if (selection.kind === 'contact') {
-      const contact = cd?.contacts.find((c) => c.id === selection.contactId) ?? null;
-      return { kind: 'contact', customerDetail: cd, site: null, contact, unassigned: null };
+      return { kind: 'contact', customerDetail: cd, site: null, contact: cd?.contacts.find((c) => c.id === (selection as { contactId: string }).contactId) ?? null, unassigned: null };
     }
     return { kind: 'none', customerDetail: null, site: null, contact: null, unassigned: null };
   }
@@ -300,7 +292,7 @@ function CustomersHubInner() {
     && loadingIds.has((selection as { customerId: string }).customerId);
 
   // ── Keyboard navigation ─────────────────────────────────────────────────
-  // Collect all visible node refs in order for arrow-key traversal.
+
   const nodeRefs = useRef<HTMLButtonElement[]>([]);
   const registerNode = useCallback((el: HTMLButtonElement | null) => {
     if (el && !nodeRefs.current.includes(el)) nodeRefs.current.push(el);
@@ -308,19 +300,11 @@ function CustomersHubInner() {
 
   function handleTreeKeyDown(e: KeyboardEvent<HTMLUListElement>) {
     const focused = document.activeElement as HTMLButtonElement | null;
-    const nodes = nodeRefs.current.filter((n) => n.offsetParent !== null); // visible only
+    const nodes = nodeRefs.current.filter((n) => n.offsetParent !== null);
     const idx = focused ? nodes.indexOf(focused) : -1;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      nodes[idx + 1]?.focus();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      nodes[Math.max(0, idx - 1)]?.focus();
-    } else if (e.key === 'Enter' && focused) {
-      e.preventDefault();
-      focused.click();
-    }
-    // ArrowRight/Left — delegated to individual nodes via onClick on chevron buttons
+    if (e.key === 'ArrowDown') { e.preventDefault(); nodes[idx + 1]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); nodes[Math.max(0, idx - 1)]?.focus(); }
+    else if (e.key === 'Enter' && focused) { e.preventDefault(); focused.click(); }
   }
 
   const countLabel = q
@@ -340,7 +324,7 @@ function CustomersHubInner() {
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <Button variant="ghost" size="sm" icon={<Download size={15} />}>Export</Button>
-            <Button variant="primary" size="sm" icon={<Plus size={15} />}>Add customer</Button>
+            <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setAddCustomerOpen(true)}>Add customer</Button>
           </div>
         </div>
       </div>
@@ -350,7 +334,6 @@ function CustomersHubInner() {
       <div className="crm-pane">
         {/* ── Left: tree pane ── */}
         <div className="crm-pane__list">
-          {/* Search box */}
           <div style={{ padding: '10px 12px 0', borderBottom: 'none' }}>
             <div style={{ position: 'relative' }}>
               <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: 'var(--eq-grey)', pointerEvents: 'none' }} aria-hidden="true" />
@@ -368,7 +351,6 @@ function CustomersHubInner() {
             </div>
           </div>
 
-          {/* Level filter tabs */}
           <div className="crm-tabs" role="tablist" aria-label="Level filter">
             {(['all', 'customers', 'sites', 'contacts'] as LevelFilter[]).map((t) => (
               <button
@@ -383,10 +365,19 @@ function CustomersHubInner() {
             ))}
           </div>
 
-          {/* Tree / list */}
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {loading ? (
-              <p style={{ color: 'var(--eq-grey)', fontSize: 13, padding: 16 }}>Loading…</p>
+              <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Skeleton shape="circle" width={32} height={32} />
+                    <div style={{ flex: 1 }}>
+                      <Skeleton shape="text" width={`${55 + (i % 3) * 15}%`} />
+                      <Skeleton shape="line" width="40%" style={{ marginTop: 4 }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <ul
                 ref={treeRef}
@@ -435,7 +426,6 @@ function CustomersHubInner() {
 
                 {levelFilter === 'sites' && filteredCustomers.map((c) => {
                   const cd = expandedData.get(c.id);
-                  // Trigger fetch if not yet loaded
                   if (!cd && !loadingIds.has(c.id)) void expandCustomer(c.id);
                   return (
                     <li key={c.id}>
@@ -446,19 +436,9 @@ function CustomersHubInner() {
                           <span style={{ opacity: 0.6 }}>{[c.group, c.state].filter(Boolean).join(' · ')}</span>
                         )}
                       </div>
-                      {loadingIds.has(c.id) && (
-                        <p style={{ fontSize: 12, color: 'var(--eq-grey)', padding: '6px 16px' }}>Loading…</p>
-                      )}
+                      {loadingIds.has(c.id) && <TreeRowSkeleton />}
                       {cd?.sites.map((s) => (
-                        <SiteLeafNode
-                          key={s.id}
-                          s={s}
-                          customerId={c.id}
-                          isSelected={isSelected}
-                          onSelect={select}
-                          registerNode={registerNode}
-                          indent={false}
-                        />
+                        <SiteLeafNode key={s.id} s={s} customerId={c.id} isSelected={isSelected} onSelect={select} registerNode={registerNode} indent={false} />
                       ))}
                     </li>
                   );
@@ -476,41 +456,23 @@ function CustomersHubInner() {
                           <span style={{ opacity: 0.6 }}>{[c.group, c.state].filter(Boolean).join(' · ')}</span>
                         )}
                       </div>
-                      {loadingIds.has(c.id) && (
-                        <p style={{ fontSize: 12, color: 'var(--eq-grey)', padding: '6px 16px' }}>Loading…</p>
-                      )}
+                      {loadingIds.has(c.id) && <TreeRowSkeleton />}
                       {cd?.contacts.map((ct) => (
-                        <ContactLeafNode
-                          key={ct.id}
-                          ct={ct}
-                          customerId={c.id}
-                          isSelected={isSelected}
-                          onSelect={select}
-                          registerNode={registerNode}
-                          indent={false}
-                        />
+                        <ContactLeafNode key={ct.id} ct={ct} customerId={c.id} isSelected={isSelected} onSelect={select} registerNode={registerNode} indent={false} />
                       ))}
                     </li>
                   );
                 })}
 
-                {/* Unassigned bucket — always last, only when data exists */}
                 {levelFilter === 'all' && (orphan.sites > 0 || orphan.contacts > 0) && (
                   <li className="crm-tree__unassigned" role="treeitem" aria-expanded={unassignedOpen}>
                     <button
                       ref={registerNode}
                       className={`crm-tree__unassigned-row${isSelected({ kind: 'unassigned' }) ? ' is-active' : ''}`}
-                      onClick={() => {
-                        void toggleUnassigned();
-                        select({ kind: 'unassigned' });
-                      }}
+                      onClick={() => { void toggleUnassigned(); select({ kind: 'unassigned' }); }}
                       aria-expanded={unassignedOpen}
                     >
-                      <ChevronRight
-                        size={14}
-                        className={`crm-tree__chevron${unassignedOpen ? ' is-open' : ''}`}
-                        aria-hidden="true"
-                      />
+                      <ChevronRight size={14} className={`crm-tree__chevron${unassignedOpen ? ' is-open' : ''}`} aria-hidden="true" />
                       <span style={{ ...avatar, width: 32, height: 32, borderRadius: 8, background: 'transparent', border: '1px dashed var(--eq-gray-300)', color: 'var(--eq-grey)' }}>
                         <AlertTriangle size={14} aria-hidden="true" />
                       </span>
@@ -526,58 +488,24 @@ function CustomersHubInner() {
 
                     {unassignedOpen && (
                       <div className="crm-tree__customer-body">
-                        {unassignedLoading && (
-                          <p style={{ fontSize: 12, color: 'var(--eq-grey)', padding: '8px 16px' }}>Loading…</p>
-                        )}
+                        {unassignedLoading && <TreeRowSkeleton />}
                         {unassignedData && (
                           <>
-                            {/* Sites branch */}
-                            <button
-                              className={`crm-tree__branch${unassignedBranchSites ? ' is-open' : ''}`}
-                              onClick={() => setUnassignedBranchSites((o) => !o)}
-                              aria-expanded={unassignedBranchSites}
-                            >
-                              <ChevronRight size={12} aria-hidden="true" />
-                              <MapPin size={12} aria-hidden="true" />
+                            <button className={`crm-tree__branch${unassignedBranchSites ? ' is-open' : ''}`} onClick={() => setUnassignedBranchSites((o) => !o)} aria-expanded={unassignedBranchSites}>
+                              <ChevronRight size={12} aria-hidden="true" /><MapPin size={12} aria-hidden="true" />
                               Sites
-                              <span className={`crm-tree__branch-count${unassignedData.sites.length > 0 ? ' has-items' : ''}`}>
-                                {unassignedData.sites.length}
-                              </span>
+                              <span className={`crm-tree__branch-count${unassignedData.sites.length > 0 ? ' has-items' : ''}`}>{unassignedData.sites.length}</span>
                             </button>
                             {unassignedBranchSites && unassignedData.sites.map((s) => (
-                              <SiteLeafNode
-                                key={s.id}
-                                s={s}
-                                customerId={UNASSIGNED}
-                                isSelected={isSelected}
-                                onSelect={select}
-                                registerNode={registerNode}
-                                indent
-                              />
+                              <SiteLeafNode key={s.id} s={s} customerId={UNASSIGNED} isSelected={isSelected} onSelect={select} registerNode={registerNode} indent />
                             ))}
-                            {/* Contacts branch */}
-                            <button
-                              className={`crm-tree__branch${unassignedBranchContacts ? ' is-open' : ''}`}
-                              onClick={() => setUnassignedBranchContacts((o) => !o)}
-                              aria-expanded={unassignedBranchContacts}
-                            >
-                              <ChevronRight size={12} aria-hidden="true" />
-                              <User size={12} aria-hidden="true" />
+                            <button className={`crm-tree__branch${unassignedBranchContacts ? ' is-open' : ''}`} onClick={() => setUnassignedBranchContacts((o) => !o)} aria-expanded={unassignedBranchContacts}>
+                              <ChevronRight size={12} aria-hidden="true" /><User size={12} aria-hidden="true" />
                               Contacts
-                              <span className={`crm-tree__branch-count${unassignedData.contacts.length > 0 ? ' has-items' : ''}`}>
-                                {unassignedData.contacts.length}
-                              </span>
+                              <span className={`crm-tree__branch-count${unassignedData.contacts.length > 0 ? ' has-items' : ''}`}>{unassignedData.contacts.length}</span>
                             </button>
                             {unassignedBranchContacts && unassignedData.contacts.map((ct) => (
-                              <ContactLeafNode
-                                key={ct.id}
-                                ct={ct}
-                                customerId={UNASSIGNED}
-                                isSelected={isSelected}
-                                onSelect={select}
-                                registerNode={registerNode}
-                                indent
-                              />
+                              <ContactLeafNode key={ct.id} ct={ct} customerId={UNASSIGNED} isSelected={isSelected} onSelect={select} registerNode={registerNode} indent />
                             ))}
                           </>
                         )}
@@ -591,40 +519,52 @@ function CustomersHubInner() {
         </div>
 
         {/* ── Right: detail pane (desktop) ── */}
-        <div
-          className="crm-pane__detail-col"
-          style={{ overflowY: 'auto', background: 'var(--eq-content-bg, #f6f3ee)' }}
-        >
+        <div className="crm-pane__detail-col" style={{ overflowY: 'auto', background: 'var(--eq-content-bg, #f6f3ee)' }}>
           <DetailPane
             resolved={detailResolved}
             detailLoading={!!detailLoading}
+            customers={customers}
             onLoadList={loadList}
+            onInvalidateCustomer={invalidateCustomer}
           />
         </div>
       </div>
 
       {/* ── Mobile slide-up sheet ── */}
-      <div
-        className={`crm-detail-sheet${sheetOpen ? ' is-open' : ''}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Record detail"
-      >
+      <div className={`crm-detail-sheet${sheetOpen ? ' is-open' : ''}`} role="dialog" aria-modal="true" aria-label="Record detail">
         <div className="crm-detail-sheet__handle">
-          <button
-            onClick={() => setSheetOpen(false)}
-            style={{ position: 'absolute', right: 12, top: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--eq-grey)', display: 'flex', alignItems: 'center', gap: 4 }}
-            aria-label="Close"
-          >
+          <button onClick={() => setSheetOpen(false)} style={{ position: 'absolute', right: 12, top: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--eq-grey)', display: 'flex', alignItems: 'center', gap: 4 }} aria-label="Close">
             <X size={16} />
           </button>
         </div>
         <DetailPane
           resolved={detailResolved}
           detailLoading={!!detailLoading}
+          customers={customers}
           onLoadList={loadList}
+          onInvalidateCustomer={invalidateCustomer}
         />
       </div>
+
+      {/* ── Add customer modal ── */}
+      {addCustomerOpen && (
+        <AddCustomerModal
+          onClose={() => setAddCustomerOpen(false)}
+          onCreated={() => { setAddCustomerOpen(false); void loadList(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Tree row skeleton (inline loading state) ───────────────────────────────
+
+function TreeRowSkeleton() {
+  return (
+    <div style={{ padding: '6px 16px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+      {[70, 55, 80].map((w, i) => (
+        <Skeleton key={i} shape="text" width={`${w}%`} />
+      ))}
     </div>
   );
 }
@@ -632,43 +572,27 @@ function CustomersHubInner() {
 // ── Customer tree node ─────────────────────────────────────────────────────
 
 interface CustomerTreeNodeProps {
-  c: CustomerListItem;
-  expanded: boolean;
-  expandedBranches: Set<string>;
-  detail: CustomerDetail | null;
-  loading: boolean;
+  c: CustomerListItem; expanded: boolean; expandedBranches: Set<string>;
+  detail: CustomerDetail | null; loading: boolean;
   isSelected: (s: Selection) => boolean;
-  onToggle: () => void;
-  onToggleBranch: (key: string) => void;
-  onSelect: (s: Selection) => void;
-  registerNode: (el: HTMLButtonElement | null) => void;
+  onToggle: () => void; onToggleBranch: (key: string) => void;
+  onSelect: (s: Selection) => void; registerNode: (el: HTMLButtonElement | null) => void;
 }
 
-function CustomerTreeNode({
-  c, expanded, expandedBranches, detail, loading,
-  isSelected, onToggle, onToggleBranch, onSelect, registerNode,
-}: CustomerTreeNodeProps) {
+function CustomerTreeNode({ c, expanded, expandedBranches, detail, loading, isSelected, onToggle, onToggleBranch, onSelect, registerNode }: CustomerTreeNodeProps) {
   const sitesOpen = expandedBranches.has(`sites:${c.id}`);
   const contactsOpen = expandedBranches.has(`contacts:${c.id}`);
 
   return (
     <li className="crm-tree__customer" role="treeitem" aria-expanded={expanded}>
-      {/* Customer root row */}
       <button
         ref={registerNode}
         className={`crm-tree__customer-row${isSelected({ kind: 'customer', customerId: c.id }) ? ' is-active' : ''}`}
-        onClick={() => {
-          onToggle();
-          onSelect({ kind: 'customer', customerId: c.id });
-        }}
+        onClick={() => { onToggle(); onSelect({ kind: 'customer', customerId: c.id }); }}
         aria-expanded={expanded}
         aria-label={`${c.name}, ${c.site_count} sites, ${c.contact_count} contacts`}
       >
-        <ChevronRight
-          size={14}
-          className={`crm-tree__chevron${expanded ? ' is-open' : ''}`}
-          aria-hidden="true"
-        />
+        <ChevronRight size={14} className={`crm-tree__chevron${expanded ? ' is-open' : ''}`} aria-hidden="true" />
         <AvatarSquare name={c.name} />
         <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
           <span style={{ display: 'block', fontWeight: 700, fontSize: 13.5, color: 'var(--eq-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
@@ -680,67 +604,26 @@ function CustomerTreeNode({
         </span>
       </button>
 
-      {/* Expanded body */}
       {expanded && (
         <div className="crm-tree__customer-body">
-          {loading && (
-            <p style={{ fontSize: 12, color: 'var(--eq-grey)', padding: '8px 16px 8px 32px' }}>Loading…</p>
-          )}
-
+          {loading && <TreeRowSkeleton />}
           {detail && (
             <>
-              {/* Sites branch */}
-              <button
-                ref={registerNode}
-                className={`crm-tree__branch${sitesOpen ? ' is-open' : ''}`}
-                onClick={() => onToggleBranch(`sites:${c.id}`)}
-                aria-expanded={sitesOpen}
-                aria-label={`Sites (${detail.sites.length})`}
-              >
-                <ChevronRight size={12} aria-hidden="true" />
-                <MapPin size={12} aria-hidden="true" />
+              <button ref={registerNode} className={`crm-tree__branch${sitesOpen ? ' is-open' : ''}`} onClick={() => onToggleBranch(`sites:${c.id}`)} aria-expanded={sitesOpen} aria-label={`Sites (${detail.sites.length})`}>
+                <ChevronRight size={12} aria-hidden="true" /><MapPin size={12} aria-hidden="true" />
                 Sites
-                <span className={`crm-tree__branch-count${detail.sites.length > 0 ? ' has-items' : ''}`}>
-                  {detail.sites.length}
-                </span>
+                <span className={`crm-tree__branch-count${detail.sites.length > 0 ? ' has-items' : ''}`}>{detail.sites.length}</span>
               </button>
               {sitesOpen && detail.sites.map((s) => (
-                <SiteLeafNode
-                  key={s.id}
-                  s={s}
-                  customerId={c.id}
-                  isSelected={isSelected}
-                  onSelect={onSelect}
-                  registerNode={registerNode}
-                  indent
-                />
+                <SiteLeafNode key={s.id} s={s} customerId={c.id} isSelected={isSelected} onSelect={onSelect} registerNode={registerNode} indent />
               ))}
-
-              {/* Contacts branch */}
-              <button
-                ref={registerNode}
-                className={`crm-tree__branch${contactsOpen ? ' is-open' : ''}`}
-                onClick={() => onToggleBranch(`contacts:${c.id}`)}
-                aria-expanded={contactsOpen}
-                aria-label={`Contacts (${detail.contacts.length})`}
-              >
-                <ChevronRight size={12} aria-hidden="true" />
-                <User size={12} aria-hidden="true" />
+              <button ref={registerNode} className={`crm-tree__branch${contactsOpen ? ' is-open' : ''}`} onClick={() => onToggleBranch(`contacts:${c.id}`)} aria-expanded={contactsOpen} aria-label={`Contacts (${detail.contacts.length})`}>
+                <ChevronRight size={12} aria-hidden="true" /><User size={12} aria-hidden="true" />
                 Contacts
-                <span className={`crm-tree__branch-count${detail.contacts.length > 0 ? ' has-items' : ''}`}>
-                  {detail.contacts.length}
-                </span>
+                <span className={`crm-tree__branch-count${detail.contacts.length > 0 ? ' has-items' : ''}`}>{detail.contacts.length}</span>
               </button>
               {contactsOpen && detail.contacts.map((ct) => (
-                <ContactLeafNode
-                  key={ct.id}
-                  ct={ct}
-                  customerId={c.id}
-                  isSelected={isSelected}
-                  onSelect={onSelect}
-                  registerNode={registerNode}
-                  indent
-                />
+                <ContactLeafNode key={ct.id} ct={ct} customerId={c.id} isSelected={isSelected} onSelect={onSelect} registerNode={registerNode} indent />
               ))}
             </>
           )}
@@ -753,38 +636,21 @@ function CustomerTreeNode({
 // ── Site leaf node ─────────────────────────────────────────────────────────
 
 interface SiteLeafNodeProps {
-  s: SiteItem;
-  customerId: string;
-  isSelected: (s: Selection) => boolean;
-  onSelect: (s: Selection) => void;
-  registerNode: (el: HTMLButtonElement | null) => void;
-  indent: boolean;
+  s: SiteItem; customerId: string; isSelected: (s: Selection) => boolean;
+  onSelect: (s: Selection) => void; registerNode: (el: HTMLButtonElement | null) => void; indent: boolean;
 }
 
 function SiteLeafNode({ s, customerId, isSelected, onSelect, registerNode, indent }: SiteLeafNodeProps) {
   const sel: Selection = { kind: 'site', customerId, siteId: s.id };
   return (
-    <button
-      ref={registerNode}
-      role="treeitem"
-      className={`crm-tree__site-row${isSelected(sel) ? ' is-active' : ''}`}
-      style={indent ? undefined : { paddingLeft: 12 }}
-      onClick={() => onSelect(sel)}
-      aria-label={`Site: ${s.name}`}
-    >
+    <button ref={registerNode} role="treeitem" className={`crm-tree__site-row${isSelected(sel) ? ' is-active' : ''}`} style={indent ? undefined : { paddingLeft: 12 }} onClick={() => onSelect(sel)} aria-label={`Site: ${s.name}`}>
       <MapPin size={13} style={{ color: 'var(--eq-grey)', flexShrink: 0 }} aria-hidden="true" />
       <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
         <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--eq-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
-        {(s.suburb ?? s.state) && (
-          <span style={{ fontSize: 11, color: 'var(--eq-grey)' }}>{[s.suburb, s.state].filter(Boolean).join(', ')}</span>
-        )}
+        {(s.suburb ?? s.state) && <span style={{ fontSize: 11, color: 'var(--eq-grey)' }}>{[s.suburb, s.state].filter(Boolean).join(', ')}</span>}
       </span>
       {s.kind && <span style={kindPill}>{s.kind}</span>}
-      {s.contact && (
-        <span className="crm-tree__onsite-chip" title={s.contact.name}>
-          <User size={10} aria-hidden="true" /> {s.contact.name}
-        </span>
-      )}
+      {s.contact && <span className="crm-tree__onsite-chip" title={s.contact.name}><User size={10} aria-hidden="true" /> {s.contact.name}</span>}
     </button>
   );
 }
@@ -792,29 +658,21 @@ function SiteLeafNode({ s, customerId, isSelected, onSelect, registerNode, inden
 // ── Contact leaf node ──────────────────────────────────────────────────────
 
 interface ContactLeafNodeProps {
-  ct: ContactItem;
-  customerId: string;
-  isSelected: (s: Selection) => boolean;
-  onSelect: (s: Selection) => void;
-  registerNode: (el: HTMLButtonElement | null) => void;
-  indent: boolean;
+  ct: ContactItem; customerId: string; isSelected: (s: Selection) => boolean;
+  onSelect: (s: Selection) => void; registerNode: (el: HTMLButtonElement | null) => void; indent: boolean;
 }
 
 function ContactLeafNode({ ct, customerId, isSelected, onSelect, registerNode, indent }: ContactLeafNodeProps) {
   const sel: Selection = { kind: 'contact', customerId, contactId: ct.id };
   return (
-    <button
-      ref={registerNode}
-      role="treeitem"
-      className={`crm-tree__contact-row${isSelected(sel) ? ' is-active' : ''}`}
-      style={indent ? undefined : { paddingLeft: 12 }}
-      onClick={() => onSelect(sel)}
-      aria-label={`Contact: ${ct.name}`}
-    >
+    <button ref={registerNode} role="treeitem" className={`crm-tree__contact-row${isSelected(sel) ? ' is-active' : ''}`} style={indent ? undefined : { paddingLeft: 12 }} onClick={() => onSelect(sel)} aria-label={`Contact: ${ct.name}`}>
       <span style={{ ...avatar, width: 28, height: 28, borderRadius: '50%', fontSize: 11, background: brandColour(ct.name), flexShrink: 0 }}>{initials(ct.name)}</span>
       <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
         <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--eq-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ct.name}</span>
-        <span style={{ fontSize: 11, color: 'var(--eq-grey)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ct.role ?? ct.email ?? '—'}</span>
+        <span style={{ fontSize: 11, color: 'var(--eq-grey)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {ct.role ?? ct.email ?? '—'}
+          {ct.extra_customers.length > 0 && <span style={{ marginLeft: 4, opacity: 0.7 }}>+{ct.extra_customers.length}</span>}
+        </span>
       </span>
       <span className="crm-tree__reach">
         {ct.phone && <a href={`tel:${ct.phone}`} style={reachBtnSm} onClick={(e) => e.stopPropagation()} aria-label={`Call ${ct.name}`}><Phone size={12} /></a>}
@@ -834,10 +692,15 @@ type ResolvedDetail = {
   unassigned: { sites: SiteItem[]; contacts: ContactItem[] } | null;
 };
 
-function DetailPane({ resolved, detailLoading }: { resolved: ResolvedDetail; detailLoading: boolean; onLoadList: () => void }) {
-  if (detailLoading) {
-    return <p style={{ color: 'var(--eq-grey)', fontSize: 13, padding: 24 }}>Loading…</p>;
-  }
+function DetailPane({
+  resolved, detailLoading, customers, onLoadList, onInvalidateCustomer,
+}: {
+  resolved: ResolvedDetail; detailLoading: boolean;
+  customers: CustomerListItem[];
+  onLoadList: () => void;
+  onInvalidateCustomer: (id: string) => void;
+}) {
+  if (detailLoading) return <DetailSkeleton />;
   if (resolved.kind === 'none') {
     return (
       <div style={{ padding: 48, textAlign: 'center', color: 'var(--eq-grey)' }}>
@@ -849,31 +712,96 @@ function DetailPane({ resolved, detailLoading }: { resolved: ResolvedDetail; det
   if (resolved.kind === 'unassigned') {
     return resolved.unassigned
       ? <UnassignedDetail data={resolved.unassigned} />
-      : <p style={{ color: 'var(--eq-grey)', fontSize: 13, padding: 24 }}>Loading…</p>;
+      : <DetailSkeleton />;
   }
-  if (resolved.kind === 'customer' && resolved.customerDetail) {
-    return <CustomerDetailView d={resolved.customerDetail} />;
-  }
-  if (resolved.kind === 'customer' && !resolved.customerDetail) {
-    // Fetching in progress
-    return <p style={{ color: 'var(--eq-grey)', fontSize: 13, padding: 24 }}>Loading…</p>;
+  if (resolved.kind === 'customer') {
+    return resolved.customerDetail
+      ? <CustomerDetailView d={resolved.customerDetail} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />
+      : <DetailSkeleton />;
   }
   if (resolved.kind === 'site' && resolved.site) {
-    return <SiteDetailView s={resolved.site} customer={resolved.customerDetail?.customer ?? null} />;
+    return <SiteDetailView s={resolved.site} customer={resolved.customerDetail?.customer ?? null} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
   }
   if (resolved.kind === 'contact' && resolved.contact) {
-    return <ContactDetailView ct={resolved.contact} customer={resolved.customerDetail?.customer ?? null} />;
+    return <ContactDetailView ct={resolved.contact} customer={resolved.customerDetail?.customer ?? null} allCustomers={customers} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
   }
-  // Fallback while data arrives
-  return <p style={{ color: 'var(--eq-grey)', fontSize: 13, padding: 24 }}>Loading…</p>;
+  return <DetailSkeleton />;
+}
+
+function DetailSkeleton() {
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
+        <Skeleton shape="circle" width={54} height={54} />
+        <div style={{ flex: 1 }}>
+          <Skeleton shape="text" width="55%" />
+          <Skeleton shape="line" width="35%" style={{ marginTop: 6 }} />
+        </div>
+      </div>
+      <Skeleton shape="card" style={{ marginBottom: 12 }} />
+      <Skeleton shape="card" />
+    </div>
+  );
+}
+
+// ── Floating action bar ────────────────────────────────────────────────────
+
+interface ActionBarProps {
+  actions: { label: string; icon: React.ReactNode; onClick: () => void; danger?: boolean; busy?: boolean }[];
+}
+
+function ActionBar({ actions }: ActionBarProps) {
+  if (actions.length === 0) return null;
+  return (
+    <div style={{
+      display: 'flex', gap: 6, padding: '10px 0 16px',
+      borderTop: '1px solid var(--eq-border)', marginTop: 20,
+    }}>
+      {actions.map((a) => (
+        <button
+          key={a.label}
+          onClick={a.onClick}
+          disabled={a.busy}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontSize: 12.5, padding: '6px 12px',
+            border: `1px solid ${a.danger ? 'var(--eq-danger-border, #fca5a5)' : 'var(--eq-border)'}`,
+            borderRadius: 6, cursor: a.busy ? 'not-allowed' : 'pointer',
+            background: a.danger ? 'var(--eq-danger-bg, #fff5f5)' : '#fff',
+            color: a.danger ? 'var(--eq-danger-text, #dc2626)' : 'var(--eq-ink)',
+            opacity: a.busy ? 0.6 : 1,
+          }}
+        >
+          {a.icon} {a.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // ── Right-pane: customer detail ────────────────────────────────────────────
 
-function CustomerDetailView({ d }: { d: CustomerDetail }) {
+function CustomerDetailView({ d, onLoadList, onInvalidateCustomer }: { d: CustomerDetail; onLoadList: () => void; onInvalidateCustomer: (id: string) => void }) {
   const { customer, sites, contacts } = d;
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  async function archive() {
+    if (!confirm(`Archive ${customer.name}? It will be hidden from active views.`)) return;
+    setBusy(true);
+    const r = await crmWrite({ action: 'archive_customer', id: customer.id });
+    setBusy(false);
+    if (r.ok) { setToast('Archived'); onLoadList(); onInvalidateCustomer(customer.id); }
+    else setToast(`Error: ${r.error ?? 'unknown'}`);
+  }
+
   return (
     <div style={{ padding: 24 }}>
+      {toast && (
+        <div style={{ ...toastStyle, background: toast.startsWith('Error') ? 'var(--eq-danger-bg, #fff5f5)' : 'var(--eq-success-bg)' }}>
+          <CheckCircle2 size={14} /> {toast}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
         <span style={{ ...avatar, width: 54, height: 54, fontSize: 18, borderRadius: 10, background: brandColour(customer.name) }}>{initials(customer.name)}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -901,31 +829,53 @@ function CustomerDetailView({ d }: { d: CustomerDetail }) {
           ? <EmptyNote icon={<User size={28} />} text="No contacts yet" helper="Add the people you deal with here — they show against this customer everywhere." />
           : contacts.map((c) => <ContactRow key={c.id} c={c} />)}
       </Section>
+
+      <ActionBar actions={[
+        { label: 'Archive', icon: <Archive size={13} />, onClick: archive, busy },
+        { label: 'Merge into…', icon: <Merge size={13} />, onClick: () => alert('Merge UI coming in Week 2') },
+      ]} />
     </div>
   );
 }
 
 // ── Right-pane: site detail ────────────────────────────────────────────────
 
-function SiteDetailView({ s, customer }: { s: SiteItem; customer: CustomerDetail['customer'] | null }) {
+function SiteDetailView({ s, customer, onLoadList, onInvalidateCustomer }: { s: SiteItem; customer: CustomerDetail['customer'] | null; onLoadList: () => void; onInvalidateCustomer: (id: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  async function archive() {
+    if (!confirm(`Archive site "${s.name}"?`)) return;
+    setBusy(true);
+    const r = await crmWrite({ action: 'archive_site', id: s.id });
+    setBusy(false);
+    if (r.ok) { setToast('Archived'); if (customer) { onLoadList(); onInvalidateCustomer(customer.id); } }
+    else setToast(`Error: ${r.error ?? 'unknown'}`);
+  }
+
+  async function deleteSite() {
+    if (!confirm(`Permanently delete site "${s.name}"? This cannot be undone.`)) return;
+    setBusy(true);
+    const r = await crmWrite({ action: 'delete_site', id: s.id });
+    setBusy(false);
+    if (r.ok) { setToast('Deleted'); if (customer) { onLoadList(); onInvalidateCustomer(customer.id); } }
+    else if (r.error === 'site_has_records') setToast('This site has linked service records — archive it instead.');
+    else setToast(`Error: ${r.error ?? 'unknown'}`);
+  }
+
   return (
     <div style={{ padding: 24 }}>
+      {toast && <div style={toastStyle}><CheckCircle2 size={14} /> {toast}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
-        <span style={{ ...avatar, width: 48, height: 48, borderRadius: 10, background: 'var(--eq-ice)', color: 'var(--eq-deep)' }}>
-          <MapPin size={20} />
-        </span>
+        <span style={{ ...avatar, width: 48, height: 48, borderRadius: 10, background: 'var(--eq-ice)', color: 'var(--eq-deep)' }}><MapPin size={20} /></span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: 'var(--eq-ink)' }}>{s.name}</h2>
             {s.kind && <span style={kindPill}>{s.kind}</span>}
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-            {[s.suburb, s.state].filter(Boolean).length > 0 && (
-              <span style={{ fontSize: 13, color: 'var(--eq-grey)' }}>{[s.suburb, s.state].filter(Boolean).join(', ')}</span>
-            )}
-            {customer && (
-              <span style={{ fontSize: 13, color: 'var(--eq-grey)' }}>· {customer.name}</span>
-            )}
+            {[s.suburb, s.state].filter(Boolean).length > 0 && <span style={{ fontSize: 13, color: 'var(--eq-grey)' }}>{[s.suburb, s.state].filter(Boolean).join(', ')}</span>}
+            {customer && <span style={{ fontSize: 13, color: 'var(--eq-grey)' }}>· {customer.name}</span>}
           </div>
         </div>
       </div>
@@ -946,52 +896,160 @@ function SiteDetailView({ s, customer }: { s: SiteItem; customer: CustomerDetail
           </div>
         </div>
       ) : (
-        <div style={{ border: '1px dashed var(--eq-border)', borderRadius: 8, padding: '14px 16px', color: 'var(--eq-grey)', fontSize: 13, fontStyle: 'italic' }}>
-          No on-site contact recorded.
-        </div>
+        <div style={{ border: '1px dashed var(--eq-border)', borderRadius: 8, padding: '14px 16px', color: 'var(--eq-grey)', fontSize: 13, fontStyle: 'italic' }}>No on-site contact recorded.</div>
       )}
+
+      <ActionBar actions={[
+        { label: 'Archive', icon: <Archive size={13} />, onClick: archive, busy },
+        { label: 'Delete', icon: <Trash2 size={13} />, onClick: deleteSite, danger: true, busy },
+      ]} />
     </div>
   );
 }
 
 // ── Right-pane: contact detail ─────────────────────────────────────────────
 
-function ContactDetailView({ ct, customer }: { ct: ContactItem; customer: CustomerDetail['customer'] | null }) {
+function ContactDetailView({ ct, customer, allCustomers, onLoadList, onInvalidateCustomer }: {
+  ct: ContactItem; customer: CustomerDetail['customer'] | null;
+  allCustomers: CustomerListItem[];
+  onLoadList: () => void; onInvalidateCustomer: (id: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkBusy, setLinkBusy] = useState<string | null>(null);
+
+  async function archive() {
+    if (!confirm(`Archive ${ct.name}?`)) return;
+    setBusy(true);
+    const r = await crmWrite({ action: 'archive_contact', id: ct.id });
+    setBusy(false);
+    if (r.ok) { setToast('Archived'); if (customer) { onLoadList(); onInvalidateCustomer(customer.id); } }
+    else setToast(`Error: ${r.error ?? 'unknown'}`);
+  }
+
+  async function deleteContact() {
+    if (!confirm(`Permanently delete ${ct.name}? This cannot be undone.`)) return;
+    setBusy(true);
+    const r = await crmWrite({ action: 'delete_contact', id: ct.id });
+    setBusy(false);
+    if (r.ok) { setToast('Deleted'); if (customer) { onLoadList(); onInvalidateCustomer(customer.id); } }
+    else setToast(`Error: ${r.error ?? 'unknown'}`);
+  }
+
+  async function unlink(customerId: string, customerName: string) {
+    if (!confirm(`Remove ${ct.name} from ${customerName}?`)) return;
+    setLinkBusy(customerId);
+    const r = await crmWrite({ action: 'unlink_contact_customer', id: ct.id, customer_id: customerId });
+    setLinkBusy(null);
+    if (r.ok) { setToast('Removed'); if (customer) { onLoadList(); onInvalidateCustomer(customer.id); } }
+    else setToast(`Error: ${r.error ?? 'unknown'}`);
+  }
+
+  async function linkTo(customerId: string) {
+    setLinkBusy(customerId);
+    const r = await crmWrite({ action: 'link_contact_customer', id: ct.id, customer_id: customerId });
+    setLinkBusy(null);
+    setLinkOpen(false);
+    if (r.ok) { setToast('Linked'); if (customer) { onLoadList(); onInvalidateCustomer(customer.id); } }
+    else setToast(`Error: ${r.error ?? 'unknown'}`);
+  }
+
+  // All customers this contact is NOT already linked to
+  const linkedIds = new Set([customer?.id, ...ct.extra_customers.map((x) => x.id)].filter(Boolean) as string[]);
+  const available = allCustomers.filter((c) => !linkedIds.has(c.id));
+
   return (
     <div style={{ padding: 24 }}>
+      {toast && <div style={toastStyle}><CheckCircle2 size={14} /> {toast}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
         <span style={{ ...avatar, width: 52, height: 52, borderRadius: '50%', fontSize: 17, background: brandColour(ct.name) }}>{initials(ct.name)}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 2px', color: 'var(--eq-ink)' }}>{ct.name}</h2>
           {ct.role && <div style={{ fontSize: 13, color: 'var(--eq-grey)' }}>{ct.role}</div>}
-          {customer && <div style={{ fontSize: 12.5, color: 'var(--eq-grey)' }}>{customer.name}</div>}
         </div>
       </div>
 
-      <div style={{ border: '1px solid var(--eq-border)', borderRadius: 8, background: '#fff', padding: '14px 16px' }}>
+      {/* Reach */}
+      <div style={{ border: '1px solid var(--eq-border)', borderRadius: 8, background: '#fff', padding: '14px 16px', marginBottom: 12 }}>
         <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--eq-grey)', margin: '0 0 10px' }}>Reach</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {ct.phone && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: 'var(--eq-ink)' }}>
-                <Phone size={14} style={{ color: 'var(--eq-deep)' }} /> {ct.phone}
-              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: 'var(--eq-ink)' }}><Phone size={14} style={{ color: 'var(--eq-deep)' }} /> {ct.phone}</span>
               <a href={`tel:${ct.phone}`} style={reachBtn}><Phone size={13} /> Call</a>
             </div>
           )}
           {ct.email && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: 'var(--eq-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, marginRight: 8 }}>
-                <Mail size={14} style={{ color: 'var(--eq-deep)', flexShrink: 0 }} /> {ct.email}
-              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: 'var(--eq-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0, marginRight: 8 }}><Mail size={14} style={{ color: 'var(--eq-deep)', flexShrink: 0 }} /> {ct.email}</span>
               <a href={`mailto:${ct.email}`} style={reachBtn}><Mail size={13} /> Email</a>
             </div>
           )}
-          {!ct.phone && !ct.email && (
-            <p style={{ fontSize: 13, color: 'var(--eq-grey)', margin: 0, fontStyle: 'italic' }}>No contact details on record.</p>
-          )}
+          {!ct.phone && !ct.email && <p style={{ fontSize: 13, color: 'var(--eq-grey)', margin: 0, fontStyle: 'italic' }}>No contact details on record.</p>}
         </div>
       </div>
+
+      {/* Customer associations */}
+      <div style={{ border: '1px solid var(--eq-border)', borderRadius: 8, background: '#fff', padding: '14px 16px', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--eq-grey)', margin: 0 }}>Linked to</p>
+          <button onClick={() => setLinkOpen((o) => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--eq-deep)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            <Link2 size={12} /> Add link
+          </button>
+        </div>
+
+        {/* Primary customer */}
+        {customer && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: ct.extra_customers.length > 0 ? '1px solid var(--eq-border)' : 'none' }}>
+            <AvatarSquare name={customer.name} size={24} />
+            <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: 'var(--eq-ink)' }}>{customer.name}</span>
+            <span style={{ fontSize: 11, color: 'var(--eq-grey)', background: 'var(--eq-gray-100)', borderRadius: 4, padding: '2px 6px' }}>primary</span>
+          </div>
+        )}
+
+        {/* Extra linked customers */}
+        {ct.extra_customers.map((xc) => (
+          <div key={xc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: '1px solid var(--eq-border)' }}>
+            <AvatarSquare name={xc.name} size={24} />
+            <span style={{ flex: 1, fontSize: 13.5, color: 'var(--eq-ink)' }}>{xc.name}</span>
+            <button
+              onClick={() => void unlink(xc.id, xc.name)}
+              disabled={linkBusy === xc.id}
+              style={{ fontSize: 11.5, color: 'var(--eq-grey)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
+              title="Remove link"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ))}
+
+        {/* Link-to picker */}
+        {linkOpen && (
+          <div style={{ marginTop: 10, borderTop: '1px solid var(--eq-border)', paddingTop: 10 }}>
+            <p style={{ fontSize: 12, color: 'var(--eq-grey)', margin: '0 0 6px' }}>Link to another customer:</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
+              {available.length === 0 && <p style={{ fontSize: 12, fontStyle: 'italic', color: 'var(--eq-grey)', margin: 0 }}>Already linked to all customers.</p>}
+              {available.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => void linkTo(c.id)}
+                  disabled={linkBusy === c.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', border: '1px solid var(--eq-border)', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 13, textAlign: 'left', opacity: linkBusy === c.id ? 0.5 : 1 }}
+                >
+                  <AvatarSquare name={c.name} size={20} />
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <ActionBar actions={[
+        { label: 'Archive', icon: <Archive size={13} />, onClick: archive, busy },
+        { label: 'Delete', icon: <Trash2 size={13} />, onClick: deleteContact, danger: true, busy },
+      ]} />
     </div>
   );
 }
@@ -1007,7 +1065,7 @@ function UnassignedDetail({ data }: { data: { sites: SiteItem[]; contacts: Conta
       </div>
       <div style={{ display: 'flex', gap: 10, padding: '10px 14px', background: 'var(--eq-warning-bg)', border: '1px solid color-mix(in srgb, var(--eq-warning-text) 30%, transparent)', borderRadius: 6, fontSize: 13, color: 'var(--eq-ink)', marginBottom: 16 }}>
         <AlertTriangle size={16} style={{ color: 'var(--eq-warning-text)', flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
-        <span>{data.sites.length} site{data.sites.length === 1 ? '' : 's'} and {data.contacts.length} contact{data.contacts.length === 1 ? '' : 's'} have no customer yet. Assign each to a customer to fold it into the hierarchy.</span>
+        <span>{data.sites.length} site{data.sites.length === 1 ? '' : 's'} and {data.contacts.length} contact{data.contacts.length === 1 ? '' : 's'} have no customer yet.</span>
       </div>
       <Section icon={<MapPin size={15} />} title="Sites" count={data.sites.length} defaultOpen>
         {data.sites.map((s, i) => <SiteAccordion key={s.id} s={s} defaultOpen={i === 0} />)}
@@ -1062,7 +1120,10 @@ function ContactRow({ c }: { c: ContactItem }) {
       <span style={{ ...avatar, width: 34, height: 34, borderRadius: '50%', background: brandColour(c.name) }}>{initials(c.name)}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', fontWeight: 600, fontSize: 13.5, color: 'var(--eq-ink)' }}>{c.name}</span>
-        <span style={{ fontSize: 12, color: 'var(--eq-grey)' }}>{c.role ?? c.email ?? '—'}</span>
+        <span style={{ fontSize: 12, color: 'var(--eq-grey)' }}>
+          {c.role ?? c.email ?? '—'}
+          {c.extra_customers.length > 0 && <span style={{ marginLeft: 6, fontStyle: 'italic' }}>+{c.extra_customers.length} more</span>}
+        </span>
       </span>
       {c.phone && <a href={`tel:${c.phone}`} style={reachBtn}><Phone size={13} /> Call</a>}
       {c.email && <a href={`mailto:${c.email}`} style={reachBtn}><Mail size={13} /> Email</a>}
@@ -1070,9 +1131,7 @@ function ContactRow({ c }: { c: ContactItem }) {
   );
 }
 
-function Section({ icon, title, count, defaultOpen, children }: {
-  icon: React.ReactNode; title: string; count: number; defaultOpen?: boolean; children: React.ReactNode;
-}) {
+function Section({ icon, title, count, defaultOpen, children }: { icon: React.ReactNode; title: string; count: number; defaultOpen?: boolean; children: React.ReactNode }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   return (
     <div style={{ border: '1px solid var(--eq-border)', borderRadius: 8, marginBottom: 12, background: '#fff' }}>
@@ -1099,16 +1158,53 @@ function EmptyNote({ icon, text, helper, cta }: { icon: React.ReactNode; text: s
   );
 }
 
+// ── Add customer modal ─────────────────────────────────────────────────────
+
+function AddCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState('');
+  const [group, setGroup] = useState('');
+  const [state, setState] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) { setErr('Company name is required.'); return; }
+    setBusy(true);
+    const r = await crmWrite({ action: 'add_customer', id: '_', company_name: name.trim(), customer_group: group || null, state: state || null });
+    setBusy(false);
+    if (r.ok) onCreated();
+    else setErr(r.error ?? 'Something went wrong.');
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <form onSubmit={(e) => void submit(e)} style={{ background: '#fff', borderRadius: 10, padding: 28, width: 400, maxWidth: '90vw', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Add customer</h2>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--eq-grey)' }}><X size={18} /></button>
+        </div>
+        {err && <p style={{ fontSize: 13, color: 'var(--eq-danger-text, #dc2626)', marginBottom: 12 }}>{err}</p>}
+        <label style={labelStyle}>Company name *</label>
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} placeholder="Equinix Australia Pty Ltd" />
+        <label style={labelStyle}>Group / division</label>
+        <input value={group} onChange={(e) => setGroup(e.target.value)} style={inputStyle} placeholder="Data Centres" />
+        <label style={labelStyle}>State</label>
+        <input value={state} onChange={(e) => setState(e.target.value)} style={inputStyle} placeholder="NSW" />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+          <Button variant="ghost" size="sm" type="button" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" size="sm" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add customer'}</Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ── Avatar helpers ─────────────────────────────────────────────────────────
 
 function AvatarSquare({ name, size = 32 }: { name: string; size?: number }) {
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-      width: size, height: size, borderRadius: 6,
-      background: brandColour(name), color: '#fff',
-      fontSize: size > 24 ? 13 : 11, fontWeight: 700,
-    }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, width: size, height: size, borderRadius: 6, background: brandColour(name), color: '#fff', fontSize: size > 24 ? 13 : 11, fontWeight: 700 }}>
       {initials(name)}
     </span>
   );
@@ -1124,3 +1220,6 @@ const kindPill: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'v
 const metaLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--eq-deep)', textDecoration: 'none' };
 const reachBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '5px 10px', border: '1px solid var(--eq-border)', borderRadius: 6, color: 'var(--eq-ink)', textDecoration: 'none', background: '#fff' };
 const reachBtnSm: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, border: '1px solid var(--eq-border)', borderRadius: 6, color: 'var(--eq-ink)', textDecoration: 'none', background: '#fff' };
+const toastStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '6px 12px', background: 'var(--eq-success-bg)', color: 'var(--eq-success-text)', borderRadius: 6, marginBottom: 14 };
+const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--eq-ink)', marginBottom: 4, marginTop: 12 };
+const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid var(--eq-border)', borderRadius: 6, fontSize: 13.5, boxSizing: 'border-box' };
