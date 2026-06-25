@@ -60,13 +60,16 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
 
   const { data: user, error: userErr } = await sb
     .from('users')
-    .select('id, tenant_id, role, is_platform_admin, active')
+    .select('id, role, is_platform_admin, active')
     .eq('id', session.user_id)
     .eq('active', true)
-    .maybeSingle<Pick<CanonicalUser, 'id' | 'tenant_id' | 'role' | 'is_platform_admin' | 'active'>>();
+    .maybeSingle<Pick<CanonicalUser, 'id' | 'role' | 'is_platform_admin' | 'active'>>();
 
   if (userErr || !user) return jsonResponse(401, { valid: false });
-  if (user.tenant_id !== session.tenant_id) return jsonResponse(401, { valid: false });
+  // No tenant_id cross-check here — platform admins and multi-tenant users have
+  // users.tenant_id = home tenant, which differs from session.tenant_id when
+  // they are operating as another tenant. The HMAC-verified session already
+  // guarantees the tenant is legitimate.
 
   const ttlSeconds = parseTtl(req);
   const sourceApp = new URL(req.url).searchParams.get('source_app') ?? 'shell';
