@@ -17,6 +17,8 @@
   node_bundler = "esbuild"
   included_files = ["netlify/functions/_templates/**"]
   external_node_modules = ["@sparticuz/chromium"]
+
+[functions."*"]
   timeout = 26
 
 # Local dev: `netlify dev` boots Vite as the target server and reverse-proxies
