@@ -1,6 +1,6 @@
 // POST /.netlify/functions/crm-write
 // Body: { action: 'update_customer' | 'update_contact' | 'update_site' | 'merge_customers' |
-//         'link_contact_customer' | 'unlink_contact_customer', id: string, ...fields }
+//         'merge_contact' | 'link_contact_customer' | 'unlink_contact_customer', id: string, ...fields }
 //
 // Writes CRM records to app_data via service-role client.
 // Tenant isolation enforced by matching session.tenant_id in the WHERE clause.
@@ -246,6 +246,68 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       .eq('contact_id', id).eq('tenant_id', tid);
     if (error) return json(500, { ok: false, error: error.message });
     return json(200, { ok: true });
+  }
+
+  // ── merge_contact ──────────────────────────────────────────────────────────
+  // id = loser (soft-deleted), target_id = survivor.
+  // Migrates contact_customer_links and contact_site_links from loser to
+  // survivor (upsert deduplicates), copies customer_id if survivor has none,
+  // then archives the loser. Tenant-scoped throughout.
+  if (action === 'merge_contact') {
+    const targetId = str(body.target_id);
+    if (!targetId) return json(400, { ok: false, error: 'target_id_required' });
+    if (targetId === id) return json(400, { ok: false, error: 'cannot_merge_with_self' });
+
+    const { data: bothRows } = await sb.from('contacts')
+      .select('contact_id, customer_id')
+      .in('contact_id', [id, targetId])
+      .eq('tenant_id', tid);
+    const rows = (bothRows ?? []) as { contact_id: string; customer_id: string | null }[];
+    if (rows.length < 2) return json(400, { ok: false, error: 'contacts_not_found' });
+
+    const loserRow    = rows.find((r) => r.contact_id === id)!;
+    const survivorRow = rows.find((r) => r.contact_id === targetId)!;
+
+    if (!survivorRow.customer_id && loserRow.customer_id) {
+      await sb.from('contacts')
+        .update({ customer_id: loserRow.customer_id, updated_at: now })
+        .eq('contact_id', targetId).eq('tenant_id', tid);
+    }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: links } = await (sb as any).from('contact_customer_links')
+        .select('customer_id').eq('contact_id', id).eq('tenant_id', tid);
+      for (const link of (links ?? []) as { customer_id: string }[]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (sb as any).from('contact_customer_links')
+          .upsert({ contact_id: targetId, customer_id: link.customer_id, tenant_id: tid }, { onConflict: 'contact_id,customer_id' });
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (sb as any).from('contact_customer_links')
+        .delete().eq('contact_id', id).eq('tenant_id', tid);
+    } catch { /* mig 0133 not yet applied — safe */ }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: slinks } = await (sb as any).from('contact_site_links')
+        .select('site_id').eq('contact_id', id).eq('tenant_id', tid);
+      for (const slink of (slinks ?? []) as { site_id: string }[]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (sb as any).from('contact_site_links')
+          .upsert({ contact_id: targetId, site_id: slink.site_id, tenant_id: tid }, { onConflict: 'contact_id,site_id' });
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (sb as any).from('contact_site_links')
+        .delete().eq('contact_id', id).eq('tenant_id', tid);
+    } catch { /* mig 0118 not yet applied — safe */ }
+
+    const { error: archErr } = await sb.from('contacts')
+      .update({ active: false, updated_at: now })
+      .eq('contact_id', id).eq('tenant_id', tid);
+    if (archErr) return json(500, { ok: false, error: archErr.message });
+
+    return json(200, { ok: true, survivor_id: targetId });
   }
 
   // ── delete_contact ─────────────────────────────────────────────────────────

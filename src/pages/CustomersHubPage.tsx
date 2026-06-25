@@ -142,12 +142,14 @@ function CustomersHubInner() {
   const treeRef = useRef<HTMLUListElement>(null);
   const [dupMap, setDupMap] = useState<Map<string, DupMatch[]>>(new Map());
 
-  useEffect(() => {
+  const loadDudup = useCallback(() => {
     void crmFetch('?action=dedup').then((d) => {
       const raw = d.matches as Record<string, DupMatch[]> | undefined;
       if (raw) setDupMap(new Map(Object.entries(raw)));
     }).catch(() => { /* dedup is non-critical */ });
   }, []);
+
+  useEffect(() => { loadDudup(); }, [loadDudup]);
 
   // ── Load list ───────────────────────────────────────────────────────────
 
@@ -261,7 +263,13 @@ function CustomersHubInner() {
 
   const q = filter.trim().toLowerCase();
   const filteredCustomers = q
-    ? customers.filter((c) => c.name.toLowerCase().includes(q) || (c.group ?? '').toLowerCase().includes(q))
+    ? customers.filter((c) => {
+        if (c.name.toLowerCase().includes(q) || (c.group ?? '').toLowerCase().includes(q)) return true;
+        const cd = expandedData.get(c.id);
+        return cd?.contacts.some((ct) =>
+          ct.name.toLowerCase().includes(q) || (ct.email ?? '').toLowerCase().includes(q)
+        ) ?? false;
+      })
     : customers;
 
   useEffect(() => {
@@ -390,7 +398,7 @@ function CustomersHubInner() {
                 className="crm-searchbox"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                placeholder={`Search ${customers.length} customers…`}
+                placeholder="Search customers and contacts…"
                 aria-label="Search customers"
                 style={{ width: '100%', padding: '8px 10px 8px 30px', border: '1px solid var(--eq-border)', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }}
               />
@@ -587,6 +595,7 @@ function CustomersHubInner() {
             onLoadList={loadList}
             onInvalidateCustomer={invalidateCustomer}
             onSelectContact={selectContact}
+            onRefreshDudup={loadDudup}
           />
         </div>
       </div>
@@ -606,6 +615,7 @@ function CustomersHubInner() {
           onLoadList={loadList}
           onInvalidateCustomer={invalidateCustomer}
           onSelectContact={selectContact}
+          onRefreshDudup={loadDudup}
         />
       </div>
 
@@ -769,7 +779,7 @@ type ResolvedDetail = {
 };
 
 function DetailPane({
-  resolved, detailLoading, customers, dupMap, onLoadList, onInvalidateCustomer, onSelectContact,
+  resolved, detailLoading, customers, dupMap, onLoadList, onInvalidateCustomer, onSelectContact, onRefreshDudup,
 }: {
   resolved: ResolvedDetail; detailLoading: boolean;
   customers: CustomerListItem[];
@@ -777,6 +787,7 @@ function DetailPane({
   onLoadList: () => void;
   onInvalidateCustomer: (id: string) => void;
   onSelectContact: (customerId: string, contactId: string) => void;
+  onRefreshDudup: () => void;
 }) {
   if (detailLoading) return <DetailSkeleton />;
   if (resolved.kind === 'none') {
@@ -801,7 +812,7 @@ function DetailPane({
     return <SiteDetailView s={resolved.site} customer={resolved.customerDetail?.customer ?? null} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
   }
   if (resolved.kind === 'contact' && resolved.contact) {
-    return <ContactDetailView ct={resolved.contact} customer={resolved.customerDetail?.customer ?? null} allCustomers={customers} allSites={resolved.customerDetail?.sites ?? []} dupMatches={dupMap.get(resolved.contact.id) ?? []} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} onSelectContact={onSelectContact} />;
+    return <ContactDetailView ct={resolved.contact} customer={resolved.customerDetail?.customer ?? null} allCustomers={customers} allSites={resolved.customerDetail?.sites ?? []} dupMatches={dupMap.get(resolved.contact.id) ?? []} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} onSelectContact={onSelectContact} onRefreshDudup={onRefreshDudup} />;
   }
   return <DetailSkeleton />;
 }
@@ -987,13 +998,14 @@ function SiteDetailView({ s, customer, onLoadList, onInvalidateCustomer }: { s: 
 
 // ── Right-pane: contact detail ─────────────────────────────────────────────
 
-function ContactDetailView({ ct, customer, allCustomers, allSites, dupMatches, onLoadList, onInvalidateCustomer, onSelectContact }: {
+function ContactDetailView({ ct, customer, allCustomers, allSites, dupMatches, onLoadList, onInvalidateCustomer, onSelectContact, onRefreshDudup }: {
   ct: ContactItem; customer: CustomerDetail['customer'] | null;
   allCustomers: CustomerListItem[];
   allSites: SiteItem[];
   dupMatches: DupMatch[];
   onLoadList: () => void; onInvalidateCustomer: (id: string) => void;
   onSelectContact: (customerId: string, contactId: string) => void;
+  onRefreshDudup: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -1001,6 +1013,7 @@ function ContactDetailView({ ct, customer, allCustomers, allSites, dupMatches, o
   const [linkBusy, setLinkBusy] = useState<string | null>(null);
   const [siteLinkOpen, setSiteLinkOpen] = useState(false);
   const [siteLinkBusy, setSiteLinkBusy] = useState<string | null>(null);
+  const [mergeMatch, setMergeMatch] = useState<DupMatch | null>(null);
 
   async function archive() {
     if (!confirm(`Archive ${ct.name}?`)) return;
@@ -1083,6 +1096,9 @@ function ContactDetailView({ ct, customer, allCustomers, allSites, dupMatches, o
                   View →
                 </button>
               )}
+              <button onClick={() => setMergeMatch(m)} style={{ fontSize: 11, fontWeight: 600, color: '#9c6f1a', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', flexShrink: 0 }}>
+                Merge
+              </button>
             </div>
           ))}
         </div>
@@ -1228,6 +1244,101 @@ function ContactDetailView({ ct, customer, allCustomers, allSites, dupMatches, o
         { label: 'Archive', icon: <Archive size={13} />, onClick: archive, busy },
         { label: 'Delete', icon: <Trash2 size={13} />, onClick: deleteContact, danger: true, busy },
       ]} />
+      {mergeMatch && (
+        <MergeContactModal
+          ct={ct}
+          match={mergeMatch}
+          onClose={() => setMergeMatch(null)}
+          onMerged={(survivorId, loserId) => {
+            const partnerCustomerId = mergeMatch.partnerCustomerId;
+            setMergeMatch(null);
+            onLoadList();
+            onRefreshDudup();
+            if (customer) onInvalidateCustomer(customer.id);
+            if (loserId === ct.id && partnerCustomerId) onSelectContact(partnerCustomerId, survivorId);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Merge contact modal ────────────────────────────────────────────────────
+
+function MergeContactModal({
+  ct, match, onClose, onMerged,
+}: {
+  ct: ContactItem;
+  match: DupMatch;
+  onClose: () => void;
+  onMerged: (survivorId: string, loserId: string) => void;
+}) {
+  const [keepSide, setKeepSide] = useState<'this' | 'other'>('this');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const survivorId = keepSide === 'this' ? ct.id : match.partnerId;
+  const loserId    = keepSide === 'this' ? match.partnerId : ct.id;
+
+  async function doMerge() {
+    setBusy(true); setErr(null);
+    const r = await crmWrite({ action: 'merge_contact', id: loserId, target_id: survivorId });
+    setBusy(false);
+    if (r.ok) onMerged(survivorId, loserId);
+    else setErr(r.error ?? 'Something went wrong.');
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#fff', borderRadius: 10, padding: 28, width: 440, maxWidth: '90vw', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Merge size={16} style={{ color: 'var(--eq-deep)' }} />
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: 'var(--eq-ink)' }}>Merge contacts</h3>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--eq-grey)' }} aria-label="Close"><X size={18} /></button>
+        </div>
+        <p style={{ fontSize: 13.5, color: 'var(--eq-grey)', margin: '0 0 18px' }}>
+          The duplicate record will be deleted. All customer links and site links transfer to the record you keep.
+        </p>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+          {(['this', 'other'] as const).map((side) => {
+            const name = side === 'this' ? ct.name : match.partnerName;
+            const isKeep = keepSide === side;
+            return (
+              <button
+                key={side}
+                onClick={() => setKeepSide(side)}
+                style={{
+                  flex: 1, padding: '14px 12px',
+                  border: `2px solid ${isKeep ? '#3DA8D8' : 'var(--eq-border)'}`,
+                  borderRadius: 8, background: isKeep ? '#EAF5FB' : '#fff',
+                  cursor: 'pointer', textAlign: 'center' as const,
+                }}
+              >
+                <span style={{ ...avatar, width: 38, height: 38, borderRadius: '50%', background: brandColour(name), fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px' }}>{initials(name)}</span>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--eq-ink)', marginBottom: 4 }}>{name}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' as const, color: isKeep ? '#2986B4' : 'var(--eq-grey)' }}>
+                  {isKeep ? 'Keep' : 'Delete'}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {err && <div style={{ ...toastStyle, background: 'var(--eq-danger-bg, #fff5f5)', marginBottom: 12 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} disabled={busy} style={{ padding: '8px 18px', border: '1px solid var(--eq-border)', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 13.5, color: 'var(--eq-ink)' }}>
+            Cancel
+          </button>
+          <button
+            onClick={() => void doMerge()}
+            disabled={busy}
+            style={{ padding: '8px 18px', border: 'none', borderRadius: 6, background: 'var(--eq-ink)', color: '#fff', cursor: busy ? 'not-allowed' : 'pointer', fontSize: 13.5, display: 'inline-flex', alignItems: 'center', gap: 6, opacity: busy ? 0.7 : 1 }}
+          >
+            {busy ? <Spinner size="sm" variant="ring" label="" /> : <Merge size={13} />} Merge
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
