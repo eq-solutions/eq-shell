@@ -166,12 +166,13 @@ async function approveHandler(req: Request): Promise<Response> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sbPub = (sb as any).schema('public');
 
-    // Hoist worker fetch so user_id is available for both org_memberships and licence sync.
+    // Hoist worker fetch so user_id is available for org_memberships, licence sync,
+    // and shell_control.users provisioning.
     const { data: workerRow } = (await sbPub
       .from('workers')
-      .select('user_id')
+      .select('user_id, email, first_name, last_name, phone')
       .eq('id', staffRow.cards_worker_id)
-      .maybeSingle()) as { data: { user_id: string | null } | null };
+      .maybeSingle()) as { data: { user_id: string | null; email: string | null; first_name: string | null; last_name: string | null; phone: string | null } | null };
 
     const { data: orgRow } = (await sbPub
       .from('organisations')
@@ -197,6 +198,21 @@ async function approveHandler(req: Request): Promise<Response> {
       if (memErr && memErr.code !== '23505') {
         console.warn('[cards-approve-staff] org_memberships insert skipped', memErr.message);
       }
+
+      // Provision shell_control.users so the auth hook stamps tenant_id into JWTs.
+      // Workers who signed up via phone OTP bypass the Shell invite flow and have no
+      // shell_control.users row — the hook passes through with no tenant_id and every
+      // function call 401s until this row exists.
+      // ON CONFLICT DO NOTHING: properly invited workers already have their row; no-op.
+      const workerName = [workerRow.first_name, workerRow.last_name].filter(Boolean).join(' ') || null;
+      await sb.from('users').upsert({
+        id: workerRow.user_id,
+        tenant_id: tenantId,
+        role: 'worker',
+        email: workerRow.email ?? null,
+        name: workerName,
+        phone: workerRow.phone ?? null,
+      }, { onConflict: 'id', ignoreDuplicates: true });
     }
 
     if (workerRow?.user_id) {
@@ -626,7 +642,12 @@ async function handleApplication({
     console.warn('[cards-approve-staff] org_memberships insert failed', memberErr.message);
   }
 
-  // Provision the worker's Shell access to this employer tenant
+  // Provision the worker's Shell access to this employer tenant, and ensure
+  // shell_control.users exists so the auth hook stamps tenant_id into JWTs.
+  // Workers who self-signed-up via phone OTP have no shell_control.users row —
+  // the hook passes through with no tenant_id until one is created here.
+  // Both are fire-and-forget: approval is already committed above.
+  const appWorkerName = [worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || null;
   sb.from('user_tenant_memberships')
     .insert({
       user_id: app.worker_user_id,
@@ -636,9 +657,19 @@ async function handleApplication({
     })
     .then(() => {/* ok */})
     .catch((err: unknown) => {
-      // Non-fatal: worker can still use Cards wallet; tenant switcher may not show employer
-      // until a subsequent JWT refresh triggers the hook to mint the tenant claim.
       console.warn('[cards-approve-staff] user_tenant_memberships insert failed', err);
+    });
+  sb.from('users').upsert({
+    id: app.worker_user_id,
+    tenant_id: tenantId,
+    role: 'worker',
+    email: worker?.email ?? null,
+    name: appWorkerName,
+    phone: workerPhone ?? null,
+  }, { onConflict: 'id', ignoreDuplicates: true })
+    .then(() => {/* ok */})
+    .catch((err: unknown) => {
+      console.warn('[cards-approve-staff] shell_control.users provision failed', err);
     });
 
   // Audit record in the control plane
