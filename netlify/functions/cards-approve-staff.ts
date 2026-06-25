@@ -165,37 +165,76 @@ async function approveHandler(req: Request): Promise<Response> {
   if (staffRow.cards_worker_id) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sbPub = (sb as any).schema('public');
+
+    // Hoist worker fetch so user_id is available for both org_memberships and licence sync.
+    const { data: workerRow } = (await sbPub
+      .from('workers')
+      .select('user_id')
+      .eq('id', staffRow.cards_worker_id)
+      .maybeSingle()) as { data: { user_id: string | null } | null };
+
     const { data: orgRow } = (await sbPub
       .from('organisations')
       .select('id')
       .eq('tenant_id', tenantId)
       .maybeSingle()) as { data: { id: string } | null };
 
-    if (orgRow) {
-      const { data: workerRow } = (await sbPub
-        .from('workers')
-        .select('user_id')
-        .eq('id', staffRow.cards_worker_id)
-        .maybeSingle()) as { data: { user_id: string | null } | null };
+    if (orgRow && workerRow?.user_id) {
+      await (sbPub
+        .from('org_memberships')
+        .insert({
+          org_id: orgRow.id,
+          user_id: workerRow.user_id,
+          role: 'member',
+          status: 'active',
+          invited_by: session.user_id,
+          invited_at: new Date().toISOString(),
+          accepted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          tenant_id: tenantId,
+        }) as Promise<unknown>)
+        .catch((e: unknown) => {
+          // Swallow duplicate — if already active the worker is already visible.
+          console.warn('[cards-approve-staff] org_memberships insert skipped', e);
+        });
+    }
 
-      if (workerRow?.user_id) {
-        await (sbPub
-          .from('org_memberships')
-          .insert({
-            org_id: orgRow.id,
-            user_id: workerRow.user_id,
-            role: 'member',
-            status: 'active',
-            invited_by: session.user_id,
-            invited_at: new Date().toISOString(),
-            accepted_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            tenant_id: tenantId,
-          }) as Promise<unknown>)
-          .catch((e: unknown) => {
-            // Swallow duplicate — if already active the worker is already visible.
-            console.warn('[cards-approve-staff] org_memberships insert skipped', e);
-          });
+    if (workerRow?.user_id) {
+      const { data: licences } = (await sbPub
+        .from('licences')
+        .select('id, licence_type, licence_number, issuing_authority, state, issue_date, expiry_date, never_expires')
+        .eq('user_id', workerRow.user_id)
+        .is('deleted_at', null)
+        .not('licence_number', 'is', null)) as { data: Array<{
+          id: string; licence_type: string; licence_number: string;
+          issuing_authority: string | null; state: string | null;
+          issue_date: string | null; expiry_date: string | null; never_expires: boolean;
+        }> | null };
+
+      if (licences && licences.length > 0) {
+        await (tenantAny
+          .schema('app_data')
+          .from('licences')
+          .upsert(
+            licences.map((l) => ({
+              licence_id: randomUUID(),
+              staff_id: staff_id_safe,
+              tenant_id: tenantId,
+              licence_type: l.licence_type,
+              licence_number: l.licence_number,
+              issuing_authority: l.issuing_authority,
+              state: l.state,
+              issue_date: l.issue_date,
+              expiry_date: l.expiry_date,
+              active: true,
+              cards_credential_id: l.id,
+              imported_from: 'cards',
+              schema_version: '1',
+              metadata: l.never_expires ? { never_expires: true } : null,
+            })),
+            { onConflict: 'cards_credential_id', ignoreDuplicates: true },
+          ) as Promise<unknown>)
+          .catch((e: unknown) => console.error('[cards-approve-staff] licence sync failed (invite)', e));
       }
     }
   }
@@ -486,64 +525,45 @@ async function handleApplication({
     }
   }
 
-  // Copy credentials from Cards into Field licences.
-  // For existing staff: additive merge — only insert licences not already present
-  // (match on licence_type + licence_number). Avoids duplicates; still syncs new certs.
-  // For net-new staff: insert all active credentials.
-  if (app.sharing_scope === 'full' && worker?.id) {
-    const { data: creds } = await sbPublic
-      .from('worker_credentials')
-      .select(
-        'id, credential_type, licence_number, issuing_body, state_territory, issue_date, expiry_date, notes',
-      )
-      .eq('worker_id', worker.id)
+  // Copy licences from Cards (public.licences on jvkn) into Field (app_data.licences on ehow).
+  // Source is public.licences — worker_credentials is a dead table (0 rows).
+  // Dedup via cards_credential_id unique constraint (ON CONFLICT DO NOTHING) so re-approvals
+  // and existing-staff merges are both safe without a pre-fetch round-trip.
+  if (app.sharing_scope === 'full' && worker?.user_id) {
+    const { data: licences } = (await sbPublic
+      .from('licences')
+      .select('id, licence_type, licence_number, issuing_authority, state, issue_date, expiry_date, never_expires')
+      .eq('user_id', worker.user_id)
       .is('deleted_at', null)
-      .eq('status', 'active') as { data: Array<{
-        id: string; credential_type: string; licence_number: string | null;
-        issuing_body: string | null; state_territory: string | null;
-        issue_date: string | null; expiry_date: string | null; notes: string | null;
+      .not('licence_number', 'is', null)) as { data: Array<{
+        id: string; licence_type: string; licence_number: string;
+        issuing_authority: string | null; state: string | null;
+        issue_date: string | null; expiry_date: string | null; never_expires: boolean;
       }> | null };
 
-    if (creds && creds.length > 0) {
-      let credsToInsert = creds;
-
-      if (isExistingStaff) {
-        // Fetch existing licence keys so we can skip duplicates.
-        const { data: existing } = (await tenantAny
-          .schema('app_data')
-          .from('licences')
-          .select('licence_type, licence_number')
-          .eq('staff_id', staffId)) as {
-          data: Array<{ licence_type: string; licence_number: string | null }> | null;
-        };
-        const existingKeys = new Set(
-          (existing ?? []).map((l) => `${l.licence_type}::${l.licence_number ?? ''}`),
+    if (licences && licences.length > 0) {
+      await tenantAny
+        .schema('app_data')
+        .from('licences')
+        .upsert(
+          licences.map((l) => ({
+            licence_id: randomUUID(),
+            staff_id: staffId,
+            tenant_id: tenantId,
+            licence_type: l.licence_type,
+            licence_number: l.licence_number,
+            issuing_authority: l.issuing_authority,
+            state: l.state,
+            issue_date: l.issue_date,
+            expiry_date: l.expiry_date,
+            active: true,
+            cards_credential_id: l.id,
+            imported_from: 'cards',
+            schema_version: '1',
+            metadata: l.never_expires ? { never_expires: true } : null,
+          })),
+          { onConflict: 'cards_credential_id', ignoreDuplicates: true },
         );
-        credsToInsert = creds.filter(
-          (c) => !existingKeys.has(`${c.credential_type}::${c.licence_number ?? ''}`),
-        );
-      }
-
-      if (credsToInsert.length > 0) {
-        await tenantAny
-          .schema('app_data')
-          .from('licences')
-          .insert(
-            credsToInsert.map((c) => ({
-              licence_id: randomUUID(),
-              staff_id: staffId,
-              tenant_id: tenantId,
-              licence_type: c.credential_type,
-              licence_number: c.licence_number,
-              issuing_authority: c.issuing_body,
-              state: c.state_territory,
-              issue_date: c.issue_date,
-              expiry_date: c.expiry_date,
-              notes: c.notes,
-              active: true,
-            })),
-          );
-      }
     }
   }
 
