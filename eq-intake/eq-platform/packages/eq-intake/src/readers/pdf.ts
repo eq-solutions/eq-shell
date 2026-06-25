@@ -2,22 +2,23 @@
  * PDF reader — born-digital text path.
  *
  * Strategy:
- *   1. Use unpdf (Workers-friendly PDF.js) to pull text from every page.
- *   2. Heuristically detect a tabular layout (consistent delimiter per row).
- *   3. If found, return rows keyed by detected header. If not, return a
- *      single-column "raw_text" ParsedSheet so the caller can route to the
- *      vision path for layout-aware extraction.
+ *   1. Use unpdf (Workers-friendly PDF.js) to read every page's text items
+ *      WITH their x/y coordinates (page.getTextContent()).
+ *   2. Position-aware table detection: cluster items into rows by y and into
+ *      columns by x, then read the grid off. This is what makes real
+ *      born-digital registers work — unpdf's plain extractText() collapses all
+ *      whitespace to single spaces, so a cell like "Main Switchboard" is
+ *      indistinguishable from two columns without the coordinates.
+ *   3. If the page isn't a grid, fall back to the text heuristic (tab / multi-
+ *      space) and finally to a single-column "raw_text" ParsedSheet the caller
+ *      can route to the vision path.
  *
  * What this does NOT do (deferred):
- *   - Position-aware table detection (would need pdf.js TextItem coords)
  *   - OCR for scanned PDFs (use the photo reader for that)
  *   - Form-field extraction (PDF forms are a separate API)
- *
- * Real-world success rate: ~50% of born-digital PDFs (CSV-like exports,
- * simple Xero invoices). Complex layouts fall through to vision.
  */
 
-import { getDocumentProxy, extractText } from "unpdf";
+import { getDocumentProxy } from "unpdf";
 import type { ParsedSheet, ParseMeta, CsvRow } from "./csv.js";
 
 export interface ParsedPdf {
@@ -76,17 +77,33 @@ export async function parsePdf(
   const sheets: ParsedPdfSheet[] = [];
   let scannedPageCount = 0;
 
-  // unpdf's extractText returns the text from all pages by default.
-  // We re-run it per page to keep per-page boundaries clean.
   for (const pageNum of targetPages) {
-    const pageText = await extractPageText(pdf, pageNum);
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const items = positionItems(textContent);
 
-    if (pageText.trim().length === 0) {
+    if (items.length === 0) {
+      // No extractable text — likely a scanned page. Route to vision upstream.
       scannedPageCount++;
       continue;
     }
 
-    const parsed = parsePageText(pageText, layout, minRows);
+    // Position-aware grid detection first (unless the caller forced raw_text).
+    const positional = layout === "raw_text" ? null : tableFromPositions(items, minRows);
+    if (positional) {
+      sheets.push({
+        sheetName: `page_${pageNum}`,
+        headerRow: positional.headerRow,
+        rows: positional.rows,
+        meta: tableMeta(positional.rows.length),
+        pageNumber: pageNum,
+        layout: "tabular",
+      });
+      continue;
+    }
+
+    // Fall back to the text heuristic (tab / multi-space) and raw_text.
+    const parsed = parsePageText(reconstructText(items), layout, minRows);
     sheets.push({
       sheetName: `page_${pageNum}`,
       headerRow: parsed.headerRow,
@@ -108,26 +125,132 @@ export async function parsePdf(
 }
 
 // ============================================================================
-// PAGE TEXT EXTRACTION
+// POSITION-AWARE TABLE DETECTION
 // ============================================================================
 
-async function extractPageText(
-  pdf: Awaited<ReturnType<typeof getDocumentProxy>>,
-  pageNum: number,
-): Promise<string> {
-  // unpdf doesn't currently expose a single-page extractText, but the
-  // mergePages-false variant gives us an array of per-page strings.
-  // We grab the one we need and discard the rest.
-  const { text } = await extractText(pdf, { mergePages: false });
-  if (Array.isArray(text)) {
-    return text[pageNum - 1] ?? "";
+/** A text item with its baseline position on the page. */
+interface PosItem {
+  str: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * Pull positioned text items from a pdf.js TextContent. Whitespace-only items
+ * are dropped — pdf.js emits a spacer item between columns whose width is the
+ * gap; we recover columns from the real items' x-positions instead.
+ */
+function positionItems(textContent: unknown): PosItem[] {
+  const items = (textContent as { items?: unknown[] })?.items;
+  if (!Array.isArray(items)) return [];
+  const out: PosItem[] = [];
+  for (const raw of items) {
+    const it = raw as { str?: unknown; transform?: unknown };
+    const str = typeof it.str === "string" ? it.str.trim() : "";
+    const t = it.transform;
+    if (str === "" || !Array.isArray(t) || t.length < 6) continue;
+    out.push({ str, x: Number(t[4]), y: Number(t[5]) });
   }
-  // Defensive fallback if the unpdf API changes shape — return everything.
-  return String(text ?? "");
+  return out;
+}
+
+/** Cluster items into visual rows by shared baseline y (top of page first). */
+function groupIntoRows(items: PosItem[], yTolerance = 4): PosItem[][] {
+  const sorted = [...items].sort((a, b) => b.y - a.y || a.x - b.x);
+  const rows: PosItem[][] = [];
+  for (const it of sorted) {
+    const cur = rows[rows.length - 1];
+    if (cur && Math.abs(cur[0]!.y - it.y) <= yTolerance) cur.push(it);
+    else rows.push([it]);
+  }
+  for (const r of rows) r.sort((a, b) => a.x - b.x);
+  return rows;
+}
+
+/** Distinct column x-positions — start a new column when the x-gap exceeds tol. */
+function detectColumnXs(rows: PosItem[][], xTolerance = 10): number[] {
+  const xs = rows.flat().map((it) => it.x).sort((a, b) => a - b);
+  const cols: number[] = [];
+  for (const x of xs) {
+    if (cols.length === 0 || x - cols[cols.length - 1]! > xTolerance) cols.push(x);
+  }
+  return cols;
+}
+
+/**
+ * Read a grid off the positioned items. Returns null when the page doesn't
+ * look like a table (fewer than 2 columns, too few rows, or most rows only
+ * fill one column).
+ */
+function tableFromPositions(
+  items: PosItem[],
+  minRows: number,
+): { headerRow: string[]; rows: CsvRow[] } | null {
+  const rows = groupIntoRows(items);
+  if (rows.length < minRows) return null;
+
+  const cols = detectColumnXs(rows);
+  if (cols.length < 2) return null;
+
+  // Snap each item to its nearest column; multiple items in one cell join with a space.
+  const matrix: string[][] = rows.map((row) => {
+    const cells = new Array<string>(cols.length).fill("");
+    for (const it of row) {
+      let best = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < cols.length; i++) {
+        const d = Math.abs(it.x - cols[i]!);
+        if (d < bestDist) {
+          bestDist = d;
+          best = i;
+        }
+      }
+      cells[best] = cells[best] ? `${cells[best]} ${it.str}` : it.str;
+    }
+    return cells;
+  });
+
+  // A real table has most rows spanning ≥2 columns.
+  const wellFormed = matrix.filter((r) => r.filter((c) => c !== "").length >= 2).length;
+  if (wellFormed < minRows) return null;
+
+  const headerRow = (matrix[0] ?? []).map((h, i) => h.trim() || `col_${i + 1}`);
+  const dataRows: CsvRow[] = [];
+  for (let r = 1; r < matrix.length; r++) {
+    const cells = matrix[r]!;
+    if (cells.every((c) => c.trim() === "")) continue;
+    const obj: CsvRow = {};
+    for (let c = 0; c < headerRow.length; c++) {
+      obj[headerRow[c]!] = (cells[c] ?? "").trim();
+    }
+    dataRows.push(obj);
+  }
+  if (dataRows.length === 0) return null;
+
+  return { headerRow, rows: dataRows };
+}
+
+/** Reconstruct page text (rows joined by newline) for the text-heuristic fallback. */
+function reconstructText(items: PosItem[]): string {
+  return groupIntoRows(items)
+    .map((r) => r.map((it) => it.str).join(" "))
+    .join("\n");
+}
+
+function tableMeta(totalRows: number): ParseMeta {
+  return {
+    encoding: "pdf-text",
+    delimiter: "position",
+    totalRows,
+    emptyRowsSkipped: 0,
+    malformedRows: 0,
+    malformed: [],
+    bomDetected: false,
+  };
 }
 
 // ============================================================================
-// LAYOUT DETECTION
+// LAYOUT DETECTION (text-heuristic fallback)
 // ============================================================================
 
 interface ParsedPage {

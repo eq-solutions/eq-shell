@@ -23,23 +23,23 @@ export interface HealthScore {
   gaps:     string[];     // field names with the most null/empty values (top 5)
 }
 
-// Required field lists per entity — these mirror the NOT NULL / required
-// fields from the canonical JSON schemas.
+// Required field lists per entity — mirrors NOT NULL columns in app_data schema.
 const REQUIRED_FIELDS: Record<string, string[]> = {
   customers: ['company_name'],
-  sites:     ['site_name'],
-  contacts:  ['full_name'],
+  sites:     ['name'],
+  contacts:  ['first_name', 'last_name'],
   staff:     ['first_name', 'last_name'],
-  assets:    ['asset_name'],
+  assets:    ['name', 'asset_type'],
 };
 
-// All fields to inspect for gap analysis (required + commonly-populated)
+// All fields to inspect for gap analysis (required + commonly-populated).
+// Column names verified against app_data schema 2026-06-24.
 const INSPECTED_FIELDS: Record<string, string[]> = {
-  customers: ['company_name', 'email', 'phone', 'abn'],
-  sites:     ['site_name', 'address', 'suburb', 'state', 'postcode'],
-  contacts:  ['full_name', 'email', 'phone'],
-  staff:     ['first_name', 'last_name', 'email', 'phone'],
-  assets:    ['asset_name', 'asset_type', 'serial_number', 'site_id'],
+  customers: ['company_name', 'email', 'primary_phone', 'abn'],
+  sites:     ['name', 'address_line_1', 'suburb', 'postcode', 'customer_id'],
+  contacts:  ['first_name', 'last_name', 'email', 'work_phone'],
+  staff:     ['first_name', 'last_name', 'email', 'phone', 'trade', 'emergency_contact_name'],
+  assets:    ['name', 'asset_type', 'serial_number', 'make', 'model'],
 };
 
 type EntityKey = keyof typeof REQUIRED_FIELDS;
@@ -83,41 +83,34 @@ function topGaps(
 // Public: computeHealthScores
 // ---------------------------------------------------------------------------
 
+type RpcFn = (name: string, params: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;
+
 export async function computeHealthScores(
   supabase: SupabaseLikeClient,
 ): Promise<HealthScore[]> {
   const entities = Object.keys(REQUIRED_FIELDS) as EntityKey[];
-  const scores: HealthScore[] = [];
+  const rpc = (supabase as unknown as { rpc: RpcFn }).rpc.bind(supabase);
 
-  for (const entity of entities) {
+  const results = await Promise.all(
+    entities.map((entity) =>
+      rpc('eq_tidy_read_entity', { p_table: entity }).then((r) => ({ entity, ...r })),
+    ),
+  );
+
+  return results.map(({ entity, data: rawData, error }) => {
     const required  = REQUIRED_FIELDS[entity] ?? [];
     const inspected = INSPECTED_FIELDS[entity] ?? required;
 
-    // Reuse the tidy read RPC — returns all rows for the current tenant
-    const { data: rawData, error } = await (supabase as unknown as {
-      rpc: (name: string, params: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;
-    }).rpc('eq_tidy_read_entity', { p_table: entity });
-
     if (error) {
-      // Non-fatal: surface a zero-score entry so the caller can still render
-      scores.push({
-        entity,
-        total:    0,
-        complete: 0,
-        score:    0,
-        gaps:     [`Error reading ${entity}: ${error.message}`],
-      });
-      continue;
+      return { entity, total: 0, complete: 0, score: 0, gaps: [`Error reading ${entity}: ${error.message}`] };
     }
 
-    const rows = (rawData as Record<string, unknown>[] | null) ?? [];
+    const rows     = (rawData as Record<string, unknown>[] | null) ?? [];
     const total    = rows.length;
     const complete = rows.filter((r) => isComplete(r, required)).length;
     const score    = total === 0 ? 1 : complete / total;
     const gaps     = topGaps(rows, inspected);
 
-    scores.push({ entity, total, complete, score, gaps });
-  }
-
-  return scores;
+    return { entity, total, complete, score, gaps };
+  });
 }

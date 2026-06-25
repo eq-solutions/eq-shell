@@ -104,7 +104,19 @@ export type Flag =
   | { kind: 'sensitive_field'; field: string }
   | { kind: 'value_unusual'; field: string; reason: string }
   | { kind: 'cross_field_warning'; rule_id: string; message: string }
-  | { kind: 'phone_kept_raw'; field: string };
+  | { kind: 'phone_kept_raw'; field: string }
+  // Attached post-validation by the confirm-flow driver, not by validate()
+  // itself: an AI-suggested value for a field the source left empty.
+  | { kind: 'ai_enrichment'; field: string; suggested: unknown; confidence: number; reason: string }
+  // Likely duplicate of another row in the batch, or of an existing DB asset.
+  | {
+      kind: 'duplicate';
+      reason: 'serial' | 'external_id_site';
+      matchType: 'within_batch' | 'existing';
+      key: string;
+      duplicateOf?: number;
+      existingAssetId?: string;
+    };
 
 export type ValidationError =
   | { kind: 'field_required'; field: string }

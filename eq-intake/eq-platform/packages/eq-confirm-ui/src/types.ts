@@ -43,6 +43,7 @@ export type FlagResolution =
   | { kind: "accept_canonical" } // commit as-is (e.g. accept fuzzy match)
   | { kind: "pick_candidate"; flagKind: Flag["kind"]; chosen: string } // pick from candidates
   | { kind: "set_value"; field: string; value: unknown } // override a value
+  | { kind: "set_fields"; values: Record<string, unknown> } // set several fields (e.g. accepted AI suggestions)
   | { kind: "skip_row" } // drop this row from the commit
   | { kind: "create_missing_fk"; field: string; newName: string }; // create-new flow
 
@@ -73,6 +74,21 @@ export interface FlowConfig {
   commit: CommitFn;
   /** Schemas registry for the classifier. Used when no schema is fixed up-front. */
   schemaRegistry?: Record<string, Record<string, unknown>>;
+  /**
+   * Whether to run AI enrichment after validation (infer missing
+   * asset_type / criticality / ppm_frequency as accept/reject suggestions).
+   * Requires `ai.enrich`. Defaults to on when the schema entity is `asset`,
+   * off otherwise. Set explicitly to override.
+   */
+  enableEnrichment?: boolean;
+  /** Fields to infer when enrichment runs. Default asset_type/criticality/ppm_frequency. */
+  enrichFields?: string[];
+  /**
+   * Lookup of existing assets for duplicate detection (serial / external_id+site).
+   * Host wires this to a Supabase query. When absent, only within-batch
+   * duplicates are detected (not against the DB).
+   */
+  dupLookup?: import("@eq/intake").DupLookup;
 }
 
 /**
@@ -133,6 +149,8 @@ export interface FlowState {
   setValidationResult: (r: ValidationResult) => void;
   resolveFlag: (rowIndex: number, resolution: FlagResolution) => void;
   resolveBulk: (flagKind: Flag["kind"], resolution: FlagResolution) => void;
+  /** Bulk-resolve fuzzy/date flags by picking each row's own top candidate. */
+  resolveBulkPickTop: (flagKind: Flag["kind"]) => void;
   setDestination: (value: string | undefined, source: "suggested" | "free_text") => void;
   reset: () => void;
 }

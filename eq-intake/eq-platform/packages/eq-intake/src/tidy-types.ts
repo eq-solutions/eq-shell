@@ -5,28 +5,7 @@
  * (orphan-check.ts). These are also consumed by the tidy UI.
  */
 
-// Minimal Supabase client contract (structural, no hard dep on supabase-js)
-export interface SupabaseLikeClient {
-  from: (table: string) => {
-    insert: (row: unknown) => Promise<{ data: unknown; error: { message: string } | null }>;
-    update: (row: unknown) => {
-      eq: (
-        col: string,
-        val: unknown,
-      ) => Promise<{ data: unknown; error: { message: string } | null }>;
-    };
-  };
-  rpc: (
-    name: string,
-    params: unknown,
-  ) => Promise<{ data: unknown; error: { message: string } | null }>;
-  auth: {
-    getUser: () => Promise<{
-      data: { user: { id: string } | null };
-      error: { message: string } | null;
-    }>;
-  };
-}
+import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
 
 // ---------------------------------------------------------------------------
 // Entity scope

@@ -18,10 +18,11 @@ import type { SupabaseLikeClient } from './canonical/commit-canonical.js';
 // ---------------------------------------------------------------------------
 
 export interface LicenceExpiryAlertSummary {
-  total:    number;
-  critical: number;
-  warning:  number;
-  info:     number;
+  records_total: number; // all licence records, not just expiring — distinguishes empty table from "all OK"
+  total:         number; // expiring or expired within 60 days
+  critical:      number;
+  warning:       number;
+  info:          number;
 }
 
 // Raw row shape returned by the licence expiry query
@@ -89,7 +90,7 @@ export async function runLicenceExpiryCheck(
   const now   = new Date();
   const limit = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000); // +60 days
 
-  const summary: LicenceExpiryAlertSummary = { total: 0, critical: 0, warning: 0, info: 0 };
+  const summary: LicenceExpiryAlertSummary = { records_total: rows.length, total: 0, critical: 0, warning: 0, info: 0 };
 
   for (const row of rows) {
     if (!row.expiry_date) continue;

@@ -8,5 +8,5 @@ export default defineConfig({
   sourcemap: true,
   target: "es2022",
   outDir: "dist",
-  external: ["react", "react-dom", "react/jsx-runtime"],
+  external: ["react", "react-dom", "react/jsx-runtime", "zustand"],
 });

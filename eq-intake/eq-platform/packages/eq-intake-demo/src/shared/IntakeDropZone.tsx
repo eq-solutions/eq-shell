@@ -10,18 +10,7 @@
 
 import { useRef, useState, type DragEvent, type JSX } from "react";
 import { roleLabel, type IntakeBundle } from "./intake-bundle.js";
-
-// ---------------------------------------------------------------------------
-// Entity label map (role → human label)
-// ---------------------------------------------------------------------------
-const ENTITY_LABELS: Record<string, string> = {
-  customer: "Customers",
-  site:     "Sites",
-  contact:  "Contacts",
-  staff:    "Staff",
-  licence:  "Licences",
-  asset:    "Assets",
-};
+import { entityLabel } from "./entity-label.js";
 
 // ---------------------------------------------------------------------------
 // Upload icon (inline SVG — no external icon dep needed here)
@@ -131,13 +120,13 @@ export function IntakeDropZone({ bundle }: { bundle: IntakeBundle }): JSX.Elemen
               isUnknown || slot.error ? "eq-intake-slot--err" : "",
             ].filter(Boolean).join(" ");
 
-            const entityLabel = ENTITY_LABELS[slot.role] ?? roleLabel(slot.role);
+            const slotEntityLabel = entityLabel(slot.role) !== slot.role ? entityLabel(slot.role) : roleLabel(slot.role);
 
             return (
               <li key={i} className={slotClass}>
                 {/* Classification chip */}
                 <span className={`eq-entity-chip ${isUnknown ? "eq-entity-chip--unknown" : "eq-entity-chip--typed"}`}>
-                  {isUnknown ? "Unknown" : entityLabel}
+                  {isUnknown ? "Unknown" : slotEntityLabel}
                 </span>
 
                 {/* File info */}

@@ -134,6 +134,48 @@ export interface ExtractResult {
 }
 
 // ============================================================================
+// ENRICH — infer missing field values from the values a row already has
+// ============================================================================
+
+export interface EnrichRowInput {
+  /** Source row index — echoed back so the caller can match suggestions to rows. */
+  index: number;
+  /**
+   * The values this row already has (e.g. { name, make, model }). The model
+   * infers the requested fields from these. Keys are canonical field names.
+   */
+  fields: Record<string, unknown>;
+}
+
+export interface EnrichInput {
+  /** Canonical JSON Schema for the target entity (supplies allowed enum/suggested values). */
+  targetSchema: Record<string, unknown>;
+  /** Rows to enrich, each carrying the values already known for that row. */
+  rows: EnrichRowInput[];
+  /** Canonical field names to infer (e.g. ['asset_type','criticality','ppm_frequency']). */
+  fieldsToInfer: string[];
+}
+
+export interface FieldSuggestion {
+  /** Suggested value, or null when the model declined to guess. */
+  value: unknown;
+  /** 0.0 - 1.0 */
+  confidence: number;
+  reason: string;
+}
+
+export interface EnrichRowSuggestion {
+  index: number;
+  /** Per-field suggestions. Fields the model declined are omitted or have value null. */
+  fields: Record<string, FieldSuggestion>;
+}
+
+export interface EnrichResult {
+  suggestions: EnrichRowSuggestion[];
+  metrics: AIMetrics;
+}
+
+// ============================================================================
 // METRICS — captured for every call, fed to telemetry by caller
 // ============================================================================
 
@@ -174,6 +216,12 @@ export type AIErrorCode =
 export interface AIProvider {
   map(input: MapInput): Promise<MapResult>;
   extract(input: ExtractInput): Promise<ExtractResult>;
+  /**
+   * Infer missing field values from the values a row already has. Optional —
+   * a provider (or a test mock) that doesn't implement it simply disables the
+   * enrichment step; callers must guard on its presence.
+   */
+  enrich?(input: EnrichInput): Promise<EnrichResult>;
 }
 
 /**

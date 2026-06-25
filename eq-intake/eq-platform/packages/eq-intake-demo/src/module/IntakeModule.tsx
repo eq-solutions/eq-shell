@@ -31,6 +31,7 @@ import { FreeformIntakeInput, type AiClient } from "../shared/FreeformIntakeInpu
 import { ReconcileModule } from "./ReconcileModule.js";
 import { IntakeHealthHome } from "./IntakeHealthHome.js";
 import { EntityDrillDown } from "./EntityDrillDown.js";
+import { AskCanonical } from "./AskCanonical.js";
 import { QUICK_DESTINATIONS, encodeCsv, type QuickDestination } from "../quick-export/destinations.js";
 import {
   commitBundleToCanonical,
@@ -100,7 +101,7 @@ function defaultRouteLogger(
   }
 }
 
-type IntakeMode = "health" | "import" | "reconcile";
+type IntakeMode = "health" | "import" | "reconcile" | "ask";
 
 export function IntakeModule(props: IntakeModuleProps): JSX.Element {
   const onDestinationChange = useMemo(
@@ -159,13 +160,24 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
         >
           Reconcile
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "ask"}
+          className={"eq-intake-tab" + (mode === "ask" ? " eq-intake-tab--active" : "")}
+          onClick={() => { setDrillEntity(null); setMode("ask"); }}
+        >
+          Ask
+        </button>
       </div>
 
       {mode === "health" ? (
         drillEntity !== null ? (
           <EntityDrillDown
             entity={drillEntity}
-            supabase={props.supabase as unknown as import("@eq/intake").CanonicalFetchClient}
+            supabase={props.supabase}
+            tenantId={props.tenantId}
+            initialMode="tidy"
             onBack={() => setDrillEntity(null)}
           />
         ) : (
@@ -175,6 +187,11 @@ export function IntakeModule(props: IntakeModuleProps): JSX.Element {
             onEntityClick={(e) => setDrillEntity(e)}
           />
         )
+      ) : mode === "ask" ? (
+        <AskCanonical
+          supabase={props.supabase}
+          onEntityClick={(e) => { setDrillEntity(e); setMode("health"); }}
+        />
       ) : mode === "reconcile" ? (
         <ReconcileModule
           supabase={props.supabase}

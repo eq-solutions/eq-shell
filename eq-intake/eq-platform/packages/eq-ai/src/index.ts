@@ -34,6 +34,12 @@ export type {
   ExtractWarningType,
   ExtractMetadata,
   UncertainField,
+  // Enrich types
+  EnrichInput,
+  EnrichResult,
+  EnrichRowInput,
+  EnrichRowSuggestion,
+  FieldSuggestion,
 } from './types';
 
 export { AnthropicProvider, AIError } from './anthropic';

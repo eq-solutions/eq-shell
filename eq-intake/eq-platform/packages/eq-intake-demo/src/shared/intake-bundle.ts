@@ -12,7 +12,6 @@
 
 import { useState, useCallback } from "react";
 import { parseFile, classifySheet, type ParsedSheet } from "@eq/intake";
-import type { AIProvider } from "@eq/ai";
 import {
   CUSTOMER_SCHEMA,
   CONTACT_SCHEMA,
@@ -76,7 +75,7 @@ export interface IntakeBundle {
   slotForRole: (role: RoleName) => FileSlot | undefined;
 }
 
-export function useIntakeBundle(ai?: AIProvider): IntakeBundle {
+export function useIntakeBundle(): IntakeBundle {
   const [slots, setSlots] = useState<FileSlot[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -97,7 +96,6 @@ export function useIntakeBundle(ai?: AIProvider): IntakeBundle {
             const classification = await classifySheet({
               schemas: ROLE_REGISTRY,
               sheet,
-              ...(ai ? { ai } : {}),
             });
             next.push({
               file,
@@ -118,7 +116,7 @@ export function useIntakeBundle(ai?: AIProvider): IntakeBundle {
     } finally {
       setBusy(false);
     }
-  }, [ai]);
+  }, []);
 
   const removeSlot = useCallback((idx: number) => {
     setSlots((prev) => prev.filter((_, i) => i !== idx));
