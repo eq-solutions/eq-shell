@@ -68,13 +68,18 @@ function mapSite(s: SiteRow) {
       : null,
   };
 }
-function mapContact(c: ContactRow, extraCustomers: { id: string; name: string }[] = []) {
+function mapContact(
+  c: ContactRow,
+  extraCustomers: { id: string; name: string }[] = [],
+  linkedSites: { id: string; name: string }[] = [],
+) {
   return {
     id: c.contact_id, name: personName(c),
     first_name: c.first_name ?? null, last_name: c.last_name ?? null,
     role: c.position ?? null,
     email: c.email ?? null, phone: c.mobile_phone ?? c.work_phone ?? null,
     extra_customers: extraCustomers,
+    linked_sites: linkedSites,
   };
 }
 
@@ -168,6 +173,29 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       }
     } catch { /* migration 0133 not yet applied */ }
 
+    // Fetch contact-site links (mig 0118 — gracefully degrades if not yet applied)
+    const sitesByContact = new Map<string, { id: string; name: string }[]>();
+    try {
+      const contactIds = contactRows.map((r) => r.contact_id);
+      if (contactIds.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const slRes = await (sb as any).from('contact_site_links')
+          .select('contact_id, site_id').in('contact_id', contactIds).eq('active', true);
+        if (!slRes.error && slRes.data?.length > 0) {
+          const slSiteIds = [...new Set((slRes.data as { contact_id: string; site_id: string }[]).map((r) => r.site_id))];
+          const slSiteRes = await sb.from('sites').select('site_id, name').in('site_id', slSiteIds as string[]);
+          const siteMap = new Map(
+            ((slSiteRes.data ?? []) as { site_id: string; name: string | null }[]).map((sr) => [sr.site_id, sr.name ?? 'Unnamed site'])
+          );
+          for (const row of slRes.data as { contact_id: string; site_id: string }[]) {
+            const list = sitesByContact.get(row.contact_id) ?? [];
+            list.push({ id: row.site_id, name: siteMap.get(row.site_id) ?? 'Unnamed site' });
+            sitesByContact.set(row.contact_id, list);
+          }
+        }
+      }
+    } catch { /* contact_site_links not yet applied */ }
+
     return json(200, {
       ok: true,
       customer: {
@@ -176,7 +204,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         phone: c.primary_phone ?? c.mobile_phone ?? null, email: c.email ?? null,
       },
       sites: ((siteRes.data ?? []) as SiteRow[]).map(mapSite),
-      contacts: contactRows.map((ct) => mapContact(ct, crossByContact.get(ct.contact_id))),
+      contacts: contactRows.map((ct) => mapContact(ct, crossByContact.get(ct.contact_id), sitesByContact.get(ct.contact_id))),
     });
   }
 

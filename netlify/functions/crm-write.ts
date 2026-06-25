@@ -217,6 +217,28 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(200, { ok: true });
   }
 
+  // ── link_contact_site ─────────────────────────────────────────────────────
+  if (action === 'link_contact_site') {
+    const siteId = str(body.site_id);
+    if (!siteId) return json(400, { ok: false, error: 'site_id_required' });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (sb as any).from('contact_site_links')
+      .upsert({ contact_id: id, site_id: siteId, tenant_id: tid }, { onConflict: 'contact_id,site_id' });
+    if (error) return json(500, { ok: false, error: error.message });
+    return json(200, { ok: true });
+  }
+
+  // ── unlink_contact_site ────────────────────────────────────────────────────
+  if (action === 'unlink_contact_site') {
+    const siteId = str(body.site_id);
+    if (!siteId) return json(400, { ok: false, error: 'site_id_required' });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (sb as any).from('contact_site_links')
+      .delete().eq('contact_id', id).eq('site_id', siteId).eq('tenant_id', tid);
+    if (error) return json(500, { ok: false, error: error.message });
+    return json(200, { ok: true });
+  }
+
   // ── archive_contact ────────────────────────────────────────────────────────
   if (action === 'archive_contact') {
     const { error } = await sb.from('contacts')
@@ -234,6 +256,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       await (sb as any).from('contact_customer_links')
         .delete().eq('contact_id', id).eq('tenant_id', tid);
     } catch { /* table may not exist pre-0133 — safe */ }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (sb as any).from('contact_site_links')
+        .delete().eq('contact_id', id).eq('tenant_id', tid);
+    } catch { /* graceful — table may not exist */ }
     const { error } = await sb.from('contacts')
       .delete().eq('contact_id', id).eq('tenant_id', tid);
     if (error) return json(500, { ok: false, error: error.message });

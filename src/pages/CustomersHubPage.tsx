@@ -54,6 +54,7 @@ interface SiteItem {
 interface ContactItem {
   id: string; name: string; role: string | null; email: string | null; phone: string | null;
   extra_customers: { id: string; name: string }[];
+  linked_sites: { id: string; name: string }[];
 }
 
 interface CustomerDetail {
@@ -723,7 +724,7 @@ function DetailPane({
     return <SiteDetailView s={resolved.site} customer={resolved.customerDetail?.customer ?? null} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
   }
   if (resolved.kind === 'contact' && resolved.contact) {
-    return <ContactDetailView ct={resolved.contact} customer={resolved.customerDetail?.customer ?? null} allCustomers={customers} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
+    return <ContactDetailView ct={resolved.contact} customer={resolved.customerDetail?.customer ?? null} allCustomers={customers} allSites={resolved.customerDetail?.sites ?? []} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
   }
   return <DetailSkeleton />;
 }
@@ -909,15 +910,18 @@ function SiteDetailView({ s, customer, onLoadList, onInvalidateCustomer }: { s: 
 
 // ── Right-pane: contact detail ─────────────────────────────────────────────
 
-function ContactDetailView({ ct, customer, allCustomers, onLoadList, onInvalidateCustomer }: {
+function ContactDetailView({ ct, customer, allCustomers, allSites, onLoadList, onInvalidateCustomer }: {
   ct: ContactItem; customer: CustomerDetail['customer'] | null;
   allCustomers: CustomerListItem[];
+  allSites: SiteItem[];
   onLoadList: () => void; onInvalidateCustomer: (id: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkBusy, setLinkBusy] = useState<string | null>(null);
+  const [siteLinkOpen, setSiteLinkOpen] = useState(false);
+  const [siteLinkBusy, setSiteLinkBusy] = useState<string | null>(null);
 
   async function archive() {
     if (!confirm(`Archive ${ct.name}?`)) return;
@@ -955,9 +959,31 @@ function ContactDetailView({ ct, customer, allCustomers, onLoadList, onInvalidat
     else setToast(`Error: ${r.error ?? 'unknown'}`);
   }
 
+  async function unlinkSite(siteId: string, siteName: string) {
+    if (!confirm(`Remove ${ct.name} from ${siteName}?`)) return;
+    setSiteLinkBusy(siteId);
+    const r = await crmWrite({ action: 'unlink_contact_site', id: ct.id, site_id: siteId });
+    setSiteLinkBusy(null);
+    if (r.ok) { setToast('Removed from site'); if (customer) { onLoadList(); onInvalidateCustomer(customer.id); } }
+    else setToast(`Error: ${r.error ?? 'unknown'}`);
+  }
+
+  async function linkToSite(siteId: string) {
+    setSiteLinkBusy(siteId);
+    const r = await crmWrite({ action: 'link_contact_site', id: ct.id, site_id: siteId });
+    setSiteLinkBusy(null);
+    setSiteLinkOpen(false);
+    if (r.ok) { setToast('Linked to site'); if (customer) { onLoadList(); onInvalidateCustomer(customer.id); } }
+    else setToast(`Error: ${r.error ?? 'unknown'}`);
+  }
+
   // All customers this contact is NOT already linked to
   const linkedIds = new Set([customer?.id, ...ct.extra_customers.map((x) => x.id)].filter(Boolean) as string[]);
   const available = allCustomers.filter((c) => !linkedIds.has(c.id));
+
+  // Sites this contact is NOT already linked to
+  const linkedSiteIds = new Set(ct.linked_sites.map((s) => s.id));
+  const availableSites = allSites.filter((s) => !linkedSiteIds.has(s.id));
 
   return (
     <div style={{ padding: 24 }}>
@@ -1045,6 +1071,59 @@ function ContactDetailView({ ct, customer, allCustomers, onLoadList, onInvalidat
           </div>
         )}
       </div>
+
+      {/* Site associations */}
+      {(ct.linked_sites.length > 0 || allSites.length > 0) && (
+        <div style={{ border: '1px solid var(--eq-border)', borderRadius: 8, background: '#fff', padding: '14px 16px', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: ct.linked_sites.length > 0 ? 10 : 0 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--eq-grey)', margin: 0 }}>Sites</p>
+            {availableSites.length > 0 && (
+              <button onClick={() => setSiteLinkOpen((o) => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--eq-deep)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                <Link2 size={12} /> Add site
+              </button>
+            )}
+          </div>
+
+          {ct.linked_sites.map((sl, i) => (
+            <div key={sl.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: i > 0 ? '1px solid var(--eq-border)' : 'none' }}>
+              <MapPin size={14} style={{ color: 'var(--eq-deep)', flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 13.5, color: 'var(--eq-ink)' }}>{sl.name}</span>
+              <button
+                onClick={() => void unlinkSite(sl.id, sl.name)}
+                disabled={siteLinkBusy === sl.id}
+                style={{ fontSize: 11.5, color: 'var(--eq-grey)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}
+                title="Remove from site"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+
+          {ct.linked_sites.length === 0 && !siteLinkOpen && (
+            <p style={{ fontSize: 12.5, color: 'var(--eq-grey)', margin: 0, fontStyle: 'italic' }}>Not linked to any sites yet.</p>
+          )}
+
+          {siteLinkOpen && (
+            <div style={{ marginTop: ct.linked_sites.length > 0 ? 10 : 0, borderTop: ct.linked_sites.length > 0 ? '1px solid var(--eq-border)' : 'none', paddingTop: ct.linked_sites.length > 0 ? 10 : 0 }}>
+              <p style={{ fontSize: 12, color: 'var(--eq-grey)', margin: '0 0 6px' }}>Link to a site:</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
+                {availableSites.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => void linkToSite(s.id)}
+                    disabled={siteLinkBusy === s.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', border: '1px solid var(--eq-border)', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 13, textAlign: 'left', opacity: siteLinkBusy === s.id ? 0.5 : 1 }}
+                  >
+                    <MapPin size={13} style={{ color: 'var(--eq-deep)', flexShrink: 0 }} />
+                    {s.name}
+                    {s.suburb && <span style={{ fontSize: 11.5, color: 'var(--eq-grey)', marginLeft: 'auto' }}>{s.suburb}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <ActionBar actions={[
         { label: 'Archive', icon: <Archive size={13} />, onClick: archive, busy },
