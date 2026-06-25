@@ -217,6 +217,49 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return json(200, { ok: true });
   }
 
+  // ── archive_contact ────────────────────────────────────────────────────────
+  if (action === 'archive_contact') {
+    const { error } = await sb.from('contacts')
+      .update({ active: false, updated_at: now })
+      .eq('contact_id', id).eq('tenant_id', tid);
+    if (error) return json(500, { ok: false, error: error.message });
+    return json(200, { ok: true });
+  }
+
+  // ── delete_contact ─────────────────────────────────────────────────────────
+  // Hard delete — removes all cross-customer links first to avoid FK violations.
+  if (action === 'delete_contact') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (sb as any).from('contact_customer_links')
+        .delete().eq('contact_id', id).eq('tenant_id', tid);
+    } catch { /* table may not exist pre-0133 — safe */ }
+    const { error } = await sb.from('contacts')
+      .delete().eq('contact_id', id).eq('tenant_id', tid);
+    if (error) return json(500, { ok: false, error: error.message });
+    return json(200, { ok: true });
+  }
+
+  // ── add_customer ───────────────────────────────────────────────────────────
+  // id = ignored (new record); returns the new customer_id.
+  if (action === 'add_customer') {
+    const companyName = str(body.company_name);
+    if (!companyName) return json(400, { ok: false, error: 'company_name_required' });
+    const { data, error } = await sb.from('customers').insert({
+      company_name: companyName,
+      customer_group: str(body.customer_group),
+      state:          str(body.state),
+      email:          str(body.email),
+      primary_phone:  str(body.primary_phone),
+      tenant_id:      tid,
+      active:         true,
+      created_at:     now,
+      updated_at:     now,
+    }).select('customer_id').single();
+    if (error) return json(500, { ok: false, error: error.message });
+    return json(200, { ok: true, customer_id: (data as { customer_id: string }).customer_id });
+  }
+
   // ── archive_customer ───────────────────────────────────────────────────────
   if (action === 'archive_customer') {
     const { error } = await sb.from('customers')
