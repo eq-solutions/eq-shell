@@ -13,6 +13,8 @@
 // Mutations: /.netlify/functions/crm-write (archive/delete/merge/link actions).
 
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from 'react';
+import { DndContext, DragOverlay, useDraggable, useDroppable } from '@dnd-kit/core';
+import type { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 import {
   Building2, MapPin, User, Phone, Mail, ChevronDown, ChevronRight,
   AlertTriangle, Search, Pencil, Download, Plus, X, Archive, Trash2,
@@ -312,6 +314,35 @@ function CustomersHubInner() {
     ? `${filteredCustomers.length} match${filteredCustomers.length === 1 ? '' : 'es'}`
     : `${customers.length} customer${customers.length === 1 ? '' : 's'}`;
 
+  // ── Drag-to-link ────────────────────────────────────────────────────────
+
+  const [activeDragName, setActiveDragName] = useState<string | null>(null);
+  const [dragMsg, setDragMsg] = useState<string | null>(null);
+
+  function handleDragStart(event: DragStartEvent) {
+    const data = event.active.data.current as { name: string } | undefined;
+    setActiveDragName(data?.name ?? null);
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    setActiveDragName(null);
+    const { active, over } = event;
+    if (!over) return;
+    const data = active.data.current as { primaryCustomerId: string; name: string } | undefined;
+    if (!data || data.primaryCustomerId === (over.id as string)) return;
+    const targetId = over.id as string;
+    const r = await crmWrite({ action: 'link_contact_customer', id: active.id as string, customer_id: targetId });
+    const targetName = customers.find((c) => c.id === targetId)?.name ?? 'customer';
+    const msg = r.ok ? `${data.name} linked to ${targetName}` : `Link failed: ${r.error ?? 'unknown'}`;
+    setDragMsg(msg);
+    setTimeout(() => setDragMsg(null), 3000);
+    if (r.ok) {
+      void loadList();
+      invalidateCustomer(data.primaryCustomerId);
+      invalidateCustomer(targetId);
+    }
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
@@ -331,6 +362,7 @@ function CustomersHubInner() {
       </div>
 
       {error && <EqError title="Something went wrong" message={error} onRetry={() => void loadList()} />}
+      {dragMsg && <div style={{ ...toastStyle, marginBottom: 0, marginTop: 8 }}><CheckCircle2 size={14} /> {dragMsg}</div>}
 
       <div className="crm-pane">
         {/* ── Left: tree pane ── */}
@@ -380,6 +412,7 @@ function CustomersHubInner() {
                 ))}
               </div>
             ) : (
+              <DndContext onDragStart={handleDragStart} onDragEnd={(e) => { void handleDragEnd(e); }} onDragCancel={() => setActiveDragName(null)}>
               <ul
                 ref={treeRef}
                 className="crm-tree"
@@ -515,6 +548,15 @@ function CustomersHubInner() {
                   </li>
                 )}
               </ul>
+              <DragOverlay dropAnimation={null}>
+                {activeDragName && (
+                  <div style={{ background: '#fff', padding: '6px 12px', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', fontSize: 13, fontWeight: 600, color: 'var(--eq-ink)', display: 'flex', alignItems: 'center', gap: 6, border: '2px solid #3DA8D8' }}>
+                    <User size={13} style={{ color: '#3DA8D8' }} />
+                    {activeDragName}
+                  </div>
+                )}
+              </DragOverlay>
+              </DndContext>
             )}
           </div>
         </div>
@@ -583,9 +625,10 @@ interface CustomerTreeNodeProps {
 function CustomerTreeNode({ c, expanded, expandedBranches, detail, loading, isSelected, onToggle, onToggleBranch, onSelect, registerNode }: CustomerTreeNodeProps) {
   const sitesOpen = expandedBranches.has(`sites:${c.id}`);
   const contactsOpen = expandedBranches.has(`contacts:${c.id}`);
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: c.id });
 
   return (
-    <li className="crm-tree__customer" role="treeitem" aria-expanded={expanded}>
+    <li ref={setDropRef} className={`crm-tree__customer${isOver ? ' is-drop-target' : ''}`} role="treeitem" aria-expanded={expanded}>
       <button
         ref={registerNode}
         className={`crm-tree__customer-row${isSelected({ kind: 'customer', customerId: c.id }) ? ' is-active' : ''}`}
@@ -665,8 +708,20 @@ interface ContactLeafNodeProps {
 
 function ContactLeafNode({ ct, customerId, isSelected, onSelect, registerNode, indent }: ContactLeafNodeProps) {
   const sel: Selection = { kind: 'contact', customerId, contactId: ct.id };
+  const { listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+    id: ct.id,
+    data: { primaryCustomerId: customerId, name: ct.name },
+  });
   return (
-    <button ref={registerNode} role="treeitem" className={`crm-tree__contact-row${isSelected(sel) ? ' is-active' : ''}`} style={indent ? undefined : { paddingLeft: 12 }} onClick={() => onSelect(sel)} aria-label={`Contact: ${ct.name}`}>
+    <button
+      ref={(el) => { setDragRef(el); registerNode(el); }}
+      role="treeitem"
+      className={`crm-tree__contact-row${isSelected(sel) ? ' is-active' : ''}`}
+      style={{ ...(indent ? undefined : { paddingLeft: 12 }), opacity: isDragging ? 0.35 : undefined, cursor: isDragging ? 'grabbing' : 'grab' }}
+      onClick={() => onSelect(sel)}
+      aria-label={`Contact: ${ct.name}`}
+      {...listeners}
+    >
       <span style={{ ...avatar, width: 28, height: 28, borderRadius: '50%', fontSize: 11, background: brandColour(ct.name), flexShrink: 0 }}>{initials(ct.name)}</span>
       <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
         <span style={{ display: 'block', fontWeight: 600, fontSize: 13, color: 'var(--eq-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ct.name}</span>

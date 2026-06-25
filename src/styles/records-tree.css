@@ -277,3 +277,13 @@
   }
   .crm-detail-sheet__handle { display: none; }
 }
+
+/* ── Drag-and-drop ──────────────────────────────────────────────────────── */
+.crm-tree__customer.is-drop-target > button:first-child {
+  background: rgba(61, 168, 216, 0.08);
+}
+.crm-tree__customer.is-drop-target {
+  outline: 2px solid #3DA8D8;
+  outline-offset: -2px;
+  border-radius: 6px;
+}
