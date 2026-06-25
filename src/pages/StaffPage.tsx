@@ -47,6 +47,35 @@ type View = 'list' | 'matrix';
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
+const LICENCE_LABELS: Record<string, string> = {
+  driver_licence:        'Driver Licence',
+  electrical_licence:    'Electrical Licence',
+  ewp:                   'Elevated Work Platform (EWP)',
+  lvr:                   'Low Voltage Rescue (LVR)',
+  white_card:            'White Card (Construction Induction)',
+  open_cabling:          'Open Cabling Registration',
+  master_cablers_licence:'Master Cablers Licence',
+  first_aid:             'First Aid',
+  cpr:                   'CPR',
+  working_at_heights:    'Working at Heights',
+  confined_space:        'Confined Space Entry',
+  forklift_hrwl:         'Forklift / High Risk Work Licence',
+  test_and_tag:          'Test and Tag',
+  asbestos_awareness:    'Asbestos Awareness',
+  traffic_control:       'Traffic Control',
+  medicare:              'Medicare Card',
+};
+
+function licTypeLabel(t: string | null): string {
+  if (!t) return 'Licence';
+  return LICENCE_LABELS[t] ?? t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function licTypeAbbr(t: string | null): string {
+  if (!t) return '?';
+  return t.split('_').map((w) => w[0]).join('').slice(0, 4).toUpperCase();
+}
+
 const AV_COLOURS = ['#3DA8D8','#8B5CF6','#F59E0B','#10B981','#EF4444','#6366F1','#EC4899','#14B8A6'];
 
 function avatarColour(id: string): string {
@@ -669,7 +698,7 @@ function LicChips({ lics }: { lics: LicenceRow[] }) {
     <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 3 }}>
       {lics.map((l) => {
         const st = licStatus(l);
-        const abbr = (l.licence_type ?? '?').split(' ').map((w) => w[0]).join('').slice(0, 4).toUpperCase();
+        const abbr = licTypeAbbr(l.licence_type);
         return (
           <span
             key={l.id}
@@ -1335,11 +1364,11 @@ function LicGroup({ label, colour, lics }: { label: string; colour: string; lics
           <div key={l.id} style={{ ...s.licRow, flexDirection: 'column', alignItems: 'flex-start', gap: 0, paddingBottom: 6 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, width: '100%' }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: '#1A1A2E', width: 40, flexShrink: 0 }}>
-                {(l.licence_type ?? '').split(' ').map((w) => w[0]).join('').slice(0, 4).toUpperCase()}
+                {licTypeAbbr(l.licence_type)}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {l.licence_type ?? 'Unknown'}
+                  {licTypeLabel(l.licence_type)}
                 </div>
                 <div style={{ fontSize: 10, color: expColour, marginTop: 1 }}>{expText}</div>
               </div>
@@ -1413,10 +1442,10 @@ function TipGroup({ label, colour, textColour, lics }: { label: string; colour: 
       {lics.map((l) => (
         <div key={l.id} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, padding: '2px 0' }}>
           <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.9)', flexShrink: 0, width: 40 }}>
-            {(l.licence_type ?? '').split(' ').map((w) => w[0]).join('').slice(0, 4).toUpperCase()}
+            {licTypeAbbr(l.licence_type)}
           </span>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {l.licence_type ?? 'Unknown'}
+            {licTypeLabel(l.licence_type)}
           </span>
           <span style={{ fontSize: 10, fontWeight: 700, flexShrink: 0, color: licStatus(l) === 'ne' ? '#93C5FD' : licStatus(l) === 'expiring' ? '#FCD34D' : licStatus(l) === 'expired' ? '#F87171' : '#4ADE80' }}>
             {(l.no_expiry || !l.expiry_date) ? 'No expiry' : fmtDateShort(l.expiry_date)}
