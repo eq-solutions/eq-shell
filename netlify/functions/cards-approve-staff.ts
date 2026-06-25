@@ -180,7 +180,7 @@ async function approveHandler(req: Request): Promise<Response> {
       .maybeSingle()) as { data: { id: string } | null };
 
     if (orgRow && workerRow?.user_id) {
-      await (sbPub
+      const { error: memErr } = await sbPub
         .from('org_memberships')
         .insert({
           org_id: orgRow.id,
@@ -192,11 +192,11 @@ async function approveHandler(req: Request): Promise<Response> {
           accepted_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           tenant_id: tenantId,
-        }) as Promise<unknown>)
-        .catch((e: unknown) => {
-          // Swallow duplicate — if already active the worker is already visible.
-          console.warn('[cards-approve-staff] org_memberships insert skipped', e);
         });
+      // 23505 = unique violation — already a member, which is fine.
+      if (memErr && memErr.code !== '23505') {
+        console.warn('[cards-approve-staff] org_memberships insert skipped', memErr.message);
+      }
     }
 
     if (workerRow?.user_id) {
@@ -608,7 +608,7 @@ async function handleApplication({
     .eq('id', application_id);
 
   // Connect the worker to this org in Cards (org_memberships)
-  await sbPublic
+  const { error: memberErr } = await sbPublic
     .from('org_memberships')
     .insert({
       org_id: app.org_id,
@@ -620,11 +620,11 @@ async function handleApplication({
       accepted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       tenant_id: tenantId,
-    })
-    .select()
-    .maybeSingle()
-    // Swallow conflict — if the membership already exists the worker is already connected.
-    .catch(() => null);
+    });
+  // 23505 = unique violation — already a member, which is fine.
+  if (memberErr && memberErr.code !== '23505') {
+    console.warn('[cards-approve-staff] org_memberships insert failed', memberErr.message);
+  }
 
   // Provision the worker's Shell access to this employer tenant
   sb.from('user_tenant_memberships')
