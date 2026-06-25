@@ -1,9 +1,6 @@
 /* @eq/format-ui — sourced from @eq-solutions/tokens v1.3.2 */
+/* Fonts loaded by host shell (Google Fonts / @fontsource at shell level) */
 @import '@eq-solutions/tokens/tokens.css';
-@import '@fontsource/plus-jakarta-sans/400.css';
-@import '@fontsource/plus-jakarta-sans/500.css';
-@import '@fontsource/plus-jakarta-sans/600.css';
-@import '@fontsource/plus-jakarta-sans/700.css';
 
 /* Local semantic aliases not in the base token set */
 :root {
