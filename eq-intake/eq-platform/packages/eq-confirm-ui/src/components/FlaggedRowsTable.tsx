@@ -134,6 +134,8 @@ function flagSummary(f: Flag): string {
       return `Cross-field warning: ${f.message}`;
     case "phone_kept_raw":
       return `Phone on '${f.field}' could not be normalised — kept raw`;
+    default:
+      return `Unknown flag: ${(f as unknown as { kind: string }).kind}`;
   }
 }
 
@@ -164,12 +166,8 @@ function errorSummary(e: import("@eq/validation").ValidationError): string {
     case "cap_exceeded":
       return `Cap exceeded on ${e.field}: ${e.reason}`;
     default:
-      return `Validation issue: ${e.kind}`;
+      return `Validation issue: ${(e as unknown as { kind: string }).kind}`;
   }
-  // Fallback for any ValidationError kind not enumerated above, so this
-  // always returns a string (satisfies TS exhaustiveness + future-proofs
-  // against new error kinds added in @eq/validation).
-  return `Validation error on ${(e as { field?: string }).field ?? "row"}`;
 }
 
 function countSkipped(resolutions: Record<number, FlagResolution>): number {
