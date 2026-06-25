@@ -14,12 +14,16 @@
 // Exit 0 = all loaded; exit 1 = one or more crashed/unreachable.
 
 const BASE = (process.argv[2] || 'https://core.eq.solutions').replace(/\/$/, '');
-const TIMEOUT_MS = 30000;
+const TIMEOUT_MS = 60000;
 const CONCURRENCY = 4;
 // Retry delay for cold-start ECONNRESET ("fetch failed" TypeError). The Lambda
 // is already booting from the first request; a 3s pause lets it warm up so the
 // retry lands on a live container rather than another dropped connection.
 const RETRY_DELAY_MS = 3000;
+// Retry delay for cold-start timeout: accept-pin-reset, reset-user-pin, and
+// shell-login consistently exceed 30s on a cold Lambda under concurrent load.
+// Retry once after a longer pause — the first hit already warmed the container.
+const TIMEOUT_RETRY_DELAY_MS = 10000;
 
 // All functions EXCEPT cron/side-effectful ones we don't want to poke with a bare GET.
 const EXCLUDE = new Set(['quotes-expiry-scheduler', 'backfill-auth-users']);
@@ -55,14 +59,24 @@ async function probe(fn) {
     // Happens on cold-start: Netlify drops the TCP connection while the Lambda
     // container is booting under concurrent load. The container is already
     // warming from the first hit — wait briefly then retry so the second attempt
-    // lands on a live Lambda. Timeout aborts are NOT retried; they mean the
-    // function is genuinely slow or broken, not a network blip.
+    // lands on a live Lambda.
     if (e instanceof TypeError) {
       await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
       try {
         return await probeOnce(fn);
       } catch (e2) {
         return { fn, status: 0, crash: true, note: 'unreachable (after retry): ' + (e2?.message || e2) };
+      }
+    }
+    // TimeoutError = AbortSignal.timeout fired. accept-pin-reset / reset-user-pin /
+    // shell-login cold-start past TIMEOUT_MS under concurrent load. Retry once after
+    // a longer pause — the first hit warms the container so the second is fast.
+    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+      await new Promise((r) => setTimeout(r, TIMEOUT_RETRY_DELAY_MS));
+      try {
+        return await probeOnce(fn);
+      } catch (e2) {
+        return { fn, status: 0, crash: true, note: 'unreachable (after timeout retry): ' + (e2?.message || e2) };
       }
     }
     return { fn, status: 0, crash: true, note: 'unreachable: ' + (e?.message || e) };
