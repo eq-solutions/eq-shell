@@ -37,3 +37,30 @@ export type {
   SkillWarningCode,
   WorkType,
 } from "./maximo-pdf-wo/index.js";
+
+export {
+  parseCalibrationCerts,
+  reconcileCalibrationCerts,
+  extractCertsFromPdf,
+  matchCertToAssets,
+  mapRecordToCandidate,
+  coerceCertDate,
+  mapResult,
+  normaliseSerial,
+  CALIBRATION_CERT_EXTRACT_SCHEMA,
+} from "./calibration-cert/index.js";
+export type {
+  CalibrationCertRecord,
+  CalCertAssetCandidate,
+  CalCertResult,
+  CalCertSourceTag,
+  CalCertMatch,
+  CalCertMatchBasis,
+  CalCertAction,
+  CalCertReconcileRow,
+  CalCertWarningCode,
+  CanonicalAssetRef,
+  ParseCalibrationCertsInput,
+  ParseCalibrationCertsResult,
+  CalCertFileSource,
+} from "./calibration-cert/index.js";
