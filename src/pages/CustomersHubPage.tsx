@@ -241,6 +241,12 @@ function CustomersHubInner() {
     }
   }, [expandedCustomers, toggleCustomer]);
 
+  const selectContact = useCallback((customerId: string, contactId: string) => {
+    if (customerId && !expandedCustomers.has(customerId)) toggleCustomer(customerId);
+    else if (customerId && !expandedBranches.has(`contacts:${customerId}`)) toggleBranch(`contacts:${customerId}`);
+    select({ kind: 'contact', customerId, contactId });
+  }, [expandedCustomers, expandedBranches, toggleCustomer, toggleBranch, select]);
+
   const isSelected = useCallback((s: Selection): boolean => {
     if (!selection) return false;
     if (s.kind !== selection.kind) return false;
@@ -580,6 +586,7 @@ function CustomersHubInner() {
             dupMap={dupMap}
             onLoadList={loadList}
             onInvalidateCustomer={invalidateCustomer}
+            onSelectContact={selectContact}
           />
         </div>
       </div>
@@ -595,8 +602,10 @@ function CustomersHubInner() {
           resolved={detailResolved}
           detailLoading={!!detailLoading}
           customers={customers}
+          dupMap={dupMap}
           onLoadList={loadList}
           onInvalidateCustomer={invalidateCustomer}
+          onSelectContact={selectContact}
         />
       </div>
 
@@ -760,13 +769,14 @@ type ResolvedDetail = {
 };
 
 function DetailPane({
-  resolved, detailLoading, customers, dupMap, onLoadList, onInvalidateCustomer,
+  resolved, detailLoading, customers, dupMap, onLoadList, onInvalidateCustomer, onSelectContact,
 }: {
   resolved: ResolvedDetail; detailLoading: boolean;
   customers: CustomerListItem[];
   dupMap: Map<string, DupMatch[]>;
   onLoadList: () => void;
   onInvalidateCustomer: (id: string) => void;
+  onSelectContact: (customerId: string, contactId: string) => void;
 }) {
   if (detailLoading) return <DetailSkeleton />;
   if (resolved.kind === 'none') {
@@ -791,7 +801,7 @@ function DetailPane({
     return <SiteDetailView s={resolved.site} customer={resolved.customerDetail?.customer ?? null} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
   }
   if (resolved.kind === 'contact' && resolved.contact) {
-    return <ContactDetailView ct={resolved.contact} customer={resolved.customerDetail?.customer ?? null} allCustomers={customers} allSites={resolved.customerDetail?.sites ?? []} dupMatches={dupMap.get(resolved.contact.id) ?? []} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} />;
+    return <ContactDetailView ct={resolved.contact} customer={resolved.customerDetail?.customer ?? null} allCustomers={customers} allSites={resolved.customerDetail?.sites ?? []} dupMatches={dupMap.get(resolved.contact.id) ?? []} onLoadList={onLoadList} onInvalidateCustomer={onInvalidateCustomer} onSelectContact={onSelectContact} />;
   }
   return <DetailSkeleton />;
 }
@@ -977,12 +987,13 @@ function SiteDetailView({ s, customer, onLoadList, onInvalidateCustomer }: { s: 
 
 // ── Right-pane: contact detail ─────────────────────────────────────────────
 
-function ContactDetailView({ ct, customer, allCustomers, allSites, dupMatches, onLoadList, onInvalidateCustomer }: {
+function ContactDetailView({ ct, customer, allCustomers, allSites, dupMatches, onLoadList, onInvalidateCustomer, onSelectContact }: {
   ct: ContactItem; customer: CustomerDetail['customer'] | null;
   allCustomers: CustomerListItem[];
   allSites: SiteItem[];
   dupMatches: DupMatch[];
   onLoadList: () => void; onInvalidateCustomer: (id: string) => void;
+  onSelectContact: (customerId: string, contactId: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -1067,6 +1078,11 @@ function ContactDetailView({ ct, customer, allCustomers, allSites, dupMatches, o
               <span style={{ fontSize: 10.5, padding: '1px 6px', borderRadius: 4, flexShrink: 0, background: m.confidence === 'high' ? '#fff0f0' : '#fffbf0', color: m.confidence === 'high' ? '#b71c1c' : '#7A5500', border: `1px solid ${m.confidence === 'high' ? '#f5c6c6' : '#e6cc80'}` }}>
                 {m.confidence}
               </span>
+              {m.partnerCustomerId && (
+                <button onClick={() => onSelectContact(m.partnerCustomerId, m.partnerId)} style={{ fontSize: 11, fontWeight: 600, color: '#3DA8D8', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', flexShrink: 0 }}>
+                  View →
+                </button>
+              )}
             </div>
           ))}
         </div>
