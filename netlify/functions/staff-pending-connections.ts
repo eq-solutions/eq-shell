@@ -76,6 +76,31 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const workerMap = new Map<string, WorkerProfile>();
   for (const w of workers ?? []) workerMap.set(w.user_id, w);
 
+  // Phone-based fallback: workers whose user_id wasn't set at request time
+  // (pre-link state — eq_cards_submit_access_request now links them, but
+  // historical requests may still be unresolved).
+  const unmatched = workerInitiated.filter(
+    (a) => !workerMap.has(a.worker_user_id) && a.worker_phone,
+  );
+  if (unmatched.length > 0) {
+    const phoneFilter = unmatched
+      .map((a) => `phone.like.%${a.worker_phone}`)
+      .join(',');
+    const { data: phoneWorkers } = (await sbPublic
+      .from('workers')
+      .select('user_id, first_name, last_name, phone')
+      .or(phoneFilter)) as { data: WorkerProfile[] | null };
+    const phoneSuffixMap = new Map<string, WorkerProfile>();
+    for (const w of phoneWorkers ?? []) {
+      const suffix = (w.phone ?? '').replace(/^\+61|^61|^0/, '');
+      if (suffix) phoneSuffixMap.set(suffix, w);
+    }
+    for (const a of unmatched) {
+      const hit = a.worker_phone ? phoneSuffixMap.get(a.worker_phone) : undefined;
+      if (hit) workerMap.set(a.worker_user_id, hit);
+    }
+  }
+
   // Licence counts from canonical (public.licences, not worker_credentials)
   const licCountMap = new Map<string, number>();
   const { data: lics } = (await sbPublic
