@@ -2,7 +2,7 @@ import React, { useState, type FormEvent } from 'react';
 import './auth.css';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
-import { useSession, type EqRole } from '../session';
+import { type EqRole } from '../session';
 import { EqLogo } from '../components/EqLogo';
 import { storePendingSelection } from './TenantPicker';
 
@@ -44,7 +44,6 @@ function rememberDoor(door: 'email' | 'phone') {
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { refresh } = useSession();
 
   // Default door = last one successfully used on this device (PIN first visit).
   // Email-link tab is hidden for launch — its email is sent by the shared
@@ -173,8 +172,11 @@ export default function LoginPage() {
         navigate('/select-tenant', { replace: true });
         return;
       }
-      void refresh();
-      navigate(`/${(body as { tenant: { slug: string } }).tenant.slug}`, { replace: true });
+      // Hard redirect: the cookie is guaranteed in the jar before a navigation
+      // request fires, so verify-shell-session on mount always finds it.
+      // void refresh() + navigate() leaves a race window for first-time users
+      // (no sessionStorage) where RequireSession sees session=null and bounces.
+      window.location.replace(`/${(body as { tenant: { slug: string } }).tenant.slug}`);
     } catch {
       setErr('Network error — please try again.');
       setBusy(false);
@@ -246,8 +248,7 @@ export default function LoginPage() {
         });
         return;
       }
-      void refresh();
-      navigate(`/${(body as { tenant: { slug: string } }).tenant.slug}`, { replace: true });
+      window.location.replace(`/${(body as { tenant: { slug: string } }).tenant.slug}`);
     } catch {
       setErr('Network error — please try again.');
       setBusy(false);
