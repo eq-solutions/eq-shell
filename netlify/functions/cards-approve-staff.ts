@@ -205,6 +205,7 @@ async function approveHandler(req: Request): Promise<Response> {
         .select('id, licence_type, licence_number, issuing_authority, state, issue_date, expiry_date, never_expires')
         .eq('user_id', workerRow.user_id)
         .is('deleted_at', null)
+        .eq('is_private', false) // don't propagate worker-private licences into the tenant plane
         .not('licence_number', 'is', null)) as { data: Array<{
           id: string; licence_type: string; licence_number: string;
           issuing_authority: string | null; state: string | null;
@@ -535,6 +536,7 @@ async function handleApplication({
       .select('id, licence_type, licence_number, issuing_authority, state, issue_date, expiry_date, never_expires')
       .eq('user_id', worker.user_id)
       .is('deleted_at', null)
+      .eq('is_private', false) // don't propagate worker-private licences into the tenant plane
       .not('licence_number', 'is', null)) as { data: Array<{
         id: string; licence_type: string; licence_number: string;
         issuing_authority: string | null; state: string | null;

@@ -129,7 +129,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       'photo_front_url, photo_back_url, never_expires',
     )
     .in('user_id', userIds)
-    .is('deleted_at', null)) as { data: LicRow[] | null };
+    .is('deleted_at', null)
+    // Honour the worker's privacy toggle — a licence marked private is hidden from
+    // the roster/staff reads (staff-org-roster, staff-canonical-licences) and must
+    // be excluded from the compliance export (number + ID photos) too.
+    .eq('is_private', false)) as { data: LicRow[] | null };
 
   const licsByUser = new Map<string, LicRow[]>();
   for (const l of allLics ?? []) {

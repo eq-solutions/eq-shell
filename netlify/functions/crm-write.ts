@@ -13,6 +13,7 @@ import {
   TenantRoutingMisconfiguredError,
 } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { can, type PermKey } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 function json(status: number, body: unknown): Response {
@@ -27,6 +28,33 @@ function str(v: unknown): string | null {
   const s = String(v).trim();
   return s === '' ? null : s;
 }
+
+// Every action here is a mutation, so each maps to a CRM permission and is gated
+// server-side — the browser gate is not a boundary. Mirrors the per-operation
+// model the single-record siblings already enforce (entity-insert → entity.create,
+// entity-patch → entity.edit, entity-actions → entity.delete). Read-only roles
+// (entity.view only, e.g. employee/apprentice/labour_hire) are blocked from all of
+// them. archive_* is intentionally edit-level, not open: it removes records from
+// active use, so a read-only role should not be able to do it.
+const PERM_BY_ACTION: Record<string, PermKey> = {
+  add_customer:            'entity.create',
+  add_site:                'entity.create',
+  add_contact:             'entity.create',
+  update_customer:         'entity.edit',
+  update_contact:          'entity.edit',
+  update_site:             'entity.edit',
+  archive_customer:        'entity.edit',
+  archive_site:            'entity.edit',
+  archive_contact:         'entity.edit',
+  link_contact_customer:   'entity.edit',
+  unlink_contact_customer: 'entity.edit',
+  link_contact_site:       'entity.edit',
+  unlink_contact_site:     'entity.edit',
+  merge_customers:         'entity.delete',
+  merge_contact:           'entity.delete',
+  delete_site:             'entity.delete',
+  delete_contact:          'entity.delete',
+};
 
 export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
   if (req.method !== 'POST') return json(405, { ok: false, error: 'method_not_allowed' });
@@ -44,6 +72,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const { action, id } = body;
   if (typeof action !== 'string' || typeof id !== 'string' || !id) {
     return json(400, { ok: false, error: 'missing_action_or_id' });
+  }
+
+  const requiredPerm = PERM_BY_ACTION[action];
+  if (!requiredPerm) {
+    return json(400, { ok: false, error: 'unknown_action' });
+  }
+  if (!can(session, requiredPerm)) {
+    return json(403, { ok: false, error: 'forbidden' });
   }
 
   let tenantDb;
