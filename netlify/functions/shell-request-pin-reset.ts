@@ -64,6 +64,23 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(500, { ok: false, error: (e as Error).message });
   }
 
+  // Rate-limit before any lookup / email send — keyed on the target email (stop
+  // bombing one inbox) and the source IP (stop spraying many addresses). On limit OR
+  // limiter error, return ok:true unchanged — no email sent, no enumeration and no
+  // rate-limit oracle.
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+           ?? req.headers.get('client-ip')
+           ?? 'unknown';
+  for (const rlKey of [`pwreset::${email}`, `pwreset-ip::${ip}`]) {
+    const { data: rlResult, error: rlErr } = await sb.schema('public').rpc('check_and_increment_rate_limit', {
+      p_key: rlKey,
+    });
+    const rl = rlResult as { blocked: boolean; retry_after_seconds: number } | null;
+    if (rlErr || rl?.blocked) {
+      return jsonResponse(200, { ok: true });
+    }
+  }
+
   const { data: user } = await sb
     .from('users')
     .select('id, email, active')
@@ -145,9 +162,6 @@ This link expires in ${RESET_TTL_HOURS} hour. If you didn't request this, ignore
     user_id: user.id,
   }));
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-           ?? req.headers.get('client-ip')
-           ?? 'unknown';
   void sb.schema('public').rpc('eq_write_audit_log', {
     p_event: 'pin.reset.requested',
     p_actor_id: user.id,

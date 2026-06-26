@@ -31,6 +31,7 @@ import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { withSentry } from './_shared/sentry.js';
+import { checkShellOrigin } from './_shared/origin-check.js';
 
 const IFRAME_TOKEN_TTL_SECONDS = 60;
 
@@ -52,6 +53,12 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   if (req.method !== 'POST') return jsonResponse(405, { error: 'Method not allowed' });
   if (!hasSecretSalt()) return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });
   if (!hasSupabaseJwtSecret()) return jsonResponse(500, { error: 'Server misconfigured — missing SUPABASE_JWT_SECRET' });
+
+  // Cross-subdomain CSRF guard (report-only until ENFORCE_IFRAME_ORIGIN=true) — the
+  // session cookie is SameSite=Lax + Domain=.eq.solutions, so a sibling-subdomain page
+  // could otherwise POST here with the cookie and mint a handoff token.
+  const originBlock = checkShellOrigin(req, 'token-exchange');
+  if (originBlock) return originBlock;
 
   const shellToken = readSessionCookie(req);
   const session = verifySessionToken(shellToken);
