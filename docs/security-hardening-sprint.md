@@ -9,6 +9,14 @@ remain the detailed sub-plans. Built from two audits (2026-06-26 exploit-focused
 **Nothing here deploys without Royce.** Auth/data changes are approval-gated; jvkn
 DDL goes via the governed path. This is the plan.
 
+**Built so far** (branch `claude/determined-edison-d6f176`, build/`node`-verified, NOT
+deployed): P0 — H-01/H-03/H-04/H-05 (`e9d6732`) · keystone **H-06** drift CHECK
+(`d19821c`) · H-11 + H-20 + H-22 (`756fd9c`) · H-16 (resend) + H-17a (`fae0c56`).
+Earlier in the arc: V3 (`e00d2df`), V4 + P1 (`8d6d77c`), Phase 0 spec + revoke migration
+(`dc2ee17`). **Remaining:** H-12/H-13/H-15/H-17b/H-18/H-19/H-21 (buildable here),
+H-16 (remaining log sites), the eq-field specs (H-00 JWT variant, 1.2), and the three
+decision-gated items (H-07/H-08/H-14/H-23).
+
 ---
 
 ## 0. Steelman — why this is the work, and what's already strong
