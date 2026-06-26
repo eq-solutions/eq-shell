@@ -20,11 +20,11 @@ const IFRAME_MODULES: Record<string, string> = {
   cards: 'EQ Cards',
 };
 
-// Unified mobile chrome — Tier 1. Iframe modules listed here have stood down
-// their OWN bottom nav (moved it to a top strip), so Shell keeps its persistent
-// bottom tab bar on top of them instead of yielding it. Modules NOT in this set
-// still get the old top-bar-only "yield the bottom" treatment until they adapt.
-const ADAPTED_MODULES = new Set<string>(['field']);
+// Unified mobile chrome — Tier 1+. Iframe modules listed here have stood down
+// their OWN bottom nav, so Shell keeps its persistent bottom tab bar on top of
+// them instead of yielding it. Modules NOT in this set still get the old
+// top-bar-only "yield the bottom" treatment until they adapt.
+const ADAPTED_MODULES = new Set<string>(['field', 'service']);
 
 // Tab definitions — each entry's key is matched against moduleEnabled() so
 // entitlement-disabled apps are filtered out automatically at render time.
@@ -76,7 +76,8 @@ export function MobileTabBar() {
 
   if (!session || !tenantSlug) return null;
 
-  const isAdmin = (session.user.role as string) === 'manager' || session.user.is_platform_admin;
+  const userRole = session.user.role as string;
+  const isAdmin = userRole === 'manager' || session.user.is_platform_admin;
   const userInitials = initials(session.user.name, session.user.email);
   const userName = session.user.name ?? session.user.email.split('@')[0].replace('.', ' ');
   const iframeAppName = activeModule ? IFRAME_MODULES[activeModule] : undefined;
@@ -85,6 +86,22 @@ export function MobileTabBar() {
   const visibleTabs = ALL_TABS.filter(
     (t) => t.key === 'home' || moduleEnabled(session, t.key),
   );
+
+  // Service section strip — only rendered when Service is the adapted module.
+  // Active section derived from Shell URL path (ServiceIframe keeps Shell URL
+  // in sync via SERVICE_URL_CHANGED → navigate(), so no extra state needed).
+  const serviceSubPath = activeModule === 'service' ? (match?.params?.['*'] ?? '') : '';
+  const activeServiceSection =
+    serviceSubPath === 'do' ? 'do' :
+    serviceSubPath.startsWith('maintenance') ? 'maintenance' :
+    serviceSubPath.startsWith('records') ? 'records' :
+    'dashboard';
+  const serviceSections = [
+    { key: 'do',          label: 'Do',          to: `/${tenantSlug}/service/do` },
+    { key: 'dashboard',   label: 'Dashboard',   to: `/${tenantSlug}/service/dashboard` },
+    { key: 'maintenance', label: 'Maintenance', to: `/${tenantSlug}/service/maintenance` },
+    ...(userRole !== 'employee' ? [{ key: 'records', label: 'Records', to: `/${tenantSlug}/service/records` }] : []),
+  ];
 
   // Account sheet — white card, floats above tabs or below iframe top bar
   const AccountSheet = ({ aboveTabs }: { aboveTabs: boolean }) => (
@@ -297,8 +314,8 @@ export function MobileTabBar() {
 
   // ── Iframe-module layout ────────────────────────────────────────────────────
   if (iframeAppName) {
-    // Adapted modules (Tier 1) keep Shell's persistent bottom bar; others still
-    // yield the bottom of the screen to the embedded app's own controls.
+    // Adapted modules keep Shell's persistent bottom bar; others still yield
+    // the bottom of the screen to the embedded app's own controls.
     const adapted = activeModule ? ADAPTED_MODULES.has(activeModule) : false;
     return (
       <>
@@ -327,6 +344,21 @@ export function MobileTabBar() {
             <CircleUser size={20} strokeWidth={2} aria-hidden="true" />
           </button>
         </header>
+        {adapted && activeModule === 'service' && userRole !== 'apprentice' && (
+          <nav className="eq-msect" aria-label="EQ Service sections">
+            {serviceSections.map((sect) => (
+              <NavLink
+                key={sect.key}
+                to={sect.to}
+                className={`eq-msect__item${activeServiceSection === sect.key ? ' eq-msect__item--active' : ''}`}
+                onClick={closeAll}
+                aria-current={activeServiceSection === sect.key ? 'page' : undefined}
+              >
+                {sect.label}
+              </NavLink>
+            ))}
+          </nav>
+        )}
         {adapted && bottomTabs}
       </>
     );

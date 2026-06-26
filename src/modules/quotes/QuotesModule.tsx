@@ -4286,10 +4286,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
 
   if (view === "create" || view === "edit") {
     const isEditMode = view === "edit";
-    // Quote number is required. New quotes must carry the SKS- prefix; existing
-    // quotes (some legacy EQ-…) only need to be non-empty when edited.
     const trimmedQuoteNo = createQuoteNumber.trim();
-    const quoteNumberValid = trimmedQuoteNo.length > 0;
+    const quoteNumberValid = trimmedQuoteNo.length > 0 && trimmedQuoteNo !== "SKS-";
     const handleCancelCreateEdit = () => {
       const savedId = editingQuoteId;
       resetCreateForm();
@@ -4404,7 +4402,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                 />
                 {!quoteNumberValid && (
                   <span className="eq-quotes__inline-err" style={{ fontSize: 11 }}>
-                    Quote number is required.
+                    Add the number after SKS- (e.g. SKS-16951).
                   </span>
                 )}
               </div>

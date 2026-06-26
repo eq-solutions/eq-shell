@@ -901,6 +901,14 @@
   position: relative;
 }
 
+/* On mobile, the section strip (eq-msect, 40px) sits fixed over the top of
+   the iframe. Push the wrap down to keep content visible below the strip. */
+@media (max-width: 767px) {
+  .eq-service-frame-wrap--sectioned {
+    padding-top: 40px;
+  }
+}
+
 .eq-field-frame-loading {
   flex: 1;
   display: flex;
