@@ -65,15 +65,6 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     return jsonResponse(400, { error: 'Invalid aud — expected "field" or "service"' });
   }
 
-  let tenantSlug: AllowedFieldTenantSlug | undefined;
-  if (aud === 'field') {
-    const raw = (body as { tenant_slug?: unknown } | null)?.tenant_slug;
-    if (!isAllowedFieldTenantSlug(raw)) {
-      return jsonResponse(400, { error: 'Invalid or missing tenant_slug', allowed: ALLOWED_FIELD_TENANT_SLUGS });
-    }
-    tenantSlug = raw;
-  }
-
   let sb;
   try { sb = getServiceClient(); } catch (e) { return jsonResponse(500, { error: (e as Error).message }); }
 
@@ -93,23 +84,51 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   // platform admins; checking it against session.tenant_id always fails for them.
   const activeTenantId = session.tenant_id;
 
-  // For aud='service', resolve the tenant slug from the SESSION tenant so the
-  // minted JWT can carry it. EQ Service's shell-auth needs tenant_slug to upsert
-  // the tenant_members row; without it a bridged user authenticates but lands
-  // with no per-tenant access → access-gate bounce (e.g. the sks Service tile).
-  // The slug is server-derived from the session's active tenant_id — no cross-tenant
-  // input, no escalation. Field encodes its slug in source_app already.
-  let serviceTenantSlug: string | undefined;
-  if (aud === 'service') {
-    const { data: tenantRow } = await sb
-      .schema('shell_control')
-      .from('tenants')
-      .select('slug')
-      .eq('id', activeTenantId)
-      .maybeSingle<{ slug: string }>();
-    if (!tenantRow) return jsonResponse(500, { error: 'Could not resolve tenant slug' });
-    serviceTenantSlug = tenantRow.slug;
+  // Resolve the active tenant's slugs once (used by both aud branches). The session
+  // cookie is HMAC-signed, so activeTenantId is trustworthy.
+  const { data: tenantRow } = await sb
+    .schema('shell_control')
+    .from('tenants')
+    .select('slug, field_tenant_slug')
+    .eq('id', activeTenantId)
+    .maybeSingle<{ slug: string; field_tenant_slug: string | null }>();
+  if (!tenantRow) return jsonResponse(500, { error: 'Could not resolve tenant' });
+
+  // Bind the Field workspace to the caller's ACTIVE tenant. Mirrors FieldIframe's
+  // nonAdminSlug logic and the mint-iframe-token H1 fix (PR #370): a
+  // non-platform-admin may only mint a Field token for their tenant's configured
+  // field_tenant_slug (or its shell slug, if that maps to a Field workspace) — a
+  // body slug for another tenant (e.g. an EQ user requesting 'sks') is rejected,
+  // not honoured, which closes the cross-tenant/cross-entity mint. Platform admins
+  // keep the full picker (cross-tenant by design). body.tenant_slug is untrusted;
+  // the signed session is the authority.
+  let tenantSlug: AllowedFieldTenantSlug | undefined;
+  if (aud === 'field') {
+    const requested = (body as { tenant_slug?: unknown } | null)?.tenant_slug;
+    if (user.is_platform_admin) {
+      if (!isAllowedFieldTenantSlug(requested)) {
+        return jsonResponse(400, { error: 'Invalid or missing tenant_slug', allowed: ALLOWED_FIELD_TENANT_SLUGS });
+      }
+      tenantSlug = requested;
+    } else {
+      const homeFieldSlug: AllowedFieldTenantSlug | null =
+        isAllowedFieldTenantSlug(tenantRow.field_tenant_slug) ? tenantRow.field_tenant_slug
+        : isAllowedFieldTenantSlug(tenantRow.slug) ? tenantRow.slug
+        : null;
+      if (!homeFieldSlug) {
+        return jsonResponse(403, { error: 'no-field-workspace' });
+      }
+      if (isAllowedFieldTenantSlug(requested) && requested !== homeFieldSlug) {
+        return jsonResponse(403, { error: 'not-authorized-for-tenant' });
+      }
+      tenantSlug = homeFieldSlug;
+    }
   }
+
+  // For aud='service', the tenant slug carried in the minted JWT is server-derived
+  // from the session's active tenant — no cross-tenant input, no escalation. EQ
+  // Service's shell-auth needs it to upsert the tenant_members row.
+  const serviceTenantSlug: string | undefined = aud === 'service' ? tenantRow.slug : undefined;
 
   // Role comes from the session cookie (set by verify-shell-session for the
   // active tenant's membership), not from user.role which is the home-tenant role.
