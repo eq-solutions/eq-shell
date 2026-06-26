@@ -20,6 +20,12 @@ const IFRAME_MODULES: Record<string, string> = {
   cards: 'EQ Cards',
 };
 
+// Unified mobile chrome — Tier 1. Iframe modules listed here have stood down
+// their OWN bottom nav (moved it to a top strip), so Shell keeps its persistent
+// bottom tab bar on top of them instead of yielding it. Modules NOT in this set
+// still get the old top-bar-only "yield the bottom" treatment until they adapt.
+const ADAPTED_MODULES = new Set<string>(['field']);
+
 // Tab definitions — each entry's key is matched against moduleEnabled() so
 // entitlement-disabled apps are filtered out automatically at render time.
 const ALL_TABS = [
@@ -263,12 +269,41 @@ export function MobileTabBar() {
     </>
   );
 
-  // ── Iframe-module layout (Frames 2 & 3) ────────────────────────────────────
+  // Persistent bottom tab bar — the global app switcher. Rendered on native
+  // pages and on adapted iframe pages (Tier 1), so it never disappears.
+  const bottomTabs = (
+    <nav className="eq-mtabs" aria-label="App navigation" role="navigation">
+      {visibleTabs.map((item) => {
+        const href = item.to ? `/${tenantSlug}/${item.to}` : `/${tenantSlug}`;
+        const isActive = item.key === 'home'
+          ? activeModule === null
+          : activeModule === item.key;
+        const { Icon } = item;
+        return (
+          <NavLink
+            key={item.key}
+            to={href}
+            className={`eq-mtabs__item${isActive ? ' eq-mtabs__item--active' : ''}`}
+            aria-current={isActive ? 'page' : undefined}
+            onClick={closeAll}
+          >
+            <Icon size={20} strokeWidth={2} aria-hidden="true" />
+            <span>{item.label}</span>
+          </NavLink>
+        );
+      })}
+    </nav>
+  );
+
+  // ── Iframe-module layout ────────────────────────────────────────────────────
   if (iframeAppName) {
+    // Adapted modules (Tier 1) keep Shell's persistent bottom bar; others still
+    // yield the bottom of the screen to the embedded app's own controls.
+    const adapted = activeModule ? ADAPTED_MODULES.has(activeModule) : false;
     return (
       <>
-        {accountOpen && <AccountSheet aboveTabs={false} />}
-        {adminOpen && <AdminSheet aboveTabs={false} />}
+        {accountOpen && <AccountSheet aboveTabs={adapted} />}
+        {adminOpen && <AdminSheet aboveTabs={adapted} />}
 
         <header className="eq-mtopbar" role="navigation" aria-label="App navigation">
           <Link
@@ -292,6 +327,7 @@ export function MobileTabBar() {
             <CircleUser size={20} strokeWidth={2} aria-hidden="true" />
           </button>
         </header>
+        {adapted && bottomTabs}
       </>
     );
   }
@@ -318,28 +354,7 @@ export function MobileTabBar() {
         </button>
       </header>
 
-      {/* Bottom tab bar */}
-      <nav className="eq-mtabs" aria-label="App navigation" role="navigation">
-        {visibleTabs.map((item) => {
-          const href = item.to ? `/${tenantSlug}/${item.to}` : `/${tenantSlug}`;
-          const isActive = item.key === 'home'
-            ? activeModule === null
-            : activeModule === item.key;
-          const { Icon } = item;
-          return (
-            <NavLink
-              key={item.key}
-              to={href}
-              className={`eq-mtabs__item${isActive ? ' eq-mtabs__item--active' : ''}`}
-              aria-current={isActive ? 'page' : undefined}
-              onClick={closeAll}
-            >
-              <Icon size={20} strokeWidth={2} aria-hidden="true" />
-              <span>{item.label}</span>
-            </NavLink>
-          );
-        })}
-      </nav>
+      {bottomTabs}
     </>
   );
 }
