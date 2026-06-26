@@ -11,16 +11,20 @@ review). Four findings cleared independent false-positive verification at
 confidence ≥8; one privacy-consistency gap (below the vuln bar) is folded into
 Phase 3 because it's a one-line fix on the same surface.
 
-**Progress (2026-06-27, branch `claude/determined-edison-d6f176`):**
-- ✅ **Phase 2.1** (crm-write authz gate) — implemented + committed in this branch.
-- ✅ **Phase 3.1 / 3.2** (`is_private` filters on the Cards compliance export + the
-  approval-time licence sync) — implemented + committed.
-- ⏸️ **Phase 1.1** (token-exchange membership gate) — deferred pending the
-  field-slug↔tenant_id mapping; a hasty gate risks a false-403 outage on the live
-  EQ+SKS Field SSO path. Next careful pass.
-- 🚧 **Phase 0** (revoke anon on the two jvkn SECDEF functions) — blocked: the anon
-  grant is load-bearing for EQ Field's browser reads (verified), so it's a sequenced
-  cross-repo cutover, not a one-line revoke. Awaiting the approach decision below.
+**Progress (2026-06-27, branch `claude/determined-edison-d6f176`, every commit build-verified):**
+- ✅ **Phase 1.1** (V3 token-exchange) — Field mint bound to the caller's active
+  tenant's `field_tenant_slug`; a cross-tenant body slug → 403; admins keep the
+  picker. Commit `e00d2df`.
+- ✅ **Phase 2.1** (V4 crm-write authz gate) — commit `8d6d77c`.
+- ✅ **Phase 3.1 / 3.2** (P1 `is_private` filters on the Cards export + approval-time
+  licence sync) — commit `8d6d77c`.
+- 🚧 **Phase 0** (V1/V2 anon SECDEF) — approach chosen: **service-role Field proxy**.
+  Spec + jvkn revoke migration committed `dc2ee17`; the eq-field implementation
+  (`canon-read.js` + `people.js` cutover) is the remaining work — separate repo,
+  needs a `CANONICAL_SERVICE_ROLE_KEY` env var on Field (Royce). See
+  `docs/phase0-field-canonical-proxy-spec.md`.
+- ⏭️ **Phase 3.3** (drift-gate CHECK) — sequence AFTER Phase 0 lands, else the gate
+  goes red on the not-yet-fixed functions.
 - *Not deployed.* Branch work only; every apply/deploy stays gated on Royce.
 
 ---
@@ -94,10 +98,10 @@ is a member of that tenant — unlike `select-tenant.ts:85` / `switch-tenant.ts:
 which both do the membership check. Downstream, eq-field binds the Field session and
 SKS data-JWT to the request slug, ignoring the verified JWT's `tenant_id`.
 
-*Status: 1.1 deferred — see Progress. The membership gate needs the field-slug↔tenant_id
-mapping resolved first (the field slugs `eq/demo-trades/melbourne/sks` are not the same
-as shell tenant slugs, e.g. `core`≠`eq`), or a wrong map produces false 403s and breaks
-EQ Field SSO. Implement against the `field_tenant_slug` precedent from PR #370.*
+*Status: 1.1 DONE (commit `e00d2df`). The fix derives the Field slug from the active
+tenant's `field_tenant_slug` (`shell_control.tenants`), mirroring FieldIframe's
+`nonAdminSlug` and the PR #370 H1 fix — non-admins are bound to their tenant, admins
+keep the picker. 1.2 (eq-field defence-in-depth) and 1.3 (regression lock) remain.*
 
 | # | Task | Files / Reuses | Size | Acceptance |
 |---|---|---|---|---|
