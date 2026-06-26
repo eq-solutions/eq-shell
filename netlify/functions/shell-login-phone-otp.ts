@@ -26,7 +26,7 @@
 import type { Context } from '@netlify/functions';
 import { getServiceClient, getUserMemberships } from './_shared/supabase.js';
 import type { CanonicalUser, CanonicalTenant, CanonicalEntitlement } from './_shared/supabase.js';
-import { signSessionToken, buildTotpChallengeIfEnrolled, hasTrustedDeviceFor, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
+import { signSessionToken, hasSecretSalt, DEFAULT_TENANT_CONFIG } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { buildSessionCookie } from './_shared/cookie.js';
 import { totpEnrollmentDue } from './_shared/totp.js';
@@ -214,14 +214,11 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
     return jsonResponse(200, { valid: false });
   }
 
-  // Second-factor gate — identical to the PIN and magic-link doors. Enrolled
-  // users get a 5-minute challenge and NO session cookie here; the client
-  // completes login at /totp-challenge. Skipped when this device was remembered
-  // for 30 days (hasTrustedDeviceFor) — the OTP they just passed is enough.
-  const totpChallenge = buildTotpChallengeIfEnrolled(user);
-  if (totpChallenge && !hasTrustedDeviceFor(req, user.id)) {
-    return jsonResponse(200, totpChallenge);
-  }
+  // Phone OTP is proof of device possession — it IS the second factor.
+  // No TOTP challenge on this door: the SMS code already satisfies "something
+  // you have." Email+PIN users still go through TOTP (both factors are
+  // "something you know"). Enrollment nudge (requires_totp_enrollment below)
+  // still fires so users are encouraged to set up TOTP as a backup.
 
   const { data: tenant, error: tenantErr } = await sb
     .from('tenants')
