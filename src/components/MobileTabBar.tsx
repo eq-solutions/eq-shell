@@ -1,23 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, NavLink, useMatch, useParams } from 'react-router-dom';
 import {
-  Users, Wrench, FileText, CreditCard, House, CircleUser, Settings, LogOut,
+  Users, Wrench, FileText, House, CircleUser, Settings, LogOut,
   Grid3x3, ShieldCheck, BarChart2, Download, ClipboardList, UserPlus,
   ChevronRight,
 } from 'lucide-react';
 import { useSession, moduleEnabled } from '../session';
 import './MobileTabBar.css';
 
-// Iframe modules (Field / Service / Cards) embed a full app that owns
-// its own bottom controls. On mobile, Shell's fixed bottom tab bar would sit on
-// top of those controls and trap the user. For these modules Shell "yields the
-// bottom bar": it hides the bottom tabs and surfaces an Apps / app-name control
-// in a slim top bar instead, leaving the bottom of the screen to the embedded app.
-// Note: /quotes and /ops are native React pages, not iframes, so they are NOT listed here.
+// Iframe modules embed a full app that owns its own bottom controls. On mobile,
+// Shell's fixed bottom tab bar would sit on top of those controls and trap the
+// user. For non-adapted modules Shell "yields the bottom bar": it hides the
+// bottom tabs and surfaces an Apps / app-name control in a slim top bar instead.
+// Note: /quotes and /ops are native React pages, not iframes, so they are NOT
+// listed here. Cards is standalone (workers go direct to cards.eq.solutions) —
+// the /cards iframe route and auth handoff remain but Cards is not a nav tab.
 const IFRAME_MODULES: Record<string, string> = {
   field: 'EQ Field',
   service: 'EQ Service',
-  cards: 'EQ Cards',
 };
 
 // Unified mobile chrome — Tier 1+. Iframe modules listed here have stood down
@@ -29,11 +29,10 @@ const ADAPTED_MODULES = new Set<string>(['field', 'service']);
 // Tab definitions — each entry's key is matched against moduleEnabled() so
 // entitlement-disabled apps are filtered out automatically at render time.
 const ALL_TABS = [
-  { key: 'home',    label: 'Home',    Icon: House,      to: '' },
-  { key: 'field',   label: 'Field',   Icon: Users,      to: 'field'   },
-  { key: 'service', label: 'Service', Icon: Wrench,     to: 'service' },
-  { key: 'ops',     label: 'Ops',     Icon: FileText,   to: 'ops'     },
-  { key: 'cards',   label: 'Cards',   Icon: CreditCard, to: 'cards'   },
+  { key: 'home',    label: 'Home',    Icon: House,    to: '' },
+  { key: 'field',   label: 'Field',   Icon: Users,    to: 'field'   },
+  { key: 'service', label: 'Service', Icon: Wrench,   to: 'service' },
+  { key: 'ops',     label: 'Ops',     Icon: FileText, to: 'ops'     },
 ];
 
 function initials(name: string | null, email: string): string {
