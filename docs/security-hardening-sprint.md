@@ -74,7 +74,7 @@ both. Effort: same. *Your call to confirm the switch.*
 | Actor | Why scaling makes it worse | Findings |
 |---|---|---|
 | **Unauthenticated internet** | Public doors (login, OTP, quote portal, provision links) face everyone | V1/V2, H-04, H-09, H-13, H-19 |
-| **Low-priv authenticated user** (every new worker) | Population grows with onboarding; direct PostgREST/RPC reach bypasses the UI | **H-01, H-02**, H-05, H-23 |
+| **Low-priv authenticated user** (every new worker) | Population grows with onboarding; direct PostgREST/RPC reach bypasses the UI | **H-01**, H-05, H-23 |
 | **Rogue / compromised manager token** | More tenants → more manager tokens to leak/abuse | H-07, H-08, H-12, abuse-F15 |
 | **Leaked app key / deploy env** | More integrations & deploys holding shared secrets | H-06-scope, H-15, H-16-keys, H-00 |
 | **Cross-entity (EQ↔SKS)** | The boundary that must never blur | H-00, H-10, canonical scoping |
@@ -87,8 +87,7 @@ both. Effort: same. *Your call to confirm the switch.*
 
 | ID | Finding | Sev / Conf | Fix | Effort | Acceptance |
 |---|---|---|---|---|---|
-| **H-01** | `check_and_increment_rate_limit` has EXECUTE for `authenticated` → any logged-in user locks any victim out of login/2FA for up to a year (`p_lockout_secs` caller-set); victim can't self-unlock | High / 9 | `REVOKE EXECUTE … FROM authenticated, anon` (only ever called via service-role inside functions) | S | authed user gets `permission denied` on the RPC; in-function rate-limiting unaffected |
-| **H-02** | `eq_cards_claim_invite(p_token, p_user_id)` granted `authenticated`, no `auth.uid()=p_user_id` check → a logged-in user provisions `shell_control.users` + tenant membership for an **arbitrary** user_id with any unclaimed invite | High / 8 | Drop the `authenticated` grant (service-role is the real caller), **or** add `IF p_user_id <> auth.uid() THEN RAISE` | S | direct RPC as `authenticated` → denied; Cards claim via `cards-api` still works. **Verify live grant.** |
+| **H-01** | `check_and_increment_rate_limit` has EXECUTE for `authenticated` → any logged-in user locks any victim out of login/2FA for up to a year (`p_lockout_secs` caller-set); victim can't self-unlock. **Confirmed live 2026-06-27 (anon✗ / authed✓).** | High / 9 | `REVOKE EXECUTE … FROM authenticated, anon` (only ever called via service-role inside functions) | S | authed user gets `permission denied` on the RPC; in-function rate-limiting unaffected |
 | **H-03** | `shell-provision-tenant` checks `used_at` but not `expires_at` → a leaked provision link stands up a tenant + manager account forever | Med / 9 | add `.gte('expires_at', now)` to lookup+consume; generic "invalid or expired" | S | expired token → rejected |
 | **H-04** | Public phone-OTP send has no `shouldCreateUser:false` → unauth attacker provisions junk `auth.users` + pumps SMS (toll fraud) to arbitrary numbers | High / 8 | `shouldCreateUser:false` at `LoginPage.tsx:195`; confirm/tighten Supabase Auth SMS limits | S | OTP to an unknown number does not create a user; **verify SMS provider limits live** |
 | **H-05** | `cards-staff-matches` worker fetch filtered only by `?user_id` (not tenant) on the global `public.workers` → manager in tenant A reads any other tenant's worker name/phone/email by UUID | Med / 8 | constrain the worker fetch to the caller's org before returning PII | S | cross-tenant user_id → no PII returned |
@@ -100,7 +99,7 @@ both. Effort: same. *Your call to confirm the switch.*
 | **H-06** | **Drift-gate blind spot:** `check-tenant-drift.mjs` inspects *table* grants only — function EXECUTE grants are invisible (how V1/V2/H-02/H-09 slipped past) | High / 10 | **Add CHECK 6 — function-EXECUTE invariant:** fail on any SECURITY DEFINER function reachable by `anon`/`authenticated` not on an explicit allow-list; also assert `pg_default_acl` (functions) carries no anon/authenticated, and add sequence-grant coverage. **This is the keystone — it converts the whole SECDEF-anon class from "manual catch" to "every run."** | M |
 | **H-07** | `canonical-api` app keys hardcoded `['*']` (cards/service/quotes/shell) + caller-chosen `?tenant=` + no per-key rate cap → one leaked app key dumps all-tenant PII | High | replace `['*']` with real per-app/per-tenant allow-lists (`shell_control.app_tenant_scope`); per-key rate cap; confirm `CANONICAL_API_KEY_CARDS` isn't in the shipped web bundle | M |
 | **H-08** | `canonical-api` `staff` projection returns DOB + home address + emergency contact + dob_day/month to **every** reader app by default (more than any renders) | High / 9 | drop sensitive fields from the default projection; `?include=sensitive` gated by ACL (pattern already anticipated in-file) | M |
-| **H-09** | `eq_cards_submit_access_request` has **no GRANT/REVOKE** in its migration (indeterminate EXECUTE) + no rate limit → cross-org request spam / org enumeration | Med | governed `REVOKE ALL FROM PUBLIC; GRANT EXECUTE TO authenticated`; add per-IP/per-org throttle. **Verify live grant on jvkn.** | S |
+| **H-09** | `eq_cards_submit_access_request` (worker-initiated QR-join): live grant is **correct** (anon✗ / authed✓, confirmed) and the writer is `auth.uid()`-bound — but the migration omitted an explicit `REVOKE/GRANT` (relied on the default) and there's no rate limit → authenticated request-spam to discoverable orgs + an org-enumeration oracle | Low (hardening) | governed `REVOKE ALL FROM PUBLIC; GRANT EXECUTE TO authenticated` for hygiene; per-IP/per-actor throttle | S |
 | **H-10** | `licence-photos` bucket tenant-isolation is a **manual, unverified dashboard policy** — no migration, invisible to drift CI; if absent/wrong, cross-entity ID-photo reads | High / 8 | **verify live first** (`public=false`, tenant-folder-prefix RLS, no anon, upload paths carry the prefix); then codify as a governed migration + drift assertion | S verify / M codify |
 | **H-11** | Invite / PIN-reset / quote-portal **tokens in GET query strings** → browser history, `Referer`, and Sentry (`sentry.ts` attaches `req.url`) | Med / 8 | move tokens to URL fragment + POST in body (pattern already at `App.tsx:235`); scrub `token`/`sh` from Sentry `extra.url` | S–M |
 | **H-12** | No rate limit on `shell-request-pin-reset` (email-bomb + timing oracle), `create/resend-worker-invite`, `invite-users-batch`; login doors key IP-only or identity-only (sprayable) | Med | `check_and_increment_rate_limit` on each sender (keyed recipient + actor/IP); composite IP **and** identity on login doors; `resend` refuses when an active unclaimed invite exists | S–M |
@@ -124,31 +123,42 @@ both. Effort: same. *Your call to confirm the switch.*
 | **H-20** | `verifySupabaseJwt` doesn't re-assert `alg`/`typ` inside the verifier (latent footgun); TOTP code compared with `===` | add `alg==='HS256'` assertion to both Shell + Field verifiers; constant-time TOTP compare | S |
 | **H-21** | Dead Field-HMAC signing path (`signShellToken`) keeps `EQ_SECRET_SALT` alive as a handoff signer | after H-15 cutover, delete it + retire `EQ_FIELD_HANDOFF_KEY` | S |
 | **H-22** | `worker_invites.token` plaintext at rest + echoed by `list-worker-invites` (Shell `user_invites` is hashed — inconsistent); `worker_phone` string-interpolated into a PostgREST `.or()` | hash worker-invite tokens at rest + stop echoing (separate "regenerate link" action); sanitize `worker_phone` to `[0-9+]` and add a tenant predicate | S–M |
+| **H-02** | *(corrected from P0 — latent, not live.)* Migration `2026_06_16`'s 2-arg `eq_cards_claim_invite(p_token,p_user_id)` grants `authenticated` with no `auth.uid()` check, but is **committed-and-unapplied** (live is the safe 1-arg). If ever applied → arbitrary-user provisioning. Also a migration↔live **drift** to reconcile | withdraw or guard the 2-arg migration before it ships; revoke the harmless anon grant on the live 1-arg | S |
 | **H-23** | CRM reads (`crm-customers`, `entity-rows` customer/contact/site) open to any authed user incl. `labour_hire` — the read sibling of V4 | **Decide:** gate on `entity.view` (recommended, matches the write side) **or** ratify-and-document as intentional open read | S |
 
 ---
 
-## 4. Verify-live checklist (can't be confirmed from code — do these before/with the fixes)
+## 4. Live verification
 
-1. **H-02 / H-09** — `has_function_privilege('authenticated'|'anon', …)` on `eq_cards_claim_invite`, `eq_cards_submit_access_request` (jvkn).
-2. **H-10** — `licence-photos` bucket: `public=false`, tenant-prefix RLS present, no anon grant, upload paths carry the tenant prefix.
-3. **H-04** — phone OTP enabled in prod + SMS provider rate limits.
-4. **H-07** — `CANONICAL_API_KEY_CARDS` not extractable from the eq-cards web bundle.
-5. **H-15 / H-18** — `netlify env:get` for `EQ_SESSION_SALT`/`EQ_QUOTES_HANDOFF_KEY`/`ENFORCE_IFRAME_ORIGIN` per site (MCP env reads silently no-op — use the CLI).
-6. **V1/V2** — confirm the two RPCs are still anon-callable (revoke not yet applied).
+**Confirmed against jvkn 2026-06-27** (`has_function_privilege` + `pg_get_functiondef`):
+
+| Function (live signature) | secdef | anon | authed | Verdict |
+|---|---|---|---|---|
+| `check_and_increment_rate_limit(text,int,int,int)` | ✓ | ✗ | **✓** | **H-01 confirmed** — lockout reachable; `clear_rate_limit` authed=✗ (no self-unlock) |
+| `eq_get_org_licences(uuid)` | ✓ | **✓** | ✓ | **V1 confirmed** still anon (revoke not applied) |
+| `eq_field_get_worker_summary(uuid,uuid)` | ✓ | **✓** | ✓ | **V2 confirmed** still anon |
+| `eq_cards_claim_invite(text)` | ✓ | ✓ | ✓ | **H-02 corrected** — live is the SAFE 1-arg `auth.uid()` version (anon raises `not_authenticated`); the 2-arg exploit (mig `2026_06_16`) is committed-but-unapplied → moved to P3 |
+| `eq_cards_submit_access_request(uuid,text)` | ✓ | ✗ | ✓ | **H-09 corrected** — `anon`=false (correct); `auth.uid()`-bound → hygiene + rate-limit only |
+
+**Still to verify (env/dashboard, not in code):**
+1. **H-10** — `licence-photos` bucket `public=false`, tenant-prefix RLS, no anon, upload paths carry the prefix.
+2. **H-04** — phone OTP enabled in prod + SMS provider rate limits.
+3. **H-07** — `CANONICAL_API_KEY_CARDS` not extractable from the eq-cards web bundle.
+4. **H-15 / H-18** — `netlify env:get EQ_SESSION_SALT / EQ_QUOTES_HANDOFF_KEY / ENFORCE_IFRAME_ORIGIN` per site (MCP env reads silently no-op — use the CLI).
 
 ---
 
 ## 5. Sequencing & the keystone
 
-- **Ship P0 as a tight batch** — H-01/H-03/H-04/H-05 are ~1-line each; H-02 is a grant
-  drop. Highest value-per-effort in the whole program; they close trivially-reachable
-  whole-tenant-lockout, arbitrary-user provisioning, toll fraud, and a cross-tenant IDOR.
+- **Ship P0 as a tight batch** — H-01/H-03/H-04/H-05 are ~1-line each (REVOKE, expiry
+  check, `shouldCreateUser:false`, tenant-scope). Highest value-per-effort in the
+  program; they close trivially-reachable whole-tenant-lockout, leaked-link tenant
+  creation, SMS toll fraud, and a cross-tenant IDOR.
 - **H-06 is the keystone.** Land the function-EXECUTE drift CHECK early in P1 — it
-  catches H-02/H-09/V1/V2 and every future instance automatically. Without it, the SECDEF
-  class is whack-a-mole. (Sequence it *after* the V1/V2 revoke + H-02/H-09 land, so the
-  gate goes green, not red, on its first run — add the deliberately-`authenticated`
-  family to its allow-list.)
+  catches V1/V2 and the whole SECDEF-anon class (incl. the latent H-02 if ever applied)
+  automatically. Without it, the class is whack-a-mole. (Sequence it *after* the V1/V2
+  revoke lands, so the gate goes green not red on first run — add the deliberately-
+  `authenticated` family to its allow-list.)
 - **H-00 first within the V1/V2 track** — confirm the JWT variant before building
   `canon-read.js`, so we never put a cross-entity service-role key on the SKS deploy.
 - **P1 data-harvest (H-07/H-08/H-10)** before broadening the user base further — these are
