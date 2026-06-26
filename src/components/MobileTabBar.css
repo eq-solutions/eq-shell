@@ -419,4 +419,59 @@
   border-bottom: none;
 }
 
+/* ═══════════════════════════════════════════════════════
+   SERVICE SECTIONS STRIP  (adapted service iframe, mobile only)
+   Fixed at 48px (below the top bar). ServiceIframe.tsx adds
+   40px padding-top to the frame-wrap so content stays visible.
+═══════════════════════════════════════════════════════ */
+
+.eq-msect {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .eq-msect {
+    position: fixed;
+    top: calc(48px + env(safe-area-inset-top, 0px));
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: #fff;
+    border-bottom: 1px solid #F3F4F6;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    z-index: 199;
+  }
+  .eq-msect::-webkit-scrollbar { display: none; }
+}
+
+.eq-msect__item {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748B;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  box-sizing: border-box;
+  transition: color 100ms ease, border-color 100ms ease;
+}
+
+.eq-msect__item--active {
+  color: var(--eq-deep, #2986B4);
+  border-bottom-color: var(--eq-sky, #3DA8D8);
+}
+
+.eq-msect__item:focus-visible {
+  outline: 2px solid rgba(61, 168, 216, 0.40);
+  outline-offset: -2px;
+}
+
 /* ── Icon rail offset is managed in IconRail.css ── */

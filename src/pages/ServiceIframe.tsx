@@ -311,7 +311,7 @@ export default function ServiceIframe() {
 
   return (
     <HubLayout iframe sidebarRecords={SIDEBAR_RECORDS}>
-      <div className="eq-service-frame-wrap">
+      <div className="eq-service-frame-wrap eq-service-frame-wrap--sectioned">
         {(state.phase === 'minting' || state.phase === 'loading') && (
           <div className="eq-loading">
             {state.phase === 'minting' ? 'Authorising EQ Service…' : 'Loading EQ Service…'}
