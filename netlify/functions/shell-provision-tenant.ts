@@ -135,11 +135,11 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
   }
 
   // ── Step 3: Validate provision token ────────────────────────────────────────
-  type TokenRow = { id: string; org_name: string; used_at: string | null };
+  type TokenRow = { id: string; org_name: string; used_at: string | null; expires_at: string | null };
   const { data: tokenRow, error: tokenErr } = await sb
     .schema('shell_control')
     .from('provision_tokens')
-    .select('id, org_name, used_at')
+    .select('id, org_name, used_at, expires_at')
     .eq('id', provisionTokenId)
     .maybeSingle<TokenRow>();
 
@@ -152,6 +152,10 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
   }
   if (tokenRow.used_at) {
     return jsonResponse(409, { valid: false, error: 'This invitation link has already been used' });
+  }
+  // Enforce the 7-day TTL — a leaked provision link must not stand up a tenant forever.
+  if (tokenRow.expires_at && new Date(tokenRow.expires_at).getTime() < Date.now()) {
+    return jsonResponse(400, { valid: false, error: 'Invalid or expired invitation link' });
   }
 
   const orgName = tokenRow.org_name.trim();

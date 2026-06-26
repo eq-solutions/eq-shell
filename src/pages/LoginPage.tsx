@@ -192,7 +192,13 @@ export default function LoginPage() {
     }
     setBusy(true);
     setErr(null);
-    const { error } = await makeAnonClient().auth.signInWithOtp({ phone });
+    // Login door only — never auto-provision an auth user from a typed-in number
+    // (matches the email/magic-link path; blocks SMS-pumping toll fraud via the public
+    // login form). New workers onboard via Cards invite claim, not here.
+    const { error } = await makeAnonClient().auth.signInWithOtp({
+      phone,
+      options: { shouldCreateUser: false },
+    });
     if (error) {
       setErr("Couldn't send the code. Check your number and try again.");
       setBusy(false);

@@ -73,10 +73,35 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const sb = getServiceClient();
   const tenantId = session.tenant_id;
-
-  // Fetch the Cards worker from eq-canonical public schema.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sbPublic = (sb as any).schema('public');
+
+  // public.workers is a global (cross-tenant) table — a manager must not be able to
+  // read any worker's PII by guessing/harvesting a user_id. Constrain to workers
+  // connected to THIS tenant's org (a pending access request or an active membership).
+  // org-from-tenant mirrors staff-pending-connections.
+  const { data: org } = (await sbPublic
+    .from('organisations')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()) as { data: { id: string } | null };
+  if (!org) return json(404, { error: 'Worker not found' });
+
+  const [{ count: reqCount }, { count: memCount }] = await Promise.all([
+    sbPublic
+      .from('org_access_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('org_id', org.id)
+      .eq('worker_user_id', workerUserId),
+    sbPublic
+      .from('org_memberships')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('org_id', org.id)
+      .eq('user_id', workerUserId),
+  ]);
+  if (!reqCount && !memCount) return json(404, { error: 'Worker not found' });
+
+  // Fetch the Cards worker from eq-canonical public schema.
   const { data: worker, error: workerErr } = (await sbPublic
     .from('workers')
     .select('id, first_name, last_name, phone, email')
