@@ -4,7 +4,7 @@
 // TOTP = HOTP(secret, floor(now / 30))
 // HOTP = HMAC-SHA1 of the 8-byte big-endian counter, truncated to 6 digits.
 
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 // ── Enrolment policy ──────────────────────────────────────────────────
 // Single source of truth for "must this user set up a second sign-in
@@ -137,8 +137,11 @@ export function verifyTotp(secret: string, code: string, driftWindows = 1): bool
     return false;
   }
   const t = BigInt(Math.floor(Date.now() / 1000 / 30));
+  const codeBuf = Buffer.from(code);
   for (let d = -driftWindows; d <= driftWindows; d++) {
-    if (hotp(key, t + BigInt(d)) === code) return true;
+    // Constant-time compare — both are 6-ASCII-digit strings (code is regex-checked
+    // above, hotp pads to 6), so the buffers are always equal length.
+    if (timingSafeEqual(Buffer.from(hotp(key, t + BigInt(d))), codeBuf)) return true;
   }
   return false;
 }

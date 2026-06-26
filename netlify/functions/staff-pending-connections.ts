@@ -84,7 +84,10 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   );
   if (unmatched.length > 0) {
     const phoneFilter = unmatched
-      .map((a) => `phone.like.%${a.worker_phone}`)
+      // Sanitize to digits before interpolating into the PostgREST .or() filter —
+      // worker_phone is worker-supplied (org_access_requests), so strip any filter
+      // metacharacters (, ) * ( ) that could alter the predicate.
+      .map((a) => `phone.like.%${String(a.worker_phone).replace(/[^0-9]/g, '')}`)
       .join(',');
     const { data: phoneWorkers } = (await sbPublic
       .from('workers')

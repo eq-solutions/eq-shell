@@ -205,6 +205,18 @@ export function verifySupabaseJwt(token: string | null | undefined): SupabaseJwt
   if (parts.length !== 3) return null;
   const [headerB64, payloadB64, sigB64] = parts;
 
+  // Pin the algorithm in the verifier (defense-in-depth vs alg confusion): the
+  // HMAC recompute below already defeats alg=none, but asserting alg here makes it
+  // a property of this function, not the caller.
+  try {
+    const header = JSON.parse(
+      Buffer.from(headerB64.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'),
+    ) as { alg?: unknown };
+    if (header.alg !== 'HS256') return null;
+  } catch {
+    return null;
+  }
+
   // Verify signature first (constant-time).
   let providedSig: Buffer;
   let expectedSig: Buffer;

@@ -29,6 +29,22 @@
 import * as Sentry from '@sentry/node';
 import type { Context } from '@netlify/functions';
 
+// Scrub bearer-credential query params (invite/reset/quote tokens, handoff JWTs)
+// from a URL before it's attached to a Sentry event — they must never land in
+// error telemetry. Also drops any fragment defensively.
+function scrubSensitiveUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    for (const k of ['token', 'sh', 'pin', 'code', 'secret', 'jwt', 'access_token']) {
+      if (u.searchParams.has(k)) u.searchParams.set(k, 'REDACTED');
+    }
+    u.hash = '';
+    return u.toString();
+  } catch {
+    return raw.split('#')[0].split('?')[0];
+  }
+}
+
 let initialised = false;
 let enabled = false;
 
@@ -98,7 +114,7 @@ export function withSentry(handler: NetlifyHandler): NetlifyHandler {
             method: req.method,
           },
           extra: {
-            url: req.url,
+            url: scrubSensitiveUrl(req.url),
             requestId: ctx.requestId,
           },
         });
