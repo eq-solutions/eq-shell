@@ -2,6 +2,8 @@
 
 Verified against live DBs 2026-06-04 (eq-canonical `jvkn`, Service `urjhmkhbgaxrofurpbgc`).
 
+> **Update 2026-06-22:** the Service project `urjhmkhbgaxrofurpbgc` (urjh) was **deleted**. EQ Service now runs on **ehow** (`ehowgjardagevnrluult`). Read any `urjhmkhbgaxrofurpbgc` reference below as historical.
+
 ## What's actually true (live)
 
 The original "no `tenant_members` row → login bounce" diagnosis was **stale**. Live:
