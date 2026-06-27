@@ -10,6 +10,7 @@
 // Gate: admin.manage_groups (manager-only).
 
 import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { ShieldCheck, Plus, Trash2, ChevronRight, X, RotateCcw, Eye, Search, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { resolveEffectivePermissions, PERMISSIONS, labelFor } from '@eq-solutions/roles';
@@ -203,6 +204,20 @@ async function sgFetch(path: string, opts?: RequestInit): Promise<unknown> {
   return res.json();
 }
 
+// Shared tenant-user roster. Fetched by both the preview section and the
+// group-detail modal — a single query key dedupes the RPC across both.
+function useTenantUsers() {
+  return useQuery({
+    queryKey: ['tenant-users'] as const,
+    queryFn: async (): Promise<TenantUser[]> => {
+      const sb = await createSupabaseClient();
+      const { data } = await sb.rpc('eq_list_tenant_users');
+      return (data as TenantUser[] | null) ?? [];
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AccessControlPage() {
@@ -218,40 +233,41 @@ export default function AccessControlPage() {
 function AccessControlInner() {
   const { tenantSlug: _tenantSlug } = useParams<{ tenantSlug: string }>();
 
-  const [overridesMap, setOverridesMap] = useState<Map<string, boolean>>(new Map());
-  const [matrixLoading, setMatrixLoading] = useState(true);
-  const [matrixError, setMatrixError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [savingKey, setSavingKey] = useState<string | null>(null);
-
   const [selectedCell, setSelectedCell] = useState<{ role: string; moduleKey: string } | null>(null);
 
-  const fetchOverrides = useCallback(async () => {
-    setMatrixLoading(true);
-    setMatrixError(null);
-    try {
+  // Config data — 5min stale window so navigating back to this page is instant.
+  // Toggles update the cached Map optimistically via setQueryData below.
+  const { data: overridesMap, isLoading: matrixLoading, error: overridesErr, refetch: fetchOverrides } = useQuery({
+    queryKey: ['role-overrides'] as const,
+    queryFn: async () => {
       const rows = await loadOverrides();
       const map = new Map<string, boolean>();
-      for (const row of rows) {
-        map.set(`${row.role}:${row.perm_key}`, row.enabled);
-      }
-      setOverridesMap(map);
-    } catch {
-      setMatrixError('Unable to load access settings — try refreshing.');
-    } finally {
-      setMatrixLoading(false);
-    }
-  }, []);
+      for (const row of rows) map.set(`${row.role}:${row.perm_key}`, row.enabled);
+      return map;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const matrixError = overridesErr ? 'Unable to load access settings — try refreshing.' : null;
 
-  useEffect(() => { void fetchOverrides(); }, [fetchOverrides]);
+  // Optimistic local edits to the cached overrides Map.
+  const patchOverride = useCallback((mutate: (m: Map<string, boolean>) => void) => {
+    queryClient.setQueryData<Map<string, boolean>>(['role-overrides'], (prev) => {
+      const m = new Map(prev ?? []);
+      mutate(m);
+      return m;
+    });
+  }, [queryClient]);
 
   function effectiveEnabled(role: string, permKey: string): boolean {
-    const override = overridesMap.get(`${role}:${permKey}`);
+    const override = overridesMap?.get(`${role}:${permKey}`);
     if (override !== undefined) return override;
     return ROLE_DEFAULTS[role]?.has(permKey) ?? false;
   }
 
   function isOverridden(role: string, permKey: string): boolean {
-    return overridesMap.has(`${role}:${permKey}`);
+    return overridesMap?.has(`${role}:${permKey}`) ?? false;
   }
 
   async function handleToggle(role: string, permKey: string) {
@@ -264,10 +280,10 @@ function AccessControlInner() {
     try {
       if (newVal === defaultVal) {
         await resetOverride(role, permKey);
-        setOverridesMap(prev => { const m = new Map(prev); m.delete(k); return m; });
+        patchOverride(m => { m.delete(k); });
       } else {
         await setOverride(role, permKey, newVal);
-        setOverridesMap(prev => new Map(prev).set(k, newVal));
+        patchOverride(m => { m.set(k, newVal); });
       }
     } finally {
       setSavingKey(null);
@@ -280,7 +296,7 @@ function AccessControlInner() {
     for (const perm of mod.perms) {
       if (isOverridden(role, perm.key)) {
         await resetOverride(role, perm.key);
-        setOverridesMap(prev => { const m = new Map(prev); m.delete(`${role}:${perm.key}`); return m; });
+        patchOverride(m => { m.delete(`${role}:${perm.key}`); });
       }
     }
   }
@@ -557,7 +573,7 @@ interface TenantUser {
 }
 
 function PermPreviewSection() {
-  const [users, setUsers] = useState<TenantUser[] | null>(null);
+  const { data: users = null } = useTenantUsers();
   const [selectedUserId, setSelectedUserId] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<{
@@ -566,21 +582,6 @@ function PermPreviewSection() {
     effective: string[];
   } | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-
-  // Load tenant users on mount (same RPC as AdminUserList)
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const sb = await createSupabaseClient();
-        const { data } = await sb.rpc('eq_list_tenant_users');
-        if (!cancelled) setUsers((data as TenantUser[] | null) ?? []);
-      } catch {
-        if (!cancelled) setUsers([]);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   const preview = async () => {
     if (!selectedUserId) return;
@@ -695,33 +696,22 @@ function PermPreviewSection() {
 // ── Groups section ────────────────────────────────────────────────────────────
 
 function GroupsSection() {
-  const [groups, setGroups] = useState<SecurityGroup[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: groups = [], isLoading: loading, error: listErr, refetch } = useQuery({
+    queryKey: ['security-groups'] as const,
+    queryFn: () => sgFetch('?action=list').then((d) => (d as { groups: SecurityGroup[] }).groups),
+    staleTime: 5 * 60_000,
+  });
   const [selected, setSelected] = useState<GroupDetail | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await sgFetch('?action=list') as { groups: SecurityGroup[] };
-      setGroups(data.groups);
-    } catch {
-      setError('Unable to load groups — check your connection and try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const error = listErr ? 'Unable to load groups — check your connection and try again.' : detailError;
 
   const openDetail = async (id: string) => {
     try {
       const data = await sgFetch(`?action=detail&id=${encodeURIComponent(id)}`) as { group: GroupDetail };
       setSelected(data.group);
     } catch {
-      setError('Unable to load group details.');
+      setDetailError('Unable to load group details.');
     }
   };
 
@@ -747,7 +737,7 @@ function GroupsSection() {
         </button>
       </div>
 
-      {error && <EqError title="Something went wrong" message={error} onRetry={() => void load()} />}
+      {error && <EqError title="Something went wrong" message={error} onRetry={() => void refetch()} />}
 
       {loading ? (
         <p style={{ color: 'var(--eq-grey)', fontSize: 13 }}>Loading…</p>
@@ -788,7 +778,7 @@ function GroupsSection() {
       {createOpen && (
         <CreateGroupModal
           onClose={() => setCreateOpen(false)}
-          onCreated={() => { setCreateOpen(false); void load(); }}
+          onCreated={() => { setCreateOpen(false); void refetch(); }}
         />
       )}
 
@@ -1055,24 +1045,10 @@ function GroupDetailModal({
   const [deleting, setDeleting] = useState(false);
   const [permBusy, setPermBusy] = useState<string | null>(null);
   const [memberBusy, setMemberBusy] = useState<string | null>(null);
-  const [allUsers, setAllUsers] = useState<TenantUser[] | null>(null);
+  const { data: allUsers = null } = useTenantUsers();
   const [addUserId, setAddUserId] = useState('');
   const [addBusy, setAddBusy] = useState(false);
   const [addErr, setAddErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const sb = await createSupabaseClient();
-        const { data } = await sb.rpc('eq_list_tenant_users');
-        if (!cancelled) setAllUsers((data as TenantUser[] | null) ?? []);
-      } catch {
-        if (!cancelled) setAllUsers([]);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   const memberIds = new Set(group.members.map(m => m.user_id));
   const addableUsers = (allUsers ?? []).filter(u => !memberIds.has(u.id));
