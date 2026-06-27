@@ -670,7 +670,9 @@ export function IntakeHealthHome({
             onClick={scanDuplicates}
             disabled={dupesBusy}
           >
-            {dupesBusy ? "Scanning…" : "Scan for possible duplicates"}
+            {dupesBusy ? (
+              <><span className="eq-intake-spinner" aria-hidden="true" />Scanning…</>
+            ) : "Scan for possible duplicates"}
           </button>
         ) : (
           <DuplicateStrip report={dupes} onEntityClick={onEntityClick} />
@@ -687,7 +689,9 @@ export function IntakeHealthHome({
             onClick={scanDecay}
             disabled={decayBusy}
           >
-            {decayBusy ? "Scanning…" : "Check for stale records"}
+            {decayBusy ? (
+              <><span className="eq-intake-spinner" aria-hidden="true" />Checking…</>
+            ) : "Check for stale records"}
           </button>
         ) : (
           <DecayStrip report={decay} onEntityClick={onEntityClick} />
