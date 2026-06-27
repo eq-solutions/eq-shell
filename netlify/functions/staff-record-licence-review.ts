@@ -121,5 +121,25 @@ export default withSentry(async (req: Request): Promise<Response> => {
     if (error) return json(500, { error: error.message });
   }
 
+  // Audit trail — land the review in canonical_events (same stream as approvals).
+  // Fire-and-forget: the review is already committed; a logging failure must not
+  // fail the request. Timestamped idempotency key so each re-review is its own row.
+  const sighted = verifications.filter((v) => v.status === 'sighted').length;
+  const flagged = verifications.filter((v) => v.status === 'flagged').length;
+  const occurredAt = new Date().toISOString();
+  tenantAny
+    .schema('app_data')
+    .from('canonical_events')
+    .insert({
+      tenant_id: tenantId,
+      app_source: 'shell',
+      event: 'staff.licences_reviewed',
+      payload: { staff_id, reviewed_by: session.user_id, sighted, flagged },
+      occurred_at: occurredAt,
+      idempotency_key: `staff.licences_reviewed:${staff_id}:${occurredAt}`,
+    })
+    .then(() => {/* ok */})
+    .catch((e: unknown) => console.error('[staff-record-licence-review] canonical_events emit failed', e));
+
   return json(200, { ok: true, reviewed: verifications.length });
 });
