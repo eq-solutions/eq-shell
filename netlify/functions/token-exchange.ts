@@ -156,6 +156,9 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     user.email,
     serviceTenantSlug,
     user.name, // name → greeting in embedded apps (EQ Service reads app_metadata.name)
+    // Field reads app_metadata.extra_perms to apply security-group grants; without
+    // this they silently vanish on the iframe path. Only the Field handoff needs it.
+    aud === 'field' ? session.extra_perms : undefined,
   );
 
   // Log for parity analysis — helps Phase 2 parity check compare

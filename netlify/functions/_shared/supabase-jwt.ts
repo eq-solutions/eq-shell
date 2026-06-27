@@ -84,6 +84,10 @@ export interface SupabaseJwtClaims {
     // greeting in embedded apps (EQ Service reads app_metadata.name); not used
     // for any security decision. Omitted for mints that don't carry a name.
     name?: string;
+    // Security-group permission keys. The Field iframe reads app_metadata.extra_perms
+    // to apply group grants; without it a worker's group permissions silently vanish
+    // inside Field. Additive; omitted when none. Not a security boundary on its own.
+    extra_perms?: string[];
   };
   iat: number;
   exp: number;
@@ -125,6 +129,7 @@ export function signJwtWithSecret(
   email?: string,
   tenantSlug?: string,
   name?: string | null,
+  extraPerms?: string[],
 ): MintedJwt {
   const now = Math.floor(Date.now() / 1000);
   const jti = randomUUID();
@@ -141,6 +146,7 @@ export function signJwtWithSecret(
       ...(email ? { email } : {}),
       ...(tenantSlug ? { tenant_slug: tenantSlug } : {}),
       ...(name ? { name } : {}),
+      ...(extraPerms && extraPerms.length ? { extra_perms: extraPerms } : {}),
     },
     iat: now,
     exp: now + ttlSeconds,
@@ -166,6 +172,7 @@ export function signSupabaseJwt(
   email?: string,
   tenantSlug?: string,
   name?: string | null,
+  extraPerms?: string[],
 ): MintedJwt {
   if (!JWT_SECRET) {
     throw new Error(
@@ -173,7 +180,7 @@ export function signSupabaseJwt(
         'Find it in the Supabase dashboard under Settings → API → JWT Settings → JWT Secret.',
     );
   }
-  return signJwtWithSecret(JWT_SECRET, userId, tenantId, eqRole, isPlatformAdmin, ttlSeconds, sourceApp, email, tenantSlug, name);
+  return signJwtWithSecret(JWT_SECRET, userId, tenantId, eqRole, isPlatformAdmin, ttlSeconds, sourceApp, email, tenantSlug, name, extraPerms);
 }
 
 export function hasSupabaseJwtSecret(): boolean {
