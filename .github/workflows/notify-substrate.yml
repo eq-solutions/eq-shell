@@ -1,0 +1,18 @@
+name: Notify substrate on merge
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Signal eq-context substrate changed
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${{ secrets.EQ_CONTEXT_PAT }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d "{\"event_type\":\"suite-state-changed\",\"client_payload\":{\"repo\":\"${{ github.repository }}\",\"sha\":\"${{ github.sha }}\"}}" \
+            https://api.github.com/repos/eq-solutions/eq-context/dispatches
