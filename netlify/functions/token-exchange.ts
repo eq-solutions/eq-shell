@@ -96,9 +96,9 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const { data: tenantRow } = await sb
     .schema('shell_control')
     .from('tenants')
-    .select('slug, field_tenant_slug')
+    .select('slug, field_tenant_slug, brand_color, brand_logo_url')
     .eq('id', activeTenantId)
-    .maybeSingle<{ slug: string; field_tenant_slug: string | null }>();
+    .maybeSingle<{ slug: string; field_tenant_slug: string | null; brand_color: string | null; brand_logo_url: string | null }>();
   if (!tenantRow) return jsonResponse(500, { error: 'Could not resolve tenant' });
 
   // Bind the Field workspace to the caller's ACTIVE tenant. Mirrors FieldIframe's
@@ -159,6 +159,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     // Field reads app_metadata.extra_perms to apply security-group grants; without
     // this they silently vanish on the iframe path. Only the Field handoff needs it.
     aud === 'field' ? session.extra_perms : undefined,
+    // Brand fields — Service only. Shell is the source of truth for tenant branding;
+    // passing these in the JWT means Service renders correct colours without a
+    // separate DB query. Field handles its own theming.
+    aud === 'service' ? tenantRow.brand_color : undefined,
+    aud === 'service' ? tenantRow.brand_logo_url : undefined,
   );
 
   // Log for parity analysis — helps Phase 2 parity check compare
