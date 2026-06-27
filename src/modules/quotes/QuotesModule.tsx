@@ -2707,7 +2707,10 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   // ── Computed totals ───────────────────────────────────────────────────────
 
   const activeStages = STAGES.filter((s) => selectedTabs.has(s.key) && s.key !== "all");
-  let displayedQuotes = activeStages.length > 0
+  // In board view the columns ARE the stages, so applying the stage tabs on top
+  // would just empty out lanes - show the whole pipeline and let the secondary
+  // filters (search, estimator, date) narrow it. The tabs still scope the table.
+  let displayedQuotes = (pipelineLayout !== "board" && activeStages.length > 0)
     ? quotes.filter((q) => activeStages.some((stage) => stage.match(q.status)))
     : quotes;
   if (search.trim()) {
