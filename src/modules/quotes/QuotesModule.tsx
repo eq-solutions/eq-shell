@@ -780,6 +780,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   // Share link
   const [sharingLink, setSharingLink] = useState(false);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const [pipelineMsg, setPipelineMsg] = useState<string | null>(null);
   const [docMode, setDocMode] = useState<"detailed" | "summary" | "lump_sum">("detailed");
 
   // ── Accordion state ───────────────────────────────────────────────────────
@@ -2302,6 +2303,14 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   const savePipelineStatus = async (q: Quote, newStatus: string) => {
     setPipelineStatusEdit(null);
     if (!supabase || !newStatus || newStatus === q.status) return;
+    // Mirror the detail-panel rule: a job cannot be "Job Created" until it
+    // exists in Workbench (i.e. has a job number). Board drag + the table
+    // stage dropdown both reach here, so this gates every stage-change path.
+    if (newStatus === "won-job-created" && !q.workbench_job_no) {
+      setPipelineMsg("Enter a Workbench Job No. before marking as Job Created.");
+      setTimeout(() => setPipelineMsg(null), 5000);
+      return;
+    }
     // Update immediately so the row reflects the change before the RPC round-trip.
     setQuotes((prev) => prev.map((item) => item.quote_id === q.quote_id ? { ...item, status: newStatus } : item));
     const { error } = await supabase.rpc("eq_update_quote_status", {
@@ -5709,6 +5718,10 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
               </div>
             )}
           </div>
+
+          {pipelineMsg && (
+            <div style={{ margin: "8px 0 0", padding: "8px 12px", background: "var(--eq-ice, #EAF5FB)", color: "var(--eq-deep, #2986B4)", border: "1px solid var(--eq-sky, #3DA8D8)", borderRadius: 6, fontSize: 13 }}>{pipelineMsg}</div>
+          )}
 
           {/* Active filter pills */}
           {activeFilterCount > 0 && (
