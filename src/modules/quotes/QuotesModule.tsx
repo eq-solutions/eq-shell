@@ -5790,9 +5790,11 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                             {q.project_name && <span style={{ fontSize: 11, color: "var(--eq-muted, #6b7280)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.project_name}</span>}
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                               <span style={{ fontSize: 12, fontWeight: 700 }}>{aud(q.subtotal_cents)}</span>
-                              {ACTIVE_JOB_STATUSES.has(q.status) && !q.workbench_job_no && (
+                              {q.workbench_job_no ? (
+                                <span style={{ fontSize: 11, color: "var(--eq-muted, #6b7280)", whiteSpace: "nowrap" }} title="Workbench job number">Job <span style={{ fontFamily: "ui-monospace, 'Cascadia Code', monospace", color: "var(--eq-deep, #2986B4)", fontWeight: 600 }}>{q.workbench_job_no}</span></span>
+                              ) : ACTIVE_JOB_STATUSES.has(q.status) ? (
                                 <span className="eq-quotes__badge eq-quotes__badge--amber eq-quotes__badge--xs">Needs no.</span>
-                              )}
+                              ) : null}
                             </div>
                           </div>
                         ))}
