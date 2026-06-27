@@ -125,37 +125,35 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const action = url.searchParams.get('action') ?? 'list';
 
   if (action === 'list') {
-    const [custRes, siteRes, contactRes] = await Promise.all([
-      sb.from('customers').select('customer_id, company_name, first_name, last_name, customer_group, state, active').order('company_name', { ascending: true, nullsFirst: false }).order('first_name', { ascending: true, nullsFirst: false }),
-      sb.from('sites').select('customer_id').eq('active', true),
-      sb.from('contacts').select('customer_id'),
+    // Single PostgREST query: customers + per-customer site/contact counts via lateral
+    // aggregate (PostgREST v10+). Two HEAD-only queries for orphan totals — no row data
+    // returned, count comes back in the response header.
+    const [custRes, orphanSiteRes, orphanContactRes] = await Promise.all([
+      sb.from('customers')
+        .select('customer_id, company_name, first_name, last_name, customer_group, state, active, sites(count), contacts(count)')
+        .order('company_name', { ascending: true, nullsFirst: false })
+        .order('first_name', { ascending: true, nullsFirst: false }),
+      sb.from('sites').select('*', { count: 'exact', head: true }).is('customer_id', null).eq('active', true),
+      sb.from('contacts').select('*', { count: 'exact', head: true }).is('customer_id', null),
     ]);
     if (custRes.error) return json(500, { ok: false, error: 'db_error', detail: custRes.error.message });
 
-    const siteCounts = new Map<string, number>();
-    let orphanSites = 0;
-    for (const s of (siteRes.data ?? []) as { customer_id: string | null }[]) {
-      if (s.customer_id) siteCounts.set(s.customer_id, (siteCounts.get(s.customer_id) ?? 0) + 1);
-      else orphanSites++;
-    }
-    const contactCounts = new Map<string, number>();
-    let orphanContacts = 0;
-    for (const c of (contactRes.data ?? []) as { customer_id: string | null }[]) {
-      if (c.customer_id) contactCounts.set(c.customer_id, (contactCounts.get(c.customer_id) ?? 0) + 1);
-      else orphanContacts++;
-    }
-
-    const customers = ((custRes.data ?? []) as CustomerRow[]).map((c) => ({
+    type CustWithCounts = CustomerRow & { sites: [{ count: number }] | null; contacts: [{ count: number }] | null };
+    const customers = ((custRes.data ?? []) as CustWithCounts[]).map((c) => ({
       id: c.customer_id,
       name: customerName(c),
       group: c.customer_group ?? null,
       state: c.state ?? null,
       active: c.active !== false,
-      site_count: siteCounts.get(c.customer_id) ?? 0,
-      contact_count: contactCounts.get(c.customer_id) ?? 0,
+      site_count: c.sites?.[0]?.count ?? 0,
+      contact_count: c.contacts?.[0]?.count ?? 0,
     }));
 
-    return json(200, { ok: true, customers, unassigned: { sites: orphanSites, contacts: orphanContacts } });
+    return json(200, {
+      ok: true,
+      customers,
+      unassigned: { sites: orphanSiteRes.count ?? 0, contacts: orphanContactRes.count ?? 0 },
+    });
   }
 
   if (action === 'detail') {
