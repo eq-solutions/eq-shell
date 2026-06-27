@@ -116,8 +116,9 @@ export default function ServiceIframe() {
   // Prefer postMessage readiness signal from Service.
   useEffect(() => {
     if (state.phase !== 'loading') return;
+    const serviceOrigin = new URL(SERVICE_URL).origin;
     function onMessage(ev: MessageEvent) {
-      if (ev.origin !== SERVICE_URL) return;
+      if (ev.origin !== serviceOrigin) return;
       if (!ev.data || typeof ev.data !== 'object') return;
       if (ev.data.type === 'EQ_SERVICE_READY') {
         serviceReady.current = true;

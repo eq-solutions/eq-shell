@@ -85,10 +85,8 @@ const _FIELD_URL = import.meta.env.VITE_FIELD_URL as string | undefined;
 if (!_FIELD_URL || _FIELD_URL.trim() === '') {
   throw new Error('VITE_FIELD_URL is not configured — iframe bridge will not work');
 }
-// Derive the trusted origin once from the canonical URL, not from the
-// incoming event. new URL() will throw if the value is malformed, which
-// is intentional — a misconfigured env var should surface immediately.
-const FIELD_EXPECTED_ORIGIN: string = new URL(_FIELD_URL).origin;
+// Validate VITE_FIELD_URL is a parseable URL — throws at module load if not.
+new URL(_FIELD_URL);
 
 export default function FieldIframe({ active = true }: { active?: boolean }) {
   const { session, loading } = useSession();
@@ -271,14 +269,17 @@ export default function FieldIframe({ active = true }: { active?: boolean }) {
   // TOKEN MODE: token refresh requests from Field.
   useEffect(() => {
     if (selectedTenant && tenantUsesCookieAuth(selectedTenant)) return;
-    // Always validate origin against FIELD_EXPECTED_ORIGIN (derived from
-    // VITE_FIELD_URL at module load). There is no fallback to ev.origin —
-    // accepting an unverified origin would allow any page to trigger a
-    // token refresh and read the response via the iframe ref.
+    // Derive the trusted origin from the CURRENT tenant's Field URL, not from
+    // VITE_FIELD_URL. SKS maps to eq-field.netlify.app while VITE_FIELD_URL
+    // points to field.eq.solutions — using a single module-level constant
+    // silently dropped every SKS refresh request.
+    const tenantFieldUrl =
+      (selectedTenant && FIELD_TENANT_URLS[selectedTenant]) || _FIELD_URL || 'https://eq-field.netlify.app/';
+    const expectedOrigin = new URL(tenantFieldUrl).origin;
     async function onMessage(ev: MessageEvent) {
       if (!ev.data || typeof ev.data !== 'object') return;
       if ((ev.data as Record<string, unknown>).type !== 'REQUEST_SHELL_TOKEN') return;
-      if (ev.origin !== FIELD_EXPECTED_ORIGIN) return;
+      if (ev.origin !== expectedOrigin) return;
       try {
         const res = await fetch('/.netlify/functions/token-exchange', {
           method: 'POST',
@@ -289,19 +290,19 @@ export default function FieldIframe({ active = true }: { active?: boolean }) {
         if (!res.ok) {
           iframeRef.current?.contentWindow?.postMessage(
             { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
-            FIELD_EXPECTED_ORIGIN,
+            expectedOrigin,
           );
           return;
         }
         const body = (await res.json()) as { token: string };
         iframeRef.current?.contentWindow?.postMessage(
           { type: 'SHELL_TOKEN_RESPONSE', token: body.token },
-          FIELD_EXPECTED_ORIGIN,
+          expectedOrigin,
         );
       } catch {
         iframeRef.current?.contentWindow?.postMessage(
           { type: 'SHELL_TOKEN_RESPONSE', error: 'refresh-failed' },
-          FIELD_EXPECTED_ORIGIN,
+          expectedOrigin,
         );
       }
     }

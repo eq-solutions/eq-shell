@@ -32,6 +32,7 @@ import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { withSentry } from './_shared/sentry.js';
+import { checkShellOrigin } from './_shared/origin-check.js';
 
 const DEFAULT_TTL_SECONDS = 15 * 60; // 15 min — matches supabase-jwt.ts default
 const MIN_TTL_SECONDS = 60;          // 1 min floor — anything shorter is just churn
@@ -65,6 +66,10 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
   if (req.method !== 'POST') {
     return jsonResponse(405, { error: 'Method not allowed' });
   }
+  // Cross-subdomain CSRF guard — eq_shell_session is Domain=.eq.solutions;
+  // a sibling page could POST here and walk out with a 15-min Supabase JWT.
+  const originBlock = checkShellOrigin(req, 'mint-supabase-jwt');
+  if (originBlock) return originBlock;
 
   if (!hasSecretSalt()) {
     return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });

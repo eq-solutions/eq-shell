@@ -19,7 +19,8 @@
 //      window.addEventListener('message', async (e) => {
 //        if (e.data?.type === 'eq:request-supabase-jwt') {
 //          const jwt = await getSupabaseJwt();
-//          e.source?.postMessage({ type: 'eq:supabase-jwt', jwt }, '*');
+//          const targetOrigin = new URL(import.meta.env.VITE_CARDS_URL ?? 'https://cards.eq.solutions').origin;
+//          e.source?.postMessage({ type: 'eq:supabase-jwt', jwt }, targetOrigin);
 //        }
 //      });
 //
