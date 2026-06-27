@@ -518,10 +518,8 @@ const FUNC_EXEC_ANON_ALLOW = {
 };
 
 const FUNC_EXEC_ANON_TRACKED = {
-  'eq-canonical (control plane)': new Set([
-    'eq_get_org_licences(uuid)',
-    'eq_field_get_worker_summary(uuid,uuid)',
-  ]),
+  // eq_get_org_licences + eq_field_get_worker_summary revoked 2026-06-27 via
+  // Field canon-read proxy (PR #348) + migration revoke_anon_authenticated_pii_functions.
 };
 
 const FUNC_EXEC_SQL = `
