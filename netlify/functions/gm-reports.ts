@@ -76,5 +76,17 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   if (jErr) return json(500, { error: 'db_error_jobs', detail: jErr.message });
 
-  return json(200, { ok: true, period, jobs: jobs ?? [] });
+  // Job codes already marked invoiced in EQ Ops — used to pre-populate the
+  // invoice run column without requiring a manual tick in GM Reports.
+  const { data: opsInvoiced } = await db
+    .from('quote')
+    .select('workbench_job_no')
+    .eq('status', 'invoiced')
+    .not('workbench_job_no', 'is', null);
+
+  const ops_invoiced_job_codes = (opsInvoiced ?? [])
+    .map((r: { workbench_job_no: string }) => r.workbench_job_no)
+    .filter(Boolean);
+
+  return json(200, { ok: true, period, jobs: jobs ?? [], ops_invoiced_job_codes });
 });

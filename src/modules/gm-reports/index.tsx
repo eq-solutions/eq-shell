@@ -132,8 +132,9 @@ function Badge({ type }: { type: 'loss' | 'watch' | 'ok' }) {
 // Invoice run cell — inline status picker per job row
 // ---------------------------------------------------------------------------
 
-function InvoiceRunCell({ run, onSave }: {
+function InvoiceRunCell({ run, opsInvoiced, onSave }: {
   run: InvoiceRun | null;
+  opsInvoiced: boolean;
   onSave: (update: { status: 'invoiced' | 'story'; reason_code?: string; reason_note?: string }) => Promise<void>;
 }) {
   const [open, setOpen]             = useState(false);
@@ -173,17 +174,18 @@ function InvoiceRunCell({ run, onSave }: {
   }
 
   let pill: React.ReactNode;
-  if (!run) {
-    pill = <span className="gm-inv-pill gm-inv-pill--empty">—</span>;
-  } else if (run.status === 'invoiced') {
+  const showInvoiced = run?.status === 'invoiced' || (!run && opsInvoiced);
+  if (showInvoiced) {
     pill = <span className="gm-inv-pill gm-inv-pill--done"><Check size={10} style={{ marginRight: 3 }} />Invoiced</span>;
-  } else {
+  } else if (run?.status === 'story') {
     const label = REASON_CODES.find(r => r.value === run.reason_code)?.label ?? 'Story';
     pill = (
       <span className="gm-inv-pill gm-inv-pill--story" title={run.reason_note ?? undefined}>
         {label}{run.reason_note ? ' ·' : ''}
       </span>
     );
+  } else {
+    pill = <span className="gm-inv-pill gm-inv-pill--empty">—</span>;
   }
 
   const popover = open ? createPortal(
@@ -581,6 +583,7 @@ function ForecastView({ jobs, periodCode, loading }: { jobs: Job[]; periodCode: 
 function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [invoiceRuns, setInvoiceRuns] = useState<Record<string, InvoiceRun>>({});
+  const [opsInvoiced, setOpsInvoiced] = useState<Set<string>>(new Set());
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
@@ -600,9 +603,10 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           fetch(`/.netlify/functions/gm-invoice-run?period_id=${period.id}`, { credentials: 'include' }),
         ]);
         if (!jobsRes.ok) throw new Error(`Server error ${jobsRes.status}`);
-        const data = await jobsRes.json() as { ok: boolean; period: Period & { briefing?: Briefing }; jobs: Job[] };
+        const data = await jobsRes.json() as { ok: boolean; period: Period & { briefing?: Briefing }; jobs: Job[]; ops_invoiced_job_codes?: string[] };
         setJobs(data.jobs ?? []);
         if (data.period?.briefing) setBriefing(data.period.briefing as Briefing);
+        setOpsInvoiced(new Set(data.ops_invoiced_job_codes ?? []));
         if (runsRes.ok) {
           const runsData = await runsRes.json() as { ok: boolean; runs: InvoiceRun[] };
           const map: Record<string, InvoiceRun> = {};
@@ -639,10 +643,11 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
     render: (j) => (
       <InvoiceRunCell
         run={invoiceRuns[j.job_code] ?? null}
+        opsInvoiced={opsInvoiced.has(j.job_code)}
         onSave={(update) => saveInvoiceRun(j.job_code, update)}
       />
     ),
-  }), [invoiceRuns, saveInvoiceRun]);
+  }), [invoiceRuns, opsInvoiced, saveInvoiceRun]);
 
   const jobCols = useMemo<ColDef<Job>[]>(() => [
     JOB_COLS[0],
