@@ -288,7 +288,7 @@ async function processTenant(slug: string): Promise<TenantResult> {
       const { subject, text, html } = buildWorkerEmail(row.worker_first_name, days, licences);
       const result = await sendEmail({ to: row.worker_email!, subject, text, html });
       if (result.delivered) sent++;
-      console.log(`[licence-expiry-scheduler] worker ${days}d → ${row.worker_email}: delivered=${result.delivered}`);
+      console.log(`[licence-expiry-scheduler] worker ${days}d → ${(row.worker_email ?? '').replace(/^[^@]*/, '***')}: delivered=${result.delivered}`);
     }
     workerEmailsSent.push(sent);
   }
@@ -324,7 +324,7 @@ async function processTenant(slug: string): Promise<TenantResult> {
             const { subject, text, html } = buildAdminDigestEmail(orgName, admin.first_name, allExpiring);
             const result = await sendEmail({ to: admin.email, subject, text, html });
             if (result.delivered) adminEmailsSent++;
-            console.log(`[licence-expiry-scheduler] admin digest → ${admin.email}: delivered=${result.delivered}`);
+            console.log(`[licence-expiry-scheduler] admin digest → ${admin.email.replace(/^[^@]*/, '***')}: delivered=${result.delivered}`);
           }
         }
       }

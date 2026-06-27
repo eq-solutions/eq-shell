@@ -485,6 +485,78 @@ async function checkAnonGrants(ref, label) {
   return { ref, label, violations, intentional, knownLegacy };
 }
 
+// ── CHECK 6 helpers: anon-reachable SECURITY DEFINER function invariant ──────
+// CHECK 2 inspects TABLE grants only; function EXECUTE grants are invisible to it
+// — that is how the anon-executable definer readers eq_get_org_licences /
+// eq_field_get_worker_summary (worker PII) shipped undetected. SECURITY DEFINER
+// bypasses RLS, so an anon-callable definer fn with no auth.uid()/is_org_admin
+// guard is a direct unauthenticated read/write. Allow-list = a baseline snapshot
+// of the current intentionally-anon set (Cards pre-auth onboarding + auth.uid()-
+// scoped self-service + trigger fns), keyed by plane label. TRACKED = known PII
+// leaks pending the revoke migration (surfaced, non-failing). A plane with no
+// allow-list is reported informationally (seed it to enforce) — never a false fail.
+const FUNC_EXEC_ANON_ALLOW = {
+  'eq-canonical (control plane)': new Set([
+    'eq_cards_auto_provision()',
+    'eq_cards_cancel_access_request(uuid)',
+    'eq_cards_claim_invite(text)',
+    'eq_cards_find_pending_invite()',
+    'eq_cards_list_incoming_requests()',
+    'eq_cards_list_my_licence_backing()',
+    'eq_cards_list_my_tenants()',
+    'eq_cards_list_outgoing_requests(uuid)',
+    'eq_cards_lookup_invite_by_phone(text,text)',
+    'eq_cards_preview_invite(uuid)',
+    'eq_cards_request_worker_access(uuid,text,text)',
+    'eq_cards_respond_to_access_request(uuid,boolean)',
+    'eq_cards_revoke_org_access(uuid)',
+    'eq_cards_set_active_tenant(uuid)',
+    'handle_phone_dedup()',
+    'notify_connection_request()',
+    'tg_fulfil_access_requests_on_claim()',
+  ]),
+};
+
+const FUNC_EXEC_ANON_TRACKED = {
+  'eq-canonical (control plane)': new Set([
+    'eq_get_org_licences(uuid)',
+    'eq_field_get_worker_summary(uuid,uuid)',
+  ]),
+};
+
+const FUNC_EXEC_SQL = `
+  SELECT
+    p.oid::regprocedure::text AS signature
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname IN ('public', 'shell_control')
+    AND p.prokind = 'f'
+    AND p.prosecdef = true
+    AND has_function_privilege('anon', p.oid, 'EXECUTE')
+  ORDER BY signature;
+`;
+
+async function checkFunctionExec(ref, label) {
+  const allow = FUNC_EXEC_ANON_ALLOW[label];
+  if (!allow) return { ref, label, skipped: true, violations: [], tracked: [] };
+  const tracked = FUNC_EXEC_ANON_TRACKED[label] ?? new Set();
+  let rows;
+  try {
+    rows = await mgmtRows(ref, FUNC_EXEC_SQL);
+  } catch (e) {
+    return { ref, label, error: e.message, violations: [], tracked: [] };
+  }
+  const violations = [];
+  const trackedHits = [];
+  for (const row of rows) {
+    const sig = row.signature;
+    if (allow.has(sig)) continue;
+    if (tracked.has(sig)) { trackedHits.push({ signature: sig }); continue; }
+    violations.push({ signature: sig });
+  }
+  return { ref, label, violations, tracked: trackedHits };
+}
+
 const CANONICAL_PROJECTS = [
   {
     envKey: 'CONTROL_PROJECT_REF',
@@ -522,6 +594,22 @@ if (!args['no-anon']) {
     } else if (result.violations.length) {
       anonFailed = true;
     }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHECK 6 — Function-EXECUTE invariant (anon-reachable SECURITY DEFINER fns)
+// ═══════════════════════════════════════════════════════════════════════════
+let funcExecResults = [];
+let funcExecFailed = false;
+if (!args['no-anon']) {
+  log('');
+  log('running function-EXECUTE invariant check …');
+  for (const proj of CANONICAL_PROJECTS) {
+    if (!proj.ref) continue;
+    const result = await checkFunctionExec(proj.ref, proj.label);
+    funcExecResults.push(result);
+    if (result.error || result.violations.length) funcExecFailed = true;
   }
 }
 
@@ -842,7 +930,7 @@ const identityFailed = identityError || (identityDrift && args['strict-identity'
 
 const driftFails = driftResult.drift && args['strict-drift'];
 const spineFails = driftResult.spineDrift && args['strict-spine'];
-const anyFailure = driftFails || spineFails || anonFailed || identityFailed || spineRlsFailed || policyLintFailed;
+const anyFailure = driftFails || spineFails || anonFailed || identityFailed || spineRlsFailed || policyLintFailed || funcExecFailed;
 
 const _report = {
   drift: {
@@ -876,6 +964,11 @@ const _report = {
     skip: args['anon-only'] || args['no-policy-lint'],
     failed: policyLintFailed,
     planes: policyLintResult.planes,
+  },
+  function_exec: {
+    skip: args['no-anon'],
+    failed: funcExecFailed,
+    projects: funcExecResults,
   },
 };
 
@@ -1016,6 +1109,27 @@ if (args.json) {
         console.log(`    Fix: add a permissive policy USING (tenant_id = ...) or USING (org_id = ...), or revoke the anon/authenticated grant if it is service-role-only.`);
       }
     }
+  }
+
+  // ── function-EXECUTE invariant output ──
+  if (!args['no-anon']) {
+    console.log(`\n── Function-EXECUTE invariant (anon-reachable SECDEF) ──────`);
+    for (const r of funcExecResults) {
+      if (r.error)   { console.log(`  ✗ ${r.label}: query error — ${r.error}`); continue; }
+      if (r.skipped) { console.log(`  - ${r.label}: no allow-list baseline — seed FUNC_EXEC_ANON_ALLOW to enforce`); continue; }
+      const note = r.tracked.length ? ` (${r.tracked.length} tracked pending-revoke)` : '';
+      if (!r.violations.length) {
+        console.log(`  ✓ ${r.label}: clean${note}`);
+      } else {
+        console.log(`  ✗ ${r.label}: ${r.violations.length} NEW anon-executable SECURITY DEFINER function(s) not allow-listed${note}`);
+        for (const v of r.violations) console.log(`      ${v.signature}`);
+        console.log(`    Fix: REVOKE EXECUTE … FROM anon (service-role-only), or add an auth.uid()/is_org_admin guard, then add to FUNC_EXEC_ANON_ALLOW if deliberately anon.`);
+      }
+      if (r.tracked.length) {
+        console.log(`    ↳ tracked pending-revoke (worker-PII; see hardening sprint): ${r.tracked.map(t => t.signature).join(', ')}`);
+      }
+    }
+    if (funcExecResults.length === 0) console.log('  (skipped — no project refs configured)');
   }
 }
 

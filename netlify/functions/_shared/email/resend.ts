@@ -54,7 +54,7 @@ export async function sendViaResend(msg: EmailMessage): Promise<EmailResult> {
 
   if (res.ok) {
     const body = (await res.json()) as ResendSuccessBody;
-    console.info('[email/resend] delivered', { to: msg.to, messageId: body.id });
+    console.info('[email/resend] delivered', { to: (Array.isArray(msg.to) ? msg.to : [msg.to]).map((e) => String(e).replace(/^[^@]*/, '***')), messageId: body.id });
     return { delivered: true, messageId: body.id };
   }
 
@@ -65,6 +65,6 @@ export async function sendViaResend(msg: EmailMessage): Promise<EmailResult> {
     detail = `HTTP ${res.status} ${errBody.name ?? ''}: ${errBody.message ?? ''}`.trim();
   } catch { /* response wasn't JSON */ }
 
-  console.error('[email/resend] send failed:', detail, { to: msg.to, subject: msg.subject });
+  console.error('[email/resend] send failed:', detail, { to: (Array.isArray(msg.to) ? msg.to : [msg.to]).map((e) => String(e).replace(/^[^@]*/, '***')), subject: msg.subject });
   return { delivered: false, messageId: null, reason: detail };
 }

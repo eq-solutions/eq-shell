@@ -180,7 +180,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
       results.push(result);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[invite-users-batch] row failed:', email, (e as Error).message);
+      console.error('[invite-users-batch] row failed:', email.replace(/^[^@]*/, '***'), (e as Error).message);
       results.push({ email, status: 'failed', error: 'server-error' });
     }
   }

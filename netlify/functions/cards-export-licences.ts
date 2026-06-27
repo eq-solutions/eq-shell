@@ -129,7 +129,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
       'photo_front_url, photo_back_url, never_expires',
     )
     .in('user_id', userIds)
-    .is('deleted_at', null)) as { data: LicRow[] | null };
+    .is('deleted_at', null)
+    // Honour the worker's privacy toggle — a licence marked private is hidden from
+    // the roster/staff reads (staff-org-roster, staff-canonical-licences) and must
+    // be excluded from the compliance export (number + ID photos) too.
+    .eq('is_private', false)) as { data: LicRow[] | null };
 
   const licsByUser = new Map<string, LicRow[]>();
   for (const l of allLics ?? []) {
@@ -181,12 +185,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
         lics.map(async (l) => {
           const typeSlug = slugify(l.licence_type);
           // Lead each filename with the worker name so a photo stays
-          // self-describing once dragged out of its folder, and include the
-          // licence number (or a short id fallback) so two same-type licences
-          // — e.g. an old card kept alongside its renewal — can't overwrite
-          // each other inside the zip.
-          const numSlug = l.licence_number ? slugify(l.licence_number) : '';
-          const uniqSlug = numSlug || l.id.slice(0, 8);
+          // self-describing once dragged out of its folder, and disambiguate two
+          // same-type licences (an old card alongside its renewal) by a short
+          // licence-id slice — NOT the licence number, which must not travel in
+          // filenames outside the access-controlled register.csv.
+          const uniqSlug = l.id.slice(0, 8);
           const stem = `${nameSlug}_${typeSlug}_${uniqSlug}`;
           let frontFile = '';
           let backFile = '';

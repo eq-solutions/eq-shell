@@ -203,7 +203,7 @@ async function core(req: Request, _ctx: Context): Promise<Response> {
           .eq('email', authEmail)
           .is('user_id', null);
         // eslint-disable-next-line no-console
-        console.info('[shell-login-phone-otp] email-fallback self-heal for', authEmail);
+        console.info('[shell-login-phone-otp] email-fallback self-heal for user', emailUser.id);
         user = emailUser;
       }
     }

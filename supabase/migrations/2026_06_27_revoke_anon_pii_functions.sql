@@ -1,0 +1,32 @@
+-- Phase 0 (privacy hardening sprint, 2026-06-27): make the two worker-PII
+-- SECURITY DEFINER functions service-role-only. Closes the unauthenticated (anon)
+-- and cross-org (authenticated) read holes found in the 2026-06-26 privacy audit
+-- (V1: eq_get_org_licences; V2: eq_field_get_worker_summary).
+--
+-- ===========================================================================
+-- DO NOT APPLY UNTIL THE EQ FIELD SERVICE-ROLE PROXY IS LIVE.
+-- ===========================================================================
+-- Today EQ Field's browser calls both RPCs with the anon key
+-- (eq-field scripts/people.js: _fetchCanonLicences -> eq_get_org_licences,
+-- _fetchWorkerSummary -> eq_field_get_worker_summary). Revoking anon BEFORE
+-- Field is cut over to the server-side proxy blanks the SKS "Cards Record"
+-- panel + canonical licence list in production. Required sequence:
+--   1. Ship the Field proxy netlify function (calls jvkn via service-role,
+--      after verifying the Field session + the caller's org).
+--   2. Cut scripts/people.js over to the proxy (no canonical key in the browser).
+--   3. Confirm no other anon/authenticated caller of either function (sprint 0.4).
+--   4. THEN apply this migration.
+-- Spec: docs/phase0-field-canonical-proxy-spec.md.
+--
+-- After this, authorization lives in the Field proxy (it verifies the Field
+-- session and constrains the org). service_role retains EXECUTE; the SECURITY
+-- DEFINER bodies are unchanged. anon = the public publishable key in every
+-- browser; authenticated = any signed-in user of any tenant (who could
+-- otherwise pass an arbitrary org_id) — both must lose direct EXECUTE.
+--
+-- Apply on jvkn (eq-canonical control plane) via the governed jvkn path; this is
+-- NOT auto-applied on merge. Scope: public schema on jvkn. NOT a tenant migration —
+-- do NOT add to supabase/tenant-migrations/.
+
+REVOKE EXECUTE ON FUNCTION public.eq_get_org_licences(uuid)               FROM anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.eq_field_get_worker_summary(uuid, uuid) FROM anon, authenticated;

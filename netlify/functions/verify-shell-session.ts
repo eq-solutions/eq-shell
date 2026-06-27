@@ -68,6 +68,25 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     return jsonResponse(401, { valid: false });
   }
 
+  // Per-session revocation (S2.D): a session can be killed (logout, or an admin
+  // revoke) without deactivating the whole user. Only checked when the cookie
+  // carries a jti — pre-jti cookies skip it. Fail OPEN on a lookup error so a
+  // control-plane hiccup never logs everyone out; the signature + active-user
+  // checks above remain the hard gates.
+  if (session.jti) {
+    try {
+      const { data: revoked } = await sb
+        .schema('public')
+        .rpc('eq_is_session_revoked', { p_jti: session.jti });
+      if (revoked === true) {
+        return jsonResponse(401, { valid: false });
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[verify-shell-session] revocation check failed — allowing (fail-open):', (e as Error).message);
+    }
+  }
+
   let memberships;
   try {
     memberships = await getUserMemberships(user.id);
