@@ -3243,13 +3243,13 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
           {showEmailForm && detail && (
             <div className="eq-quotes__detail-card" style={{ marginTop: 8, padding: "12px 16px" }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-                <div>
+                <div style={{ flex: "1 1 140px", minWidth: 0 }}>
                   <label className="eq-quotes__info-label">To name</label>
-                  <input className="eq-quotes__input" style={{ width: 160 }} value={emailToName} onChange={(e) => setEmailToName(e.target.value)} placeholder="Contact name" />
+                  <input className="eq-quotes__input" style={{ width: "100%" }} value={emailToName} onChange={(e) => setEmailToName(e.target.value)} placeholder="Contact name" />
                 </div>
-                <div>
+                <div style={{ flex: "2 1 180px", minWidth: 0 }}>
                   <label className="eq-quotes__info-label">Email address</label>
-                  <input className="eq-quotes__input" style={{ width: 220 }} type="email" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="client@example.com" />
+                  <input className="eq-quotes__input" style={{ width: "100%" }} type="email" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="client@example.com" />
                 </div>
                 <button type="button" className="eq-quotes__btn eq-quotes__btn--primary" disabled={emailingPdf || !emailTo.trim()} onClick={() => void handleEmailPdf()}>
                   {emailingPdf ? "Sending…" : "Send"}
