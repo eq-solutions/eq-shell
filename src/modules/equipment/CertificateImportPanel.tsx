@@ -96,9 +96,16 @@ export function CertificateImportPanel({
         credentials: 'include',
         body: fd,
       });
-      const body = (await res.json()) as ParseResponse;
-      if (!res.ok || !body.ok || !body.rows) {
-        throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
+      // Read as text first: a platform-level 502 (Netlify function timeout or
+      // crash) returns a non-JSON body, so res.json() would throw and mask the
+      // real message ("Task timed out after 26.00 seconds"). Surface it instead.
+      const raw = await res.text();
+      let body: ParseResponse | null = null;
+      try { body = JSON.parse(raw) as ParseResponse; } catch { /* non-JSON platform error */ }
+      if (!res.ok || !body?.ok || !body?.rows) {
+        const detail = body?.detail ?? body?.error ?? (raw.trim() ? raw.trim().slice(0, 300) : `HTTP ${res.status}`);
+        console.error('[cert-import] parse failed', { status: res.status, detail });
+        throw new Error(`Import failed (${res.status}): ${detail}`);
       }
       setRows(body.rows);
       setIncluded(Object.fromEntries(body.rows.map((_, i) => [i, true])));
