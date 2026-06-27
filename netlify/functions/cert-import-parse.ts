@@ -94,9 +94,15 @@ export default withSentry(async (req: Request): Promise<Response> => {
 
   const canonicalAssets = (assetRows ?? []) as CanonicalAssetRef[];
 
-  // Vision extraction via the AnthropicProvider (Sonnet, escalating to Opus on
-  // low-confidence scans). Runs here so the key stays server-side.
-  const ai = new AnthropicProvider({ apiKey });
+  // Vision extraction via the AnthropicProvider. Timeout must be under the
+  // Netlify function limit (26s); retries disabled so parallel files don't
+  // compound. Escalation to Opus also disabled (too slow for a 26s budget).
+  const ai = new AnthropicProvider({
+    apiKey,
+    timeoutMs: 22_000,
+    maxRetries: 0,
+    extractEscalationModel: 'claude-sonnet-4-5',
+  });
 
   const files = await Promise.all(
     uploads.map(async (f) => ({ bytes: await f.arrayBuffer(), fileName: f.name })),

@@ -173,15 +173,19 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   // Non-blocking: emit entity.patched event for downstream consumers.
   // Uses idempotency_key so retried requests don't duplicate events (C3/C4).
-  void (db.schema('app_data').from('canonical_events').insert({
-    tenant_id:       session.tenant_id,
-    app_source:      'shell',
-    event:           'entity.patched',
-    payload:         { entity, id, fields: Object.keys(patch) },
-    idempotency_key: randomUUID(),
-  }) as Promise<unknown>).catch((e: unknown) => {
-    console.warn('[entity-patch] canonical_event emit failed', (e as Error)?.message);
-  });
+  void (async () => {
+    try {
+      await db.schema('app_data').from('canonical_events').insert({
+        tenant_id:       session.tenant_id,
+        app_source:      'shell',
+        event:           'entity.patched',
+        payload:         { entity, id, fields: Object.keys(patch) },
+        idempotency_key: randomUUID(),
+      });
+    } catch (e) {
+      console.warn('[entity-patch] canonical_event emit failed', (e as Error)?.message);
+    }
+  })();
 
   return json(200, { ok: true, entity, id });
 });
