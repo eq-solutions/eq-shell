@@ -3,7 +3,6 @@
 // Returns public.licences for a given worker, used by the licence review
 // modal before approving a Cards connection. Gated to admin.review_cards.
 
-import type { Context } from '@netlify/functions';
 import { getServiceClient } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { can } from './_shared/permissions.js';
@@ -16,7 +15,7 @@ function json(status: number, body: unknown): Response {
   });
 }
 
-export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
+export default withSentry(async (req: Request): Promise<Response> => {
   if (req.method !== 'GET') return json(405, { error: 'Method not allowed' });
 
   const session = verifySessionToken(readSessionCookie(req));
