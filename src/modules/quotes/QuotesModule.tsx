@@ -993,7 +993,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
           const { data: siteCtData } = await supabase.rpc("eq_list_contacts_for_site", {
             p_site_id: row.site_id,
           });
-          setDetailSiteContacts((siteCtData as ContactRow[]) ?? []);
+          setDetailSiteContacts(sortContacts((siteCtData as ContactRow[]) ?? []));
         } else {
           setDetailSiteContacts([]);
         }
