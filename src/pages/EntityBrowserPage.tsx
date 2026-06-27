@@ -13,6 +13,7 @@ import { HubLayout } from '../components/HubLayout';
 import { Skeleton } from '../components/Skeleton';
 import { EqError } from '../components/EqError';
 import { defaultSidebarRecords } from '../lib/sidebarConfig';
+import { entityAllows } from '../lib/entityCapabilities';
 
 const SIDEBAR_RECORDS = defaultSidebarRecords();
 
@@ -851,7 +852,7 @@ function EntityDetailDrawer({
                 </Button>
               ))}
 
-              {!isEditing && canDelete && (
+              {!isEditing && canDelete && entityAllows(entity, 'delete') && (
                 confirmDelete ? (
                   <>
                     <Button
