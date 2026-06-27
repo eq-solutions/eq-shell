@@ -11,12 +11,9 @@ jobs:
     steps:
       - name: Signal eq-context substrate changed
         run: |
-          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
+          curl -sf -X POST \
             -H "Authorization: Bearer ${{ secrets.EQ_CONTEXT_PAT }}" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             -d "{\"event_type\":\"suite-state-changed\",\"client_payload\":{\"repo\":\"${{ github.repository }}\",\"sha\":\"${{ github.sha }}\"}}" \
-            https://api.github.com/repos/eq-solutions/eq-context/dispatches)
-          echo "$RESPONSE"
-          STATUS=$(echo "$RESPONSE" | grep HTTP_STATUS | cut -d: -f2)
-          [ "$STATUS" = "204" ] || { echo "Failed with HTTP $STATUS"; exit 1; }
+            https://api.github.com/repos/eq-solutions/eq-context/dispatches
