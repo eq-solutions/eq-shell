@@ -45,7 +45,6 @@ import FieldRosterPage from './pages/FieldRosterPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { StaffPage } from './pages/StaffPage';
 import ServiceIframe from './pages/ServiceIframe';
-const EqQuotesExternal = lazy(() => import('./pages/EqQuotesExternal'));
 const EqOpsPage = lazy(() => import('./pages/EqOps'));
 import StorageBrowser from './pages/StorageBrowser';
 import LicenceOcrPage from './pages/ocr/LicenceOcrPage';
@@ -527,21 +526,10 @@ function TenantTree() {
           path="service/*"
           element={<ModuleGate module="service">{null}</ModuleGate>}
         />
-        {/* EQ Ops — native job-tracking module (reads sks-canonical via eq_list_quotes RPCs) */}
-        {/* /quotes was the old in-shell QuotesNative path; EQ Ops is the canonical surface now */}
+        {/* Legacy /quotes and /eq-quotes redirect to /ops (muscle-memory + saved links). */}
         <Route path="quotes" element={<Navigate to="ops" replace />} />
-        {/* EQ Quotes — external redirect; opens quotes.eq.solutions in a new tab */}
-        <Route
-          path="eq-quotes"
-          element={
-            <Suspense fallback={<PageLoadingFallback />}>
-              <EqQuotesExternal />
-            </Suspense>
-          }
-        />
-        {/* EQ Ops — the in-shell build that will replace EQ Quotes. Renders the
-            same module as /quotes; gated to platform admins inside the page so it's
-            a debug surface while the team stays on the external EQ Quotes tool. */}
+        <Route path="eq-quotes" element={<Navigate to="ops" replace />} />
+        {/* EQ Ops — quoting and job-number tracking. */}
         <Route
           path="ops"
           element={
