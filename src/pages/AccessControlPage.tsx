@@ -9,7 +9,7 @@
 //
 // Gate: admin.manage_groups (manager-only).
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { ShieldCheck, Plus, Trash2, ChevronRight, X, RotateCcw, Eye, Search, ChevronDown, ChevronUp, Check } from 'lucide-react';
@@ -786,7 +786,7 @@ function GroupsSection() {
         <GroupDetailModal
           group={selected}
           onClose={() => setSelected(null)}
-          onUpdated={() => { setSelected(null); void load(); }}
+          onUpdated={() => { setSelected(null); void refetch(); }}
           onPermChange={async (permKey, add) => {
             if (add) await sgFetch('', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_perm', id: selected.id, perm_key: permKey }) });
             else await sgFetch('', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'remove_perm', id: selected.id, perm_key: permKey }) });
