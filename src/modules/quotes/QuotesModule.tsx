@@ -5399,7 +5399,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
               muted: { bg: "var(--eq-surface-2, #f5f5f5)", fg: "var(--eq-muted, #6b7280)", bd: "var(--eq-border, #e0e0e0)" },
             };
             const cards = [
-              { n: needsJobNo,   label: "need a job no.",       tone: "sky",   icon: <Briefcase size={15} />,     on: () => { resetSmartFilters(); setNeedsJobNoOnly(true); setStatusFilter("active-jobs"); } },
+              { n: needsJobNo,   label: "need a job no.",       tone: "sky",   icon: <Briefcase size={15} />,     on: () => { resetSmartFilters(); setNeedsJobNoOnly(true); setStatusFilter("all"); } },
               { n: expiringSoon, label: "expiring ≤ 14 days",   tone: "amber", icon: <Clock size={15} />,         on: () => { resetSmartFilters(); setExpiringOnly(true); setStatusFilter("all"); } },
               { n: overdueFup,   label: "follow-ups overdue",   tone: "err",   icon: <CalendarClock size={15} />, on: () => { resetSmartFilters(); setOverdueFupOnly(true); setStatusFilter("all"); } },
               { n: staleCount,   label: "stale — no follow-up", tone: "muted", icon: <AlarmClock size={15} />,    on: () => { resetSmartFilters(); setStaleOnly(true); setStatusFilter("all"); } },
