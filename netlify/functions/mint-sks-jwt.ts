@@ -19,6 +19,7 @@ import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { signJwtWithSecret } from './_shared/supabase-jwt.js';
 import { withSentry } from './_shared/sentry.js';
+import { checkShellOrigin } from './_shared/origin-check.js';
 
 const SKS_JWT_SECRET = process.env.SKS_SUPABASE_JWT_SECRET ?? '';
 
@@ -43,6 +44,8 @@ function parseTtl(req: Request): number {
 
 export default withSentry(async (req: Request, _context: Context): Promise<Response> => {
   if (req.method !== 'POST') return jsonResponse(405, { error: 'Method not allowed' });
+  const originBlock = checkShellOrigin(req, 'mint-sks-jwt');
+  if (originBlock) return originBlock;
 
   if (!hasSecretSalt()) return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });
   if (!SKS_JWT_SECRET) return jsonResponse(500, { error: 'Server misconfigured — missing SKS_SUPABASE_JWT_SECRET' });
