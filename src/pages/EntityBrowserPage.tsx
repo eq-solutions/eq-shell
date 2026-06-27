@@ -1,7 +1,8 @@
 // EntityBrowserPage — a generic paged table for any canonical entity.
 // URL: /:tenant/data/:entity (entity is the singular registry name)
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@eq-solutions/ui';
@@ -235,11 +236,8 @@ function EntityBrowserInner({ entity }: { entity: string }) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const [urlSearchParams] = useSearchParams();
 
-  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
-  const [count, setCount] = useState<number | null>(null);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
-  const [err, setErr] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [, startTransition] = useTransition();
 
   // Search — input is immediate, server fetch is debounced. Seeds from the
@@ -281,45 +279,46 @@ function EntityBrowserInner({ entity }: { entity: string }) {
     }
   }, [search, sortCol, sortDir, activeFilter]);
 
-  const load = useMemo(
-    () => async () => {
-      if (!view) return;
-      setLoading(true);
-      setErr(null);
-      try {
-        // Server-side: tenant_routing resolves the session's tenant to its
-        // dedicated Supabase project, then eq_browse_entity does the count +
-        // paged select on app_data with optional search + sort.
-        const qs = new URLSearchParams({
-          entity,
-          limit:    String(PAGE_SIZE),
-          offset:   String(page * PAGE_SIZE),
-          sort_col: sortCol,
-          sort_dir: sortDir,
-        });
-        if (search) qs.set('search', search);
-        if (supportsActiveFilter && activeFilter !== null) {
-          qs.set('active', String(activeFilter));
-        }
-        const res = await fetch(`/.netlify/functions/entity-rows?${qs}`, {
-          credentials: 'include',
-        });
-        const body = (await res.json()) as EntityRowsResponse;
-        if (!res.ok || !body.ok) {
-          throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
-        }
-        setRows(body.rows ?? []);
-        setCount(body.total ?? 0);
-      } catch (e) {
-        setErr((e as Error).message);
-      } finally {
-        setLoading(false);
+  // Server-side: tenant_routing resolves the session's tenant to its dedicated
+  // Supabase project, then eq_browse_entity does the count + paged select on
+  // app_data with optional search + sort. keepPreviousData holds the prior
+  // page on the screen (dimmed) while the next page loads — no skeleton flash.
+  const { data, isFetching, error: queryError, refetch } = useQuery({
+    queryKey: ['entity-rows', entity, page, search, sortCol, sortDir, activeFilter] as const,
+    enabled: !!view,
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const qs = new URLSearchParams({
+        entity,
+        limit:    String(PAGE_SIZE),
+        offset:   String(page * PAGE_SIZE),
+        sort_col: sortCol,
+        sort_dir: sortDir,
+      });
+      if (search) qs.set('search', search);
+      if (supportsActiveFilter && activeFilter !== null) {
+        qs.set('active', String(activeFilter));
       }
+      const res = await fetch(`/.netlify/functions/entity-rows?${qs}`, {
+        credentials: 'include',
+      });
+      const body = (await res.json()) as EntityRowsResponse;
+      if (!res.ok || !body.ok) {
+        throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
+      }
+      return { rows: body.rows ?? [], total: body.total ?? 0 };
     },
-    [view, page, entity, search, sortCol, sortDir, activeFilter, supportsActiveFilter],
-  );
+  });
+  const rows = data?.rows ?? null;
+  const count = data?.total ?? null;
+  const loading = isFetching;
+  const err = queryError ? (queryError as Error).message : null;
 
-  useEffect(() => { void load(); }, [load]);
+  // Mutations refetch the current query; the entity prefix matches regardless
+  // of the active page/search/sort.
+  const refresh = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['entity-rows', entity] });
+  }, [queryClient, entity]);
 
   const handleSort = (key: string) => {
     startTransition(() => {
@@ -432,7 +431,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
         )}
       </div>
 
-      {err && <EqError message={err} onRetry={load} />}
+      {err && <EqError message={err} onRetry={() => void refetch()} />}
 
       <div className="eq-table-wrap" style={{ opacity: loading && rows !== null ? 0.6 : 1, transition: 'opacity 150ms' }}>
         <table className="eq-table">
@@ -515,7 +514,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
           row={selectedRow}
           tenantSlug={tenantSlug ?? ''}
           onClose={() => setSelectedRow(null)}
-          onMutated={() => { setSelectedRow(null); void load(); }}
+          onMutated={() => { setSelectedRow(null); refresh(); }}
           canDelete={canDelete}
         />
       )}
@@ -524,7 +523,7 @@ function EntityBrowserInner({ entity }: { entity: string }) {
         <EntityCreateDrawer
           entity={entity}
           onClose={() => setCreating(false)}
-          onCreated={() => { setCreating(false); void load(); }}
+          onCreated={() => { setCreating(false); refresh(); }}
         />
       )}
     </HubLayout>
