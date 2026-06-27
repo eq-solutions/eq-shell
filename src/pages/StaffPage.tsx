@@ -42,6 +42,39 @@ interface PendingWorker {
   requested_at: string;
 }
 
+interface LicenceCard {
+  id: string;
+  licence_type: string;
+  licence_number: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  never_expires: boolean | null;
+  issuing_authority: string | null;
+  state: string | null;
+  photo_front_url: string | null;
+  photo_back_url: string | null;
+  notes: string | null;
+}
+
+interface LicenceDecision {
+  licence_id: string;
+  status: 'sighted' | 'flagged';
+  comment: string;
+}
+
+type ReviewPhase = 'loading' | 'cards' | 'commenting' | 'role' | 'busy';
+
+interface ReviewSession {
+  worker: PendingWorker;
+  phase: ReviewPhase;
+  licences: LicenceCard[];
+  index: number;
+  decisions: LicenceDecision[];
+  flagComment: string;
+  showBack: boolean;
+  selectedRole: string;
+}
+
 type LicStatus = 'current' | 'expiring' | 'expired' | 'ne';
 type View = 'list' | 'matrix';
 
@@ -324,22 +357,41 @@ export function StaffPage() {
     showToast('Record updated');
   }, [handleMutated, showToast]);
 
-  const handleApprove = useCallback(async (applicationId: string, role: string) => {
+  const [reviewing, setReviewing] = useState<ReviewSession | null>(null);
+
+  const handleStartReview = useCallback((worker: PendingWorker) => {
+    setReviewing({
+      worker, phase: 'loading', licences: [], index: 0,
+      decisions: [], flagComment: '', showBack: false, selectedRole: 'employee',
+    });
+    fetch(`/.netlify/functions/worker-licences?worker_user_id=${worker.worker_user_id}`, { credentials: 'include' })
+      .then((r) => r.json() as Promise<{ licences?: LicenceCard[] }>)
+      .then((r) => setReviewing((s) => s ? { ...s, phase: 'cards', licences: r.licences ?? [] } : null))
+      .catch(() => setReviewing((s) => s ? { ...s, phase: 'cards', licences: [] } : null));
+  }, []);
+
+  const handleUpdateReview = useCallback((updates: Partial<ReviewSession>) => {
+    setReviewing((s) => s ? { ...s, ...updates } : null);
+  }, []);
+
+  const handleApprove = useCallback(async (applicationId: string, role: string, decisions: LicenceDecision[]) => {
     const worker = pending.find((p) => p.application_id === applicationId);
     const name = [worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || 'Worker';
     const res = await fetch('/.netlify/functions/cards-approve-staff', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ application_id: applicationId, action: 'approve', role }),
+      body: JSON.stringify({ application_id: applicationId, action: 'approve', role, licence_verifications: decisions }),
     });
     if (res.ok) {
       setPending((p) => p.filter((x) => x.application_id !== applicationId));
+      setReviewing(null);
       handleMutated();
       showToast(`${name} added to roster`);
     } else {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       console.error('[staff] approve failed', res.status, err.error);
       showToast('Approval failed — try again', false);
+      setReviewing((s) => s ? { ...s, phase: 'role' } : null);
     }
   }, [handleMutated, pending, showToast]);
 
@@ -398,9 +450,19 @@ export function StaffPage() {
         {pending.length > 0 && (
           <PendingSection
             workers={pending}
-            onApprove={handleApprove}
+            onStartReview={handleStartReview}
             onDecline={handleDecline}
             isMobile={isMobile}
+          />
+        )}
+
+        {/* Licence review modal */}
+        {reviewing && (
+          <LicenceReviewModal
+            session={reviewing}
+            onUpdate={handleUpdateReview}
+            onApprove={handleApprove}
+            onCancel={() => setReviewing(null)}
           />
         )}
 
@@ -511,36 +573,21 @@ const ROLE_OPTIONS = [
 
 function PendingSection({
   workers,
-  onApprove,
+  onStartReview,
   onDecline,
   isMobile,
 }: {
   workers: PendingWorker[];
-  onApprove: (id: string, role: string) => Promise<void>;
+  onStartReview: (worker: PendingWorker) => void;
   onDecline: (id: string) => Promise<void>;
   isMobile?: boolean;
 }) {
-  const [busy, setBusy] = useState<Set<string>>(new Set());
-  // roleFor: appId → chosen role; key present = picker is open for that card
-  const [roleFor, setRoleFor] = useState<Record<string, string>>({});
+  const [declining, setDeclining] = useState<Set<string>>(new Set());
 
-  const isBusy = (id: string) => busy.has(id);
-  const isPicking = (id: string) => id in roleFor;
-
-  const startPick = (id: string) => setRoleFor((prev) => ({ ...prev, [id]: 'employee' }));
-  const cancelPick = (id: string) => setRoleFor((prev) => { const n = { ...prev }; delete n[id]; return n; });
-
-  const confirmApprove = async (id: string) => {
-    const role = roleFor[id] ?? 'employee';
-    setBusy((prev) => new Set(prev).add(id));
-    try { await onApprove(id, role); cancelPick(id); }
-    finally { setBusy((prev) => { const s = new Set(prev); s.delete(id); return s; }); }
-  };
-
-  const confirmDecline = async (id: string) => {
-    setBusy((prev) => new Set(prev).add(id));
+  const handleDecline = async (id: string) => {
+    setDeclining((prev) => new Set(prev).add(id));
     try { await onDecline(id); }
-    finally { setBusy((prev) => { const s = new Set(prev); s.delete(id); return s; }); }
+    finally { setDeclining((prev) => { const s = new Set(prev); s.delete(id); return s; }); }
   };
 
   return (
@@ -551,87 +598,262 @@ function PendingSection({
       <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: isMobile ? undefined : 'wrap', gap: 8 }}>
         {workers.map((w) => {
           const name = [w.first_name, w.last_name].filter(Boolean).join(' ') || w.phone || 'Unknown';
-          const busy = isBusy(w.application_id);
-          const picking = isPicking(w.application_id);
-          const selectedRole = roleFor[w.application_id] ?? 'employee';
+          const busy = declining.has(w.application_id);
           return (
             <div
               key={w.application_id}
-              style={{ display: 'flex', flexDirection: picking ? 'column' : 'row', alignItems: picking ? 'stretch' : 'center', gap: 10, padding: picking ? '8px 10px' : '6px 10px 6px 8px', border: `1px solid ${picking ? '#93C5FD' : '#BFDBFE'}`, borderRadius: 8, background: 'white', fontSize: 12, minWidth: picking ? 260 : undefined }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px 6px 8px', border: '1px solid #BFDBFE', borderRadius: 8, background: 'white', fontSize: 12 }}
             >
-              {/* Top row — always shown */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#3DA8D8', color: 'white', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {initials(w.first_name, w.last_name)}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, color: '#1A1A2E', whiteSpace: 'nowrap' }}>{name}</div>
-                  <div style={{ fontSize: 10, color: '#64748B' }}>
-                    {w.licence_count > 0 ? `${w.licence_count} licence${w.licence_count === 1 ? '' : 's'} ready` : 'No licences yet'}
-                    {' · '}
-                    {relativeTime(w.requested_at)}
-                  </div>
-                </div>
-                {!picking && (
-                  <div style={{ display: 'flex', gap: 5, marginLeft: 4, flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => startPick(w.application_id)}
-                      style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', minWidth: 82, transition: 'background .15s' }}
-                    >
-                      Add to roster
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => { void confirmDecline(w.application_id); }}
-                      style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: busy ? '#CBD5E1' : '#64748B', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minWidth: 68, transition: 'color .15s' }}
-                    >
-                      {busy ? 'Declining…' : 'Decline'}
-                    </button>
-                  </div>
-                )}
+              <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#3DA8D8', color: 'white', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {initials(w.first_name, w.last_name)}
               </div>
-              {/* Role picker — shown after "Add to roster" is clicked */}
-              {picking && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', letterSpacing: '.06em', textTransform: 'uppercase' }}>Set role</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                    {ROLE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setRoleFor((prev) => ({ ...prev, [w.application_id]: opt.value }))}
-                        style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${selectedRole === opt.value ? '#3DA8D8' : '#E2E8F0'}`, background: selectedRole === opt.value ? '#EAF5FB' : 'white', color: selectedRole === opt.value ? '#2986B4' : '#64748B', fontSize: 11, fontWeight: selectedRole === opt.value ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', transition: 'all .1s' }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => { void confirmApprove(w.application_id); }}
-                      style={{ padding: '4px 12px', borderRadius: 6, border: 'none', background: busy ? '#94A3B8' : '#3DA8D8', color: 'white', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background .15s' }}
-                    >
-                      {busy ? 'Adding…' : 'Confirm'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => cancelPick(w.application_id)}
-                      style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: '#1A1A2E', whiteSpace: 'nowrap' }}>{name}</div>
+                <div style={{ fontSize: 10, color: '#64748B' }}>
+                  {w.licence_count > 0 ? `${w.licence_count} licence${w.licence_count === 1 ? '' : 's'} ready` : 'No licences yet'}
+                  {' · '}
+                  {relativeTime(w.requested_at)}
                 </div>
-              )}
+              </div>
+              <div style={{ display: 'flex', gap: 5, marginLeft: 4, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => onStartReview(w)}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', minWidth: 82 }}
+                >
+                  Review & add
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => { void handleDecline(w.application_id); }}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: busy ? '#CBD5E1' : '#64748B', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minWidth: 68 }}
+                >
+                  {busy ? 'Declining…' : 'Decline'}
+                </button>
+              </div>
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ─── LICENCE REVIEW MODAL ─────────────────────────────────────────────────────
+
+function expiryBadge(expiry: string | null, never_expires: boolean | null): { label: string; color: string } {
+  if (never_expires) return { label: 'No expiry', color: '#10B981' };
+  if (!expiry) return { label: 'No date on file', color: '#94A3B8' };
+  const days = Math.floor((new Date(expiry).getTime() - Date.now()) / 86400000);
+  const fmt = new Date(expiry).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit' });
+  if (days < 0)  return { label: `Expired ${-days}d ago`, color: '#EF4444' };
+  if (days < 30) return { label: `Expires in ${days}d`, color: '#EF4444' };
+  if (days < 90) return { label: `Expires ${fmt}`, color: '#F59E0B' };
+  return { label: `Valid to ${fmt}`, color: '#10B981' };
+}
+
+function LicenceReviewModal({
+  session,
+  onUpdate,
+  onApprove,
+  onCancel,
+}: {
+  session: ReviewSession;
+  onUpdate: (u: Partial<ReviewSession>) => void;
+  onApprove: (id: string, role: string, decisions: LicenceDecision[]) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const { worker, phase, licences, index, decisions, flagComment, showBack, selectedRole } = session;
+  const workerName = [worker.first_name, worker.last_name].filter(Boolean).join(' ') || worker.phone || 'Worker';
+  const lic = licences[index];
+  const flaggedCount = decisions.filter((d) => d.status === 'flagged').length;
+
+  const next = (decision: LicenceDecision) => {
+    const newDec = [...decisions, decision];
+    if (index + 1 < licences.length) {
+      onUpdate({ decisions: newDec, index: index + 1, phase: 'cards', flagComment: '', showBack: false });
+    } else {
+      onUpdate({ decisions: newDec, phase: 'role' });
+    }
+  };
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.65)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div style={{ background: 'white', borderRadius: 18, width: '100%', maxWidth: 420, maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,.35)' }}>
+
+        {/* Header */}
+        <div style={{ padding: '14px 18px 12px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#3DA8D8' }}>
+              {phase === 'loading' ? 'Loading' : phase === 'role' || phase === 'busy' ? 'Set role' : licences.length === 0 ? 'No licences' : `Licence ${index + 1} of ${licences.length}`}
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#1A1A2E', marginTop: 1 }}>{workerName}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {licences.length > 1 && phase !== 'role' && phase !== 'busy' && (
+              <div style={{ display: 'flex', gap: 4 }}>
+                {licences.map((_, i) => {
+                  const dec = decisions[i];
+                  const col = dec ? (dec.status === 'flagged' ? '#EF4444' : '#10B981') : i === index ? '#3DA8D8' : '#E2E8F0';
+                  return <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: col, transition: 'background .2s' }} />;
+                })}
+              </div>
+            )}
+            <button type="button" onClick={onCancel} style={{ background: 'none', border: 'none', color: '#CBD5E1', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: '2px 4px' }}>✕</button>
+          </div>
+        </div>
+
+        {/* Loading */}
+        {phase === 'loading' && (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: 13, padding: 48 }}>
+            Loading licences…
+          </div>
+        )}
+
+        {/* No licences */}
+        {phase === 'cards' && licences.length === 0 && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: 40 }}>📋</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#1A1A2E' }}>No licences submitted</div>
+            <div style={{ fontSize: 12, color: '#94A3B8', maxWidth: 260 }}>{workerName} hasn't uploaded any licence documents yet.</div>
+            <button type="button" onClick={() => onUpdate({ phase: 'role' })}
+              style={{ marginTop: 8, padding: '8px 20px', borderRadius: 8, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Continue without licences →
+            </button>
+          </div>
+        )}
+
+        {/* Licence card */}
+        {(phase === 'cards' || phase === 'commenting') && lic && (
+          <>
+            {/* Photo hero */}
+            <div style={{ background: '#F1F5F9', aspectRatio: '16/9', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+              {(showBack ? lic.photo_back_url : lic.photo_front_url) ? (
+                <img src={(showBack ? lic.photo_back_url : lic.photo_front_url)!}
+                  alt={`${lic.licence_type} ${showBack ? 'back' : 'front'}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, color: '#CBD5E1' }}>
+                  <span style={{ fontSize: 36 }}>🪪</span>
+                  <span style={{ fontSize: 12 }}>No photo uploaded</span>
+                </div>
+              )}
+              {lic.photo_back_url && (
+                <button type="button" onClick={() => onUpdate({ showBack: !showBack })}
+                  style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,.55)', color: 'white', border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {showBack ? 'See front' : 'See back'}
+                </button>
+              )}
+            </div>
+
+            {/* Details */}
+            <div style={{ padding: '16px 18px', flex: 1, overflowY: 'auto' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#1A1A2E', lineHeight: 1.2 }}>{licTypeLabel(lic.licence_type)}</div>
+              <div style={{ fontSize: 13, color: '#475569', marginTop: 4, fontFamily: 'ui-monospace, monospace', letterSpacing: '.04em' }}>
+                {lic.licence_number ?? <span style={{ color: '#CBD5E1' }}>No number entered</span>}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                {(() => { const { label, color } = expiryBadge(lic.expiry_date, lic.never_expires); return (
+                  <span style={{ fontSize: 11, fontWeight: 700, color, background: color + '20', padding: '3px 9px', borderRadius: 5 }}>{label}</span>
+                ); })()}
+                {lic.issuing_authority && (
+                  <span style={{ fontSize: 11, color: '#64748B', background: '#F1F5F9', padding: '3px 9px', borderRadius: 5 }}>
+                    {lic.issuing_authority}{lic.state ? ` · ${lic.state}` : ''}
+                  </span>
+                )}
+              </div>
+
+              {/* Comment input (flag mode) */}
+              {phase === 'commenting' && (
+                <div style={{ marginTop: 14 }}>
+                  <label style={{ fontSize: 10, fontWeight: 700, color: '#64748B', letterSpacing: '.07em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Note (optional)</label>
+                  <textarea
+                    autoFocus
+                    value={flagComment}
+                    onChange={(e) => onUpdate({ flagComment: e.target.value })}
+                    placeholder="e.g. Number doesn't match card, licence expired…"
+                    style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #FCA5A5', borderRadius: 8, padding: '8px 10px', fontSize: 12, fontFamily: 'inherit', resize: 'none', height: 72, color: '#1A1A2E', outline: 'none', background: '#FFF5F5' }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ padding: '10px 18px 16px', borderTop: '1px solid #F1F5F9', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, flexShrink: 0 }}>
+              {phase === 'cards' ? (
+                <>
+                  <button type="button" onClick={() => onUpdate({ phase: 'commenting' })}
+                    style={{ padding: '11px', borderRadius: 10, border: '1.5px solid #FCA5A5', background: '#FFF5F5', color: '#EF4444', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 17 }}>✗</span> Flag
+                  </button>
+                  <button type="button" onClick={() => next({ licence_id: lic.id, status: 'sighted', comment: '' })}
+                    style={{ padding: '11px', borderRadius: 10, border: 'none', background: '#DCFCE7', color: '#16A34A', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 17 }}>✓</span> Sighted
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => onUpdate({ phase: 'cards', flagComment: '' })}
+                    style={{ padding: '11px', borderRadius: 10, border: '1.5px solid #E2E8F0', background: 'white', color: '#64748B', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Back
+                  </button>
+                  <button type="button" onClick={() => next({ licence_id: lic.id, status: 'flagged', comment: flagComment })}
+                    style={{ padding: '11px', borderRadius: 10, border: 'none', background: '#EF4444', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <span>⚠</span> Confirm flag
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Role picker */}
+        {(phase === 'role' || phase === 'busy') && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '18px 18px 18px' }}>
+            {licences.length > 0 && (
+              <div style={{ marginBottom: 18, padding: '10px 14px', borderRadius: 9, background: flaggedCount > 0 ? '#FFF5F5' : '#F0FDF4', border: `1px solid ${flaggedCount > 0 ? '#FCA5A5' : '#86EFAC'}` }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: flaggedCount > 0 ? '#EF4444' : '#16A34A' }}>
+                  {flaggedCount > 0
+                    ? `${decisions.filter((d) => d.status === 'sighted').length} sighted · ${flaggedCount} flagged`
+                    : `All ${decisions.length} licence${decisions.length === 1 ? '' : 's'} verified`}
+                </div>
+                {flaggedCount > 0 && (
+                  <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>
+                    Flagged licences are noted — follow up with {workerName} after adding.
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ fontSize: 10, fontWeight: 800, color: '#64748B', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 10 }}>Set role</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 24 }}>
+              {ROLE_OPTIONS.map((opt) => (
+                <button key={opt.value} type="button" disabled={phase === 'busy'}
+                  onClick={() => onUpdate({ selectedRole: opt.value })}
+                  style={{ padding: '8px 16px', borderRadius: 9, border: `1.5px solid ${selectedRole === opt.value ? '#3DA8D8' : '#E2E8F0'}`, background: selectedRole === opt.value ? '#EAF5FB' : 'white', color: selectedRole === opt.value ? '#2986B4' : '#64748B', fontSize: 12, fontWeight: selectedRole === opt.value ? 700 : 500, cursor: phase === 'busy' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'all .1s' }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ marginTop: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button type="button" disabled={phase === 'busy'} onClick={onCancel}
+                style={{ padding: '11px', borderRadius: 10, border: '1.5px solid #E2E8F0', background: 'white', color: '#64748B', fontSize: 13, fontWeight: 600, cursor: phase === 'busy' ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                Cancel
+              </button>
+              <button type="button" disabled={phase === 'busy'}
+                onClick={() => { onUpdate({ phase: 'busy' }); void onApprove(worker.application_id, selectedRole, decisions); }}
+                style={{ padding: '11px', borderRadius: 10, border: 'none', background: phase === 'busy' ? '#94A3B8' : '#3DA8D8', color: 'white', fontSize: 13, fontWeight: 700, cursor: phase === 'busy' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background .15s' }}>
+                {phase === 'busy' ? 'Adding…' : 'Add to roster'}
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

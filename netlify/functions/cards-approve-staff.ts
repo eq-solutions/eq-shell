@@ -33,6 +33,12 @@ import { can } from './_shared/permissions.js';
 import { withSentry, captureServerError } from './_shared/sentry.js';
 import { sendEmail } from './_shared/email.js';
 
+interface LicenceVerification {
+  licence_id: string;
+  status: 'sighted' | 'flagged';
+  comment: string;
+}
+
 interface ApproveBody {
   staff_id?: string;
   application_id?: string;
@@ -40,6 +46,7 @@ interface ApproveBody {
   rejection_reason?: string;
   confirmed_staff_id?: string | null;
   role?: string;
+  licence_verifications?: LicenceVerification[];
 }
 
 const WORKER_ROLES = new Set(['labour_hire', 'employee', 'apprentice', 'supervisor', 'manager']);
@@ -72,7 +79,7 @@ async function approveHandler(req: Request): Promise<Response> {
     return json(400, { error: 'Invalid JSON body' });
   }
 
-  const { staff_id, application_id, action, rejection_reason, confirmed_staff_id, role } = body;
+  const { staff_id, application_id, action, rejection_reason, confirmed_staff_id, role, licence_verifications } = body;
   if (!staff_id && !application_id) {
     return json(400, { error: 'staff_id or application_id is required' });
   }
@@ -86,7 +93,7 @@ async function approveHandler(req: Request): Promise<Response> {
 
   // ── Application path (worker self-signup) ──────────────────────────────────
   if (application_id) {
-    return handleApplication({ application_id, action, rejection_reason, confirmed_staff_id, role, sb, session, tenantId });
+    return handleApplication({ application_id, action, rejection_reason, confirmed_staff_id, role, licence_verifications, sb, session, tenantId });
   }
 
   // ── Invite path (existing app_data.staff row) ──────────────────────────────
@@ -357,6 +364,7 @@ async function handleApplication({
   action,
   confirmed_staff_id,
   role,
+  licence_verifications,
   sb,
   session,
   tenantId,
@@ -366,6 +374,7 @@ async function handleApplication({
   rejection_reason?: string;
   confirmed_staff_id?: string | null;
   role?: string;
+  licence_verifications?: LicenceVerification[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sb: any;
   session: AppSession;
@@ -683,12 +692,15 @@ async function handleApplication({
     });
 
   // Audit record in the control plane
+  const hasVerifications = licence_verifications && licence_verifications.length > 0;
   const { error: auditAppErr } = await sb.from('cards_field_approvals').insert({
     staff_id: staffId,
     tenant_id: tenantId,
     field_people_id: null,
     status: 'approved',
     approved_by_user_id: session.user_id,
+    licence_verifications: hasVerifications ? licence_verifications : null,
+    licences_verified_at: hasVerifications ? new Date().toISOString() : null,
   });
   if (auditAppErr) {
     captureServerError(auditAppErr, { fn: 'cards-approve-staff', context: 'audit-insert-application' });
