@@ -2716,10 +2716,10 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   // ── Computed totals ───────────────────────────────────────────────────────
 
   const activeStages = STAGES.filter((s) => selectedTabs.has(s.key) && s.key !== "all");
-  // In board view the columns ARE the stages, so applying the stage tabs on top
-  // would just empty out lanes - show the whole pipeline and let the secondary
-  // filters (search, estimator, date) narrow it. The tabs still scope the table.
-  let displayedQuotes = (pipelineLayout !== "board" && activeStages.length > 0)
+  // Stage tabs filter both layouts. On the board they act as column selectors:
+  // the board renders one lane per selected stage (all lanes when none / "All"),
+  // so clicking a stage narrows the board instead of doing nothing.
+  let displayedQuotes = activeStages.length > 0
     ? quotes.filter((q) => activeStages.some((stage) => stage.match(q.status)))
     : quotes;
   if (search.trim()) {
@@ -5750,7 +5750,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
               <div className="eq-quotes__loading">Loading…</div>
             ) : (
               <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
-                {STAGES.filter((s) => s.key !== "all").map((stage) => {
+                {(activeStages.length > 0 ? activeStages : STAGES.filter((s) => s.key !== "all")).map((stage) => {
                   const colQuotes = displayedQuotes.filter((q) => stage.match(q.status));
                   const colTotal = colQuotes.reduce((s, q) => s + q.subtotal_cents, 0);
                   const isOver = dragOverStatus === stage.key;
