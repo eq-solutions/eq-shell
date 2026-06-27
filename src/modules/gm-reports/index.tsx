@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { AlertTriangle, Check } from 'lucide-react';
 import { HubLayout } from '../../components/HubLayout';
 import { useSession } from '../../session';
@@ -46,6 +46,25 @@ interface Job {
   is_forecast_loss: boolean;
   is_overhead:      boolean;
 }
+
+interface InvoiceRun {
+  id: string;
+  job_code: string;
+  period_id: string;
+  status: 'invoiced' | 'story';
+  reason_code: string | null;
+  reason_note: string | null;
+  updated_at: string;
+}
+
+const REASON_CODES = [
+  { value: 'waiting_po',     label: 'Waiting on PO' },
+  { value: 'variation',      label: 'Variation pending' },
+  { value: 'on_hold',        label: 'Job on hold' },
+  { value: 'dispute',        label: 'Client dispute' },
+  { value: 'not_progressed', label: 'Not progressed enough' },
+  { value: 'other',          label: 'Other' },
+] as const;
 
 interface Briefing {
   top_concern:    string;
@@ -105,6 +124,104 @@ const BADGE_LABELS: Record<string, string> = {
 function Badge({ type }: { type: 'loss' | 'watch' | 'ok' }) {
   return (
     <span className={`gm-badge gm-badge--${type}`}>{BADGE_LABELS[type]}</span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Invoice run cell — inline status picker per job row
+// ---------------------------------------------------------------------------
+
+function InvoiceRunCell({ run, onSave }: {
+  run: InvoiceRun | null;
+  onSave: (update: { status: 'invoiced' | 'story'; reason_code?: string; reason_note?: string }) => Promise<void>;
+}) {
+  const [open, setOpen]           = useState(false);
+  const [reasonCode, setReasonCode] = useState('');
+  const [note, setNote]           = useState('');
+  const [saving, setSaving]       = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function outside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', outside);
+    return () => document.removeEventListener('mousedown', outside);
+  }, [open]);
+
+  function openPopover() {
+    setReasonCode(run?.reason_code ?? '');
+    setNote(run?.reason_note ?? '');
+    setOpen(true);
+  }
+
+  async function save(update: Parameters<typeof onSave>[0]) {
+    setSaving(true);
+    try { await onSave(update); setOpen(false); }
+    finally { setSaving(false); }
+  }
+
+  let pill: React.ReactNode;
+  if (!run) {
+    pill = <span className="gm-inv-pill gm-inv-pill--empty">—</span>;
+  } else if (run.status === 'invoiced') {
+    pill = <span className="gm-inv-pill gm-inv-pill--done"><Check size={10} style={{ marginRight: 3 }} />Invoiced</span>;
+  } else {
+    const label = REASON_CODES.find(r => r.value === run.reason_code)?.label ?? 'Story';
+    pill = (
+      <span className="gm-inv-pill gm-inv-pill--story" title={run.reason_note ?? undefined}>
+        {label}{run.reason_note ? ' ·' : ''}
+      </span>
+    );
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button className="gm-inv-trigger" onClick={openPopover}>{pill}</button>
+      {open && (
+        <div className="gm-inv-popover">
+          <button
+            className="gm-inv-opt gm-inv-opt--invoiced"
+            disabled={saving}
+            onClick={() => void save({ status: 'invoiced' })}
+          >
+            <Check size={12} style={{ marginRight: 4 }} />Mark invoiced
+          </button>
+          <div className="gm-inv-or">or add a story</div>
+          <select
+            className="gm-inv-select"
+            value={reasonCode}
+            onChange={e => setReasonCode(e.target.value)}
+          >
+            <option value="">Select reason…</option>
+            {REASON_CODES.map(r => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
+          <input
+            className="gm-inv-note"
+            type="text"
+            placeholder="Short note (optional)"
+            maxLength={200}
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && reasonCode) {
+                void save({ status: 'story', reason_code: reasonCode, reason_note: note || undefined });
+              }
+            }}
+          />
+          <button
+            className="gm-inv-opt gm-inv-opt--story"
+            disabled={!reasonCode || saving}
+            onClick={() => void save({ status: 'story', reason_code: reasonCode, reason_note: note || undefined })}
+          >
+            Save story
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -446,6 +563,7 @@ function ForecastView({ jobs, periodCode, loading }: { jobs: Job[]; periodCode: 
 
 function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [invoiceRuns, setInvoiceRuns] = useState<Record<string, InvoiceRun>>({});
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [generatingBriefing, setGeneratingBriefing] = useState(false);
@@ -460,11 +578,20 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
       setLoadingJobs(true);
       setJobsError(null);
       try {
-        const res = await fetch(`/.netlify/functions/gm-reports?id=${period.id}`, { credentials: 'include' });
-        if (!res.ok) throw new Error(`Server error ${res.status}`);
-        const data = await res.json() as { ok: boolean; period: Period & { briefing?: Briefing }; jobs: Job[] };
+        const [jobsRes, runsRes] = await Promise.all([
+          fetch(`/.netlify/functions/gm-reports?id=${period.id}`, { credentials: 'include' }),
+          fetch(`/.netlify/functions/gm-invoice-run?period_id=${period.id}`, { credentials: 'include' }),
+        ]);
+        if (!jobsRes.ok) throw new Error(`Server error ${jobsRes.status}`);
+        const data = await jobsRes.json() as { ok: boolean; period: Period & { briefing?: Briefing }; jobs: Job[] };
         setJobs(data.jobs ?? []);
         if (data.period?.briefing) setBriefing(data.period.briefing as Briefing);
+        if (runsRes.ok) {
+          const runsData = await runsRes.json() as { ok: boolean; runs: InvoiceRun[] };
+          const map: Record<string, InvoiceRun> = {};
+          for (const r of runsData.runs ?? []) map[r.job_code] = r;
+          setInvoiceRuns(map);
+        }
       } catch {
         setJobsError("Couldn't load this period's jobs — check your connection and try again.");
       } finally {
@@ -472,6 +599,39 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
       }
     })();
   }, [period.id]);
+
+  const saveInvoiceRun = useCallback(async (
+    jobCode: string,
+    update: { status: 'invoiced' | 'story'; reason_code?: string; reason_note?: string },
+  ) => {
+    const res = await fetch('/.netlify/functions/gm-invoice-run', {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_code: jobCode, period_id: period.id, ...update }),
+    });
+    if (!res.ok) throw new Error('Failed to save');
+    const data = await res.json() as { ok: boolean; run: InvoiceRun };
+    setInvoiceRuns(prev => ({ ...prev, [jobCode]: data.run }));
+  }, [period.id]);
+
+  const invoiceCol = useMemo<ColDef<Job>>(() => ({
+    key: 'invoice',
+    header: 'Invoice',
+    width: 140,
+    render: (j) => (
+      <InvoiceRunCell
+        run={invoiceRuns[j.job_code] ?? null}
+        onSave={(update) => saveInvoiceRun(j.job_code, update)}
+      />
+    ),
+  }), [invoiceRuns, saveInvoiceRun]);
+
+  const jobCols = useMemo<ColDef<Job>[]>(() => [
+    JOB_COLS[0],
+    invoiceCol,
+    ...JOB_COLS.slice(1),
+  ], [invoiceCol]);
 
   const generateBriefing = useCallback(async () => {
     setGeneratingBriefing(true);
@@ -659,7 +819,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           {critical.length > 0 && (
             <>
               <SectionLabel text="Critical — needs a conversation" />
-              <EqTable data={critical} columns={JOB_COLS} rowKey={j => j.id}
+              <EqTable data={critical} columns={jobCols} rowKey={j => j.id}
                 rowStyle={() => ({ background: '#FDECEA' })}
                 defaultSort={{ key: 'cash_gap', dir: 'desc' }}
                 style={{ marginBottom: 16 }} />
@@ -670,7 +830,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           {watch.length > 0 && (
             <>
               <SectionLabel text="Watch — large cash gap, GP positive" />
-              <EqTable data={watch} columns={JOB_COLS} rowKey={j => j.id}
+              <EqTable data={watch} columns={jobCols} rowKey={j => j.id}
                 rowStyle={() => ({ background: '#FEF6E4' })}
                 defaultSort={{ key: 'cash_gap', dir: 'desc' }}
                 style={{ marginBottom: 16 }} />
@@ -681,7 +841,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
           {selectedPMs.length > 0 && nonOverhead.length > 0 && (
             <>
               <SectionLabel text={`All jobs — ${selectedPMs.length === 1 ? selectedPMs[0] : `${selectedPMs.length} PMs`}`} />
-              <EqTable data={nonOverhead} columns={JOB_COLS} rowKey={j => j.id}
+              <EqTable data={nonOverhead} columns={jobCols} rowKey={j => j.id}
                 rowStyle={j => ({ background: j.is_forecast_loss ? '#FDECEA' : j.is_cash_negative ? '#FEF6E4' : '#fff' })}
                 defaultSort={{ key: 'status', dir: 'desc' }}
                 style={{ marginBottom: 16 }} />

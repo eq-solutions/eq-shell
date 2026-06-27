@@ -273,6 +273,101 @@
   border-color: #1A1A2E;
 }
 
+/* ── Invoice run column ──────────────────────────────────────────── */
+
+.gm-inv-trigger {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+.gm-inv-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gm-inv-pill--empty  { color: #C8D4DF; border: 1px dashed #C8D4DF; background: transparent; }
+.gm-inv-pill--done   { background: #EAF5EE; color: #0D4A25; }
+.gm-inv-pill--story  {
+  background: #FEF6E4; color: #5C3A00;
+  max-width: 130px; overflow: hidden; text-overflow: ellipsis;
+  display: inline-block; vertical-align: middle;
+}
+
+.gm-inv-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  background: #fff;
+  border: 1px solid #E2EAF0;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(26, 26, 46, 0.10);
+  padding: 10px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gm-inv-opt {
+  display: flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.1s;
+}
+.gm-inv-opt:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.gm-inv-opt--invoiced { background: #EAF5EE; color: #0D4A25; }
+.gm-inv-opt--invoiced:hover:not(:disabled) { background: #D1EDDB; }
+
+.gm-inv-opt--story { background: var(--eq-ink, #1A1A2E); color: #fff; margin-top: 2px; justify-content: center; }
+.gm-inv-opt--story:hover:not(:disabled) { opacity: 0.85; }
+
+.gm-inv-or {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #9AA5BC;
+  text-align: center;
+  padding: 2px 0;
+}
+
+.gm-inv-select,
+.gm-inv-note {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--eq-ink, #1A1A2E);
+  background: #F7FAFC;
+  border: 1px solid #E2EAF0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+.gm-inv-select:focus,
+.gm-inv-note:focus {
+  outline: none;
+  border-color: var(--eq-sky, #3DA8D8);
+}
+
 /* ── Animations ──────────────────────────────────────────────────── */
 
 @keyframes gm-bounce {
