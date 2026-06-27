@@ -305,9 +305,7 @@
 }
 
 .gm-inv-popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  /* position + top/left set inline by portal (fixed, from getBoundingClientRect) */
   z-index: 200;
   background: #fff;
   border: 1px solid #E2EAF0;

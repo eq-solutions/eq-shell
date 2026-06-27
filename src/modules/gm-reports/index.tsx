@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Check } from 'lucide-react';
 import { HubLayout } from '../../components/HubLayout';
 import { useSession } from '../../session';
@@ -135,22 +136,31 @@ function InvoiceRunCell({ run, onSave }: {
   run: InvoiceRun | null;
   onSave: (update: { status: 'invoiced' | 'story'; reason_code?: string; reason_note?: string }) => Promise<void>;
 }) {
-  const [open, setOpen]           = useState(false);
+  const [open, setOpen]             = useState(false);
+  const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
   const [reasonCode, setReasonCode] = useState('');
-  const [note, setNote]           = useState('');
-  const [saving, setSaving]       = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [note, setNote]             = useState('');
+  const [saving, setSaving]         = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     function outside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
+        triggerRef.current && !triggerRef.current.contains(e.target as Node)
+      ) setOpen(false);
     }
     document.addEventListener('mousedown', outside);
     return () => document.removeEventListener('mousedown', outside);
   }, [open]);
 
   function openPopover() {
+    if (triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setPopoverPos({ top: r.bottom + 4, left: r.left });
+    }
     setReasonCode(run?.reason_code ?? '');
     setNote(run?.reason_note ?? '');
     setOpen(true);
@@ -176,52 +186,59 @@ function InvoiceRunCell({ run, onSave }: {
     );
   }
 
+  const popover = open ? createPortal(
+    <div
+      ref={popoverRef}
+      className="gm-inv-popover"
+      style={{ position: 'fixed', top: popoverPos.top, left: popoverPos.left }}
+    >
+      <button
+        className="gm-inv-opt gm-inv-opt--invoiced"
+        disabled={saving}
+        onClick={() => void save({ status: 'invoiced' })}
+      >
+        <Check size={12} style={{ marginRight: 4 }} />Mark invoiced
+      </button>
+      <div className="gm-inv-or">or add a story</div>
+      <select
+        className="gm-inv-select"
+        value={reasonCode}
+        onChange={e => setReasonCode(e.target.value)}
+      >
+        <option value="">Select reason…</option>
+        {REASON_CODES.map(r => (
+          <option key={r.value} value={r.value}>{r.label}</option>
+        ))}
+      </select>
+      <input
+        className="gm-inv-note"
+        type="text"
+        placeholder="Short note (optional)"
+        maxLength={200}
+        value={note}
+        onChange={e => setNote(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && reasonCode) {
+            void save({ status: 'story', reason_code: reasonCode, reason_note: note || undefined });
+          }
+        }}
+      />
+      <button
+        className="gm-inv-opt gm-inv-opt--story"
+        disabled={!reasonCode || saving}
+        onClick={() => void save({ status: 'story', reason_code: reasonCode, reason_note: note || undefined })}
+      >
+        Save story
+      </button>
+    </div>,
+    document.body,
+  ) : null;
+
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button className="gm-inv-trigger" onClick={openPopover}>{pill}</button>
-      {open && (
-        <div className="gm-inv-popover">
-          <button
-            className="gm-inv-opt gm-inv-opt--invoiced"
-            disabled={saving}
-            onClick={() => void save({ status: 'invoiced' })}
-          >
-            <Check size={12} style={{ marginRight: 4 }} />Mark invoiced
-          </button>
-          <div className="gm-inv-or">or add a story</div>
-          <select
-            className="gm-inv-select"
-            value={reasonCode}
-            onChange={e => setReasonCode(e.target.value)}
-          >
-            <option value="">Select reason…</option>
-            {REASON_CODES.map(r => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </select>
-          <input
-            className="gm-inv-note"
-            type="text"
-            placeholder="Short note (optional)"
-            maxLength={200}
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && reasonCode) {
-                void save({ status: 'story', reason_code: reasonCode, reason_note: note || undefined });
-              }
-            }}
-          />
-          <button
-            className="gm-inv-opt gm-inv-opt--story"
-            disabled={!reasonCode || saving}
-            onClick={() => void save({ status: 'story', reason_code: reasonCode, reason_note: note || undefined })}
-          >
-            Save story
-          </button>
-        </div>
-      )}
-    </div>
+    <>
+      <button ref={triggerRef} className="gm-inv-trigger" onClick={openPopover}>{pill}</button>
+      {popover}
+    </>
   );
 }
 
