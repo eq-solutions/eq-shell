@@ -39,6 +39,13 @@ interface ApproveBody {
   action: 'approve' | 'reject';
   rejection_reason?: string;
   confirmed_staff_id?: string | null;
+  role?: string;
+}
+
+const WORKER_ROLES = new Set(['labour_hire', 'employee', 'apprentice', 'supervisor', 'manager']);
+function resolveRole(r: string | undefined): string {
+  if (r && WORKER_ROLES.has(r)) return r;
+  return 'employee';
 }
 
 function json(status: number, body: unknown): Response {
@@ -65,7 +72,7 @@ async function approveHandler(req: Request): Promise<Response> {
     return json(400, { error: 'Invalid JSON body' });
   }
 
-  const { staff_id, application_id, action, rejection_reason, confirmed_staff_id } = body;
+  const { staff_id, application_id, action, rejection_reason, confirmed_staff_id, role } = body;
   if (!staff_id && !application_id) {
     return json(400, { error: 'staff_id or application_id is required' });
   }
@@ -79,7 +86,7 @@ async function approveHandler(req: Request): Promise<Response> {
 
   // ── Application path (worker self-signup) ──────────────────────────────────
   if (application_id) {
-    return handleApplication({ application_id, action, rejection_reason, confirmed_staff_id, sb, session, tenantId });
+    return handleApplication({ application_id, action, rejection_reason, confirmed_staff_id, role, sb, session, tenantId });
   }
 
   // ── Invite path (existing app_data.staff row) ──────────────────────────────
@@ -349,6 +356,7 @@ async function handleApplication({
   application_id,
   action,
   confirmed_staff_id,
+  role,
   sb,
   session,
   tenantId,
@@ -357,6 +365,7 @@ async function handleApplication({
   action: 'approve' | 'reject';
   rejection_reason?: string;
   confirmed_staff_id?: string | null;
+  role?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sb: any;
   session: AppSession;
@@ -648,11 +657,12 @@ async function handleApplication({
   // the hook passes through with no tenant_id until one is created here.
   // Both are fire-and-forget: approval is already committed above.
   const appWorkerName = [worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || null;
+  const assignedRole = resolveRole(role);
   sb.from('user_tenant_memberships')
     .insert({
       user_id: app.worker_user_id,
       tenant_id: tenantId,
-      role: 'worker',
+      role: assignedRole,
       active: false,
     })
     .then(() => {/* ok */})
@@ -662,7 +672,7 @@ async function handleApplication({
   sb.from('users').upsert({
     id: app.worker_user_id,
     tenant_id: tenantId,
-    role: 'worker',
+    role: assignedRole,
     email: worker?.email ?? null,
     name: appWorkerName,
     phone: workerPhone ?? null,

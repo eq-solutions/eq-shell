@@ -324,13 +324,13 @@ export function StaffPage() {
     showToast('Record updated');
   }, [handleMutated, showToast]);
 
-  const handleApprove = useCallback(async (applicationId: string) => {
+  const handleApprove = useCallback(async (applicationId: string, role: string) => {
     const worker = pending.find((p) => p.application_id === applicationId);
     const name = [worker?.first_name, worker?.last_name].filter(Boolean).join(' ') || 'Worker';
     const res = await fetch('/.netlify/functions/cards-approve-staff', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ application_id: applicationId, action: 'approve' }),
+      body: JSON.stringify({ application_id: applicationId, action: 'approve', role }),
     });
     if (res.ok) {
       setPending((p) => p.filter((x) => x.application_id !== applicationId));
@@ -502,6 +502,13 @@ export function StaffPage() {
 
 // ─── PENDING CONNECTIONS SECTION ─────────────────────────────────────────────
 
+const ROLE_OPTIONS = [
+  { value: 'labour_hire', label: 'Labour hire' },
+  { value: 'employee',    label: 'Employee' },
+  { value: 'apprentice',  label: 'Apprentice' },
+  { value: 'supervisor',  label: 'Supervisor' },
+] as const;
+
 function PendingSection({
   workers,
   onApprove,
@@ -509,17 +516,31 @@ function PendingSection({
   isMobile,
 }: {
   workers: PendingWorker[];
-  onApprove: (id: string) => Promise<void>;
+  onApprove: (id: string, role: string) => Promise<void>;
   onDecline: (id: string) => Promise<void>;
   isMobile?: boolean;
 }) {
   const [busy, setBusy] = useState<Set<string>>(new Set());
+  // roleFor: appId → chosen role; key present = picker is open for that card
+  const [roleFor, setRoleFor] = useState<Record<string, string>>({});
 
   const isBusy = (id: string) => busy.has(id);
+  const isPicking = (id: string) => id in roleFor;
 
-  const act = async (id: string, fn: (id: string) => Promise<void>) => {
+  const startPick = (id: string) => setRoleFor((prev) => ({ ...prev, [id]: 'employee' }));
+  const cancelPick = (id: string) => setRoleFor((prev) => { const n = { ...prev }; delete n[id]; return n; });
+
+  const confirmApprove = async (id: string) => {
+    const role = roleFor[id] ?? 'employee';
     setBusy((prev) => new Set(prev).add(id));
-    try { await fn(id); } finally { setBusy((prev) => { const s = new Set(prev); s.delete(id); return s; }); }
+    try { await onApprove(id, role); cancelPick(id); }
+    finally { setBusy((prev) => { const s = new Set(prev); s.delete(id); return s; }); }
+  };
+
+  const confirmDecline = async (id: string) => {
+    setBusy((prev) => new Set(prev).add(id));
+    try { await onDecline(id); }
+    finally { setBusy((prev) => { const s = new Set(prev); s.delete(id); return s; }); }
   };
 
   return (
@@ -531,40 +552,83 @@ function PendingSection({
         {workers.map((w) => {
           const name = [w.first_name, w.last_name].filter(Boolean).join(' ') || w.phone || 'Unknown';
           const busy = isBusy(w.application_id);
+          const picking = isPicking(w.application_id);
+          const selectedRole = roleFor[w.application_id] ?? 'employee';
           return (
             <div
               key={w.application_id}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px 6px 8px', border: '1px solid #BFDBFE', borderRadius: 8, background: 'white', fontSize: 12 }}
+              style={{ display: 'flex', flexDirection: picking ? 'column' : 'row', alignItems: picking ? 'stretch' : 'center', gap: 10, padding: picking ? '8px 10px' : '6px 10px 6px 8px', border: `1px solid ${picking ? '#93C5FD' : '#BFDBFE'}`, borderRadius: 8, background: 'white', fontSize: 12, minWidth: picking ? 260 : undefined }}
             >
-              <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#3DA8D8', color: 'white', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {initials(w.first_name, w.last_name)}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: '#1A1A2E', whiteSpace: 'nowrap' }}>{name}</div>
-                <div style={{ fontSize: 10, color: '#64748B' }}>
-                  {w.licence_count > 0 ? `${w.licence_count} licence${w.licence_count === 1 ? '' : 's'} ready` : 'No licences yet'}
-                  {' · '}
-                  {relativeTime(w.requested_at)}
+              {/* Top row — always shown */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#3DA8D8', color: 'white', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {initials(w.first_name, w.last_name)}
                 </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: '#1A1A2E', whiteSpace: 'nowrap' }}>{name}</div>
+                  <div style={{ fontSize: 10, color: '#64748B' }}>
+                    {w.licence_count > 0 ? `${w.licence_count} licence${w.licence_count === 1 ? '' : 's'} ready` : 'No licences yet'}
+                    {' · '}
+                    {relativeTime(w.requested_at)}
+                  </div>
+                </div>
+                {!picking && (
+                  <div style={{ display: 'flex', gap: 5, marginLeft: 4, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => startPick(w.application_id)}
+                      style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', minWidth: 82, transition: 'background .15s' }}
+                    >
+                      Add to roster
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => { void confirmDecline(w.application_id); }}
+                      style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: busy ? '#CBD5E1' : '#64748B', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minWidth: 68, transition: 'color .15s' }}
+                    >
+                      {busy ? 'Declining…' : 'Decline'}
+                    </button>
+                  </div>
+                )}
               </div>
-              <div style={{ display: 'flex', gap: 5, marginLeft: 4, flexShrink: 0 }}>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => { void act(w.application_id, onApprove); }}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: busy ? '#94A3B8' : '#3DA8D8', color: 'white', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minWidth: 82, transition: 'background .15s' }}
-                >
-                  {busy ? 'Adding…' : 'Add to roster'}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => { void act(w.application_id, onDecline); }}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: busy ? '#CBD5E1' : '#64748B', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', minWidth: 68, transition: 'color .15s' }}
-                >
-                  {busy ? 'Declining…' : 'Decline'}
-                </button>
-              </div>
+              {/* Role picker — shown after "Add to roster" is clicked */}
+              {picking && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', letterSpacing: '.06em', textTransform: 'uppercase' }}>Set role</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {ROLE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setRoleFor((prev) => ({ ...prev, [w.application_id]: opt.value }))}
+                        style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${selectedRole === opt.value ? '#3DA8D8' : '#E2E8F0'}`, background: selectedRole === opt.value ? '#EAF5FB' : 'white', color: selectedRole === opt.value ? '#2986B4' : '#64748B', fontSize: 11, fontWeight: selectedRole === opt.value ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit', transition: 'all .1s' }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => { void confirmApprove(w.application_id); }}
+                      style={{ padding: '4px 12px', borderRadius: 6, border: 'none', background: busy ? '#94A3B8' : '#3DA8D8', color: 'white', fontSize: 11, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background .15s' }}
+                    >
+                      {busy ? 'Adding…' : 'Confirm'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => cancelPick(w.application_id)}
+                      style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #E2E8F0', background: 'white', color: '#64748B', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
