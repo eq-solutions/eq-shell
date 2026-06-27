@@ -558,10 +558,27 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
 
   // ── Pipeline state ────────────────────────────────────────────────────────
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [statusFilter, setStatusFilter] = useState(() => {
-    const stored = typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-tab") : null;
-    return (stored && STAGE_KEYS.has(stored)) ? stored : "in-progress";
+  const [selectedTabs, setSelectedTabs] = useState<Set<string>>(() => {
+    const stored = typeof localStorage !== "undefined" ? localStorage.getItem("eq-quotes-tabs") : null;
+    if (stored) {
+      const valid = stored.split(",").filter((k) => STAGE_KEYS.has(k));
+      if (valid.length > 0) return new Set(valid);
+    }
+    return new Set(["in-progress"]);
   });
+  const toggleTab = useCallback((key: string) => {
+    setSelectedTabs((prev) => {
+      if (key === "all") return new Set(["all"]);
+      const next = new Set(prev);
+      next.delete("all");
+      if (next.has(key)) {
+        next.delete(key);
+        return next.size === 0 ? new Set(["all"]) : next;
+      }
+      next.add(key);
+      return next;
+    });
+  }, []);
   // savedFiltersRef must be initialised before any useState that reads _sf via a
   // lazy initialiser — React calls lazy initialisers synchronously on first render,
   // so referencing _sf before this block would be a TDZ error.
@@ -893,10 +910,10 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
   // cascading-render case react-hooks/set-state-in-effect targets doesn't apply.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    try { localStorage.setItem("eq-quotes-tab", statusFilter); } catch { /* ignore */ }
-    void loadQuotes(statusFilter, search);
+    try { localStorage.setItem("eq-quotes-tabs", [...selectedTabs].join(",")); } catch { /* ignore */ }
+    void loadQuotes("all", search);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [selectedTabs]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Persist the client-side pipeline filters so they survive a reload.
@@ -1696,7 +1713,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     clearDraft();
     resetCreateForm();
     setView("pipeline");
-    void loadQuotes(statusFilter, search);
+    void loadQuotes("all", search);
     const loaded = await openDetail(createdQuoteId);
     // Auto-open the email form so the user can send the quote immediately.
     setShowEmailForm(true);
@@ -1774,7 +1791,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     setCreating(false);
     resetCreateForm();
     setView("pipeline");
-    void loadQuotes(statusFilter, search);
+    void loadQuotes("all", search);
     void openDetail(savedQuoteId);
   };
 
@@ -1790,7 +1807,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     }
     const row = (data as Array<{ quote_id: string; quote_number: string }>)[0];
     if (!row) { setDetailError("Duplicate failed: no quote returned."); return; }
-    void loadQuotes(statusFilter, search);
+    void loadQuotes("all", search);
     void openDetail(row.quote_id);
   };
 
@@ -1868,7 +1885,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     const { error } = await supabase.rpc("eq_restore_quote", { p_quote_id: quoteId });
     if (error) { captureRpcError("eq_restore_quote", error, { quote_id: quoteId }); return; }
     void loadTrashed();
-    void loadQuotes(statusFilter, search);
+    void loadQuotes("all", search);
   };
 
   // Permanent delete — removes the quote and all its children (cascade). No undo;
@@ -2656,7 +2673,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
     }
     setImporting(false);
     setImportResults(results);
-    void loadQuotes(statusFilter, search);
+    void loadQuotes("all", search);
   };
 
   // ── Accordion helpers ─────────────────────────────────────────────────────
@@ -2692,10 +2709,10 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
 
   // ── Computed totals ───────────────────────────────────────────────────────
 
-  const activeStage = STAGES.find((s) => s.key === statusFilter);
-  let displayedQuotes = activeStage
-    ? quotes.filter((q) => activeStage.match(q.status))
-    : quotes.filter((q) => q.status === statusFilter); // backward-compat: a stored granular key
+  const activeStages = STAGES.filter((s) => selectedTabs.has(s.key) && s.key !== "all");
+  let displayedQuotes = activeStages.length > 0
+    ? quotes.filter((q) => activeStages.some((stage) => stage.match(q.status)))
+    : quotes;
   if (search.trim()) {
     const sq = search.trim().toLowerCase();
     displayedQuotes = displayedQuotes.filter(
@@ -3362,7 +3379,7 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                         <button
                           type="button"
                           style={{ background: "none", border: "none", color: "var(--eq-sky, #2986B4)", cursor: "pointer", fontSize: 11, padding: 0 }}
-                          onClick={() => { setCustomerFilter(detail.customer_name!); setStatusFilter("all"); }}
+                          onClick={() => { setCustomerFilter(detail.customer_name!); setSelectedTabs(new Set(["all"])); }}
                         >
                           +{others.length} other{others.length !== 1 ? "s" : ""}
                         </button>
@@ -5399,10 +5416,10 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
               muted: { bg: "var(--eq-surface-2, #f5f5f5)", fg: "var(--eq-muted, #6b7280)", bd: "var(--eq-border, #e0e0e0)" },
             };
             const cards = [
-              { n: needsJobNo,   label: "need a job no.",       tone: "sky",   icon: <Briefcase size={15} />,     on: () => { resetSmartFilters(); setNeedsJobNoOnly(true); setStatusFilter("all"); } },
-              { n: expiringSoon, label: "expiring ≤ 14 days",   tone: "amber", icon: <Clock size={15} />,         on: () => { resetSmartFilters(); setExpiringOnly(true); setStatusFilter("all"); } },
-              { n: overdueFup,   label: "follow-ups overdue",   tone: "err",   icon: <CalendarClock size={15} />, on: () => { resetSmartFilters(); setOverdueFupOnly(true); setStatusFilter("all"); } },
-              { n: staleCount,   label: "stale — no follow-up", tone: "muted", icon: <AlarmClock size={15} />,    on: () => { resetSmartFilters(); setStaleOnly(true); setStatusFilter("all"); } },
+              { n: needsJobNo,   label: "need a job no.",       tone: "sky",   icon: <Briefcase size={15} />,     on: () => { resetSmartFilters(); setNeedsJobNoOnly(true); setSelectedTabs(new Set(["all"])); } },
+              { n: expiringSoon, label: "expiring ≤ 14 days",   tone: "amber", icon: <Clock size={15} />,         on: () => { resetSmartFilters(); setExpiringOnly(true); setSelectedTabs(new Set(["all"])); } },
+              { n: overdueFup,   label: "follow-ups overdue",   tone: "err",   icon: <CalendarClock size={15} />, on: () => { resetSmartFilters(); setOverdueFupOnly(true); setSelectedTabs(new Set(["all"])); } },
+              { n: staleCount,   label: "stale — no follow-up", tone: "muted", icon: <AlarmClock size={15} />,    on: () => { resetSmartFilters(); setStaleOnly(true); setSelectedTabs(new Set(["all"])); } },
             ].filter((c) => c.n > 0);
             if (cards.length === 0) return null;
             return (
@@ -5431,8 +5448,8 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
                   <button
                     key={f.key}
                     type="button"
-                    className={`eq-quotes__status-tab${statusFilter === f.key ? " eq-quotes__status-tab--active" : ""}`}
-                    onClick={() => setStatusFilter(f.key)}
+                    className={`eq-quotes__status-tab${selectedTabs.has(f.key) ? " eq-quotes__status-tab--active" : ""}`}
+                    onClick={() => toggleTab(f.key)}
                   >
                     {f.label}
                     {count > 0 && (
