@@ -74,7 +74,7 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
     } else {
       failed++;
       failures.push({ id: user.id, email: user.email, error: createErr.message });
-      console.error('[backfill-auth-users] failed for', user.email, createErr.message);
+      console.error('[backfill-auth-users] failed for user', user.id, createErr.message);
     }
   }
 

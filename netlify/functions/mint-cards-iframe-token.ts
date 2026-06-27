@@ -59,7 +59,7 @@ async function ensureAuthUser(userId: string, email: string): Promise<void> {
   });
 
   if (createRes.ok) {
-    console.info('[mint-cards-iframe-token] created missing auth.users row for', email);
+    console.info('[mint-cards-iframe-token] created missing auth.users row for user', userId);
     return;
   }
   const body = await createRes.text();
