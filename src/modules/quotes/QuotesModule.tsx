@@ -443,13 +443,10 @@ const NEXT_STATUSES: Record<string, string[]> = {
 const STAGES = STATUS_FILTERS;
 const STAGE_KEYS = new Set(STAGES.map((s) => s.key));
 
-// Board columns — one status per column so a drag-drop is an unambiguous status
-// set. Terminal/loss statuses are intentionally omitted (set those from the row).
-const BOARD_COLUMNS: string[] = [
-  "draft", "submitted", "client-reviewing", "on-hold",
-  "verbal-win", "won-awaiting-job-no", "won-job-created", "po-matched",
-  "active", "complete",
-];
+// The Kanban board groups by the same 5 STAGES as the status dropdown + tabs
+// (Submitted / Job created / In progress / Complete / Invoiced) — one column per
+// stage, not per granular status. A drop writes the stage's canonical
+// internalStatus. Terminal/loss statuses match no stage and are set from the row.
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -5737,25 +5734,26 @@ export function QuotesModule({ supabase, sessionName, homeHref }: QuotesModulePr
               <div className="eq-quotes__loading">Loading…</div>
             ) : (
               <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
-                {BOARD_COLUMNS.map((st) => {
-                  const colQuotes = displayedQuotes.filter((q) => q.status === st);
+                {STAGES.filter((s) => s.key !== "all").map((stage) => {
+                  const colQuotes = displayedQuotes.filter((q) => stage.match(q.status));
                   const colTotal = colQuotes.reduce((s, q) => s + q.subtotal_cents, 0);
-                  const isOver = dragOverStatus === st;
+                  const isOver = dragOverStatus === stage.key;
                   return (
                     <div
-                      key={st}
-                      onDragOver={(e) => { e.preventDefault(); if (dragOverStatus !== st) setDragOverStatus(st); }}
+                      key={stage.key}
+                      onDragOver={(e) => { e.preventDefault(); if (dragOverStatus !== stage.key) setDragOverStatus(stage.key); }}
                       onDrop={(e) => {
                         e.preventDefault();
                         const id = e.dataTransfer.getData("text/plain");
                         setDragOverStatus(null);
                         const q = displayedQuotes.find((x) => x.quote_id === id);
-                        if (q && q.status !== st) void savePipelineStatus(q, st);
+                        // Move to this stage's canonical status — skip if the card is already in-stage.
+                        if (q && stage.internalStatus && !stage.match(q.status)) void savePipelineStatus(q, stage.internalStatus);
                       }}
                       style={{ flex: "0 0 240px", width: 240, background: isOver ? "var(--eq-ice, #EAF5FB)" : "var(--eq-surface-2, #f7f9fb)", border: `1px solid ${isOver ? "var(--eq-sky, #3DA8D8)" : "var(--eq-border, #e8e8e8)"}`, borderRadius: 10, padding: 8, minHeight: 120 }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 4px 8px" }}>
-                        <span className={statusClass(st)} style={{ fontSize: 11 }}>{STATUS_LABELS[st] ?? st}</span>
+                        <span className={statusClass(stage.internalStatus ?? "")} style={{ fontSize: 11 }}>{stage.label}</span>
                         <span style={{ fontSize: 11, fontWeight: 700, color: "var(--eq-muted, #6b7280)" }}>{colQuotes.length}</span>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
