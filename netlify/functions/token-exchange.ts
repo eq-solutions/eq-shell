@@ -31,6 +31,7 @@ import type { CanonicalUser } from './_shared/supabase.js';
 import { verifySessionToken, readSessionCookie, hasSecretSalt } from './_shared/token.js';
 import { signSupabaseJwt, hasSupabaseJwtSecret } from './_shared/supabase-jwt.js';
 import { withSentry } from './_shared/sentry.js';
+import { checkShellOrigin } from './_shared/origin-check.js';
 
 const IFRAME_TOKEN_TTL_SECONDS = 60;
 
@@ -50,6 +51,12 @@ function jsonResponse(status: number, body: unknown): Response {
 
 export default withSentry(async (req: Request, _ctx: Context): Promise<Response> => {
   if (req.method !== 'POST') return jsonResponse(405, { error: 'Method not allowed' });
+  // Cross-subdomain CSRF guard — eq_shell_session is Domain=.eq.solutions so any
+  // sibling subdomain could POST here and walk out with a 60s Field/Service JWT.
+  // Report-only until ENFORCE_IFRAME_ORIGIN=true; matches the guard on all other
+  // mint-* endpoints.
+  const originBlock = checkShellOrigin(req, 'token-exchange');
+  if (originBlock) return originBlock;
   if (!hasSecretSalt()) return jsonResponse(500, { error: 'Server misconfigured — missing EQ_SECRET_SALT' });
   if (!hasSupabaseJwtSecret()) return jsonResponse(500, { error: 'Server misconfigured — missing SUPABASE_JWT_SECRET' });
 
