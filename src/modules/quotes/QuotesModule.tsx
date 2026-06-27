@@ -416,7 +416,7 @@ const DRAFT_KEY = "eq-quotes-draft-new";
 // Simplified 5-stage pipeline view. Each stage covers one or more internal statuses.
 // internalStatus = the value written to DB when the user picks this stage in a row dropdown.
 const STATUS_FILTERS: Array<{ key: string; label: string; internalStatus?: string; match: (s: string) => boolean }> = [
-  { key: "quote-sent",  label: "Submitted",   internalStatus: "submitted",       match: (s) => ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win", "won-awaiting-job-no"].includes(s) },
+  { key: "quote-sent",  label: "Open",   internalStatus: "submitted",       match: (s) => ["draft", "submitted", "client-reviewing", "on-hold", "verbal-win", "won-awaiting-job-no"].includes(s) },
   { key: "job-created", label: "Job created", internalStatus: "won-job-created", match: (s) => ["won-job-created", "po-matched"].includes(s) },
   { key: "in-progress", label: "In Progress", internalStatus: "active",          match: (s) => s === "active" },
   { key: "completed",   label: "Complete",    internalStatus: "complete",        match: (s) => ["complete", "ready-to-invoice"].includes(s) },
