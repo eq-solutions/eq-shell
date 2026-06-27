@@ -88,6 +88,11 @@ export interface SupabaseJwtClaims {
     // to apply group grants; without it a worker's group permissions silently vanish
     // inside Field. Additive; omitted when none. Not a security boundary on its own.
     extra_perms?: string[];
+    // Tenant brand fields. Additive — apps read these to display correct branding
+    // without a separate DB query. Shell is the single source of truth for brand.
+    // Omitted for aud=field (Field handles its own theming).
+    brand_color?: string;
+    brand_logo_url?: string | null;
   };
   iat: number;
   exp: number;
@@ -130,6 +135,8 @@ export function signJwtWithSecret(
   tenantSlug?: string,
   name?: string | null,
   extraPerms?: string[],
+  brandColor?: string | null,
+  brandLogoUrl?: string | null,
 ): MintedJwt {
   const now = Math.floor(Date.now() / 1000);
   const jti = randomUUID();
@@ -147,6 +154,8 @@ export function signJwtWithSecret(
       ...(tenantSlug ? { tenant_slug: tenantSlug } : {}),
       ...(name ? { name } : {}),
       ...(extraPerms && extraPerms.length ? { extra_perms: extraPerms } : {}),
+      ...(brandColor ? { brand_color: brandColor } : {}),
+      ...(brandLogoUrl !== undefined ? { brand_logo_url: brandLogoUrl } : {}),
     },
     iat: now,
     exp: now + ttlSeconds,
@@ -173,6 +182,8 @@ export function signSupabaseJwt(
   tenantSlug?: string,
   name?: string | null,
   extraPerms?: string[],
+  brandColor?: string | null,
+  brandLogoUrl?: string | null,
 ): MintedJwt {
   if (!JWT_SECRET) {
     throw new Error(
@@ -180,7 +191,7 @@ export function signSupabaseJwt(
         'Find it in the Supabase dashboard under Settings → API → JWT Settings → JWT Secret.',
     );
   }
-  return signJwtWithSecret(JWT_SECRET, userId, tenantId, eqRole, isPlatformAdmin, ttlSeconds, sourceApp, email, tenantSlug, name, extraPerms);
+  return signJwtWithSecret(JWT_SECRET, userId, tenantId, eqRole, isPlatformAdmin, ttlSeconds, sourceApp, email, tenantSlug, name, extraPerms, brandColor, brandLogoUrl);
 }
 
 export function hasSupabaseJwtSecret(): boolean {
