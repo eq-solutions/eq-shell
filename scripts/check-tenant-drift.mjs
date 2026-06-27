@@ -500,6 +500,7 @@ const FUNC_EXEC_ANON_ALLOW = {
     'eq_cards_auto_provision()',
     'eq_cards_cancel_access_request(uuid)',
     'eq_cards_claim_invite(text)',
+    'eq_cards_find_invites_by_phone()',  // codeless company finder; self-guards via auth.uid()
     'eq_cards_find_pending_invite()',
     'eq_cards_list_incoming_requests()',
     'eq_cards_list_my_licence_backing()',
