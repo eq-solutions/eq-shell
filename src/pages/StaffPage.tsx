@@ -2,6 +2,7 @@
 // Route: /:tenant/staff
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, ImageIcon } from 'lucide-react';
 import { Table, TableBulkAction, type TableColumn } from '@eq-solutions/ui';
 import { archiveStaff } from '../lib/entityActions';
@@ -277,16 +278,9 @@ function useIsMobile(): boolean {
 // ─── PAGE ────────────────────────────────────────────────────────────────────
 
 export function StaffPage() {
-  const [staff,      setStaff]      = useState<StaffRow[]>([]);
-  const [licences,   setLicences]   = useState<LicenceRow[]>([]);
-  const [reviewState, setReviewState] = useState<StaffReviewState[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [licLoading, setLicLoading] = useState(true);
-  const [error,      setError]      = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [view,       setView]       = useState<View>('list');
   const [selId,      setSelId]      = useState<string | null>(null);
-  const [reload,     setReload]     = useState(0);
-  const [pending,    setPending]    = useState<PendingWorker[]>([]);
   const [tipId,      setTipId]      = useState<string | null>(null);
   const [tipRect,    setTipRect]    = useState<DOMRect | null>(null);
   const [toast,        setToast]        = useState<{ msg: string; ok: boolean } | null>(null);
@@ -325,44 +319,49 @@ export function StaffPage() {
     finally { setCompBusy(false); }
   }, [showToast]);
 
-  // Staff fetch — active only, all records, re-runs after mutations
-  useEffect(() => {
-    setLoading(true);
-    fetchEntity('staff', { active: 'true' })
-      .then((r) => {
-        if (!r.ok) { setError(r.error ?? 'Failed to load staff'); return; }
-        setStaff((r.rows ?? []).map(mapStaff));
-      })
-      .catch(() => setError('Network error'))
-      .finally(() => setLoading(false));
-  }, [reload]);
+  // Staff fetch — active only, all records. staleTime:0 (default) so the roster
+  // is always refetched on mount; mutation invalidation (handleMutated) forces
+  // a fresh load. Safety-relevant data is never more than one render stale.
+  const staffQuery = useQuery({
+    queryKey: ['staff', 'list'] as const,
+    queryFn: async () => {
+      const r = await fetchEntity('staff', { active: 'true' });
+      if (!r.ok) throw new Error(r.error ?? 'Failed to load staff');
+      return (r.rows ?? []).map(mapStaff);
+    },
+  });
+  const staff = staffQuery.data ?? [];
+  const loading = staffQuery.isLoading;
+  const error = staffQuery.error ? (staffQuery.error as Error).message : null;
 
   // Pending connection requests
-  useEffect(() => {
-    fetch('/.netlify/functions/staff-pending-connections', { credentials: 'include' })
+  const pendingQuery = useQuery({
+    queryKey: ['staff', 'pending'] as const,
+    queryFn: () => fetch('/.netlify/functions/staff-pending-connections', { credentials: 'include' })
       .then((r) => r.json() as Promise<{ pending?: PendingWorker[] }>)
-      .then((r) => { if (r.pending) setPending(r.pending); })
-      .catch(() => {});
-  }, [reload]);
+      .then((r) => r.pending ?? []),
+  });
+  const pending = pendingQuery.data ?? [];
 
-  // Licences fetch — reads canonical (public.licences) for connected workers
-  useEffect(() => {
-    setLicLoading(true);
-    fetch('/.netlify/functions/staff-canonical-licences', { credentials: 'include' })
+  // Licences — reads canonical (public.licences) for connected workers
+  const licencesQuery = useQuery({
+    queryKey: ['staff', 'licences'] as const,
+    queryFn: () => fetch('/.netlify/functions/staff-canonical-licences', { credentials: 'include' })
       .then((r) => r.json() as Promise<{ licences?: Record<string, unknown>[] }>)
-      .then((r) => { if (r.licences) setLicences(r.licences.map(mapLicence)); })
-      .catch(() => {})
-      .finally(() => setLicLoading(false));
-  }, []);
+      .then((r) => (r.licences ?? []).map(mapLicence)),
+  });
+  const licences = licencesQuery.data ?? [];
+  const licLoading = licencesQuery.isLoading;
 
-  // Review state — per-staff licence-review badges. Re-runs after a review saves
-  // (handleMutated bumps reload) so badges update without a hard refresh.
-  useEffect(() => {
-    fetch('/.netlify/functions/staff-review-state', { credentials: 'include' })
+  // Review state — per-staff licence-review badges. Invalidated by handleMutated
+  // when a review saves so badges update without a hard refresh.
+  const reviewQuery = useQuery({
+    queryKey: ['staff', 'review-state'] as const,
+    queryFn: () => fetch('/.netlify/functions/staff-review-state', { credentials: 'include' })
       .then((r) => r.json() as Promise<{ review?: StaffReviewState[] }>)
-      .then((r) => { if (r.review) setReviewState(r.review); })
-      .catch(() => {});
-  }, [reload]);
+      .then((r) => r.review ?? []),
+  });
+  const reviewState = reviewQuery.data ?? [];
 
   // A-Z sort by full name
   const sortedStaff = useMemo(
@@ -411,13 +410,19 @@ export function StaffPage() {
     setSelId((prev) => (prev === id ? null : id));
   }, []);
 
-  const handleMutated = useCallback(() => setReload((n) => n + 1), []);
+  // Invalidate the whole ['staff'] tree — list, pending, licences, review-state.
+  // (Licences now refresh after a re-review too, which the old reload counter
+  // skipped — strictly more correct, and harmless when nothing changed.)
+  const handleMutated = useCallback(
+    () => { void queryClient.invalidateQueries({ queryKey: ['staff'] }); },
+    [queryClient],
+  );
 
   const handleArchived = useCallback(() => {
     setSelId(null);
-    setReload((n) => n + 1);
+    void queryClient.invalidateQueries({ queryKey: ['staff'] });
     showToast('Staff member archived');
-  }, [showToast]);
+  }, [queryClient, showToast]);
 
   const handleEditSave = useCallback(async (
     staffId: string,
@@ -474,7 +479,9 @@ export function StaffPage() {
       body: JSON.stringify({ application_id: applicationId, action: 'approve', role, licence_verifications: decisions }),
     });
     if (res.ok) {
-      setPending((p) => p.filter((x) => x.application_id !== applicationId));
+      // Optimistic removal — invalidation below confirms against the server.
+      queryClient.setQueryData<PendingWorker[]>(['staff', 'pending'], (p) =>
+        (p ?? []).filter((x) => x.application_id !== applicationId));
       setReviewing(null);
       handleMutated();
       showToast(`${name} added to roster`);
@@ -484,7 +491,7 @@ export function StaffPage() {
       showToast('Approval failed — try again', false);
       setReviewing((s) => s ? { ...s, phase: 'role' } : null);
     }
-  }, [handleMutated, pending, showToast]);
+  }, [handleMutated, pending, queryClient, showToast]);
 
   // Re-review (existing member): records the sighting, no roster/role change.
   const handleSaveReview = useCallback(async (staffId: string, decisions: LicenceDecision[]) => {
@@ -515,14 +522,15 @@ export function StaffPage() {
       body: JSON.stringify({ application_id: applicationId, action: 'reject' }),
     });
     if (res.ok) {
-      setPending((p) => p.filter((x) => x.application_id !== applicationId));
+      queryClient.setQueryData<PendingWorker[]>(['staff', 'pending'], (p) =>
+        (p ?? []).filter((x) => x.application_id !== applicationId));
       showToast(`${name} declined`);
     } else {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       console.error('[staff] decline failed', res.status, err.error);
       showToast('Failed to decline — try again', false);
     }
-  }, [pending, showToast]);
+  }, [pending, queryClient, showToast]);
 
   const showTip = useCallback((staffId: string, rect: DOMRect) => {
     if (tipTimer.current) clearTimeout(tipTimer.current);
