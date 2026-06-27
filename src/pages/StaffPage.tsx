@@ -32,6 +32,36 @@ interface LicenceRow {
   photo_url: string | null;
 }
 
+interface StaffReviewState {
+  staff_id: string;
+  reviewed_at: string | null;
+  verified: Array<{ licence_id: string; status: 'sighted' | 'flagged' }>;
+}
+
+type ReviewBadgeKind = 'reviewed' | 'flagged' | 'restale' | 'unreviewed';
+
+// Decide the review badge for a staff member by diffing their CURRENT licences
+// against what was sighted. A flag wins; then a licence added/renewed since the
+// review (not in the verified set) means re-review; otherwise all-clear.
+function reviewBadgeFor(
+  lics: LicenceRow[],
+  rs: StaffReviewState | undefined,
+): { badge: ReviewBadgeKind | null; flaggedCount: number } {
+  if (lics.length === 0) return { badge: null, flaggedCount: 0 };
+  if (!rs || !rs.reviewed_at) return { badge: 'unreviewed', flaggedCount: 0 };
+  const seen = new Map(rs.verified.map((v) => [v.licence_id, v.status]));
+  let flaggedCount = 0;
+  let anyNew = false;
+  for (const l of lics) {
+    const st = seen.get(l.id);
+    if (st === undefined) anyNew = true;
+    else if (st === 'flagged') flaggedCount++;
+  }
+  if (flaggedCount > 0) return { badge: 'flagged', flaggedCount };
+  if (anyNew) return { badge: 'restale', flaggedCount: 0 };
+  return { badge: 'reviewed', flaggedCount: 0 };
+}
+
 interface PendingWorker {
   application_id: string;
   worker_user_id: string;
@@ -238,6 +268,7 @@ function useIsMobile(): boolean {
 export function StaffPage() {
   const [staff,      setStaff]      = useState<StaffRow[]>([]);
   const [licences,   setLicences]   = useState<LicenceRow[]>([]);
+  const [reviewState, setReviewState] = useState<StaffReviewState[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [licLoading, setLicLoading] = useState(true);
   const [error,      setError]      = useState<string | null>(null);
@@ -313,6 +344,15 @@ export function StaffPage() {
       .finally(() => setLicLoading(false));
   }, []);
 
+  // Review state — per-staff licence-review badges. Re-runs after a review saves
+  // (handleMutated bumps reload) so badges update without a hard refresh.
+  useEffect(() => {
+    fetch('/.netlify/functions/staff-review-state', { credentials: 'include' })
+      .then((r) => r.json() as Promise<{ review?: StaffReviewState[] }>)
+      .then((r) => { if (r.review) setReviewState(r.review); })
+      .catch(() => {});
+  }, [reload]);
+
   // A-Z sort by full name
   const sortedStaff = useMemo(
     () => [...staff].sort((a, b) => fullName(a).localeCompare(fullName(b))),
@@ -341,6 +381,13 @@ export function StaffPage() {
     }
     return m;
   }, [licences]);
+
+  // Review state by staff_id
+  const reviewByStaff = useMemo(() => {
+    const m = new Map<string, StaffReviewState>();
+    for (const r of reviewState) m.set(r.staff_id, r);
+    return m;
+  }, [reviewState]);
 
   // Unique licence types (for matrix columns, sorted)
   const licTypes = useMemo(() => {
@@ -439,13 +486,14 @@ export function StaffPage() {
       setReviewing(null);
       const flagged = decisions.filter((d) => d.status === 'flagged').length;
       showToast(flagged > 0 ? `Review saved — ${flagged} flagged for follow-up` : 'Licences reviewed');
+      handleMutated();
     } else {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       console.error('[staff] save review failed', res.status, err.error);
       showToast('Could not save review — try again', false);
       setReviewing((s) => s ? { ...s, phase: 'role' } : null);
     }
-  }, [showToast]);
+  }, [handleMutated, showToast]);
 
   const handleDecline = useCallback(async (applicationId: string) => {
     const worker = pending.find((p) => p.application_id === applicationId);
@@ -561,6 +609,7 @@ export function StaffPage() {
                   loading={loading}
                   selId={selId}
                   licByStaff={licByStaff}
+                  reviewByStaff={reviewByStaff}
                   onSelect={selectRow}
                   onShowTip={showTip}
                   onHideTip={hideTip}
@@ -931,6 +980,7 @@ interface ListProps {
   loading: boolean;
   selId: string | null;
   licByStaff: Map<string, LicenceRow[]>;
+  reviewByStaff: Map<string, StaffReviewState>;
   onSelect: (id: string) => void;
   onShowTip: (id: string, rect: DOMRect) => void;
   onHideTip: () => void;
@@ -940,7 +990,7 @@ interface ListProps {
   onCompliancePack: (staffIdFilter?: string[]) => Promise<void>;
 }
 
-function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHideTip, onMutated, selectedIds, onSelectionChange, onCompliancePack }: ListProps) {
+function StaffList({ rows, loading, selId, licByStaff, reviewByStaff, onSelect, onShowTip, onHideTip, onMutated, selectedIds, onSelectionChange, onCompliancePack }: ListProps) {
   const staffCols = useMemo<TableColumn<StaffRow>[]>(() => [
     {
       key: 'name',
@@ -966,20 +1016,23 @@ function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHi
     },
     {
       key: 'licences',
-      header: 'Licences & Training',
+      header: 'Licences & review',
       render: (row) => {
         const lics = licByStaff.get(row.id) ?? [];
+        const { badge, flaggedCount } = reviewBadgeFor(lics, reviewByStaff.get(row.id));
         return (
           <span
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
             onMouseEnter={(e) => onShowTip(row.id, (e.currentTarget as HTMLElement).getBoundingClientRect())}
             onMouseLeave={onHideTip}
           >
             <LicChips lics={lics} />
+            {badge && <ReviewBadge badge={badge} flaggedCount={flaggedCount} />}
           </span>
         );
       },
     },
-  ], [licByStaff, onShowTip, onHideTip]);
+  ], [licByStaff, reviewByStaff, onShowTip, onHideTip]);
 
   const worstStatus = useCallback((row: StaffRow): { color: string } | null => {
     const lics = licByStaff.get(row.id) ?? [];
@@ -998,6 +1051,8 @@ function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHi
           { key: 'all',      label: 'All' },
           { key: 'expiring', label: 'Has expiring', filter: (row) => (licByStaff.get(row.id) ?? []).some((l) => licStatus(l) === 'expiring'), dot: 'var(--eq-warning-text)' },
           { key: 'gaps',     label: 'Has gaps',     filter: (row) => (licByStaff.get(row.id) ?? []).some((l) => { const st = licStatus(l); return st === 'expired' || st === 'expiring'; }), dot: 'var(--eq-error-text)' },
+          { key: 'needs_review', label: 'Needs review', filter: (row) => { const b = reviewBadgeFor(licByStaff.get(row.id) ?? [], reviewByStaff.get(row.id)).badge; return b === 'unreviewed' || b === 'restale'; }, dot: '#3DA8D8' },
+          { key: 'flagged',  label: 'Has flags',    filter: (row) => reviewBadgeFor(licByStaff.get(row.id) ?? [], reviewByStaff.get(row.id)).badge === 'flagged', dot: 'var(--eq-error-text)' },
         ]}
         globalSearch={{ placeholder: 'Search staff…' }}
         columnToggle
@@ -1040,6 +1095,21 @@ function StaffList({ rows, loading, selId, licByStaff, onSelect, onShowTip, onHi
         onActionError={(_action, err) => console.error('[staff] bulk archive failed', err)}
       />
     </div>
+  );
+}
+
+function ReviewBadge({ badge, flaggedCount }: { badge: ReviewBadgeKind; flaggedCount: number }) {
+  const cfg: Record<ReviewBadgeKind, { bg: string; fg: string; label: string }> = {
+    reviewed:   { bg: '#DCFCE7', fg: '#16A34A', label: 'Reviewed' },
+    flagged:    { bg: '#FEF2F2', fg: '#DC2626', label: `${flaggedCount} flagged` },
+    restale:    { bg: '#FEF6E7', fg: '#B45309', label: 'Re-review' },
+    unreviewed: { bg: '#F1F5F9', fg: '#64748B', label: 'Not reviewed' },
+  };
+  const c = cfg[badge];
+  return (
+    <span style={{ fontSize: 10, fontWeight: 800, color: c.fg, background: c.bg, padding: '2px 7px', borderRadius: 5, whiteSpace: 'nowrap', letterSpacing: '.02em' }}>
+      {c.label}
+    </span>
   );
 }
 
