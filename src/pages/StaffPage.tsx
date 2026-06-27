@@ -35,7 +35,18 @@ interface LicenceRow {
 interface StaffReviewState {
   staff_id: string;
   reviewed_at: string | null;
+  reviewed_by: string | null;
+  reviewed_by_name: string | null;
   verified: Array<{ licence_id: string; status: 'sighted' | 'flagged' }>;
+}
+
+// "Reviewed by Royce Milmlow · 27 Jun 2026" — provenance line shared by the list
+// badge tooltip and the staff detail panel.
+function reviewedByLine(rs: StaffReviewState | undefined | null): string | null {
+  if (!rs || !rs.reviewed_at) return null;
+  const who = rs.reviewed_by_name ?? 'an admin';
+  const when = new Date(rs.reviewed_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `Reviewed by ${who} · ${when}`;
 }
 
 type ReviewBadgeKind = 'reviewed' | 'flagged' | 'restale' | 'unreviewed';
@@ -621,6 +632,7 @@ export function StaffPage() {
                 <SplitPanel
                   staff={selStaff}
                   lics={selStaff ? (licByStaff.get(selStaff.id) ?? []) : []}
+                  review={selStaff ? (reviewByStaff.get(selStaff.id) ?? null) : null}
                   onClose={() => setSelId(null)}
                   onSaved={handleEditSave}
                   onArchived={handleArchived}
@@ -1019,7 +1031,8 @@ function StaffList({ rows, loading, selId, licByStaff, reviewByStaff, onSelect, 
       header: 'Licences & review',
       render: (row) => {
         const lics = licByStaff.get(row.id) ?? [];
-        const { badge, flaggedCount } = reviewBadgeFor(lics, reviewByStaff.get(row.id));
+        const rs = reviewByStaff.get(row.id);
+        const { badge, flaggedCount } = reviewBadgeFor(lics, rs);
         return (
           <span
             style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
@@ -1027,7 +1040,7 @@ function StaffList({ rows, loading, selId, licByStaff, reviewByStaff, onSelect, 
             onMouseLeave={onHideTip}
           >
             <LicChips lics={lics} />
-            {badge && <ReviewBadge badge={badge} flaggedCount={flaggedCount} />}
+            {badge && <ReviewBadge badge={badge} flaggedCount={flaggedCount} title={reviewedByLine(rs) ?? undefined} />}
           </span>
         );
       },
@@ -1098,7 +1111,7 @@ function StaffList({ rows, loading, selId, licByStaff, reviewByStaff, onSelect, 
   );
 }
 
-function ReviewBadge({ badge, flaggedCount }: { badge: ReviewBadgeKind; flaggedCount: number }) {
+function ReviewBadge({ badge, flaggedCount, title }: { badge: ReviewBadgeKind; flaggedCount: number; title?: string }) {
   const cfg: Record<ReviewBadgeKind, { bg: string; fg: string; label: string }> = {
     reviewed:   { bg: '#DCFCE7', fg: '#16A34A', label: 'Reviewed' },
     flagged:    { bg: '#FEF2F2', fg: '#DC2626', label: `${flaggedCount} flagged` },
@@ -1107,7 +1120,7 @@ function ReviewBadge({ badge, flaggedCount }: { badge: ReviewBadgeKind; flaggedC
   };
   const c = cfg[badge];
   return (
-    <span style={{ fontSize: 10, fontWeight: 800, color: c.fg, background: c.bg, padding: '2px 7px', borderRadius: 5, whiteSpace: 'nowrap', letterSpacing: '.02em' }}>
+    <span title={title} style={{ fontSize: 10, fontWeight: 800, color: c.fg, background: c.bg, padding: '2px 7px', borderRadius: 5, whiteSpace: 'nowrap', letterSpacing: '.02em', cursor: title ? 'help' : 'default' }}>
       {c.label}
     </span>
   );
@@ -1519,7 +1532,7 @@ type SaveFn = (
   fields: { first_name: string; last_name: string; email: string; phone: string; trade: string; level: string; employment_type: string },
 ) => Promise<void>;
 
-function SplitPanel({ staff, lics, onClose, onSaved, onArchived, onReview }: { staff: StaffRow | null; lics: LicenceRow[]; onClose: () => void; onSaved: SaveFn; onArchived?: () => void; onReview: (staff: StaffRow, lics: LicenceRow[]) => void }) {
+function SplitPanel({ staff, lics, review, onClose, onSaved, onArchived, onReview }: { staff: StaffRow | null; lics: LicenceRow[]; review: StaffReviewState | null; onClose: () => void; onSaved: SaveFn; onArchived?: () => void; onReview: (staff: StaffRow, lics: LicenceRow[]) => void }) {
   const open = staff !== null;
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1677,12 +1690,18 @@ function SplitPanel({ staff, lics, onClose, onSaved, onArchived, onReview }: { s
                     {groupedLics.red.length > 0 && (
                       <LicGroup label="Expired" colour="#EF4444" lics={groupedLics.red} />
                     )}
+                    {reviewedByLine(review) && (
+                      <div style={{ marginTop: 10, fontSize: 11, color: '#64748B', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ color: '#16A34A', fontWeight: 800 }}>✓</span>
+                        {reviewedByLine(review)}
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => onReview(staff, lics)}
-                      style={{ marginTop: 12, width: '100%', padding: '9px', borderRadius: 8, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                      style={{ marginTop: reviewedByLine(review) ? 8 : 12, width: '100%', padding: '9px', borderRadius: 8, border: 'none', background: '#3DA8D8', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                     >
-                      Review licences
+                      {review?.reviewed_at ? 'Re-review licences' : 'Review licences'}
                     </button>
                   </>
                 )}
