@@ -37,22 +37,36 @@ export default withSentry(async (req: Request): Promise<Response> => {
 
   const { data, error } = (await sb
     .from('cards_field_approvals')
-    .select('staff_id, licences_verified_at, licence_verifications')
+    .select('staff_id, licences_verified_at, licence_verifications, approved_by_user_id')
     .eq('tenant_id', session.tenant_id)
     .not('licences_verified_at', 'is', null)) as {
     data: Array<{
       staff_id: string;
       licences_verified_at: string | null;
       licence_verifications: VerificationRow[] | null;
+      approved_by_user_id: string | null;
     }> | null;
     error: { message: string } | null;
   };
 
   if (error) return json(500, { error: error.message });
 
+  // Resolve reviewer ids → names (shell_control.users) in one round-trip.
+  const reviewerIds = [...new Set((data ?? []).map((r) => r.approved_by_user_id).filter((v): v is string => !!v))];
+  const nameById = new Map<string, string>();
+  if (reviewerIds.length > 0) {
+    const { data: users } = (await sb
+      .from('users')
+      .select('id, name')
+      .in('id', reviewerIds)) as { data: Array<{ id: string; name: string | null }> | null };
+    for (const u of users ?? []) if (u.name) nameById.set(u.id, u.name);
+  }
+
   const review = (data ?? []).map((r) => ({
     staff_id: r.staff_id,
     reviewed_at: r.licences_verified_at,
+    reviewed_by: r.approved_by_user_id ?? null,
+    reviewed_by_name: r.approved_by_user_id ? (nameById.get(r.approved_by_user_id) ?? null) : null,
     verified: Array.isArray(r.licence_verifications)
       ? r.licence_verifications
           .filter((v) => typeof v.licence_id === 'string' && (v.status === 'sighted' || v.status === 'flagged'))
