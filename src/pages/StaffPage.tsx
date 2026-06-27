@@ -849,11 +849,11 @@ function LicenceReviewModal({
         {(phase === 'cards' || phase === 'commenting') && lic && (
           <>
             {/* Photo hero */}
-            <div style={{ background: '#F1F5F9', aspectRatio: '16/9', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+            <div style={{ background: '#F1F5F9', maxHeight: 280, position: 'relative', overflowY: 'auto', flexShrink: 0 }}>
               {(showBack ? lic.photo_back_url : lic.photo_front_url) ? (
                 <img src={(showBack ? lic.photo_back_url : lic.photo_front_url)!}
                   alt={`${lic.licence_type} ${showBack ? 'back' : 'front'}`}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  style={{ width: '100%', height: 'auto', display: 'block' }} />
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, color: '#CBD5E1' }}>
                   <span style={{ fontSize: 36 }}>🪪</span>
