@@ -30,11 +30,18 @@ const ALLOWED_ENTITIES = new Set<string>([
 
 // Field entities gate: browsing staff/roster/leave/teams data requires
 // field.view (manager, supervisor, employee, apprentice, labour_hire).
-// CRM/equipment/tender entities are open to all logged-in users.
 const FIELD_ENTITIES = new Set<string>([
   'staff', 'field_person', 'schedule', 'timesheet', 'leave_request', 'team',
   'prestart', 'toolbox_talk', 'licence',
 ]);
+
+// CRM/canonical entities gate: viewing customer/contact/site records requires
+// entity.view — the canonical read perm in @eq-solutions/roles ("view canonical
+// records: customers, sites, contacts, assets"), held by manager/supervisor/
+// employee/apprentice but NOT labour_hire. Matches the write side
+// (entity-insert/patch/actions) and the role model; these were previously open to
+// every signed-in user. (equipment/tender remain ungated — out of scope here.)
+const CRM_ENTITIES = new Set<string>(['customer', 'contact', 'site']);
 
 const MAX_LIMIT = 1000;
 const DEFAULT_LIMIT = 50;
@@ -70,6 +77,11 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   // Field entities require field.view permission.
   if (FIELD_ENTITIES.has(entity) && !can(session, 'field.view')) {
     return json(403, { ok: false, error: 'forbidden', detail: 'field.view permission required' });
+  }
+
+  // CRM/canonical entities require entity.view (excludes labour_hire).
+  if (CRM_ENTITIES.has(entity) && !can(session, 'entity.view')) {
+    return json(403, { ok: false, error: 'forbidden', detail: 'entity.view permission required' });
   }
 
   const limitRaw  = url.searchParams.get('limit');

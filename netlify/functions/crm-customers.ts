@@ -17,6 +17,7 @@ import {
   TenantRoutingMisconfiguredError,
 } from './_shared/tenant-routing.js';
 import { verifySessionToken, readSessionCookie } from './_shared/token.js';
+import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
 function json(status: number, body: unknown): Response {
@@ -102,6 +103,14 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
 
   const session = verifySessionToken(readSessionCookie(req));
   if (!session) return json(401, { ok: false, error: 'not_signed_in' });
+
+  // Reading the customer book requires entity.view — the canonical read perm
+  // (@eq-solutions/roles), held by manager/supervisor/employee/apprentice but NOT
+  // labour_hire. Matches the write side (crm-write) and entity-rows; the Customers
+  // hub UI is already entity.view-gated, so this closes the direct-API hole.
+  if (!can(session, 'entity.view')) {
+    return json(403, { ok: false, error: 'forbidden', detail: 'entity.view permission required' });
+  }
 
   let tenantDb;
   try {
