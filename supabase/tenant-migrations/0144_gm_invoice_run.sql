@@ -33,6 +33,9 @@ CREATE INDEX IF NOT EXISTS gm_invoice_run_tenant_idx  ON app_data.gm_invoice_run
 
 ALTER TABLE app_data.gm_invoice_run ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "tenant_read"  ON app_data.gm_invoice_run;
+DROP POLICY IF EXISTS "tenant_write" ON app_data.gm_invoice_run;
+
 CREATE POLICY "tenant_read" ON app_data.gm_invoice_run
   FOR SELECT USING (
     tenant_id = ((auth.jwt() -> 'app_metadata') ->> 'tenant_id')
