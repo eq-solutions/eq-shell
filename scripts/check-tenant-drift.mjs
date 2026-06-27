@@ -366,7 +366,7 @@ const KNOWN_LEGACY_ANON = {
     // SELECT-only, so the view's residual INSERT/UPDATE/DELETE grants are inert
     // (the base table denies writes). Verified live on ehow 2026-06-16.
     'service.assets', 'service.contacts', 'service.customers', 'service.sites',
-    'service.contract_scopes',
+    'service.contract_scopes', 'service.staff',
     // EQ Service security_invoker=on views for test records, inspections, defects, etc.
     // All are thin SELECT * FROM app_data.<same_name> pass-throughs. RLS on the
     // underlying app_data tables enforces tenant isolation; views always report
