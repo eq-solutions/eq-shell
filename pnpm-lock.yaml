@@ -50,6 +50,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.106.0
         version: 2.106.0
+      '@tanstack/react-query':
+        specifier: ^5.101.1
+        version: 5.101.1(react@19.2.6)
       '@types/jszip':
         specifier: ^3.4.1
         version: 3.4.1
@@ -1656,6 +1659,14 @@ packages:
   '@supabase/supabase-js@2.106.0':
     resolution: {integrity: sha512-OOoo3sLj9iVXNp6b+fkyOfFeQrvvNy7nQbaONNf72dOaictUeS39hFDS9argIRTag6M3ZxIypNWcrDAwLgUihQ==}
     engines: {node: '>=20.0.0'}
+
+  '@tanstack/query-core@5.101.1':
+    resolution: {integrity: sha512-Y6Y92dkXtNqx67m2pMSxUsA3zOCwv862JexZRP8/EPwvKXMPu9m8rv43spiXWzOUIggQ3SQApttALStzhA8B4g==}
+
+  '@tanstack/react-query@5.101.1':
+    resolution: {integrity: sha512-ZnONUuQKJe1bJMStXUL1s5uKN9FcfC28j5cK+iDZcdSHtUv1wtin1cGc/Oewhf2Oc4eKY7lggtpvT/AbMmhHew==}
+    peerDependencies:
+      react: ^18 || ^19
 
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
@@ -4707,6 +4718,13 @@ snapshots:
       '@supabase/postgrest-js': 2.106.0
       '@supabase/realtime-js': 2.106.0
       '@supabase/storage-js': 2.106.0
+
+  '@tanstack/query-core@5.101.1': {}
+
+  '@tanstack/react-query@5.101.1(react@19.2.6)':
+    dependencies:
+      '@tanstack/query-core': 5.101.1
+      react: 19.2.6
 
   '@tybys/wasm-util@0.10.2':
     dependencies:

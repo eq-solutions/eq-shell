@@ -13,6 +13,7 @@
 // Mutations: /.netlify/functions/crm-write (archive/delete/merge/link actions).
 
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, DragOverlay, useDraggable, useDroppable } from '@dnd-kit/core';
 import type { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 import {
@@ -114,8 +115,20 @@ export default function CustomersHubPage() {
 // ── Inner ──────────────────────────────────────────────────────────────────
 
 function CustomersHubInner() {
-  const [customers, setCustomers] = useState<CustomerListItem[]>([]);
-  const [orphan, setOrphan] = useState<{ sites: number; contacts: number }>({ sites: 0, contacts: 0 });
+  const queryClient = useQueryClient();
+
+  // Customer list — 30s stale window so back-navigation is instant while
+  // mutation invalidation (via loadList) always forces a fresh fetch.
+  const { data: listData, isLoading: loading, error: listError } = useQuery({
+    queryKey: ['crm', 'customers', 'list'] as const,
+    queryFn: () => crmFetch('?action=list'),
+    staleTime: 30_000,
+  });
+  const customers = (listData?.customers as CustomerListItem[]) ?? [];
+  const orphan = (listData?.unassigned as { sites: number; contacts: number }) ?? { sites: 0, contacts: 0 };
+  // detailError covers on-demand fetches (expand customer, load unassigned).
+  const [detailError, setError] = useState<string | null>(null);
+  const error = listError ? 'Unable to load customers — check your connection and try again.' : detailError;
 
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
   const [expandedBranches, setExpandedBranches] = useState<Set<string>>(new Set());
@@ -132,8 +145,6 @@ function CustomersHubInner() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [filter, setFilter] = useState('');
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // Add-customer modal state
@@ -151,22 +162,12 @@ function CustomersHubInner() {
 
   useEffect(() => { loadDudup(); }, [loadDudup]);
 
-  // ── Load list ───────────────────────────────────────────────────────────
-
-  const loadList = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const data = await crmFetch('?action=list');
-      setCustomers((data.customers as CustomerListItem[]) ?? []);
-      setOrphan((data.unassigned as { sites: number; contacts: number }) ?? { sites: 0, contacts: 0 });
-    } catch {
-      setError('Unable to load customers — check your connection and try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void loadList(); }, [loadList]);
+  // Stable callback: existing call sites (merge, add-customer, child panels,
+  // error retry) call this exactly as before — it invalidates the TQ cache
+  // which triggers a background refetch.
+  const loadList = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['crm', 'customers', 'list'] });
+  }, [queryClient]);
 
   // ── Expand a customer node ──────────────────────────────────────────────
 

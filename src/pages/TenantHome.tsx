@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { AlertTriangle, Check, Building2, MapPin, User, Users, BadgeCheck, ChevronRight, Wrench, FileText, CreditCard, Network } from 'lucide-react';
 import { useSession, moduleEnabled, type EqTier, type EqRole } from '../session';
@@ -240,11 +241,22 @@ export default function TenantHome() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
   const { session } = useSession();
 
-  const [counts, setCounts] = useState<DashboardCount[] | null>(null);
-  const [events, setEvents] = useState<IntakeEvent[] | null>(null);
-  const [feed, setFeed]     = useState<CanonicalEvent[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Dashboard data — 60s stale + refetchInterval replaces the manual setInterval
+  // poll. Back-navigation renders the cached dashboard instantly.
+  const { data: dashData, isLoading: loading, error: dashError, refetch: refetchDashboard } = useQuery({
+    queryKey: ['home', 'dashboard'] as const,
+    queryFn: () => fetch('/.netlify/functions/tenant-dashboard', { credentials: 'include' })
+      .then(async (r) => {
+        if (!r.ok) { const b = await r.json().catch(() => ({})); throw new Error((b as { error?: string }).error ?? `HTTP ${r.status}`); }
+        return r.json() as Promise<{ ok: boolean; counts: DashboardCount[]; events: IntakeEvent[]; feed: CanonicalEvent[] }>;
+      }),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+  const counts = dashData?.counts ?? null;
+  const events = dashData?.events ?? null;
+  const feed   = dashData?.feed   ?? null;
+  const err    = dashError ? (dashError as Error).message : null;
   // null = not yet loaded (user hasn't requested briefing), undefined = loading, AiData = loaded
   const [aiData, setAiData]             = useState<AiData | null | undefined>(null);
   const [aiError, setAiError]           = useState(false);
@@ -258,25 +270,12 @@ export default function TenantHome() {
   const [clock, setClock] = useState(formatClock);
   const [query, setQuery] = useState('');
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Live feed animation — track new rows arriving from poll
+  // Live feed animation — track new rows arriving from TQ refetchInterval
   const isInitialFeedRef = useRef(true);
   const prevFeedIdsRef   = useRef(new Set<string>());
   const [newFeedIds, setNewFeedIds]         = useState(new Set<string>());
   const [lastRefreshTime, setLastRefreshTime] = useState<number | null>(null);
   const [refreshAge, setRefreshAge]         = useState('just now');
-
-  const silentRefreshFeed = async () => {
-    try {
-      const res = await fetch('/.netlify/functions/tenant-dashboard');
-      if (!res.ok) return;
-      const body = await res.json() as { ok: boolean; counts: DashboardCount[]; events: IntakeEvent[]; feed: CanonicalEvent[] };
-      setFeed(body.feed ?? []);
-    } catch {
-      // silent — polling failures don't surface to user
-    }
-  };
 
   const handleAction = async (action: AiAction, state: 'actioned' | 'dismissed') => {
     setActionedTitles(prev => new Set([...prev, action.title]));
@@ -329,33 +328,9 @@ export default function TenantHome() {
     }
   };
 
-  const loadData = async () => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const res = await fetch('/.netlify/functions/tenant-dashboard');
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
-      }
-      const body = await res.json() as { ok: boolean; counts: DashboardCount[]; events: IntakeEvent[]; feed: CanonicalEvent[] };
-      setCounts(body.counts);
-      setEvents(body.events);
-      setFeed(body.feed ?? []);
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    void loadData();
     void loadAiData();
-    pollRef.current = setInterval(() => { void silentRefreshFeed(); }, 60_000);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Tick the clock every 30 seconds
@@ -594,7 +569,7 @@ export default function TenantHome() {
           </h1>
 
           {err && (
-            <EqError title="Couldn't load dashboard" message={err} onRetry={loadData} />
+            <EqError title="Couldn't load dashboard" message={err} onRetry={() => void refetchDashboard()} />
           )}
 
           {/* Cross-app stat cards — each clicks through to the surface it summarises */}
