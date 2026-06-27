@@ -298,6 +298,7 @@
 
 .gm-inv-pill--empty  { color: #C8D4DF; border: 1px dashed #C8D4DF; background: transparent; }
 .gm-inv-pill--done   { background: #EAF5EE; color: #0D4A25; }
+.gm-inv-pill--prog   { background: #E0F3FA; color: #0C4A66; }
 .gm-inv-pill--story  {
   background: #FEF6E4; color: #5C3A00;
   max-width: 130px; overflow: hidden; text-overflow: ellipsis;
@@ -331,6 +332,9 @@
   transition: opacity 0.1s;
 }
 .gm-inv-opt:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.gm-inv-opt--prog { background: #E0F3FA; color: #0C4A66; }
+.gm-inv-opt--prog:hover:not(:disabled) { background: #C8E9F5; }
 
 .gm-inv-opt--invoiced { background: #EAF5EE; color: #0D4A25; }
 .gm-inv-opt--invoiced:hover:not(:disabled) { background: #D1EDDB; }

@@ -14,7 +14,7 @@ import { verifySessionToken, readSessionCookie } from './_shared/token.js';
 import { can } from './_shared/permissions.js';
 import { withSentry } from './_shared/sentry.js';
 
-const VALID_STATUS  = ['invoiced', 'story'] as const;
+const VALID_STATUS  = ['invoiced_complete', 'invoiced_progress', 'story'] as const;
 const VALID_REASONS = ['waiting_po', 'variation', 'on_hold', 'dispute', 'not_progressed', 'other'] as const;
 
 function json(status: number, body: unknown): Response {
@@ -79,7 +79,8 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   if (!status || !(VALID_STATUS as readonly string[]).includes(status)) {
     return json(400, { error: 'invalid_status', valid: VALID_STATUS });
   }
-  if (status === 'story' && (!reason_code || !(VALID_REASONS as readonly string[]).includes(reason_code))) {
+  const isStory = status === 'story';
+  if (isStory && (!reason_code || !(VALID_REASONS as readonly string[]).includes(reason_code))) {
     return json(400, { error: 'reason_code_required_for_story', valid: VALID_REASONS });
   }
   if (reason_note && reason_note.length > 200) {
@@ -91,7 +92,7 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
     period_id,
     job_code,
     status,
-    reason_code: status === 'invoiced' ? null : (reason_code ?? null),
+    reason_code: isStory ? (reason_code ?? null) : null,
     reason_note: reason_note?.trim() || null,
     updated_at:  new Date().toISOString(),
     updated_by:  session.user_id ?? null,

@@ -52,7 +52,7 @@ interface InvoiceRun {
   id: string;
   job_code: string;
   period_id: string;
-  status: 'invoiced' | 'story';
+  status: 'invoiced' | 'invoiced_complete' | 'invoiced_progress' | 'story';
   reason_code: string | null;
   reason_note: string | null;
   updated_at: string;
@@ -135,7 +135,7 @@ function Badge({ type }: { type: 'loss' | 'watch' | 'ok' }) {
 function InvoiceRunCell({ run, opsInvoiced, onSave }: {
   run: InvoiceRun | null;
   opsInvoiced: boolean;
-  onSave: (update: { status: 'invoiced' | 'story'; reason_code?: string; reason_note?: string }) => Promise<void>;
+  onSave: (update: { status: 'invoiced_complete' | 'invoiced_progress' | 'story'; reason_code?: string; reason_note?: string }) => Promise<void>;
 }) {
   const [open, setOpen]             = useState(false);
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
@@ -174,8 +174,11 @@ function InvoiceRunCell({ run, opsInvoiced, onSave }: {
   }
 
   let pill: React.ReactNode;
-  const showInvoiced = run?.status === 'invoiced' || (!run && opsInvoiced);
-  if (showInvoiced) {
+  if (run?.status === 'invoiced_progress') {
+    pill = <span className="gm-inv-pill gm-inv-pill--prog"><Check size={10} style={{ marginRight: 3 }} />Progress</span>;
+  } else if (run?.status === 'invoiced_complete' || run?.status === 'invoiced') {
+    pill = <span className="gm-inv-pill gm-inv-pill--done"><Check size={10} style={{ marginRight: 3 }} />Final</span>;
+  } else if (!run && opsInvoiced) {
     pill = <span className="gm-inv-pill gm-inv-pill--done"><Check size={10} style={{ marginRight: 3 }} />Invoiced</span>;
   } else if (run?.status === 'story') {
     const label = REASON_CODES.find(r => r.value === run.reason_code)?.label ?? 'Story';
@@ -195,11 +198,18 @@ function InvoiceRunCell({ run, opsInvoiced, onSave }: {
       style={{ position: 'fixed', top: popoverPos.top, left: popoverPos.left }}
     >
       <button
+        className="gm-inv-opt gm-inv-opt--prog"
+        disabled={saving}
+        onClick={() => void save({ status: 'invoiced_progress' })}
+      >
+        <Check size={12} style={{ marginRight: 4 }} />Progress claim
+      </button>
+      <button
         className="gm-inv-opt gm-inv-opt--invoiced"
         disabled={saving}
-        onClick={() => void save({ status: 'invoiced' })}
+        onClick={() => void save({ status: 'invoiced_complete' })}
       >
-        <Check size={12} style={{ marginRight: 4 }} />Mark invoiced
+        <Check size={12} style={{ marginRight: 4 }} />Final invoice
       </button>
       <div className="gm-inv-or">or add a story</div>
       <select
@@ -623,7 +633,7 @@ function PeriodDetail({ period, onBack }: { period: Period; onBack: () => void }
 
   const saveInvoiceRun = useCallback(async (
     jobCode: string,
-    update: { status: 'invoiced' | 'story'; reason_code?: string; reason_note?: string },
+    update: { status: 'invoiced_complete' | 'invoiced_progress' | 'story'; reason_code?: string; reason_note?: string },
   ) => {
     const res = await fetch('/.netlify/functions/gm-invoice-run', {
       method: 'PATCH',
