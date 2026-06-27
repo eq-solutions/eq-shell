@@ -421,16 +421,16 @@ export function StaffPage() {
 
   const handleEditSave = useCallback(async (
     staffId: string,
-    fields: { first_name: string; last_name: string; email: string; phone: string; trade: string; level: string; employment_type: string },
+    fields: { first_name: string; last_name: string; email: string; phone: string; employment_type: string },
   ): Promise<void> => {
-    const res = await fetch('/.netlify/functions/staff-update', {
+    const res = await fetch('/.netlify/functions/entity-patch', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staff_id: staffId, ...fields }),
+      body: JSON.stringify({ entity: 'staff', id: staffId, fields }),
     });
     if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(err.error ?? 'Save failed');
+      const err = (await res.json().catch(() => ({}))) as { error?: string; detail?: string };
+      throw new Error(err.detail ?? err.error ?? 'Save failed');
     }
     handleMutated();
     showToast('Record updated');
@@ -1234,8 +1234,6 @@ function MobileSheet({
   const [eLast,  setELast]  = useState('');
   const [eEmail, setEEmail] = useState('');
   const [ePhone, setEPhone] = useState('');
-  const [eTrade, setETrade] = useState('');
-  const [eLevel, setELevel] = useState('');
   const [eType,  setEType]  = useState('');
 
   useEffect(() => { setEditMode(false); setSaveErr(null); setArchiveStep(false); }, [staff.id]);
@@ -1245,8 +1243,6 @@ function MobileSheet({
     setELast(parseSurname(staff.last_name) ?? '');
     setEEmail(staff.email ?? '');
     setEPhone(staff.phone ?? '');
-    setETrade(staff.trade ?? '');
-    setELevel(staff.level ?? '');
     setEType(staff.employment_type ?? '');
     setSaveErr(null);
     setEditMode(true);
@@ -1255,7 +1251,7 @@ function MobileSheet({
   const handleSave = async () => {
     setSaving(true); setSaveErr(null);
     try {
-      await onSaved(staff.id, { first_name: eFirst, last_name: eLast, email: eEmail, phone: ePhone, trade: eTrade, level: eLevel, employment_type: eType });
+      await onSaved(staff.id, { first_name: eFirst, last_name: eLast, email: eEmail, phone: ePhone, employment_type: eType });
       setEditMode(false);
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : 'Save failed');
@@ -1338,14 +1334,6 @@ function MobileSheet({
               <input style={inp} type="tel" value={ePhone} onChange={(e) => setEPhone(e.target.value)} />
             </div>
             <div>
-              <label style={lbl}>Trade</label>
-              <input style={inp} value={eTrade} onChange={(e) => setETrade(e.target.value)} />
-            </div>
-            <div>
-              <label style={lbl}>Level</label>
-              <input style={inp} value={eLevel} onChange={(e) => setELevel(e.target.value)} />
-            </div>
-            <div>
               <label style={lbl}>Employment type</label>
               <input style={inp} value={eType} onChange={(e) => setEType(e.target.value)} />
             </div>
@@ -1355,7 +1343,6 @@ function MobileSheet({
           <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 8px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
             {staff.email && <PField label="Email" value={staff.email} />}
             {staff.phone && <PField label="Phone" value={staff.phone} />}
-            {staff.level && <PField label="Level" value={staff.level} />}
             <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#94A3B8', padding: '12px 0 6px' }}>
               Licences &amp; Training ({lics.length} held)
             </div>
@@ -1529,7 +1516,7 @@ function MatrixView({ rows, loading, licByStaff, licTypes }: MatrixProps) {
 
 type SaveFn = (
   staffId: string,
-  fields: { first_name: string; last_name: string; email: string; phone: string; trade: string; level: string; employment_type: string },
+  fields: { first_name: string; last_name: string; email: string; phone: string; employment_type: string },
 ) => Promise<void>;
 
 function SplitPanel({ staff, lics, review, onClose, onSaved, onArchived, onReview }: { staff: StaffRow | null; lics: LicenceRow[]; review: StaffReviewState | null; onClose: () => void; onSaved: SaveFn; onArchived?: () => void; onReview: (staff: StaffRow, lics: LicenceRow[]) => void }) {
@@ -1545,8 +1532,6 @@ function SplitPanel({ staff, lics, review, onClose, onSaved, onArchived, onRevie
   const [eLast,  setELast]  = useState('');
   const [eEmail, setEEmail] = useState('');
   const [ePhone, setEPhone] = useState('');
-  const [eTrade, setETrade] = useState('');
-  const [eLevel, setELevel] = useState('');
   const [eType,  setEType]  = useState('');
 
   // Reset edit + archive state when a different staff member is selected
@@ -1562,8 +1547,6 @@ function SplitPanel({ staff, lics, review, onClose, onSaved, onArchived, onRevie
     setELast(parseSurname(staff.last_name) ?? '');
     setEEmail(staff.email ?? '');
     setEPhone(staff.phone ?? '');
-    setETrade(staff.trade ?? '');
-    setELevel(staff.level ?? '');
     setEType(staff.employment_type ?? '');
     setSaveErr(null);
     setEditMode(true);
@@ -1574,7 +1557,7 @@ function SplitPanel({ staff, lics, review, onClose, onSaved, onArchived, onRevie
     setSaving(true);
     setSaveErr(null);
     try {
-      await onSaved(staff.id, { first_name: eFirst, last_name: eLast, email: eEmail, phone: ePhone, trade: eTrade, level: eLevel, employment_type: eType });
+      await onSaved(staff.id, { first_name: eFirst, last_name: eLast, email: eEmail, phone: ePhone, employment_type: eType });
       setEditMode(false);
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : 'Save failed');
@@ -1650,16 +1633,6 @@ function SplitPanel({ staff, lics, review, onClose, onSaved, onArchived, onRevie
                   <label style={lbl}>Phone</label>
                   <input style={inp} type="tel" value={ePhone} onChange={(e) => setEPhone(e.target.value)} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <div>
-                    <label style={lbl}>Trade</label>
-                    <input style={inp} value={eTrade} onChange={(e) => setETrade(e.target.value)} />
-                  </div>
-                  <div>
-                    <label style={lbl}>Level</label>
-                    <input style={inp} value={eLevel} onChange={(e) => setELevel(e.target.value)} />
-                  </div>
-                </div>
                 <div>
                   <label style={lbl}>Employment type</label>
                   <input style={inp} value={eType} onChange={(e) => setEType(e.target.value)} />
@@ -1671,7 +1644,6 @@ function SplitPanel({ staff, lics, review, onClose, onSaved, onArchived, onRevie
                 <div style={s.psec}>Contact</div>
                 {staff.email && <PField label="Email" value={staff.email} />}
                 {staff.phone && <PField label="Phone" value={staff.phone} />}
-                {staff.level && <PField label="Level" value={staff.level} />}
 
                 <div style={s.psec}>
                   Licences &amp; Training ({lics.length} held)

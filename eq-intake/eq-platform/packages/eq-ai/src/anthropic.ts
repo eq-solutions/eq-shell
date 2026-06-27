@@ -222,14 +222,24 @@ export class AnthropicProvider implements AIProvider {
             {
               role: 'user',
               content: [
-                {
-                  type: 'image',
-                  source: {
-                    type: 'base64',
-                    media_type: input.mediaType,
-                    data: input.fileBase64,
-                  },
-                },
+                // Anthropic uses 'document' for PDFs, 'image' for image types.
+                input.mediaType === 'application/pdf'
+                  ? {
+                      type: 'document',
+                      source: {
+                        type: 'base64',
+                        media_type: 'application/pdf' as const,
+                        data: input.fileBase64,
+                      },
+                    }
+                  : {
+                      type: 'image',
+                      source: {
+                        type: 'base64',
+                        media_type: input.mediaType,
+                        data: input.fileBase64,
+                      },
+                    },
                 { type: 'text', text: userPrompt },
               ],
             },
