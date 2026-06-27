@@ -60,8 +60,10 @@ export async function parseCalibrationCerts(
   const sources: CalCertFileSource[] = [];
   const allRecords: Array<CalibrationCertRecord & { source: CalCertSourceTag }> = [];
 
-  for (const file of input.files) {
-    const res = await extractCertsFromPdf(file, input.ai);
+  const results = await Promise.all(
+    input.files.map((file) => extractCertsFromPdf(file, input.ai)),
+  );
+  for (const res of results) {
     sources.push(res.source);
     warnings.push(...res.warnings);
     allRecords.push(...res.records);
