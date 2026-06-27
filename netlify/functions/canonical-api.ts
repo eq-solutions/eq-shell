@@ -63,6 +63,7 @@ import {
   TenantRoutingMisconfiguredError,
 } from './_shared/tenant-routing.js';
 import { withSentry } from './_shared/sentry.js';
+import { getServiceClient } from './_shared/supabase.js';
 
 // ──────────────────────────────────────────────────────────────────────
 // Auth — bearer key per app
@@ -953,6 +954,28 @@ export default withSentry(async (req: Request, _ctx: Context): Promise<Response>
   const scope = APP_TENANT_SCOPE[caller.app] ?? [];
   if (!scope.includes('*') && !scope.includes(tenantSlug)) {
     return err(403, 'forbidden', 'App not authorised for this tenant');
+  }
+
+  // Per-key abuse cap (blast-radius limit): a leaked app key authenticates as the
+  // app, so a generous request ceiling per (app, tenant) stops it bulk-exfiltrating
+  // a tenant before the leak is noticed. The threshold is far above legit S2S
+  // traffic; we fail OPEN on a limiter error so a control-plane hiccup never takes
+  // the gateway down. The durable fix (short-lived scoped tokens) is the next phase.
+  try {
+    const { data: rl } = await getServiceClient()
+      .schema('public')
+      .rpc('check_and_increment_rate_limit', {
+        p_key: `canonical-api::${caller.app}::${tenantSlug}`,
+        p_window_secs: 300,
+        p_max_attempts: 6000,
+        p_lockout_secs: 300,
+      });
+    if ((rl as { blocked?: boolean } | null)?.blocked) {
+      return err(429, 'rate_limited', 'request ceiling exceeded for this app/tenant');
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[canonical-api] rate-limit check failed — allowing (fail-open):', (e as Error).message);
   }
 
   if (req.method === 'GET')  return handleGet(req, url, caller, tenantSlug);
