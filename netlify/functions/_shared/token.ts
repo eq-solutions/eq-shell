@@ -42,7 +42,7 @@
 //   EQ_QUOTES_HANDOFF_KEY    — quotes iframe handoff tokens (must also be set in eq-quotes)
 //   EQ_SHELL_BRIDGE_SECRET   — service bridge tokens (already existed; no EQ_SECRET_SALT fallback)
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 
 // ── S2-9: Per-consumer key resolution ────────────────────────────────────────
 //
@@ -209,6 +209,13 @@ export interface SessionPayload {
    * verify-shell-session fills in DEFAULT_TENANT_CONFIG transparently.
    */
   config: TenantConfig;
+  /**
+   * Unique session id (S2.D). Lets one session be revoked via
+   * shell_control.revoked_sessions without deactivating the whole user.
+   * Auto-stamped by signSessionToken; absent on pre-jti cookies, for which
+   * the revocation check is simply skipped.
+   */
+  jti?: string;
   exp: number;
 }
 
@@ -346,7 +353,11 @@ function verifyKindToken<T extends { kind: string; exp: number }>(
 }
 
 export function signSessionToken(payload: SessionPayload): string {
-  const json = JSON.stringify(payload);
+  // Stamp a unique session id (jti) if the caller didn't set one, so every mint
+  // site gets per-session revocability for free (sign-out-everywhere / kill-this-
+  // device) without having to touch each call site.
+  const stamped: SessionPayload = payload.jti ? payload : { ...payload, jti: randomUUID() };
+  const json = JSON.stringify(stamped);
   const sig = sign(json, 'session');
   return Buffer.from(json).toString('base64') + '.' + sig;
 }

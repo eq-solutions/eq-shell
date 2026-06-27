@@ -10,11 +10,10 @@
 // endpoint would re-hydrate the session on the next page load and
 // the user would silently be signed back in. Real bug. This fixes it.
 //
-// Optional defense-in-depth: also revoke the JWT's jti in
-// shell_control.revoked_sessions so any in-flight Supabase JWT minted
-// from the now-expired cookie is rejected within the next mint cycle.
-// Not implemented in this pass because the cookie clear is the
-// load-bearing change.
+// Defense-in-depth: also revoke this session's jti in
+// shell_control.revoked_sessions (S2.D) so the signed, HttpOnly cookie is dead
+// even if a copy was captured before sign-out — verify-shell-session rejects a
+// revoked jti on the next call.
 
 import type { Context } from '@netlify/functions';
 import { buildSessionCookie } from './_shared/cookie.js';
@@ -47,6 +46,17 @@ export default withSentry(async (req: Request, _context: Context): Promise<Respo
                ?? req.headers.get('client-ip')
                ?? 'unknown';
       void sb.schema('public').rpc('eq_write_audit_log', { p_event: 'logout', p_actor_id: session.user_id, p_tenant_id: session.tenant_id, p_ip: ip, p_detail: {} });
+      // Revoke this session server-side. expires_at = the cookie's own expiry, so the
+      // revoked_sessions row self-prunes once the cookie would have died anyway.
+      if (session.jti) {
+        await sb.schema('shell_control').from('revoked_sessions').upsert({
+          jti: session.jti,
+          tenant_id: session.tenant_id,
+          revoked_by: session.user_id,
+          reason: 'logout',
+          expires_at: new Date(session.exp).toISOString(),
+        }, { onConflict: 'jti' });
+      }
     } catch {
       // Non-fatal — proceed with cookie clear regardless.
     }
